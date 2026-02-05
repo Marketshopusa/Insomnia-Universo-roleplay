@@ -1,6 +1,8 @@
  import { Link, useLocation } from "react-router-dom";
  import { Button } from "@/components/ui/button";
  import { useAuth } from "@/contexts/AuthContext";
+ import { useLanguage } from "@/contexts/LanguageContext";
+ import { LanguageSelector } from "./LanguageSelector";
  import { signOut } from "@/lib/auth";
  import { useState } from "react";
  import { Menu, X } from "lucide-react";
@@ -14,17 +16,18 @@
    </Link>
  );
  
- const navLinks = [
-   { href: "/plans", label: "Free & Paid Plans" },
-   { href: "/studio", label: "Novel Studio" },
-   { href: "/my-stories", label: "My Stories" },
-   { href: "/", label: "Home" },
- ];
- 
  export const Header = () => {
    const { user, loading } = useAuth();
    const location = useLocation();
+   const { t } = useLanguage();
    const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+ 
+   const navLinks = [
+     { href: "/plans", label: t("nav.plans") },
+     { href: "/studio", label: t("nav.novelStudio") },
+     { href: "/my-stories", label: t("nav.myStories") },
+     { href: "/", label: "Home" },
+   ];
  
    const handleSignOut = async () => {
      await signOut();
@@ -51,16 +54,17 @@
                  {link.label}
                </Link>
              ))}
+             <LanguageSelector />
              {loading ? (
                <div className="w-16 h-9 bg-muted animate-pulse rounded" />
              ) : user ? (
                <Button variant="outline" size="sm" onClick={handleSignOut}>
-                 Logout
+                 {t("nav.logout")}
                </Button>
              ) : (
                <Link to="/login">
                  <Button variant="outline" size="sm">
-                   Login
+                   {t("nav.login")}
                  </Button>
                </Link>
              )}
@@ -100,12 +104,12 @@
                {!loading && (
                  user ? (
                    <Button variant="outline" size="sm" onClick={handleSignOut}>
-                     Logout
+                     {t("nav.logout")}
                    </Button>
                  ) : (
                    <Link to="/login" onClick={() => setMobileMenuOpen(false)}>
                      <Button variant="outline" size="sm" className="w-full">
-                       Login
+                       {t("nav.login")}
                      </Button>
                    </Link>
                  )

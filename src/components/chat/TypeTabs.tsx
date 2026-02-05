@@ -1,4 +1,5 @@
  import { cn } from "@/lib/utils";
+ import { useLanguage } from "@/contexts/LanguageContext";
  
  type StoryType = "adventure" | "roleplay" | "real_sex";
  
@@ -7,13 +8,15 @@
    onTypeChange: (type: StoryType) => void;
  }
  
- const tabs: { value: StoryType; label: string }[] = [
-   { value: "adventure", label: "Adventure" },
-   { value: "roleplay", label: "Roleplay" },
-   { value: "real_sex", label: "Real Sex" },
- ];
- 
  export const TypeTabs = ({ activeType, onTypeChange }: TypeTabsProps) => {
+   const { t } = useLanguage();
+   
+   const tabs: { value: StoryType; labelKey: string }[] = [
+     { value: "adventure", labelKey: "type.adventure" },
+     { value: "roleplay", labelKey: "type.roleplay" },
+     { value: "real_sex", labelKey: "type.realSex" },
+   ];
+ 
    return (
      <div className="flex rounded-lg overflow-hidden border border-border bg-secondary">
        {tabs.map((tab) => (
@@ -27,7 +30,7 @@
                : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
            )}
          >
-           {tab.label}
+           {t(tab.labelKey)}
          </button>
        ))}
      </div>
