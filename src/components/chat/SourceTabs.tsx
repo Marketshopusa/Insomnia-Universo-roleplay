@@ -1,4 +1,5 @@
  import { cn } from "@/lib/utils";
+ import { useLanguage } from "@/contexts/LanguageContext";
  
  type StorySource = "crafted" | "custom";
  
@@ -7,12 +8,14 @@
    onSourceChange: (source: StorySource) => void;
  }
  
- const tabs: { value: StorySource; label: string }[] = [
-   { value: "crafted", label: "Crafted" },
-   { value: "custom", label: "Custom" },
- ];
- 
  export const SourceTabs = ({ activeSource, onSourceChange }: SourceTabsProps) => {
+   const { t } = useLanguage();
+   
+   const tabs: { value: StorySource; labelKey: string }[] = [
+     { value: "crafted", labelKey: "source.crafted" },
+     { value: "custom", labelKey: "source.custom" },
+   ];
+ 
    return (
      <div className="flex rounded-lg overflow-hidden border border-border bg-secondary">
        {tabs.map((tab) => (
@@ -26,7 +29,7 @@
                : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
            )}
          >
-           {tab.label}
+           {t(tab.labelKey)}
          </button>
        ))}
      </div>
