@@ -26,7 +26,7 @@
      { href: "/plans", label: t("nav.plans") },
      { href: "/studio", label: t("nav.novelStudio") },
      { href: "/my-stories", label: t("nav.myStories") },
-     { href: "/", label: "Home" },
+      { href: "/", label: t("nav.home") },
    ];
  
    const handleSignOut = async () => {

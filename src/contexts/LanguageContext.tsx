@@ -2,11 +2,11 @@
  
  type Language = "en" | "es" | "fr" | "de" | "pt" | "it" | "ru" | "ja" | "zh" | "ko";
  
- interface Translations {
-   [key: string]: {
-     [lang in Language]: string;
-   };
- }
+  interface Translations {
+    [key: string]: {
+      [lang in Language]?: string;
+    };
+  }
  
  const translations: Translations = {
    // Header
@@ -82,6 +82,10 @@
      zh: "登出",
      ko: "로그아웃",
    },
+    "nav.home": {
+      en: "Home",
+      es: "Inicio",
+    },
    // Story Types
    "type.adventure": {
      en: "Adventure",
@@ -365,6 +369,96 @@
      zh: "自动播放",
      ko: "자동재생",
    },
+
+    // Common
+    "common.all": {
+      en: "All",
+      es: "Todos",
+    },
+    "common.female": {
+      en: "Female",
+      es: "Mujer",
+    },
+    "common.male": {
+      en: "Male",
+      es: "Hombre",
+    },
+
+    // Audio extra
+    "audio.gender": {
+      en: "Gender",
+      es: "Género",
+    },
+    "audio.style": {
+      en: "Style",
+      es: "Estilo",
+    },
+    "audio.per10k": {
+      en: "per 10k chars",
+      es: "por 10k caracteres",
+    },
+
+    // Voice styles/tags
+    "style.gentle": {
+      en: "Gentle",
+      es: "Suave",
+    },
+    "style.confident": {
+      en: "Confident",
+      es: "Seguro",
+    },
+    "style.playful": {
+      en: "Playful",
+      es: "Juguetón",
+    },
+    "tag.gentle": {
+      en: "gentle",
+      es: "suave",
+    },
+    "tag.elegant": {
+      en: "elegant",
+      es: "elegante",
+    },
+    "tag.deep": {
+      en: "deep",
+      es: "grave",
+    },
+    "tag.confident": {
+      en: "confident",
+      es: "seguro",
+    },
+    "tag.sweet": {
+      en: "sweet",
+      es: "dulce",
+    },
+    "tag.playful": {
+      en: "playful",
+      es: "juguetón",
+    },
+
+    // Voice descriptions
+    "voice.scarlettHd.desc": {
+      en: "A soft, gentle female voice with elegance",
+      es: "Una voz femenina suave y delicada, con elegancia",
+    },
+    "voice.maxDeep.desc": {
+      en: "A deep, confident male voice",
+      es: "Una voz masculina grave y segura",
+    },
+    "voice.lunaSweet.desc": {
+      en: "A sweet, playful female voice",
+      es: "Una voz femenina dulce y juguetona",
+    },
+
+    // Not Found
+    "notFound.message": {
+      en: "Oops! Page not found",
+      es: "¡Ups! Página no encontrada",
+    },
+    "notFound.returnHome": {
+      en: "Return to Home",
+      es: "Volver al inicio",
+    },
  };
  
  interface LanguageContextType {
