@@ -230,6 +230,8 @@ import { Lock, ShieldAlert } from "lucide-react";
    const mediaCount = story.video_count > 0 ? story.video_count : story.image_count;
    const mediaType = story.video_count > 0 ? t("chat.videos") : t("chat.images");
    const categories = story.story_categories?.map((sc: any) => sc.categories).filter(Boolean) || [];
+  const categoryNames = categories.map((c: any) => c?.name);
+  const tCategoryNames = useTranslatedTexts(categoryNames);
  
    return (
      <MainLayout>
