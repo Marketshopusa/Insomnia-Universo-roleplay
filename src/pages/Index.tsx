@@ -10,6 +10,11 @@
  import { AudioSettings } from "@/components/chat/AudioSettings";
  import { useStories, useCategories } from "@/hooks/useStories";
  import { useLanguage } from "@/contexts/LanguageContext";
+import { useAuth } from "@/contexts/AuthContext";
+import { useAdultMode } from "@/contexts/AdultModeContext";
+import { AdultConsentDialog } from "@/components/adult/AdultConsentDialog";
+import { Button } from "@/components/ui/button";
+import { ShieldAlert, Lock } from "lucide-react";
  import { Skeleton } from "@/components/ui/skeleton";
  
  type StoryType = "adventure" | "roleplay" | "real_sex";
@@ -18,6 +23,9 @@
  const Index = () => {
    const navigate = useNavigate();
    const { t } = useLanguage();
+  const { user } = useAuth();
+  const { enabled: adultEnabled, consentGiven, enable, grantConsent } = useAdultMode();
+  const [consentOpen, setConsentOpen] = useState(false);
    const [storyType, setStoryType] = useState<StoryType>("roleplay");
    const [storySource, setStorySource] = useState<StorySource>("crafted");
    const [hasExplicit, setHasExplicit] = useState(false);
@@ -55,8 +63,34 @@
    };
  
    const handleStoryClick = (storyId: string) => {
+    if (!user) {
+      navigate("/login");
+      return;
+    }
      navigate(`/story/${storyId}`);
    };
+
+  const handleTypeChange = (type: StoryType) => {
+    if (type === "real_sex" && !adultEnabled) {
+      if (consentGiven) {
+        enable();
+        setStoryType(type);
+      } else {
+        setConsentOpen(true);
+      }
+      return;
+    }
+    setStoryType(type);
+  };
+
+  const handleConsent = () => {
+    grantConsent();
+    enable();
+    setConsentOpen(false);
+    setStoryType("real_sex");
+  };
+
+  const realSexBlocked = storyType === "real_sex" && !adultEnabled;
  
    return (
      <MainLayout>
@@ -66,10 +100,27 @@
  
          {/* Type Tabs */}
          <div className="max-w-2xl mx-auto mb-4">
-           <TypeTabs activeType={storyType} onTypeChange={setStoryType} />
+            <TypeTabs activeType={storyType} onTypeChange={handleTypeChange} />
          </div>
  
-         {/* Source Tabs */}
+          {realSexBlocked && (
+            <div className="max-w-2xl mx-auto my-12 text-center border border-destructive/30 bg-destructive/5 rounded-lg p-8">
+              <div className="w-14 h-14 rounded-full bg-destructive/10 flex items-center justify-center mx-auto mb-4">
+                <ShieldAlert className="w-7 h-7 text-destructive" />
+              </div>
+              <h2 className="text-xl font-display mb-2">{t("adult.gateTitle")}</h2>
+              <p className="text-muted-foreground mb-6">{t("adult.gateDesc")}</p>
+              <Button
+                onClick={() => (consentGiven ? (enable()) : setConsentOpen(true))}
+                variant="destructive"
+              >
+                {t("adult.enable")}
+              </Button>
+            </div>
+          )}
+
+          {!realSexBlocked && (<>
+          {/* Source Tabs */}
          <div className="max-w-md mx-auto mb-6">
            <SourceTabs activeSource={storySource} onSourceChange={setStorySource} />
          </div>
@@ -149,7 +200,13 @@
              onAutoplayChange={setAutoplay}
            />
          </div>
+          </>)}
        </div>
+        <AdultConsentDialog
+          open={consentOpen}
+          onConfirm={handleConsent}
+          onCancel={() => setConsentOpen(false)}
+        />
      </MainLayout>
    );
  };
