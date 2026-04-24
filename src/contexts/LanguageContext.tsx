@@ -126,7 +126,7 @@ const translations: Dict = {
   "notFound.returnHome": { en: "Return to Home", es: "Volver al Inicio" },
 
   // Footer
-  "footer.copyright": { en: "© 2025 Erota", es: "© 2025 Erota" },
+ "footer.copyright": { en: "© 2025 Insomnia", es: "© 2025 Insomnia" },
 
   // Studio
   "studio.title": { en: "Novel Studio", es: "Estudio de Novelas" },
