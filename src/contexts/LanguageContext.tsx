@@ -247,7 +247,7 @@ const translations: Dict = {
   "auth.noAccount": { en: "Don't have an account?", es: "¿No tienes cuenta?" },
   "auth.signUp": { en: "Sign up", es: "Regístrate" },
   "auth.createAccount": { en: "Create Account", es: "Crear Cuenta" },
-  "auth.signUpDesc": { en: "Sign up to get started with Erota", es: "Regístrate para comenzar con Erota" },
+ "auth.signUpDesc": { en: "Sign up to get started with Insomnia", es: "Regístrate para comenzar con Insomnia" },
   "auth.signUpBtn": { en: "Sign Up", es: "Registrarse" },
   "auth.creatingAccount": { en: "Creating account...", es: "Creando cuenta..." },
   "auth.haveAccount": { en: "Already have an account?", es: "¿Ya tienes cuenta?" },
