@@ -5,7 +5,9 @@
  import { LanguageSelector } from "./LanguageSelector";
  import { signOut } from "@/lib/auth";
  import { useState } from "react";
- import { Menu, X } from "lucide-react";
+import { Menu, X, ShieldAlert, ShieldCheck } from "lucide-react";
+import { useAdultMode } from "@/contexts/AdultModeContext";
+import { AdultConsentDialog } from "@/components/adult/AdultConsentDialog";
  
  const Logo = () => (
    <Link to="/" className="flex items-center gap-2">
@@ -21,6 +23,26 @@
    const location = useLocation();
    const { t } = useLanguage();
    const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { enabled: adultEnabled, consentGiven, enable, disable, grantConsent } = useAdultMode();
+  const [consentOpen, setConsentOpen] = useState(false);
+
+  const handleAdultToggle = () => {
+    if (adultEnabled) {
+      disable();
+      return;
+    }
+    if (consentGiven) {
+      enable();
+    } else {
+      setConsentOpen(true);
+    }
+  };
+
+  const handleConsent = () => {
+    grantConsent();
+    enable();
+    setConsentOpen(false);
+  };
  
    const navLinks = [
      { href: "/plans", label: t("nav.plans") },
@@ -54,6 +76,18 @@
                  {link.label}
                </Link>
              ))}
+              <button
+                onClick={handleAdultToggle}
+                className={`flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-md border transition-colors ${
+                  adultEnabled
+                    ? "bg-destructive/10 border-destructive/40 text-destructive hover:bg-destructive/20"
+                    : "border-border text-muted-foreground hover:text-foreground"
+                }`}
+                title={adultEnabled ? t("adult.disable") : t("adult.enable")}
+              >
+                {adultEnabled ? <ShieldCheck className="w-3.5 h-3.5" /> : <ShieldAlert className="w-3.5 h-3.5" />}
+                <span>18+</span>
+              </button>
              <LanguageSelector />
              {loading ? (
                <div className="w-16 h-9 bg-muted animate-pulse rounded" />
@@ -101,6 +135,17 @@
                    {link.label}
                  </Link>
                ))}
+                <button
+                  onClick={handleAdultToggle}
+                  className={`flex items-center gap-2 text-sm px-3 py-2 rounded-md border transition-colors ${
+                    adultEnabled
+                      ? "bg-destructive/10 border-destructive/40 text-destructive"
+                      : "border-border text-muted-foreground"
+                  }`}
+                >
+                  {adultEnabled ? <ShieldCheck className="w-4 h-4" /> : <ShieldAlert className="w-4 h-4" />}
+                  <span>{adultEnabled ? t("adult.on") : t("adult.off")}</span>
+                </button>
                {!loading && (
                  user ? (
                    <Button variant="outline" size="sm" onClick={handleSignOut}>
@@ -118,6 +163,11 @@
            </nav>
          )}
        </div>
+        <AdultConsentDialog
+          open={consentOpen}
+          onConfirm={handleConsent}
+          onCancel={() => setConsentOpen(false)}
+        />
      </header>
    );
  };

@@ -236,6 +236,57 @@ const translations: Dict = {
   "auth.welcomeToastDesc": { en: "You have successfully logged in.", es: "Has iniciado sesión correctamente." },
   "auth.accountCreated": { en: "Account created!", es: "¡Cuenta creada!" },
   "auth.accountCreatedDesc": { en: "Please check your email to verify your account.", es: "Revisa tu correo para verificar tu cuenta." },
+
+  // Adult mode
+  "adult.title": { en: "Adult Content (18+)", es: "Contenido para Adultos (18+)" },
+  "adult.intro": {
+    en: "This section contains explicit erotic content (NSFW). To access it, you must give your informed consent.",
+    es: "Esta sección contiene contenido erótico explícito (NSFW). Para acceder, debes dar tu consentimiento informado.",
+  },
+  "adult.requirements": {
+    en: "By continuing you confirm that:",
+    es: "Al continuar confirmas que:",
+  },
+  "adult.req1": {
+    en: "You are at least 18 years old (or the legal age in your country).",
+    es: "Tienes al menos 18 años (o la edad legal en tu país).",
+  },
+  "adult.req2": {
+    en: "You are voluntarily seeking explicit material — it is not being imposed on you.",
+    es: "Buscas material explícito de forma voluntaria — no se te está imponiendo.",
+  },
+  "adult.req3": {
+    en: "Such content is legal in your jurisdiction.",
+    es: "Este contenido es legal en tu jurisdicción.",
+  },
+  "adult.req4": {
+    en: "You will not show this content to minors.",
+    es: "No mostrarás este contenido a menores de edad.",
+  },
+  "adult.disclaimer": {
+    en: "All characters are fictional adults over 18. You can disable adult mode anytime from the header.",
+    es: "Todos los personajes son adultos ficticios mayores de 18 años. Puedes desactivar el modo adulto en cualquier momento desde la cabecera.",
+  },
+  "adult.accept": { en: "I am 18+ and I consent", es: "Tengo 18+ y consiento" },
+  "adult.decline": { en: "Cancel", es: "Cancelar" },
+  "adult.enable": { en: "Enable Adult Mode", es: "Activar Modo Adulto" },
+  "adult.disable": { en: "Disable Adult Mode", es: "Desactivar Modo Adulto" },
+  "adult.on": { en: "Adult Mode: ON", es: "Modo Adulto: ON" },
+  "adult.off": { en: "Adult Mode: OFF", es: "Modo Adulto: OFF" },
+  "adult.gateTitle": { en: "Adult Mode Required", es: "Se Requiere Modo Adulto" },
+  "adult.gateDesc": {
+    en: "This category contains explicit content. Enable Adult Mode to view it.",
+    es: "Esta categoría contiene contenido explícito. Activa el Modo Adulto para verla.",
+  },
+
+  // Auth gate
+  "authGate.title": { en: "Sign in required", es: "Inicio de sesión requerido" },
+  "authGate.desc": {
+    en: "Create a free account or sign in to read and create stories.",
+    es: "Crea una cuenta gratis o inicia sesión para leer y crear historias.",
+  },
+  "authGate.signIn": { en: "Sign In", es: "Iniciar Sesión" },
+  "authGate.signUp": { en: "Sign Up", es: "Registrarse" },
 };
 
 interface LanguageContextType {
