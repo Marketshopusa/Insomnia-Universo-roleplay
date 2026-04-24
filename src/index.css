@@ -8,81 +8,94 @@ All colors MUST be HSL.
 
 @layer base {
   :root {
-    --background: 220 20% 10%;
-    --foreground: 40 10% 95%;
+    /* Insomnia — boudoir nocturno: púrpura noche + ciruela aterciopelada + dorado rosado */
+    --background: 270 35% 8%;
+    --foreground: 30 25% 94%;
 
-    --card: 220 18% 14%;
-    --card-foreground: 40 10% 95%;
+    --card: 272 32% 12%;
+    --card-foreground: 30 25% 94%;
 
-    --popover: 220 18% 14%;
-    --popover-foreground: 40 10% 95%;
+    --popover: 272 32% 12%;
+    --popover-foreground: 30 25% 94%;
 
-    --primary: 28 70% 50%;
+    --primary: 310 60% 55%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 220 16% 18%;
-    --secondary-foreground: 40 10% 95%;
+    --secondary: 270 25% 18%;
+    --secondary-foreground: 30 25% 94%;
 
-    --muted: 220 14% 20%;
-    --muted-foreground: 220 10% 55%;
+    --muted: 270 20% 20%;
+    --muted-foreground: 290 15% 65%;
 
-    --accent: 28 70% 50%;
-    --accent-foreground: 0 0% 100%;
+    --accent: 25 70% 65%;
+    --accent-foreground: 270 40% 10%;
 
     --destructive: 0 70% 50%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 220 14% 25%;
-    --input: 220 14% 25%;
-    --ring: 28 70% 50%;
+    --border: 275 25% 24%;
+    --input: 275 25% 24%;
+    --ring: 310 60% 55%;
 
     --radius: 0.5rem;
 
-    --sidebar-background: 220 18% 12%;
-    --sidebar-foreground: 40 10% 95%;
-    --sidebar-primary: 28 70% 50%;
+    --sidebar-background: 272 32% 10%;
+    --sidebar-foreground: 30 25% 94%;
+    --sidebar-primary: 310 60% 55%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 220 16% 18%;
-    --sidebar-accent-foreground: 40 10% 95%;
-    --sidebar-border: 220 14% 25%;
-    --sidebar-ring: 28 70% 50%;
+    --sidebar-accent: 270 25% 18%;
+    --sidebar-accent-foreground: 30 25% 94%;
+    --sidebar-border: 275 25% 24%;
+    --sidebar-ring: 310 60% 55%;
     
-    /* Custom colors for the app */
-    --copper: 28 70% 50%;
-    --copper-light: 28 60% 60%;
-    --copper-dark: 28 80% 40%;
-    --dark-surface: 220 18% 14%;
-    --dark-elevated: 220 16% 18%;
+    /* Custom Insomnia palette tokens */
+    --plum: 310 60% 55%;
+    --plum-light: 315 65% 70%;
+    --plum-dark: 305 60% 38%;
+    --rose-gold: 25 70% 65%;
+    --rose-gold-light: 28 75% 78%;
+    --night: 270 35% 8%;
+    --dark-surface: 272 32% 12%;
+    --dark-elevated: 270 25% 18%;
+    /* Legacy aliases (kept so older references resolve to new palette) */
+    --copper: 310 60% 55%;
+    --copper-light: 25 70% 65%;
+    --copper-dark: 305 60% 38%;
+    /* Signature gradients & glows */
+    --gradient-primary: linear-gradient(135deg, hsl(310 60% 55%), hsl(25 70% 65%));
+    --gradient-night: linear-gradient(180deg, hsl(270 40% 10%), hsl(270 35% 6%));
+    --shadow-seduction: 0 10px 40px -10px hsl(310 60% 55% / 0.45);
+    --glow-rose: 0 0 60px hsl(25 70% 65% / 0.35);
   }
 
   .dark {
-    --background: 220 20% 10%;
-    --foreground: 40 10% 95%;
-    --card: 220 18% 14%;
-    --card-foreground: 40 10% 95%;
-    --popover: 220 18% 14%;
-    --popover-foreground: 40 10% 95%;
-    --primary: 28 70% 50%;
+    --background: 270 35% 8%;
+    --foreground: 30 25% 94%;
+    --card: 272 32% 12%;
+    --card-foreground: 30 25% 94%;
+    --popover: 272 32% 12%;
+    --popover-foreground: 30 25% 94%;
+    --primary: 310 60% 55%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 220 16% 18%;
-    --secondary-foreground: 40 10% 95%;
-    --muted: 220 14% 20%;
-    --muted-foreground: 220 10% 55%;
-    --accent: 28 70% 50%;
-    --accent-foreground: 0 0% 100%;
+    --secondary: 270 25% 18%;
+    --secondary-foreground: 30 25% 94%;
+    --muted: 270 20% 20%;
+    --muted-foreground: 290 15% 65%;
+    --accent: 25 70% 65%;
+    --accent-foreground: 270 40% 10%;
     --destructive: 0 70% 50%;
     --destructive-foreground: 0 0% 100%;
-    --border: 220 14% 25%;
-    --input: 220 14% 25%;
-    --ring: 28 70% 50%;
-    --sidebar-background: 220 18% 12%;
-    --sidebar-foreground: 40 10% 95%;
-    --sidebar-primary: 28 70% 50%;
+    --border: 275 25% 24%;
+    --input: 275 25% 24%;
+    --ring: 310 60% 55%;
+    --sidebar-background: 272 32% 10%;
+    --sidebar-foreground: 30 25% 94%;
+    --sidebar-primary: 310 60% 55%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 220 16% 18%;
-    --sidebar-accent-foreground: 40 10% 95%;
-    --sidebar-border: 220 14% 25%;
-    --sidebar-ring: 28 70% 50%;
+    --sidebar-accent: 270 25% 18%;
+    --sidebar-accent-foreground: 30 25% 94%;
+    --sidebar-border: 275 25% 24%;
+    --sidebar-ring: 310 60% 55%;
   }
 }
 
@@ -93,6 +106,10 @@ All colors MUST be HSL.
 
   body {
     @apply bg-background text-foreground;
+    background-image:
+      radial-gradient(ellipse at 15% 0%, hsl(310 60% 25% / 0.35), transparent 55%),
+      radial-gradient(ellipse at 85% 100%, hsl(25 60% 35% / 0.18), transparent 60%);
+    background-attachment: fixed;
   }
 }
 
