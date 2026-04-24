@@ -14,7 +14,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useAdultMode } from "@/contexts/AdultModeContext";
 import { AdultConsentDialog } from "@/components/adult/AdultConsentDialog";
 import { Button } from "@/components/ui/button";
-import { ShieldAlert, Lock } from "lucide-react";
+import { ShieldAlert, Lock, Sparkles } from "lucide-react";
  import { Skeleton } from "@/components/ui/skeleton";
  
  type StoryType = "adventure" | "roleplay" | "real_sex";
@@ -170,7 +170,21 @@ import { ShieldAlert, Lock } from "lucide-react";
          {/* Empty State */}
          {!isLoading && storiesData?.stories.length === 0 && (
            <div className="text-center py-12">
-             <p className="text-muted-foreground">{t("chat.noStories")}</p>
+              {storySource === "custom" ? (
+                <div className="max-w-md mx-auto p-8 rounded-lg border border-border bg-card">
+                  <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
+                    <Sparkles className="w-7 h-7 text-primary" />
+                  </div>
+                  <h3 className="font-display text-xl mb-2">{t("custom.empty.title")}</h3>
+                  <p className="text-muted-foreground mb-6">{t("custom.empty.desc")}</p>
+                  <Button onClick={() => navigate("/studio")} className="gap-2">
+                    <Sparkles className="w-4 h-4" />
+                    {t("custom.empty.cta")}
+                  </Button>
+                </div>
+              ) : (
+                <p className="text-muted-foreground">{t("chat.noStories")}</p>
+              )}
            </div>
          )}
  
