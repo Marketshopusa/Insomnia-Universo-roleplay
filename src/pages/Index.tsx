@@ -201,7 +201,7 @@ import { ShieldAlert, Lock, Sparkles } from "lucide-react";
          {/* Empty State */}
          {!isLoading && storiesData?.stories.length === 0 && (
            <div className="text-center py-12">
-              {storySource === "custom" ? (
+              {storySource === "custom" && selectedCategories.length === 0 ? (
                 <div className="max-w-md mx-auto p-8 rounded-lg border border-border bg-card">
                   <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
                     <Sparkles className="w-7 h-7 text-primary" />
@@ -212,6 +212,12 @@ import { ShieldAlert, Lock, Sparkles } from "lucide-react";
                     <Sparkles className="w-4 h-4" />
                     {t("custom.empty.cta")}
                   </Button>
+                </div>
+              ) : storySource === "custom" ? (
+                <div className="max-w-md mx-auto p-8 rounded-lg border border-border bg-card/60">
+                  <p className="text-muted-foreground">
+                    {t("custom.empty.filtered") || "Aún no hay historias personalizadas en esta categoría."}
+                  </p>
                 </div>
               ) : (
                 <p className="text-muted-foreground">{t("chat.noStories")}</p>
