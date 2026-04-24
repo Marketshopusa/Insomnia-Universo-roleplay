@@ -9,6 +9,10 @@
  import { ArrowLeft, Send, Play, Image as ImageIcon, Volume2, VolumeX } from "lucide-react";
  import { useStory } from "@/hooks/useStories";
  import { useLanguage } from "@/contexts/LanguageContext";
+import { useAuth } from "@/contexts/AuthContext";
+import { useAdultMode } from "@/contexts/AdultModeContext";
+import { AdultConsentDialog } from "@/components/adult/AdultConsentDialog";
+import { Lock, ShieldAlert } from "lucide-react";
  
  interface Message {
    id: string;
@@ -21,6 +25,9 @@
    const { storyId } = useParams<{ storyId: string }>();
    const navigate = useNavigate();
    const { t } = useLanguage();
+  const { user, loading: authLoading } = useAuth();
+  const { enabled: adultEnabled, consentGiven, enable, grantConsent } = useAdultMode();
+  const [consentOpen, setConsentOpen] = useState(false);
    const { data: story, isLoading } = useStory(storyId || "");
    
    const [messages, setMessages] = useState<Message[]>([]);
@@ -134,6 +141,59 @@
        </MainLayout>
      );
    }
+
+  // Auth gate
+  if (!authLoading && !user) {
+    return (
+      <MainLayout>
+        <div className="container mx-auto px-4 py-16 max-w-md text-center">
+          <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
+            <Lock className="w-7 h-7 text-primary" />
+          </div>
+          <h2 className="text-2xl font-display mb-2">{t("authGate.title")}</h2>
+          <p className="text-muted-foreground mb-6">{t("authGate.desc")}</p>
+          <div className="flex gap-3 justify-center">
+            <Button onClick={() => navigate("/login")}>{t("authGate.signIn")}</Button>
+            <Button variant="outline" onClick={() => navigate("/register")}>
+              {t("authGate.signUp")}
+            </Button>
+          </div>
+        </div>
+      </MainLayout>
+    );
+  }
+
+  // Adult gate
+  const isAdultStory = story.story_type === "real_sex" || story.has_explicit_images;
+  if (isAdultStory && !adultEnabled) {
+    return (
+      <MainLayout>
+        <div className="container mx-auto px-4 py-16 max-w-md text-center">
+          <div className="w-14 h-14 rounded-full bg-destructive/10 flex items-center justify-center mx-auto mb-4">
+            <ShieldAlert className="w-7 h-7 text-destructive" />
+          </div>
+          <h2 className="text-2xl font-display mb-2">{t("adult.gateTitle")}</h2>
+          <p className="text-muted-foreground mb-6">{t("adult.gateDesc")}</p>
+          <Button
+            variant="destructive"
+            onClick={() => (consentGiven ? enable() : setConsentOpen(true))}
+          >
+            {t("adult.enable")}
+          </Button>
+          <div className="mt-4">
+            <Button variant="ghost" onClick={() => navigate("/")}>
+              {t("story.back")}
+            </Button>
+          </div>
+        </div>
+        <AdultConsentDialog
+          open={consentOpen}
+          onConfirm={() => { grantConsent(); enable(); setConsentOpen(false); }}
+          onCancel={() => setConsentOpen(false)}
+        />
+      </MainLayout>
+    );
+  }
  
   const coverImage = story.cover_image;
    const mediaCount = story.video_count > 0 ? story.video_count : story.image_count;
