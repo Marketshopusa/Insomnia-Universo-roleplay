@@ -2,3 +2,12 @@ project_id = "pbormuamewbajnylzfqs"
 
 [functions.translate]
 verify_jwt = false
+
+[functions.story-chat]
+verify_jwt = false
+
+[functions.generate-narrative]
+verify_jwt = false
+
+[functions.text-to-speech]
+verify_jwt = false

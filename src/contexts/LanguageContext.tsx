@@ -56,6 +56,26 @@ const translations: Dict = {
     es: "La escena está lista. ¿Qué te gustaría hacer?",
   },
 
+  // Mode selector / narrative
+  "mode.choose": { en: "How would you like to experience this story?", es: "¿Cómo quieres vivir esta historia?" },
+  "mode.read": { en: "Read full story", es: "Leer relato completo" },
+  "mode.readDesc": { en: "AI generates a complete narrative you can read and listen to.", es: "La IA genera un relato completo para leer y escuchar." },
+  "mode.roleplay": { en: "Interactive roleplay", es: "Roleplay interactivo" },
+  "mode.roleplayDesc": { en: "Chat in character with the AI, turn by turn.", es: "Conversa en personaje con la IA, turno a turno." },
+  "mode.generating": { en: "Generating your story...", es: "Generando tu historia..." },
+  "mode.regenerate": { en: "Regenerate", es: "Generar de nuevo" },
+  "mode.listen": { en: "Listen", es: "Escuchar" },
+  "mode.stop": { en: "Stop", es: "Detener" },
+  "mode.switchToRoleplay": { en: "Continue in roleplay", es: "Continuar en roleplay" },
+  "mode.aiError": { en: "AI is unavailable right now. Please try again.", es: "La IA no está disponible en este momento. Inténtalo de nuevo." },
+  "mode.rateLimited": { en: "Too many requests. Please wait a moment.", es: "Demasiadas solicitudes. Espera un momento." },
+  "mode.creditsExhausted": { en: "AI credits exhausted. Please add funds.", es: "Créditos de IA agotados. Añade fondos." },
+
+  // Custom stories CTA
+  "custom.empty.title": { en: "Create your own story", es: "Crea tu propia historia" },
+  "custom.empty.desc": { en: "Use the Studio to design your fantasy: pick the model, the language, the chapters, and let the AI write it for you.", es: "Usa el Studio para diseñar tu fantasía: elige el modelo, el idioma, los capítulos y deja que la IA la escriba por ti." },
+  "custom.empty.cta": { en: "Open Studio", es: "Abrir Studio" },
+
   // Audio Settings
   "audio.title": { en: "Audio Settings", es: "Configuración de Audio" },
   "audio.voice": { en: "Voice", es: "Voz" },
