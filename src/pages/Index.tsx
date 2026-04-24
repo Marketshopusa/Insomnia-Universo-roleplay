@@ -1,9 +1,7 @@
  import { useState, useEffect } from "react";
  import { useNavigate } from "react-router-dom";
  import { MainLayout } from "@/components/layout/MainLayout";
- import { TypeTabs } from "@/components/chat/TypeTabs";
- import { SourceTabs } from "@/components/chat/SourceTabs";
- import { ExplicitToggle } from "@/components/chat/ExplicitToggle";
+import { FilterBar } from "@/components/chat/FilterBar";
  import { CategoryTags } from "@/components/chat/CategoryTags";
  import { StoryCard } from "@/components/chat/StoryCard";
  import { Pagination } from "@/components/chat/Pagination";
@@ -94,14 +92,36 @@ import { ShieldAlert, Lock, Sparkles } from "lucide-react";
  
    return (
      <MainLayout>
-       <div className="container mx-auto px-4 py-8">
-         {/* Page Title */}
-          <h1 className="text-3xl font-display text-center mb-8">{t("nav.chat")}</h1>
- 
-         {/* Type Tabs */}
-         <div className="max-w-2xl mx-auto mb-4">
-            <TypeTabs activeType={storyType} onTypeChange={handleTypeChange} />
-         </div>
+      <div className="container mx-auto px-4 py-8">
+        {/* Hero — sello Insomnia */}
+        <div className="relative mb-8 text-center">
+          <div className="absolute inset-x-0 -top-4 mx-auto h-32 w-[80%] max-w-3xl rounded-full bg-gradient-to-r from-primary/20 via-accent/10 to-primary/20 blur-3xl pointer-events-none" />
+          <div className="relative">
+            <span className="inline-block text-[10px] tracking-[0.5em] uppercase text-accent/80 mb-2">
+              Insomnia · {t("nav.chat")}
+            </span>
+            <h1 className="text-4xl md:text-5xl font-display italic">
+              <span className="bg-gradient-to-r from-primary via-accent to-primary bg-clip-text text-transparent">
+                Historias que no te dejan dormir
+              </span>
+            </h1>
+            <p className="mt-2 text-sm text-muted-foreground max-w-xl mx-auto">
+              Elige tu tipo, fuente y categorías. Entra al deseo.
+            </p>
+          </div>
+        </div>
+
+        {/* Unified filter bar (single line) */}
+        <div className="mb-6">
+          <FilterBar
+            storyType={storyType}
+            storySource={storySource}
+            hasExplicit={hasExplicit}
+            onTypeChange={handleTypeChange}
+            onSourceChange={setStorySource}
+            onExplicitChange={setHasExplicit}
+          />
+        </div>
  
           {realSexBlocked && (
             <div className="max-w-2xl mx-auto my-12 text-center border border-destructive/30 bg-destructive/5 rounded-lg p-8">
@@ -120,16 +140,6 @@ import { ShieldAlert, Lock, Sparkles } from "lucide-react";
           )}
 
           {!realSexBlocked && (<>
-          {/* Source Tabs */}
-         <div className="max-w-md mx-auto mb-6">
-           <SourceTabs activeSource={storySource} onSourceChange={setStorySource} />
-         </div>
- 
-         {/* Explicit Toggle */}
-         <div className="flex justify-center mb-6">
-           <ExplicitToggle checked={hasExplicit} onCheckedChange={setHasExplicit} />
-         </div>
- 
          {/* Category Tags */}
          {categoriesData && (
            <div className="max-w-6xl mx-auto mb-8">
