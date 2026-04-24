@@ -1,7 +1,6 @@
- import { Card } from "@/components/ui/card";
- import { Play, Image as ImageIcon } from "lucide-react";
- import { getStoryImage } from "@/lib/storyImages";
- import { useLanguage } from "@/contexts/LanguageContext";
+import { Card } from "@/components/ui/card";
+import { Play, Image as ImageIcon } from "lucide-react";
+import { useLanguage } from "@/contexts/LanguageContext";
  
  interface Story {
    id: string;
@@ -20,10 +19,10 @@
  }
  
  export const StoryCard = ({ story, onClick }: StoryCardProps) => {
-   const { t } = useLanguage();
-   const mediaCount = story.video_count > 0 ? story.video_count : story.image_count;
-   const mediaType = story.video_count > 0 ? t("chat.videos") : t("chat.images");
-   const coverImage = getStoryImage(story.title) || story.cover_image;
+  const { t } = useLanguage();
+  const mediaCount = story.video_count > 0 ? story.video_count : story.image_count;
+  const mediaType = story.video_count > 0 ? t("chat.videos") : t("chat.images");
+  const coverImage = story.cover_image;
  
    return (
      <Card
