@@ -5,7 +5,7 @@ import { FilterBar } from "@/components/chat/FilterBar";
  import { CategoryTags } from "@/components/chat/CategoryTags";
  import { StoryCard } from "@/components/chat/StoryCard";
  import { Pagination } from "@/components/chat/Pagination";
- import { AudioSettings } from "@/components/chat/AudioSettings";
+import { AudioQuickControl } from "@/components/chat/AudioQuickControl";
  import { useStories, useCategories } from "@/hooks/useStories";
  import { useLanguage } from "@/contexts/LanguageContext";
 import { useAuth } from "@/contexts/AuthContext";
@@ -93,34 +93,54 @@ import { ShieldAlert, Lock, Sparkles } from "lucide-react";
    return (
      <MainLayout>
       <div className="container mx-auto px-4 py-8">
-        {/* Hero — sello Insomnia */}
-        <div className="relative mb-8 text-center">
+        {/* Hero — sello Insomnia con divisor decorativo */}
+        <div className="relative mb-10">
           <div className="absolute inset-x-0 -top-4 mx-auto h-32 w-[80%] max-w-3xl rounded-full bg-gradient-to-r from-primary/20 via-accent/10 to-primary/20 blur-3xl pointer-events-none" />
-          <div className="relative">
-            <span className="inline-block text-[10px] tracking-[0.5em] uppercase text-accent/80 mb-2">
-              Insomnia · {t("nav.chat")}
-            </span>
-            <h1 className="text-4xl md:text-5xl font-display italic">
+          <div className="relative flex flex-col items-center">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="h-px w-10 bg-gradient-to-r from-transparent to-accent/60" />
+              <span className="text-[10px] tracking-[0.5em] uppercase text-accent/80">
+                Insomnia
+              </span>
+              <div className="h-px w-10 bg-gradient-to-l from-transparent to-accent/60" />
+            </div>
+            <h1 className="text-4xl md:text-5xl font-display italic text-center">
               <span className="bg-gradient-to-r from-primary via-accent to-primary bg-clip-text text-transparent">
                 Historias que no te dejan dormir
               </span>
             </h1>
-            <p className="mt-2 text-sm text-muted-foreground max-w-xl mx-auto">
-              Elige tu tipo, fuente y categorías. Entra al deseo.
+            <p className="mt-3 text-sm text-muted-foreground max-w-xl mx-auto text-center">
+              Relatos íntimos · Roleplay con IA · Fantasías a tu medida
             </p>
           </div>
         </div>
 
-        {/* Unified filter bar (single line) */}
-        <div className="mb-6">
-          <FilterBar
-            storyType={storyType}
-            storySource={storySource}
-            hasExplicit={hasExplicit}
-            onTypeChange={handleTypeChange}
-            onSourceChange={setStorySource}
-            onExplicitChange={setHasExplicit}
-          />
+        {/* Toolbar superior: filtros + audio (todo arriba) */}
+        <div className="mb-4 flex flex-col lg:flex-row gap-3 items-stretch lg:items-center">
+          <div className="flex-1">
+            <FilterBar
+              storyType={storyType}
+              storySource={storySource}
+              hasExplicit={hasExplicit}
+              onTypeChange={handleTypeChange}
+              onSourceChange={setStorySource}
+              onExplicitChange={setHasExplicit}
+            />
+          </div>
+          <div className="flex justify-end">
+            <AudioQuickControl
+              voiceName={voiceName}
+              genderFilter={genderFilter}
+              styleFilter={styleFilter}
+              isMuted={isMuted}
+              autoplay={autoplay}
+              onVoiceChange={setVoiceName}
+              onGenderChange={setGenderFilter}
+              onStyleChange={setStyleFilter}
+              onMutedChange={setIsMuted}
+              onAutoplayChange={setAutoplay}
+            />
+          </div>
         </div>
  
           {realSexBlocked && (
@@ -140,7 +160,7 @@ import { ShieldAlert, Lock, Sparkles } from "lucide-react";
           )}
 
           {!realSexBlocked && (<>
-         {/* Category Tags */}
+         {/* Category panel — desplegable, cuadrado, integrado */}
          {categoriesData && (
            <div className="max-w-6xl mx-auto mb-8">
              <CategoryTags
@@ -162,16 +182,17 @@ import { ShieldAlert, Lock, Sparkles } from "lucide-react";
            </div>
          )}
  
-         {/* Stories Grid */}
-         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-8">
+         {/* Stories Grid — mosaico Insomnia */}
+         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-8">
            {isLoading
-             ? Array.from({ length: 12 }).map((_, i) => (
-                 <Skeleton key={i} className="aspect-[3/4] rounded-lg" />
+             ? Array.from({ length: 10 }).map((_, i) => (
+                 <Skeleton key={i} className="aspect-[4/5] rounded-none" />
                ))
-             : storiesData?.stories.map((story) => (
-                 <StoryCard 
-                   key={story.id} 
-                   story={story} 
+             : storiesData?.stories.map((story, idx) => (
+                 <StoryCard
+                   key={story.id}
+                   story={story}
+                   index={idx}
                    onClick={() => handleStoryClick(story.id)}
                  />
                ))}
@@ -209,21 +230,6 @@ import { ShieldAlert, Lock, Sparkles } from "lucide-react";
            </div>
          )}
  
-         {/* Audio Settings */}
-         <div className="max-w-md mx-auto">
-           <AudioSettings
-             voiceName={voiceName}
-             genderFilter={genderFilter}
-             styleFilter={styleFilter}
-             isMuted={isMuted}
-             autoplay={autoplay}
-             onVoiceChange={setVoiceName}
-             onGenderChange={setGenderFilter}
-             onStyleChange={setStyleFilter}
-             onMutedChange={setIsMuted}
-             onAutoplayChange={setAutoplay}
-           />
-         </div>
           </>)}
        </div>
         <AdultConsentDialog
