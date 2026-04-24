@@ -8,6 +8,7 @@
  import { useUserStories, useCreateUserStory, useUpdateUserStory, useDeleteUserStory } from "@/hooks/useUserStories";
  import { useToast } from "@/hooks/use-toast";
  import { Link } from "react-router-dom";
+import { useLanguage } from "@/contexts/LanguageContext";
  import { Trash2, Edit, Plus, X, Save } from "lucide-react";
  import {
    Dialog,
@@ -32,6 +33,7 @@
  const MyStories = () => {
    const { user } = useAuth();
    const { toast } = useToast();
+  const { t } = useLanguage();
    const { data: stories, isLoading } = useUserStories();
    const createStory = useCreateUserStory();
    const updateStory = useUpdateUserStory();
@@ -46,18 +48,18 @@
  
    const handleCreate = async () => {
      if (!newTitle.trim()) {
-       toast({ title: "Please enter a title", variant: "destructive" });
+      toast({ title: t("myStories.toast.needTitle"), variant: "destructive" });
        return;
      }
  
      try {
        await createStory.mutateAsync({ title: newTitle, content: newContent });
-       toast({ title: "Story created!" });
+      toast({ title: t("myStories.toast.created") });
        setIsCreating(false);
        setNewTitle("");
        setNewContent("");
      } catch (error) {
-       toast({ title: "Error creating story", variant: "destructive" });
+      toast({ title: t("myStories.toast.createError"), variant: "destructive" });
      }
    };
  
@@ -76,19 +78,19 @@
          title: editTitle,
          content: editContent,
        });
-       toast({ title: "Story updated!" });
+      toast({ title: t("myStories.toast.updated") });
        setEditingId(null);
      } catch (error) {
-       toast({ title: "Error updating story", variant: "destructive" });
+      toast({ title: t("myStories.toast.updateError"), variant: "destructive" });
      }
    };
  
    const handleDelete = async (id: string) => {
      try {
        await deleteStory.mutateAsync(id);
-       toast({ title: "Story deleted" });
+      toast({ title: t("myStories.toast.deleted") });
      } catch (error) {
-       toast({ title: "Error deleting story", variant: "destructive" });
+      toast({ title: t("myStories.toast.deleteError"), variant: "destructive" });
      }
    };
  
@@ -96,15 +98,15 @@
      return (
        <MainLayout>
          <div className="container mx-auto px-4 py-16 text-center">
-           <h1 className="text-3xl font-display mb-4">Past Stories</h1>
+          <h1 className="text-3xl font-display mb-4">{t("myStories.title")}</h1>
            <Card className="max-w-md mx-auto">
              <CardHeader>
-               <CardTitle>Login Required</CardTitle>
+              <CardTitle>{t("myStories.loginRequired")}</CardTitle>
              </CardHeader>
              <CardContent className="space-y-4">
-               <p className="text-muted-foreground">Please log in to view your stories.</p>
+              <p className="text-muted-foreground">{t("myStories.loginMessage")}</p>
                <Link to="/login">
-                 <Button className="w-full">Login</Button>
+                <Button className="w-full">{t("nav.login")}</Button>
                </Link>
              </CardContent>
            </Card>
@@ -116,7 +118,7 @@
    return (
      <MainLayout>
        <div className="container mx-auto px-4 py-8 max-w-4xl">
-         <h1 className="text-3xl font-display text-center mb-8">Past Stories</h1>
+        <h1 className="text-3xl font-display text-center mb-8">{t("myStories.title")}</h1>
  
          {/* Create Button */}
          <div className="flex justify-end mb-6">
@@ -124,31 +126,31 @@
              <DialogTrigger asChild>
                <Button className="gap-2">
                  <Plus className="w-4 h-4" />
-                 New Story
+                {t("myStories.newStory")}
                </Button>
              </DialogTrigger>
              <DialogContent>
                <DialogHeader>
-                 <DialogTitle>Create New Story</DialogTitle>
+                <DialogTitle>{t("myStories.createNew")}</DialogTitle>
                </DialogHeader>
                <div className="space-y-4">
                  <Input
-                   placeholder="Story title"
+                  placeholder={t("myStories.titlePlaceholder")}
                    value={newTitle}
                    onChange={(e) => setNewTitle(e.target.value)}
                  />
                  <Textarea
-                   placeholder="Write your story..."
+                  placeholder={t("myStories.contentPlaceholder")}
                    value={newContent}
                    onChange={(e) => setNewContent(e.target.value)}
                    className="min-h-[200px]"
                  />
                  <div className="flex gap-2 justify-end">
                    <Button variant="outline" onClick={() => setIsCreating(false)}>
-                     Cancel
+                    {t("common.cancel")}
                    </Button>
                    <Button onClick={handleCreate} disabled={createStory.isPending}>
-                     {createStory.isPending ? "Creating..." : "Create"}
+                    {createStory.isPending ? t("common.creating") : t("common.create")}
                    </Button>
                  </div>
                </div>
@@ -159,13 +161,13 @@
          {/* Stories List */}
          {isLoading ? (
            <div className="text-center py-12">
-             <p className="text-muted-foreground">Loading stories...</p>
+            <p className="text-muted-foreground">{t("myStories.loading")}</p>
            </div>
          ) : stories?.length === 0 ? (
            <Card className="text-center py-12">
              <CardContent>
-               <p className="text-muted-foreground mb-4">You haven't created any stories yet.</p>
-               <Button onClick={() => setIsCreating(true)}>Create Your First Story</Button>
+              <p className="text-muted-foreground mb-4">{t("myStories.empty")}</p>
+              <Button onClick={() => setIsCreating(true)}>{t("myStories.createFirst")}</Button>
              </CardContent>
            </Card>
          ) : (
@@ -187,11 +189,11 @@
                        <div className="flex gap-2 justify-end">
                          <Button variant="outline" size="sm" onClick={() => setEditingId(null)}>
                            <X className="w-4 h-4 mr-1" />
-                           Cancel
+                          {t("common.cancel")}
                          </Button>
                          <Button size="sm" onClick={handleSaveEdit} disabled={updateStory.isPending}>
                            <Save className="w-4 h-4 mr-1" />
-                           {updateStory.isPending ? "Saving..." : "Save"}
+                          {updateStory.isPending ? t("common.saving") : t("common.save")}
                          </Button>
                        </div>
                      </div>
@@ -218,15 +220,13 @@
                            </AlertDialogTrigger>
                            <AlertDialogContent>
                              <AlertDialogHeader>
-                               <AlertDialogTitle>Delete Story?</AlertDialogTitle>
-                               <AlertDialogDescription>
-                                 This action cannot be undone.
-                               </AlertDialogDescription>
+                              <AlertDialogTitle>{t("myStories.deleteTitle")}</AlertDialogTitle>
+                              <AlertDialogDescription>{t("myStories.deleteDesc")}</AlertDialogDescription>
                              </AlertDialogHeader>
                              <AlertDialogFooter>
-                               <AlertDialogCancel>Cancel</AlertDialogCancel>
+                              <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
                                <AlertDialogAction onClick={() => handleDelete(story.id)}>
-                                 Delete
+                                {t("common.delete")}
                                </AlertDialogAction>
                              </AlertDialogFooter>
                            </AlertDialogContent>
