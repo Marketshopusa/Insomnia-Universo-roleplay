@@ -6,7 +6,7 @@
  import { Card } from "@/components/ui/card";
  import { Badge } from "@/components/ui/badge";
  import { Skeleton } from "@/components/ui/skeleton";
- import { ArrowLeft, Send, Play, Image as ImageIcon, Volume2, VolumeX } from "lucide-react";
+import { ArrowLeft, Send, Play, Image as ImageIcon, Volume2, VolumeX, BookOpen, MessageSquare, Loader2, RotateCw } from "lucide-react";
  import { useStory } from "@/hooks/useStories";
  import { useLanguage } from "@/contexts/LanguageContext";
 import { useTranslatedTexts, useTranslatedText } from "@/hooks/useTranslatedTexts";
@@ -14,6 +14,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useAdultMode } from "@/contexts/AdultModeContext";
 import { AdultConsentDialog } from "@/components/adult/AdultConsentDialog";
 import { Lock, ShieldAlert } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "@/hooks/use-toast";
  
  interface Message {
    id: string;
@@ -21,6 +23,8 @@ import { Lock, ShieldAlert } from "lucide-react";
    content: string;
    timestamp: Date;
  }
+
+type Mode = "select" | "read" | "roleplay";
  
  const StoryDetail = () => {
    const { storyId } = useParams<{ storyId: string }>();
@@ -36,6 +40,13 @@ import { Lock, ShieldAlert } from "lucide-react";
    const [isTyping, setIsTyping] = useState(false);
    const [isMuted, setIsMuted] = useState(false);
    const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const [mode, setMode] = useState<Mode>("select");
+  const [narrative, setNarrative] = useState<string>("");
+  const [narrativeLoading, setNarrativeLoading] = useState(false);
+  const [voice] = useState<string>(() => localStorage.getItem("erota.voice") || "scarlett-hd");
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [playingId, setPlayingId] = useState<string | null>(null);
 
   // Translate dynamic story fields to active language
   const [tTitle, tDescription, tCharacter, tPlayer] = useTranslatedTexts([
@@ -90,29 +101,33 @@ import { Lock, ShieldAlert } from "lucide-react";
    };
  
    const generateResponse = async (userMessage: string) => {
-    // Localized simulated responses
-    const responsesEn = [
-       "*looks at you with interest* That's an interesting approach. Tell me more about what you're thinking...",
-       "*moves closer* I wasn't expecting that. You've certainly caught my attention now.",
-       "*smiles softly* I like the way you think. This could be the beginning of something special.",
-       "*pauses for a moment* You surprise me. Most people wouldn't say something like that.",
-       "*laughs gently* Well, this is getting interesting. What else do you have in mind?",
-       "*tilts head thoughtfully* I've been waiting for someone like you to come along.",
-       "*eyes sparkle with curiosity* Continue... I want to hear more.",
-       "*steps forward* The night is young and full of possibilities...",
-     ];
-    const responsesEs = [
-      "*te mira con interés* Es un enfoque interesante. Cuéntame más sobre lo que estás pensando...",
-      "*se acerca* No me lo esperaba. Definitivamente has captado mi atención.",
-      "*sonríe suavemente* Me gusta cómo piensas. Esto podría ser el comienzo de algo especial.",
-      "*hace una pausa* Me sorprendes. La mayoría de la gente no diría algo así.",
-      "*ríe con suavidad* Bueno, esto se está poniendo interesante. ¿Qué más tienes en mente?",
-      "*inclina la cabeza pensativa* He estado esperando a alguien como tú.",
-      "*sus ojos brillan de curiosidad* Continúa... quiero oír más.",
-      "*da un paso al frente* La noche es joven y está llena de posibilidades...",
-    ];
-    const pool = language === "es" ? responsesEs : responsesEn;
-    return pool[Math.floor(Math.random() * pool.length)];
+    const { data, error } = await supabase.functions.invoke("story-chat", {
+      body: {
+        story: {
+          title: story?.title,
+          description: story?.description,
+          character_role: story?.character_role,
+          player_role: story?.player_role,
+          story_type: story?.story_type,
+        },
+        language,
+        history: messages
+          .filter((m) => m.id !== "intro")
+          .map((m) => ({ role: m.role, content: m.content })),
+        userMessage,
+        explicit: story?.story_type === "real_sex" || !!story?.has_explicit_images,
+      },
+    });
+    if (error || !data?.content) {
+      const code = (data as any)?.error;
+      if (code === "rate_limited") toast({ title: t("mode.rateLimited"), variant: "destructive" });
+      else if (code === "credits_exhausted") toast({ title: t("mode.creditsExhausted"), variant: "destructive" });
+      else toast({ title: t("mode.aiError"), variant: "destructive" });
+      return language === "es"
+        ? "*el personaje guarda silencio por un momento*"
+        : "*the character pauses for a moment*";
+    }
+    return data.content as string;
    };
  
    const handleSendMessage = async () => {
@@ -143,7 +158,86 @@ import { Lock, ShieldAlert } from "lucide-react";
  
      setMessages((prev) => [...prev, assistantMessage]);
      setIsTyping(false);
+      if (!isMuted) playAudio(responseContent, assistantMessage.id);
    };
+
+   const playAudio = async (text: string, id: string) => {
+     try {
+       if (audioRef.current) {
+         audioRef.current.pause();
+         audioRef.current = null;
+       }
+       setPlayingId(id);
+       const { data, error } = await supabase.functions.invoke("text-to-speech", {
+         body: { text, voice },
+       });
+       if (error || !(data as any)?.audioContent) {
+         setPlayingId(null);
+         return;
+       }
+       const audio = new Audio(`data:audio/mpeg;base64,${(data as any).audioContent}`);
+       audioRef.current = audio;
+       audio.onended = () => setPlayingId(null);
+       audio.onerror = () => setPlayingId(null);
+       await audio.play();
+     } catch (e) {
+       console.error("playAudio error:", e);
+       setPlayingId(null);
+     }
+   };
+
+   const stopAudio = () => {
+     if (audioRef.current) {
+       audioRef.current.pause();
+       audioRef.current = null;
+     }
+     setPlayingId(null);
+   };
+
+   const generateNarrative = async () => {
+     if (!story) return;
+     setNarrativeLoading(true);
+     setNarrative("");
+     try {
+       const { data, error } = await supabase.functions.invoke("generate-narrative", {
+         body: {
+           story: {
+             title: story.title,
+             description: story.description,
+             character_role: story.character_role,
+             player_role: story.player_role,
+             story_type: story.story_type,
+           },
+           language,
+           explicit: story.story_type === "real_sex" || !!story.has_explicit_images,
+           chapters: 5,
+         },
+       });
+       if (error || !(data as any)?.content) {
+         const code = (data as any)?.error;
+         if (code === "rate_limited") toast({ title: t("mode.rateLimited"), variant: "destructive" });
+         else if (code === "credits_exhausted") toast({ title: t("mode.creditsExhausted"), variant: "destructive" });
+         else toast({ title: t("mode.aiError"), variant: "destructive" });
+       } else {
+         setNarrative((data as any).content);
+       }
+     } finally {
+       setNarrativeLoading(false);
+     }
+   };
+
+   useEffect(() => {
+     if (mode === "read" && !narrative && !narrativeLoading) {
+       generateNarrative();
+     }
+     // eslint-disable-next-line react-hooks/exhaustive-deps
+   }, [mode, language]);
+
+   useEffect(() => {
+     return () => {
+       if (audioRef.current) audioRef.current.pause();
+     };
+   }, []);
  
    const handleKeyPress = (e: React.KeyboardEvent) => {
      if (e.key === "Enter" && !e.shiftKey) {
