@@ -5,6 +5,7 @@
  import { BrowserRouter, Routes, Route } from "react-router-dom";
  import { AuthProvider } from "@/contexts/AuthContext";
  import { LanguageProvider } from "@/contexts/LanguageContext";
+import { AdultModeProvider } from "@/contexts/AdultModeContext";
  import Index from "./pages/Index";
  import NotFound from "./pages/NotFound";
  import Login from "./pages/Login";
@@ -20,7 +21,8 @@
    <QueryClientProvider client={queryClient}>
      <LanguageProvider>
        <AuthProvider>
-         <TooltipProvider>
+          <AdultModeProvider>
+          <TooltipProvider>
            <Toaster />
            <Sonner />
            <BrowserRouter>
@@ -36,7 +38,8 @@
                <Route path="*" element={<NotFound />} />
              </Routes>
            </BrowserRouter>
-         </TooltipProvider>
+          </TooltipProvider>
+          </AdultModeProvider>
        </AuthProvider>
      </LanguageProvider>
    </QueryClientProvider>
