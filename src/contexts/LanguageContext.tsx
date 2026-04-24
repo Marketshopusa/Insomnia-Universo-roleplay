@@ -126,7 +126,7 @@ const translations: Dict = {
   "notFound.returnHome": { en: "Return to Home", es: "Volver al Inicio" },
 
   // Footer
-  "footer.copyright": { en: "© 2025 Erota", es: "© 2025 Erota" },
+ "footer.copyright": { en: "© 2025 Insomnia", es: "© 2025 Insomnia" },
 
   // Studio
   "studio.title": { en: "Novel Studio", es: "Estudio de Novelas" },
@@ -247,7 +247,7 @@ const translations: Dict = {
   "auth.noAccount": { en: "Don't have an account?", es: "¿No tienes cuenta?" },
   "auth.signUp": { en: "Sign up", es: "Regístrate" },
   "auth.createAccount": { en: "Create Account", es: "Crear Cuenta" },
-  "auth.signUpDesc": { en: "Sign up to get started with Erota", es: "Regístrate para comenzar con Erota" },
+ "auth.signUpDesc": { en: "Sign up to get started with Insomnia", es: "Regístrate para comenzar con Insomnia" },
   "auth.signUpBtn": { en: "Sign Up", es: "Registrarse" },
   "auth.creatingAccount": { en: "Creating account...", es: "Creando cuenta..." },
   "auth.haveAccount": { en: "Already have an account?", es: "¿Ya tienes cuenta?" },

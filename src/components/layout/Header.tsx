@@ -11,10 +11,10 @@ import { AdultConsentDialog } from "@/components/adult/AdultConsentDialog";
  
  const Logo = () => (
    <Link to="/" className="flex items-center gap-2">
-     <div className="w-10 h-10 bg-primary rounded-full flex items-center justify-center">
-       <span className="text-primary-foreground font-display text-xl font-bold">E</span>
+    <div className="w-10 h-10 rounded-full flex items-center justify-center bg-gradient-to-br from-primary to-accent shadow-[0_0_20px_hsl(var(--primary)/0.5)]">
+      <span className="text-primary-foreground font-display text-xl font-bold italic">I</span>
      </div>
-     <span className="font-display text-2xl italic text-primary">Erota</span>
+    <span className="font-display text-2xl italic bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">Insomnia</span>
    </Link>
  );
  
