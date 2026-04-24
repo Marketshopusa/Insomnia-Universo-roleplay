@@ -65,35 +65,23 @@ export function useTranslatedTexts(texts: (string | null | undefined)[]): string
     let cancelled = false;
 
     (async () => {
-      // Deduplicate by text
       const uniqueTexts = Array.from(new Set(needsFetch.map((n) => n.text)));
-      const promises = uniqueTexts.map((text) => {
-        const cacheKey = `${language}::${text}`;
-        if (inflight.has(cacheKey)) return inflight.get(cacheKey)!;
-        const p = translateBatch([text], language).then((arr) => {
-          const translated = arr[0] ?? text;
-          cache.set(cacheKey, translated);
-          inflight.delete(cacheKey);
-          return translated;
-        });
-        inflight.set(cacheKey, p);
-        return p;
-      });
+      const toFetch = uniqueTexts.filter((t) => !cache.has(`${language}::${t}`));
+      const pending = uniqueTexts
+        .map((t) => inflight.get(`${language}::${t}`))
+        .filter(Boolean) as Promise<string>[];
 
-      // Batch all unique texts in one call for efficiency
-      const allUncached = uniqueTexts.filter(
-        (t) => !cache.has(`${language}::${t}`) && !inflight.has(`${language}::${t}`)
-      );
-      if (allUncached.length > 0) {
-        const batchPromise = translateBatch(allUncached, language).then((arr) => {
-          allUncached.forEach((text, i) => {
+      if (toFetch.length > 0) {
+        const batch = translateBatch(toFetch, language).then((arr) => {
+          toFetch.forEach((text, i) => {
             cache.set(`${language}::${text}`, arr[i] ?? text);
+            inflight.delete(`${language}::${text}`);
           });
         });
-        await batchPromise;
-      } else {
-        await Promise.all(promises);
+        toFetch.forEach((t) => inflight.set(`${language}::${t}`, batch as unknown as Promise<string>));
+        await batch;
       }
+      if (pending.length > 0) await Promise.all(pending);
 
       if (cancelled) return;
       const final = safe.map((text) => {
