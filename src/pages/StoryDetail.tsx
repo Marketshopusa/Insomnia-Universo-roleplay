@@ -9,7 +9,6 @@
  import { ArrowLeft, Send, Play, Image as ImageIcon, Volume2, VolumeX } from "lucide-react";
  import { useStory } from "@/hooks/useStories";
  import { useLanguage } from "@/contexts/LanguageContext";
- import { getStoryImage } from "@/lib/storyImages";
  
  interface Message {
    id: string;
@@ -54,8 +53,8 @@
    const getIntroMessage = (story: any) => {
      const characterRole = story.character_role || "character";
      const playerRole = story.player_role || "player";
-     
-     return `*${story.title}*\n\n${story.description || "Welcome to this story..."}\n\nYou are playing as: **${playerRole}**\nI am playing as: **${characterRole}**\n\n*The scene is set. What would you like to do?*`;
+
+    return `*${story.title}*\n\n${story.description || t("story.welcome")}\n\n${t("story.youArePlaying")}: **${playerRole}**\n${t("story.iAmPlaying")}: **${characterRole}**\n\n*${t("story.sceneSet")}*`;
    };
  
    const generateResponse = async (userMessage: string) => {
@@ -136,7 +135,7 @@
      );
    }
  
-   const coverImage = getStoryImage(story.title) || story.cover_image;
+  const coverImage = story.cover_image;
    const mediaCount = story.video_count > 0 ? story.video_count : story.image_count;
    const mediaType = story.video_count > 0 ? t("chat.videos") : t("chat.images");
    const categories = story.story_categories?.map((sc: any) => sc.categories).filter(Boolean) || [];

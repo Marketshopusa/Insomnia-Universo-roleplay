@@ -62,7 +62,7 @@
      <MainLayout>
        <div className="container mx-auto px-4 py-8">
          {/* Page Title */}
-         <h1 className="text-3xl font-display text-center mb-8">{t("nav.chat")}</h1>
+          <h1 className="text-3xl font-display text-center mb-8">{t("nav.chat")}</h1>
  
          {/* Type Tabs */}
          <div className="max-w-2xl mx-auto mb-4">

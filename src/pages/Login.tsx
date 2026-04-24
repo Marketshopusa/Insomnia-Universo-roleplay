@@ -7,6 +7,7 @@
  import { signIn } from "@/lib/auth";
  import { useToast } from "@/hooks/use-toast";
  import { MainLayout } from "@/components/layout/MainLayout";
+import { useLanguage } from "@/contexts/LanguageContext";
  
  const Login = () => {
    const [email, setEmail] = useState("");
@@ -14,6 +15,7 @@
    const [loading, setLoading] = useState(false);
    const navigate = useNavigate();
    const { toast } = useToast();
+  const { t } = useLanguage();
  
    const handleSubmit = async (e: React.FormEvent) => {
      e.preventDefault();
@@ -23,14 +25,14 @@
  
      if (error) {
        toast({
-         title: "Error",
+        title: t("common.error"),
          description: error.message,
          variant: "destructive",
        });
      } else {
        toast({
-         title: "Welcome back!",
-         description: "You have successfully logged in.",
+        title: t("auth.welcomeToast"),
+        description: t("auth.welcomeToastDesc"),
        });
        navigate("/");
      }
@@ -42,14 +44,14 @@
      <MainLayout>
        <div className="flex min-h-[80vh] items-center justify-center px-4">
          <Card className="w-full max-w-md">
-           <CardHeader className="text-center">
-             <CardTitle className="text-2xl font-display">Welcome Back</CardTitle>
-             <CardDescription>Sign in to your account to continue</CardDescription>
-           </CardHeader>
+          <CardHeader className="text-center">
+            <CardTitle className="text-2xl font-display">{t("auth.welcomeBack")}</CardTitle>
+            <CardDescription>{t("auth.signInDesc")}</CardDescription>
+          </CardHeader>
            <CardContent>
              <form onSubmit={handleSubmit} className="space-y-4">
                <div className="space-y-2">
-                 <Label htmlFor="email">Email</Label>
+                <Label htmlFor="email">{t("auth.email")}</Label>
                  <Input
                    id="email"
                    type="email"
@@ -60,7 +62,7 @@
                  />
                </div>
                <div className="space-y-2">
-                 <Label htmlFor="password">Password</Label>
+                <Label htmlFor="password">{t("auth.password")}</Label>
                  <Input
                    id="password"
                    type="password"
@@ -70,13 +72,13 @@
                  />
                </div>
                <Button type="submit" className="w-full" disabled={loading}>
-                 {loading ? "Signing in..." : "Sign In"}
+                {loading ? t("auth.signingIn") : t("auth.signIn")}
                </Button>
              </form>
              <p className="mt-4 text-center text-sm text-muted-foreground">
-               Don't have an account?{" "}
+              {t("auth.noAccount")}{" "}
                <Link to="/register" className="text-primary hover:underline">
-                 Sign up
+                {t("auth.signUp")}
                </Link>
              </p>
            </CardContent>

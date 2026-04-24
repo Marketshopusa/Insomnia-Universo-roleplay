@@ -16,6 +16,7 @@
  import { useNovelProjects, useCreateNovelProject, useUpdateNovelProject, useDeleteNovelProject } from "@/hooks/useNovelProjects";
  import { useToast } from "@/hooks/use-toast";
  import { Link } from "react-router-dom";
+import { useLanguage } from "@/contexts/LanguageContext";
  import {
    AlertDialog,
    AlertDialogAction,
@@ -28,29 +29,23 @@
    AlertDialogTrigger,
  } from "@/components/ui/alert-dialog";
  
- const models = [
-   { value: "apprentice-6", label: "Apprentice 6 (♦)" },
-   { value: "master-pro", label: "Master Pro (♦♦)" },
-   { value: "sage-elite", label: "Sage Elite (♦♦♦)" },
- ];
- 
- const creativityLevels = [
-   { value: "conservative", label: "Conservative" },
-   { value: "balanced", label: "Balanced" },
-   { value: "creative", label: "Creative" },
-   { value: "wild", label: "Wild" },
- ];
- 
- const languages = [
-   "English", "Spanish", "French", "German", "Italian", 
-   "Portuguese", "Japanese", "Korean", "Chinese"
- ];
- 
- const chapterOptions = [3, 5, 7, 10, 15, 20];
+const models = [
+  { value: "apprentice-6", label: "Apprentice 6 (♦)" },
+  { value: "master-pro", label: "Master Pro (♦♦)" },
+  { value: "sage-elite", label: "Sage Elite (♦♦♦)" },
+];
+
+const languages = [
+  "English", "Spanish", "French", "German", "Italian",
+  "Portuguese", "Japanese", "Korean", "Chinese"
+];
+
+const chapterOptions = [3, 5, 7, 10, 15, 20];
  
  const Studio = () => {
    const { user } = useAuth();
    const { toast } = useToast();
+  const { t } = useLanguage();
    const { data: projects, isLoading: projectsLoading } = useNovelProjects();
    const createProject = useCreateNovelProject();
    const updateProject = useUpdateNovelProject();
@@ -64,36 +59,42 @@
    const [language, setLanguage] = useState("English");
    const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
  
+  const creativityLevels = [
+    { value: "conservative", label: t("studio.creativity.conservative") },
+    { value: "balanced", label: t("studio.creativity.balanced") },
+    { value: "creative", label: t("studio.creativity.creative") },
+    { value: "wild", label: t("studio.creativity.wild") },
+  ];
+
    const handleWriteNovel = async () => {
      if (!user) {
-       toast({ title: "Please login to create novels", variant: "destructive" });
+      toast({ title: t("studio.toast.loginToCreate"), variant: "destructive" });
        return;
      }
-     
-     toast({ 
-       title: "Generating novel...", 
-       description: "This may take a few moments" 
-     });
-     
-     // Simulate novel generation
-     setTimeout(() => {
-       toast({ title: "Novel generated!", description: "Your novel has been created" });
-     }, 2000);
+
+    toast({
+      title: t("studio.toast.generating"),
+      description: t("studio.toast.generatingDesc"),
+    });
+
+    setTimeout(() => {
+      toast({ title: t("studio.toast.generated"), description: t("studio.toast.generatedDesc") });
+    }, 2000);
    };
  
    const handleWriteOutline = () => {
-     toast({ title: "Generating outline...", description: "Creating chapter structure" });
+    toast({ title: t("studio.toast.outline"), description: t("studio.toast.outlineDesc") });
    };
  
    const handleBlankNovel = () => {
      setDescription("");
      setCurrentProjectId(null);
-     toast({ title: "New blank novel created" });
+    toast({ title: t("studio.toast.blank") });
    };
  
    const handleSaveProject = async () => {
      if (!user) {
-       toast({ title: "Please login to save projects", variant: "destructive" });
+      toast({ title: t("studio.toast.loginToSave"), variant: "destructive" });
        return;
      }
  
@@ -108,7 +109,7 @@
            creativity,
            is_safe_for_work: isSafeForWork,
          });
-         toast({ title: "Project saved!" });
+          toast({ title: t("studio.toast.saved") });
        } else {
          const newProject = await createProject.mutateAsync({
            title: "New Project",
@@ -120,10 +121,10 @@
            is_safe_for_work: isSafeForWork,
          });
          setCurrentProjectId(newProject.id);
-         toast({ title: "Project created!" });
+          toast({ title: t("studio.toast.created") });
        }
      } catch (error) {
-       toast({ title: "Error saving project", variant: "destructive" });
+        toast({ title: t("studio.toast.saveError"), variant: "destructive" });
      }
    };
  
@@ -135,7 +136,7 @@
      setModel(project.model.toLowerCase().replace(" ", "-"));
      setCreativity(project.creativity.toLowerCase());
      setIsSafeForWork(project.is_safe_for_work);
-     toast({ title: "Project loaded" });
+    toast({ title: t("studio.toast.loaded") });
    };
  
    const handleDeleteProjects = async () => {
@@ -143,7 +144,7 @@
        for (const project of projects) {
          await deleteProject.mutateAsync(project.id);
        }
-       toast({ title: "All projects deleted" });
+      toast({ title: t("studio.toast.allDeleted") });
        setCurrentProjectId(null);
        setDescription("");
      }
@@ -157,17 +158,17 @@
      setIsSafeForWork(false);
      setLanguage("English");
      setCurrentProjectId(null);
-     toast({ title: "Settings reset" });
+    toast({ title: t("studio.toast.reset") });
    };
  
    if (!user) {
      return (
        <MainLayout>
          <div className="container mx-auto px-4 py-16 text-center">
-           <h1 className="text-3xl font-display mb-4">Novel Studio</h1>
-           <p className="text-muted-foreground mb-6">Please log in to use the Novel Studio</p>
+          <h1 className="text-3xl font-display mb-4">{t("studio.title")}</h1>
+          <p className="text-muted-foreground mb-6">{t("studio.loginRequired")}</p>
            <Link to="/login">
-             <Button>Login</Button>
+            <Button>{t("nav.login")}</Button>
            </Link>
          </div>
        </MainLayout>
@@ -177,15 +178,15 @@
    return (
      <MainLayout>
        <div className="container mx-auto px-4 py-8 max-w-4xl">
-         <h1 className="text-3xl font-display text-center mb-8">Novel Studio</h1>
+        <h1 className="text-3xl font-display text-center mb-8">{t("studio.title")}</h1>
  
          {/* AI Settings */}
          <Card className="p-6 mb-6">
-           <h2 className="text-lg font-medium text-center mb-6">AI</h2>
+          <h2 className="text-lg font-medium text-center mb-6">{t("studio.aiSection")}</h2>
            
            <div className="grid grid-cols-2 gap-6">
              <div className="space-y-2">
-               <Label>Model:</Label>
+              <Label>{t("studio.model")}:</Label>
                <Select value={model} onValueChange={setModel}>
                  <SelectTrigger>
                    <SelectValue />
@@ -201,7 +202,7 @@
              </div>
  
              <div className="space-y-2">
-               <Label>Creativity:</Label>
+              <Label>{t("studio.creativity")}:</Label>
                <Select value={creativity} onValueChange={setCreativity}>
                  <SelectTrigger>
                    <SelectValue />
@@ -220,9 +221,9 @@
  
          {/* Description */}
          <Card className="p-6 mb-6">
-           <h2 className="text-lg font-medium text-center mb-4">Description</h2>
+          <h2 className="text-lg font-medium text-center mb-4">{t("studio.description")}</h2>
            <Textarea
-             placeholder="Two women and a man explore ..."
+            placeholder={t("studio.descriptionPlaceholder")}
              value={description}
              onChange={(e) => setDescription(e.target.value)}
              className="min-h-[200px] resize-none"
@@ -231,7 +232,7 @@
            <div className="flex flex-wrap items-center justify-between gap-4 mt-4">
              <div className="flex items-center gap-4">
                <div className="flex items-center gap-2">
-                 <Label>Number of Chapters:</Label>
+                <Label>{t("studio.numChapters")}:</Label>
                  <Select value={chapterCount.toString()} onValueChange={(v) => setChapterCount(parseInt(v))}>
                    <SelectTrigger className="w-20">
                      <SelectValue />
@@ -248,12 +249,12 @@
  
                <div className="flex items-center gap-2">
                  <Switch checked={isSafeForWork} onCheckedChange={setIsSafeForWork} />
-                 <Label>Safe for Work</Label>
+                <Label>{t("studio.safeForWork")}</Label>
                </div>
              </div>
  
              <div className="flex items-center gap-2">
-               <Label>Language:</Label>
+              <Label>{t("studio.language")}:</Label>
                <Select value={language} onValueChange={setLanguage}>
                  <SelectTrigger className="w-32">
                    <SelectValue />
@@ -272,28 +273,28 @@
  
          {/* Action Buttons */}
          <div className="grid grid-cols-3 gap-4 mb-6">
-           <Button onClick={handleWriteNovel}>Write Novel</Button>
-           <Button onClick={handleWriteOutline}>Write Outline</Button>
-           <Button onClick={handleBlankNovel}>Blank Novel</Button>
+          <Button onClick={handleWriteNovel}>{t("studio.writeNovel")}</Button>
+          <Button onClick={handleWriteOutline}>{t("studio.writeOutline")}</Button>
+          <Button onClick={handleBlankNovel}>{t("studio.blankNovel")}</Button>
          </div>
  
          {/* Project Management */}
          <div className="grid grid-cols-3 gap-4 mb-4">
            <Button variant="secondary" onClick={handleSaveProject}>
-             Save Project
+            {t("studio.saveProject")}
            </Button>
            <AlertDialog>
              <AlertDialogTrigger asChild>
-               <Button variant="secondary">Load Project</Button>
+              <Button variant="secondary">{t("studio.loadProject")}</Button>
              </AlertDialogTrigger>
              <AlertDialogContent>
                <AlertDialogHeader>
-                 <AlertDialogTitle>Load Project</AlertDialogTitle>
+                <AlertDialogTitle>{t("studio.loadProject")}</AlertDialogTitle>
                  <AlertDialogDescription>
                    {projectsLoading ? (
-                     "Loading projects..."
+                    t("studio.loadingProjects")
                    ) : projects?.length === 0 ? (
-                     "No saved projects found"
+                    t("studio.noSavedProjects")
                    ) : (
                      <div className="space-y-2 mt-4">
                        {projects?.map((project) => (
@@ -311,33 +312,31 @@
                  </AlertDialogDescription>
                </AlertDialogHeader>
                <AlertDialogFooter>
-                 <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
                </AlertDialogFooter>
              </AlertDialogContent>
            </AlertDialog>
            <AlertDialog>
              <AlertDialogTrigger asChild>
-               <Button variant="secondary">Delete Projects</Button>
+              <Button variant="secondary">{t("studio.deleteProjects")}</Button>
              </AlertDialogTrigger>
              <AlertDialogContent>
                <AlertDialogHeader>
-                 <AlertDialogTitle>Delete All Projects?</AlertDialogTitle>
-                 <AlertDialogDescription>
-                   This action cannot be undone. All your saved projects will be permanently deleted.
-                 </AlertDialogDescription>
+                <AlertDialogTitle>{t("studio.deleteAllTitle")}</AlertDialogTitle>
+                <AlertDialogDescription>{t("studio.deleteAllDesc")}</AlertDialogDescription>
                </AlertDialogHeader>
                <AlertDialogFooter>
-                 <AlertDialogCancel>Cancel</AlertDialogCancel>
-                 <AlertDialogAction onClick={handleDeleteProjects}>Delete</AlertDialogAction>
+                <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
+                <AlertDialogAction onClick={handleDeleteProjects}>{t("common.delete")}</AlertDialogAction>
                </AlertDialogFooter>
              </AlertDialogContent>
            </AlertDialog>
          </div>
  
          <div className="grid grid-cols-3 gap-4">
-           <Button variant="outline">Download Project</Button>
-           <Button variant="outline">Upload Project</Button>
-           <Button variant="outline" onClick={handleReset}>Reset</Button>
+          <Button variant="outline">{t("studio.downloadProject")}</Button>
+          <Button variant="outline">{t("studio.uploadProject")}</Button>
+          <Button variant="outline" onClick={handleReset}>{t("studio.reset")}</Button>
          </div>
        </div>
      </MainLayout>
