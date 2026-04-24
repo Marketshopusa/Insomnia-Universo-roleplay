@@ -305,9 +305,9 @@ import { Lock, ShieldAlert } from "lucide-react";
                {categories.length > 0 && (
                  <div className="p-4 border-t border-border">
                    <div className="flex flex-wrap gap-2">
-                     {categories.map((cat: any) => (
+                      {categories.map((cat: any, i: number) => (
                        <Badge key={cat.id} variant="secondary" className="text-xs">
-                         {cat.name}
+                          {tCategoryNames[i] || cat.name}
                        </Badge>
                      ))}
                    </div>
