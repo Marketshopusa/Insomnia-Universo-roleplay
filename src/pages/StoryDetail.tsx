@@ -318,6 +318,84 @@ import { Lock, ShieldAlert } from "lucide-react";
  
            {/* Chat Panel */}
            <div className="lg:col-span-2">
+            {mode === "select" && (
+              <Card className="bg-card border-border p-8">
+                <h2 className="font-display text-2xl text-center mb-6">{t("mode.choose")}</h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <button
+                    onClick={() => setMode("read")}
+                    className="text-left p-6 rounded-lg border border-border bg-secondary/40 hover:bg-secondary hover:border-primary transition-all"
+                  >
+                    <BookOpen className="w-8 h-8 text-primary mb-3" />
+                    <h3 className="font-display text-lg mb-2">{t("mode.read")}</h3>
+                    <p className="text-sm text-muted-foreground">{t("mode.readDesc")}</p>
+                  </button>
+                  <button
+                    onClick={() => setMode("roleplay")}
+                    className="text-left p-6 rounded-lg border border-border bg-secondary/40 hover:bg-secondary hover:border-primary transition-all"
+                  >
+                    <MessageSquare className="w-8 h-8 text-primary mb-3" />
+                    <h3 className="font-display text-lg mb-2">{t("mode.roleplay")}</h3>
+                    <p className="text-sm text-muted-foreground">{t("mode.roleplayDesc")}</p>
+                  </button>
+                </div>
+              </Card>
+            )}
+
+            {mode === "read" && (
+              <Card className="bg-card border-border">
+                <div className="p-4 border-b border-border flex items-center justify-between flex-wrap gap-2">
+                  <h2 className="font-display text-lg">{tTitle || story.title}</h2>
+                  <div className="flex gap-2">
+                    {narrative && (
+                      playingId === "narrative" ? (
+                        <Button variant="outline" size="sm" onClick={stopAudio} className="gap-2">
+                          <VolumeX className="w-4 h-4" /> {t("mode.stop")}
+                        </Button>
+                      ) : (
+                        <Button variant="outline" size="sm" onClick={() => playAudio(narrative, "narrative")} className="gap-2">
+                          <Volume2 className="w-4 h-4" /> {t("mode.listen")}
+                        </Button>
+                      )
+                    )}
+                    <Button variant="outline" size="sm" onClick={generateNarrative} disabled={narrativeLoading} className="gap-2">
+                      <RotateCw className="w-4 h-4" /> {t("mode.regenerate")}
+                    </Button>
+                    <Button size="sm" onClick={() => setMode("roleplay")} className="gap-2">
+                      <MessageSquare className="w-4 h-4" /> {t("mode.switchToRoleplay")}
+                    </Button>
+                  </div>
+                </div>
+                <div className="p-6 max-h-[600px] overflow-y-auto">
+                  {narrativeLoading ? (
+                    <div className="flex flex-col items-center justify-center py-16 gap-4">
+                      <Loader2 className="w-8 h-8 text-primary animate-spin" />
+                      <p className="text-muted-foreground">{t("mode.generating")}</p>
+                    </div>
+                  ) : (
+                    <article className="max-w-none whitespace-pre-wrap text-foreground leading-relaxed">
+                      {narrative.split("\n").map((line, i) => {
+                        if (line.startsWith("## ")) return <h3 key={i} className="font-display text-xl mt-6 mb-3 text-primary">{line.replace(/^##\s/, "")}</h3>;
+                        if (line.startsWith("# ")) return <h2 key={i} className="font-display text-2xl mt-6 mb-3">{line.replace(/^#\s/, "")}</h2>;
+                        if (!line.trim()) return <br key={i} />;
+                        const parts = line.split(/(\*\*[^*]+\*\*|\*[^*]+\*)/);
+                        return (
+                          <p key={i} className="mb-3">
+                            {parts.map((p, j) => {
+                              if (p.startsWith("**") && p.endsWith("**")) return <strong key={j}>{p.slice(2, -2)}</strong>;
+                              if (p.startsWith("*") && p.endsWith("*")) return <em key={j} className="text-muted-foreground">{p.slice(1, -1)}</em>;
+                              return p;
+                            })}
+                          </p>
+                        );
+                      })}
+                    </article>
+                  )}
+                </div>
+              </Card>
+            )}
+
+            {mode === "roleplay" && (
              <Card className="h-[600px] flex flex-col bg-card border-border">
                {/* Chat Header */}
                <div className="p-4 border-b border-border flex items-center justify-between">
