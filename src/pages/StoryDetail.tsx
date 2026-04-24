@@ -53,8 +53,8 @@
    const getIntroMessage = (story: any) => {
      const characterRole = story.character_role || "character";
      const playerRole = story.player_role || "player";
-     
-     return `*${story.title}*\n\n${story.description || "Welcome to this story..."}\n\nYou are playing as: **${playerRole}**\nI am playing as: **${characterRole}**\n\n*The scene is set. What would you like to do?*`;
+
+    return `*${story.title}*\n\n${story.description || t("story.welcome")}\n\n${t("story.youArePlaying")}: **${playerRole}**\n${t("story.iAmPlaying")}: **${characterRole}**\n\n*${t("story.sceneSet")}*`;
    };
  
    const generateResponse = async (userMessage: string) => {
