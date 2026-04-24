@@ -1,6 +1,7 @@
 import { Card } from "@/components/ui/card";
 import { Play, Image as ImageIcon } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { useTranslatedTexts } from "@/hooks/useTranslatedTexts";
  
  interface Story {
    id: string;
@@ -23,6 +24,12 @@ import { useLanguage } from "@/contexts/LanguageContext";
   const mediaCount = story.video_count > 0 ? story.video_count : story.image_count;
   const mediaType = story.video_count > 0 ? t("chat.videos") : t("chat.images");
   const coverImage = story.cover_image;
+
+  const [tTitle, tCharacter, tPlayer] = useTranslatedTexts([
+    story.title,
+    story.character_role,
+    story.player_role,
+  ]);
  
    return (
      <Card
@@ -46,14 +53,14 @@ import { useLanguage } from "@/contexts/LanguageContext";
          {/* Content overlay */}
          <div className="absolute bottom-0 left-0 right-0 p-4">
            <h3 className="font-medium text-foreground text-lg mb-2 line-clamp-2">
-             {story.title}
+              {tTitle || story.title}
            </h3>
            
            <div className="flex flex-col gap-1 text-sm text-muted-foreground">
              {story.character_role && (
-               <span>{t("chat.char")}: {story.character_role}</span>
+                <span>{t("chat.char")}: {tCharacter || story.character_role}</span>
              )}
-             <span>{t("chat.you")}: {story.player_role || "man"}</span>
+              <span>{t("chat.you")}: {tPlayer || story.player_role || t("common.male")}</span>
            </div>
  
            {mediaCount > 0 && (

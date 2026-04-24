@@ -9,6 +9,7 @@
  import { ArrowLeft, Send, Play, Image as ImageIcon, Volume2, VolumeX } from "lucide-react";
  import { useStory } from "@/hooks/useStories";
  import { useLanguage } from "@/contexts/LanguageContext";
+import { useTranslatedTexts, useTranslatedText } from "@/hooks/useTranslatedTexts";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAdultMode } from "@/contexts/AdultModeContext";
 import { AdultConsentDialog } from "@/components/adult/AdultConsentDialog";
@@ -24,7 +25,7 @@ import { Lock, ShieldAlert } from "lucide-react";
  const StoryDetail = () => {
    const { storyId } = useParams<{ storyId: string }>();
    const navigate = useNavigate();
-   const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const { user, loading: authLoading } = useAuth();
   const { enabled: adultEnabled, consentGiven, enable, grantConsent } = useAdultMode();
   const [consentOpen, setConsentOpen] = useState(false);
@@ -35,6 +36,18 @@ import { Lock, ShieldAlert } from "lucide-react";
    const [isTyping, setIsTyping] = useState(false);
    const [isMuted, setIsMuted] = useState(false);
    const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Translate dynamic story fields to active language
+  const [tTitle, tDescription, tCharacter, tPlayer] = useTranslatedTexts([
+    story?.title,
+    story?.description,
+    story?.character_role,
+    story?.player_role,
+  ]);
+
+  const categoryNamesAll: string[] =
+    story?.story_categories?.map((sc: any) => sc?.categories?.name).filter(Boolean) || [];
+  const tCategoryNames = useTranslatedTexts(categoryNamesAll);
  
    const scrollToBottom = () => {
      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -55,18 +68,30 @@ import { Lock, ShieldAlert } from "lucide-react";
        };
        setMessages([introMessage]);
      }
-   }, [story]);
+  }, [story, language, tTitle, tDescription, tCharacter, tPlayer]);
+
+  // Re-render intro when language changes
+  useEffect(() => {
+    if (story && messages.length > 0) {
+      setMessages((prev) => prev.map((m) =>
+        m.id === "intro" ? { ...m, content: getIntroMessage(story) } : m
+      ));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [language, tTitle, tDescription, tCharacter, tPlayer]);
  
    const getIntroMessage = (story: any) => {
-     const characterRole = story.character_role || "character";
-     const playerRole = story.player_role || "player";
+    const characterRole = tCharacter || story.character_role || t("chat.char");
+    const playerRole = tPlayer || story.player_role || t("chat.you");
+    const title = tTitle || story.title;
+    const description = tDescription || story.description || t("story.welcome");
 
-    return `*${story.title}*\n\n${story.description || t("story.welcome")}\n\n${t("story.youArePlaying")}: **${playerRole}**\n${t("story.iAmPlaying")}: **${characterRole}**\n\n*${t("story.sceneSet")}*`;
+    return `*${title}*\n\n${description}\n\n${t("story.youArePlaying")}: **${playerRole}**\n${t("story.iAmPlaying")}: **${characterRole}**\n\n*${t("story.sceneSet")}*`;
    };
  
    const generateResponse = async (userMessage: string) => {
-     // Simulated AI responses based on story context
-     const responses = [
+    // Localized simulated responses
+    const responsesEn = [
        "*looks at you with interest* That's an interesting approach. Tell me more about what you're thinking...",
        "*moves closer* I wasn't expecting that. You've certainly caught my attention now.",
        "*smiles softly* I like the way you think. This could be the beginning of something special.",
@@ -76,8 +101,18 @@ import { Lock, ShieldAlert } from "lucide-react";
        "*eyes sparkle with curiosity* Continue... I want to hear more.",
        "*steps forward* The night is young and full of possibilities...",
      ];
-     
-     return responses[Math.floor(Math.random() * responses.length)];
+    const responsesEs = [
+      "*te mira con interés* Es un enfoque interesante. Cuéntame más sobre lo que estás pensando...",
+      "*se acerca* No me lo esperaba. Definitivamente has captado mi atención.",
+      "*sonríe suavemente* Me gusta cómo piensas. Esto podría ser el comienzo de algo especial.",
+      "*hace una pausa* Me sorprendes. La mayoría de la gente no diría algo así.",
+      "*ríe con suavidad* Bueno, esto se está poniendo interesante. ¿Qué más tienes en mente?",
+      "*inclina la cabeza pensativa* He estado esperando a alguien como tú.",
+      "*sus ojos brillan de curiosidad* Continúa... quiero oír más.",
+      "*da un paso al frente* La noche es joven y está llena de posibilidades...",
+    ];
+    const pool = language === "es" ? responsesEs : responsesEn;
+    return pool[Math.floor(Math.random() * pool.length)];
    };
  
    const handleSendMessage = async () => {
@@ -133,7 +168,7 @@ import { Lock, ShieldAlert } from "lucide-react";
      return (
        <MainLayout>
          <div className="container mx-auto px-4 py-8 text-center">
-           <p className="text-muted-foreground">Story not found.</p>
+          <p className="text-muted-foreground">{t("story.notFound")}</p>
            <Button onClick={() => navigate("/")} className="mt-4">
              {t("story.back")}
            </Button>
@@ -234,21 +269,21 @@ import { Lock, ShieldAlert } from "lucide-react";
                  
                  <div className="absolute bottom-0 left-0 right-0 p-4">
                    <h1 className="font-display text-2xl text-foreground mb-2">
-                     {story.title}
+                      {tTitle || story.title}
                    </h1>
                    <p className="text-sm text-muted-foreground mb-3">
-                     {story.description}
+                      {tDescription || story.description}
                    </p>
                    
                    <div className="flex flex-col gap-2 text-sm">
                      <div className="flex items-center gap-2">
                        <span className="text-muted-foreground">{t("chat.you")}:</span>
-                       <span className="text-foreground">{story.player_role || "man"}</span>
+                        <span className="text-foreground">{tPlayer || story.player_role || t("common.male")}</span>
                      </div>
                      {story.character_role && (
                        <div className="flex items-center gap-2">
                          <span className="text-muted-foreground">{t("chat.char")}:</span>
-                         <span className="text-foreground">{story.character_role}</span>
+                          <span className="text-foreground">{tCharacter || story.character_role}</span>
                        </div>
                      )}
                    </div>
@@ -270,9 +305,9 @@ import { Lock, ShieldAlert } from "lucide-react";
                {categories.length > 0 && (
                  <div className="p-4 border-t border-border">
                    <div className="flex flex-wrap gap-2">
-                     {categories.map((cat: any) => (
+                      {categories.map((cat: any, i: number) => (
                        <Badge key={cat.id} variant="secondary" className="text-xs">
-                         {cat.name}
+                          {tCategoryNames[i] || cat.name}
                        </Badge>
                      ))}
                    </div>
@@ -286,7 +321,7 @@ import { Lock, ShieldAlert } from "lucide-react";
              <Card className="h-[600px] flex flex-col bg-card border-border">
                {/* Chat Header */}
                <div className="p-4 border-b border-border flex items-center justify-between">
-                 <h2 className="font-display text-lg">{story.title}</h2>
+                  <h2 className="font-display text-lg">{tTitle || story.title}</h2>
                  <Button
                    variant="ghost"
                    size="icon"
