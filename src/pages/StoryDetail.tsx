@@ -47,6 +47,7 @@ type Mode = "select" | "read" | "roleplay";
   const [voice] = useState<string>(() => localStorage.getItem("erota.voice") || "scarlett-hd");
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [playingId, setPlayingId] = useState<string | null>(null);
+  const [sessionLoaded, setSessionLoaded] = useState(false);
 
   // Translate dynamic story fields to active language
   const [tTitle, tDescription, tCharacter, tPlayer] = useTranslatedTexts([
