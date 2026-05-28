@@ -200,6 +200,39 @@ export type Database = {
           },
         ]
       }
+      story_sessions: {
+        Row: {
+          created_at: string
+          id: string
+          last_mode: string | null
+          messages: Json
+          narrative: string | null
+          story_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          last_mode?: string | null
+          messages?: Json
+          narrative?: string | null
+          story_id: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          last_mode?: string | null
+          messages?: Json
+          narrative?: string | null
+          story_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       user_stories: {
         Row: {
           content: string | null

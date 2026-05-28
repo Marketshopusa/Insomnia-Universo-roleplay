@@ -47,6 +47,7 @@ type Mode = "select" | "read" | "roleplay";
   const [voice] = useState<string>(() => localStorage.getItem("erota.voice") || "scarlett-hd");
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [playingId, setPlayingId] = useState<string | null>(null);
+  const [sessionLoaded, setSessionLoaded] = useState(false);
 
   // Translate dynamic story fields to active language
   const [tTitle, tDescription, tCharacter, tPlayer] = useTranslatedTexts([
@@ -60,6 +61,65 @@ type Mode = "select" | "read" | "roleplay";
     story?.story_categories?.map((sc: any) => sc?.categories?.name).filter(Boolean) || [];
   const tCategoryNames = useTranslatedTexts(categoryNamesAll);
  
+  // Load saved session for this user + story (persistent history)
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      if (!user || !storyId) return;
+      const { data, error } = await supabase
+        .from("story_sessions")
+        .select("messages, narrative, last_mode")
+        .eq("user_id", user.id)
+        .eq("story_id", storyId)
+        .maybeSingle();
+      if (cancelled) return;
+      if (!error && data) {
+        const raw = (data.messages as any[]) || [];
+        const restored: Message[] = raw.map((m: any) => ({
+          id: m.id,
+          role: m.role,
+          content: m.content,
+          timestamp: new Date(m.timestamp),
+        }));
+        if (restored.length > 0) setMessages(restored);
+        if (data.narrative) setNarrative(data.narrative);
+        if (data.last_mode === "read" || data.last_mode === "roleplay") {
+          setMode(data.last_mode as Mode);
+        }
+      }
+      setSessionLoaded(true);
+    };
+    load();
+    return () => { cancelled = true; };
+  }, [user, storyId]);
+
+  // Persist current session (upsert one row per user+story)
+  const saveSession = async (
+    nextMessages: Message[],
+    nextNarrative: string | null,
+    nextMode: Mode
+  ) => {
+    if (!user || !storyId) return;
+    const serializable = nextMessages
+      .filter((m) => m.id !== "intro")
+      .map((m) => ({
+        id: m.id,
+        role: m.role,
+        content: m.content,
+        timestamp: m.timestamp.toISOString(),
+      }));
+    await supabase.from("story_sessions").upsert(
+      {
+        user_id: user.id,
+        story_id: storyId,
+        messages: serializable,
+        narrative: nextNarrative,
+        last_mode: nextMode,
+      },
+      { onConflict: "user_id,story_id" }
+    );
+  };
+
    const scrollToBottom = () => {
      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
    };
@@ -70,7 +130,7 @@ type Mode = "select" | "read" | "roleplay";
  
    // Initialize with story intro message
    useEffect(() => {
-     if (story && messages.length === 0) {
+     if (story && sessionLoaded && messages.length === 0) {
        const introMessage: Message = {
          id: "intro",
          role: "assistant",
@@ -79,7 +139,7 @@ type Mode = "select" | "read" | "roleplay";
        };
        setMessages([introMessage]);
      }
-  }, [story, language, tTitle, tDescription, tCharacter, tPlayer]);
+  }, [story, sessionLoaded, language, tTitle, tDescription, tCharacter, tPlayer]);
 
   // Re-render intro when language changes
   useEffect(() => {
@@ -159,6 +219,11 @@ type Mode = "select" | "read" | "roleplay";
      setMessages((prev) => [...prev, assistantMessage]);
      setIsTyping(false);
       if (!isMuted) playAudio(responseContent, assistantMessage.id);
+       // Persist the updated conversation
+       setMessages((prev) => {
+         saveSession(prev, narrative || null, mode);
+         return prev;
+       });
    };
 
    const playAudio = async (text: string, id: string) => {
@@ -220,6 +285,7 @@ type Mode = "select" | "read" | "roleplay";
          else toast({ title: t("mode.aiError"), variant: "destructive" });
        } else {
          setNarrative((data as any).content);
+          saveSession(messages, (data as any).content, mode);
        }
      } finally {
        setNarrativeLoading(false);
