@@ -236,6 +236,8 @@ export type Database = {
       user_stories: {
         Row: {
           content: string | null
+          cover_media_type: string | null
+          cover_media_url: string | null
           created_at: string
           id: string
           is_public: boolean | null
@@ -246,6 +248,8 @@ export type Database = {
         }
         Insert: {
           content?: string | null
+          cover_media_type?: string | null
+          cover_media_url?: string | null
           created_at?: string
           id?: string
           is_public?: boolean | null
@@ -256,6 +260,8 @@ export type Database = {
         }
         Update: {
           content?: string | null
+          cover_media_type?: string | null
+          cover_media_url?: string | null
           created_at?: string
           id?: string
           is_public?: boolean | null

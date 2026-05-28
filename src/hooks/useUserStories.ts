@@ -28,7 +28,7 @@
    const { user } = useAuth();
  
    return useMutation({
-     mutationFn: async (storyData: { title: string; content?: string; story_type?: "adventure" | "roleplay" | "real_sex" }) => {
+    mutationFn: async (storyData: { title: string; content?: string; story_type?: "adventure" | "roleplay" | "real_sex"; cover_media_url?: string | null; cover_media_type?: string | null }) => {
        if (!user) throw new Error("Not authenticated");
  
        const { data, error } = await supabase
@@ -38,6 +38,8 @@
            title: storyData.title,
            content: storyData.content || "",
            story_type: storyData.story_type || "roleplay",
+          cover_media_url: storyData.cover_media_url ?? null,
+          cover_media_type: storyData.cover_media_type ?? null,
          })
          .select()
          .single();
@@ -55,7 +57,7 @@
    const queryClient = useQueryClient();
  
    return useMutation({
-     mutationFn: async ({ id, ...updates }: { id: string; title?: string; content?: string }) => {
+    mutationFn: async ({ id, ...updates }: { id: string; title?: string; content?: string; cover_media_url?: string | null; cover_media_type?: string | null }) => {
        const { data, error } = await supabase
          .from("user_stories")
          .update(updates)
