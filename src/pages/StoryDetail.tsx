@@ -61,6 +61,65 @@ type Mode = "select" | "read" | "roleplay";
     story?.story_categories?.map((sc: any) => sc?.categories?.name).filter(Boolean) || [];
   const tCategoryNames = useTranslatedTexts(categoryNamesAll);
  
+  // Load saved session for this user + story (persistent history)
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      if (!user || !storyId) return;
+      const { data, error } = await supabase
+        .from("story_sessions")
+        .select("messages, narrative, last_mode")
+        .eq("user_id", user.id)
+        .eq("story_id", storyId)
+        .maybeSingle();
+      if (cancelled) return;
+      if (!error && data) {
+        const raw = (data.messages as any[]) || [];
+        const restored: Message[] = raw.map((m: any) => ({
+          id: m.id,
+          role: m.role,
+          content: m.content,
+          timestamp: new Date(m.timestamp),
+        }));
+        if (restored.length > 0) setMessages(restored);
+        if (data.narrative) setNarrative(data.narrative);
+        if (data.last_mode === "read" || data.last_mode === "roleplay") {
+          setMode(data.last_mode as Mode);
+        }
+      }
+      setSessionLoaded(true);
+    };
+    load();
+    return () => { cancelled = true; };
+  }, [user, storyId]);
+
+  // Persist current session (upsert one row per user+story)
+  const saveSession = async (
+    nextMessages: Message[],
+    nextNarrative: string | null,
+    nextMode: Mode
+  ) => {
+    if (!user || !storyId) return;
+    const serializable = nextMessages
+      .filter((m) => m.id !== "intro")
+      .map((m) => ({
+        id: m.id,
+        role: m.role,
+        content: m.content,
+        timestamp: m.timestamp.toISOString(),
+      }));
+    await supabase.from("story_sessions").upsert(
+      {
+        user_id: user.id,
+        story_id: storyId,
+        messages: serializable,
+        narrative: nextNarrative,
+        last_mode: nextMode,
+      },
+      { onConflict: "user_id,story_id" }
+    );
+  };
+
    const scrollToBottom = () => {
      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
    };
