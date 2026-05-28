@@ -285,6 +285,7 @@ type Mode = "select" | "read" | "roleplay";
          else toast({ title: t("mode.aiError"), variant: "destructive" });
        } else {
          setNarrative((data as any).content);
+          saveSession(messages, (data as any).content, mode);
        }
      } finally {
        setNarrativeLoading(false);
