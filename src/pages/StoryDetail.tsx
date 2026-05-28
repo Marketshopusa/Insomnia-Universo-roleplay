@@ -48,6 +48,27 @@ type Mode = "select" | "read" | "roleplay";
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [sessionLoaded, setSessionLoaded] = useState(false);
+   const audioUnlockedRef = useRef(false);
+
+   // Unlock audio on first user gesture so later TTS playback isn't blocked by autoplay policy
+   useEffect(() => {
+     const unlock = () => {
+       if (audioUnlockedRef.current) return;
+       try {
+         const a = new Audio(
+           "data:audio/mpeg;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4Ljc2LjEwMAAAAAAAAAAAAAAA//tQxAADB8AhKfRgAAEAAAGgAAAAEkVCAUWVFR4kQ4M0gNRMVQA="
+         );
+         a.volume = 0;
+         a.play().then(() => { a.pause(); audioUnlockedRef.current = true; }).catch(() => {});
+       } catch {}
+     };
+     window.addEventListener("click", unlock, { once: false });
+     window.addEventListener("touchstart", unlock, { once: false });
+     return () => {
+       window.removeEventListener("click", unlock);
+       window.removeEventListener("touchstart", unlock);
+     };
+   }, []);
 
   // Translate dynamic story fields to active language
   const [tTitle, tDescription, tCharacter, tPlayer] = useTranslatedTexts([
@@ -244,7 +265,16 @@ type Mode = "select" | "read" | "roleplay";
        audioRef.current = audio;
        audio.onended = () => setPlayingId(null);
        audio.onerror = () => setPlayingId(null);
-       await audio.play();
+       try {
+         await audio.play();
+       } catch (playErr) {
+         console.warn("Autoplay bloqueado, esperando interacción del usuario:", playErr);
+         setPlayingId(null);
+         toast({
+           title: "Toca para activar el audio",
+           description: "El navegador bloqueó la reproducción automática. Pulsa el botón ▶️ del mensaje para escucharlo.",
+         });
+       }
      } catch (e) {
        console.error("playAudio error:", e);
        setPlayingId(null);
