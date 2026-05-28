@@ -219,6 +219,11 @@ type Mode = "select" | "read" | "roleplay";
      setMessages((prev) => [...prev, assistantMessage]);
      setIsTyping(false);
       if (!isMuted) playAudio(responseContent, assistantMessage.id);
+       // Persist the updated conversation
+       setMessages((prev) => {
+         saveSession(prev, narrative || null, mode);
+         return prev;
+       });
    };
 
    const playAudio = async (text: string, id: string) => {
