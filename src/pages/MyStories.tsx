@@ -182,7 +182,7 @@ const MyStories = () => {
       <MainLayout>
         <div className="container mx-auto px-4 py-16 text-center">
           <h1 className="text-3xl font-display mb-4">{t("myStories.title")}</h1>
-          <CardBox className="max-w-md mx-auto">
+          <Card className="max-w-md mx-auto">
             <CardHeader>
               <CardTitle>{t("myStories.loginRequired")}</CardTitle>
             </CardHeader>
@@ -192,7 +192,7 @@ const MyStories = () => {
                 <Button className="w-full">{t("nav.login")}</Button>
               </Link>
             </CardContent>
-          </CardBox>
+          </Card>
         </div>
       </MainLayout>
     );
@@ -282,12 +282,12 @@ const MyStories = () => {
             <p className="text-muted-foreground">{t("myStories.loading")}</p>
           </div>
         ) : stories?.length === 0 ? (
-          <CardBox className="text-center py-12">
+          <Card className="text-center py-12">
             <CardContent>
               <p className="text-muted-foreground mb-4">{t("myStories.empty")}</p>
               <Button onClick={() => setIsCreating(true)}>{t("myStories.createFirst")}</Button>
             </CardContent>
-          </CardBox>
+          </Card>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {stories?.map((story: any) => (
