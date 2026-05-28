@@ -4,13 +4,23 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useAuth } from "@/contexts/AuthContext";
-import { useUserStories, useCreateUserStory, useUpdateUserStory, useDeleteUserStory } from "@/hooks/useUserStories";
 import { useToast } from "@/hooks/use-toast";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useLanguage } from "@/contexts/LanguageContext";
-import { Trash2, Edit, Plus, X, Save, ImagePlus, Loader2 } from "lucide-react";
+import { Trash2, Plus, X, ImagePlus, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { StoryCard } from "@/components/chat/StoryCard";
 import {
   Dialog,
   DialogContent,
@@ -29,30 +39,43 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { format } from "date-fns";
 
 const MyStories = () => {
   const { user } = useAuth();
   const { toast } = useToast();
   const { t } = useLanguage();
-  const { data: stories, isLoading } = useUserStories();
-  const createStory = useCreateUserStory();
-  const updateStory = useUpdateUserStory();
-  const deleteStory = useDeleteUserStory();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+
+  const { data: stories, isLoading } = useQuery({
+    queryKey: ["my-custom-stories", user?.id],
+    queryFn: async () => {
+      if (!user) return [];
+      const { data, error } = await supabase
+        .from("stories")
+        .select("*")
+        .eq("created_by", user.id)
+        .eq("source", "custom")
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!user,
+  });
 
   const [isCreating, setIsCreating] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
   const [newTitle, setNewTitle] = useState("");
+  const [newDescription, setNewDescription] = useState("");
+  const [newCharacter, setNewCharacter] = useState("");
+  const [newPlayer, setNewPlayer] = useState("hombre");
+  const [newType, setNewType] = useState<"adventure" | "roleplay" | "real_sex">("roleplay");
+  const [newExplicit, setNewExplicit] = useState(false);
   const [newContent, setNewContent] = useState("");
-  const [editTitle, setEditTitle] = useState("");
-  const [editContent, setEditContent] = useState("");
   const [newCoverUrl, setNewCoverUrl] = useState<string | null>(null);
   const [newCoverType, setNewCoverType] = useState<string | null>(null);
-  const [editCoverUrl, setEditCoverUrl] = useState<string | null>(null);
-  const [editCoverType, setEditCoverType] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [creating, setCreating] = useState(false);
   const newFileRef = useRef<HTMLInputElement>(null);
-  const editFileRef = useRef<HTMLInputElement>(null);
 
   const uploadCover = async (file: File): Promise<{ url: string; type: string } | null> => {
     if (!user) return null;
@@ -79,60 +102,57 @@ const MyStories = () => {
     }
   };
 
+  const resetForm = () => {
+    setNewTitle("");
+    setNewDescription("");
+    setNewCharacter("");
+    setNewPlayer("hombre");
+    setNewType("roleplay");
+    setNewExplicit(false);
+    setNewContent("");
+    setNewCoverUrl(null);
+    setNewCoverType(null);
+  };
+
   const handleCreate = async () => {
     if (!newTitle.trim()) {
       toast({ title: t("myStories.toast.needTitle"), variant: "destructive" });
       return;
     }
-
+    if (!user) return;
+    setCreating(true);
     try {
-      await createStory.mutateAsync({
-        title: newTitle,
-        content: newContent,
-        cover_media_url: newCoverUrl,
-        cover_media_type: newCoverType,
+      const { error } = await supabase.from("stories").insert({
+        title: newTitle.trim(),
+        description: newDescription.trim() || newContent.slice(0, 140) || "Historia personalizada",
+        cover_image: newCoverUrl,
+        character_role: newCharacter.trim() || null,
+        player_role: newPlayer || "hombre",
+        story_type: newExplicit ? "real_sex" : newType,
+        has_explicit_images: newExplicit,
+        source: "custom",
+        created_by: user.id,
       });
+      if (error) throw error;
       toast({ title: t("myStories.toast.created") });
       setIsCreating(false);
-      setNewTitle("");
-      setNewContent("");
-      setNewCoverUrl(null);
-      setNewCoverType(null);
+      resetForm();
+      queryClient.invalidateQueries({ queryKey: ["my-custom-stories"] });
+      queryClient.invalidateQueries({ queryKey: ["stories"] });
     } catch (error) {
       toast({ title: t("myStories.toast.createError"), variant: "destructive" });
-    }
-  };
-
-  const handleEdit = (story: any) => {
-    setEditingId(story.id);
-    setEditTitle(story.title);
-    setEditContent(story.content || "");
-    setEditCoverUrl(story.cover_media_url || null);
-    setEditCoverType(story.cover_media_type || null);
-  };
-
-  const handleSaveEdit = async () => {
-    if (!editingId) return;
-
-    try {
-      await updateStory.mutateAsync({
-        id: editingId,
-        title: editTitle,
-        content: editContent,
-        cover_media_url: editCoverUrl,
-        cover_media_type: editCoverType,
-      });
-      toast({ title: t("myStories.toast.updated") });
-      setEditingId(null);
-    } catch (error) {
-      toast({ title: t("myStories.toast.updateError"), variant: "destructive" });
+    } finally {
+      setCreating(false);
     }
   };
 
   const handleDelete = async (id: string) => {
     try {
-      await deleteStory.mutateAsync(id);
+      const { error } = await supabase.from("stories").delete().eq("id", id);
+      if (error) throw error;
       toast({ title: t("myStories.toast.deleted") });
+      queryClient.invalidateQueries({ queryKey: ["my-custom-stories"] });
+      queryClient.invalidateQueries({ queryKey: ["stories"] });
     } catch (error) {
       toast({ title: t("myStories.toast.deleteError"), variant: "destructive" });
     }
@@ -143,13 +163,11 @@ const MyStories = () => {
     type,
     onPick,
     onClear,
-    inputRef,
   }: {
     url: string | null;
     type: string | null;
     onPick: () => void;
     onClear: () => void;
-    inputRef: React.RefObject<HTMLInputElement>;
   }) => (
     <>
       {url ? (
@@ -200,7 +218,7 @@ const MyStories = () => {
 
   return (
     <MainLayout>
-      <div className="container mx-auto px-4 py-8 max-w-4xl">
+      <div className="container mx-auto px-4 py-8 max-w-6xl">
         <h1 className="text-3xl font-display text-center mb-8">{t("myStories.title")}</h1>
 
         <div className="flex justify-end mb-6">
@@ -208,12 +226,7 @@ const MyStories = () => {
             open={isCreating}
             onOpenChange={(o) => {
               setIsCreating(o);
-              if (!o) {
-                setNewTitle("");
-                setNewContent("");
-                setNewCoverUrl(null);
-                setNewCoverType(null);
-              }
+              if (!o) resetForm();
             }}
           >
             <DialogTrigger asChild>
@@ -222,22 +235,73 @@ const MyStories = () => {
                 {t("myStories.newStory")}
               </Button>
             </DialogTrigger>
-            <DialogContent>
+            <DialogContent className="max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>{t("myStories.createNew")}</DialogTitle>
               </DialogHeader>
               <div className="space-y-4">
-                <Input
-                  placeholder={t("myStories.titlePlaceholder")}
-                  value={newTitle}
-                  onChange={(e) => setNewTitle(e.target.value)}
-                />
-                <Textarea
-                  placeholder={t("myStories.contentPlaceholder")}
-                  value={newContent}
-                  onChange={(e) => setNewContent(e.target.value)}
-                  className="min-h-[200px]"
-                />
+                <div>
+                  <Label className="mb-1 block text-xs">Título</Label>
+                  <Input
+                    placeholder={t("myStories.titlePlaceholder")}
+                    value={newTitle}
+                    onChange={(e) => setNewTitle(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <Label className="mb-1 block text-xs">Descripción corta</Label>
+                  <Input
+                    placeholder="Una línea que enganche al lector"
+                    value={newDescription}
+                    onChange={(e) => setNewDescription(e.target.value)}
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label className="mb-1 block text-xs">Tu rol</Label>
+                    <Input
+                      placeholder="hombre / mujer / ..."
+                      value={newPlayer}
+                      onChange={(e) => setNewPlayer(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <Label className="mb-1 block text-xs">Personaje IA</Label>
+                    <Input
+                      placeholder="Nombre y rol del personaje"
+                      value={newCharacter}
+                      onChange={(e) => setNewCharacter(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3 items-end">
+                  <div>
+                    <Label className="mb-1 block text-xs">Tipo</Label>
+                    <Select value={newType} onValueChange={(v: any) => setNewType(v)}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="roleplay">Juego de Roles</SelectItem>
+                        <SelectItem value="adventure">Aventura</SelectItem>
+                        <SelectItem value="real_sex">Sexo Real</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="flex items-center gap-2 h-10">
+                    <Switch id="explicit" checked={newExplicit} onCheckedChange={setNewExplicit} />
+                    <Label htmlFor="explicit" className="text-xs">+18 Contenido explícito</Label>
+                  </div>
+                </div>
+                <div>
+                  <Label className="mb-1 block text-xs">Desarrollo (opcional)</Label>
+                  <Textarea
+                    placeholder={t("myStories.contentPlaceholder")}
+                    value={newContent}
+                    onChange={(e) => setNewContent(e.target.value)}
+                    className="min-h-[120px]"
+                  />
+                </div>
                 <input
                   ref={newFileRef}
                   type="file"
@@ -262,14 +326,13 @@ const MyStories = () => {
                     setNewCoverUrl(null);
                     setNewCoverType(null);
                   }}
-                  inputRef={newFileRef}
                 />
                 <div className="flex gap-2 justify-end">
                   <Button variant="outline" onClick={() => setIsCreating(false)}>
                     {t("common.cancel")}
                   </Button>
-                  <Button onClick={handleCreate} disabled={createStory.isPending || uploading}>
-                    {createStory.isPending ? t("common.creating") : t("common.create")}
+                  <Button onClick={handleCreate} disabled={creating || uploading}>
+                    {creating ? t("common.creating") : t("common.create")}
                   </Button>
                 </div>
               </div>
@@ -289,123 +352,39 @@ const MyStories = () => {
             </CardContent>
           </Card>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {stories?.map((story: any) => (
-              <Card key={story.id} className="overflow-hidden">
-                <CardContent className="p-0">
-                  {editingId === story.id ? (
-                    <div className="space-y-4 p-4">
-                      <Input value={editTitle} onChange={(e) => setEditTitle(e.target.value)} />
-                      <Textarea
-                        value={editContent}
-                        onChange={(e) => setEditContent(e.target.value)}
-                        className="min-h-[150px]"
-                      />
-                      <input
-                        ref={editFileRef}
-                        type="file"
-                        accept="image/*,video/*,image/gif"
-                        className="hidden"
-                        onChange={async (e) => {
-                          const f = e.target.files?.[0];
-                          if (!f) return;
-                          const r = await uploadCover(f);
-                          if (r) {
-                            setEditCoverUrl(r.url);
-                            setEditCoverType(r.type);
-                          }
-                          e.target.value = "";
-                        }}
-                      />
-                      <CoverPicker
-                        url={editCoverUrl}
-                        type={editCoverType}
-                        onPick={() => editFileRef.current?.click()}
-                        onClear={() => {
-                          setEditCoverUrl(null);
-                          setEditCoverType(null);
-                        }}
-                        inputRef={editFileRef}
-                      />
-                      <div className="flex gap-2 justify-end">
-                        <Button variant="outline" size="sm" onClick={() => setEditingId(null)}>
-                          <X className="w-4 h-4 mr-1" />
-                          {t("common.cancel")}
-                        </Button>
-                        <Button size="sm" onClick={handleSaveEdit} disabled={updateStory.isPending || uploading}>
-                          <Save className="w-4 h-4 mr-1" />
-                          {updateStory.isPending ? t("common.saving") : t("common.save")}
-                        </Button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div>
-                      {story.cover_media_url ? (
-                        story.cover_media_type === "video" ? (
-                          <video
-                            src={story.cover_media_url}
-                            className="w-full aspect-video object-cover bg-muted"
-                            muted
-                            loop
-                            playsInline
-                            autoPlay
-                          />
-                        ) : (
-                          <img
-                            src={story.cover_media_url}
-                            alt={story.title}
-                            className="w-full aspect-video object-cover bg-muted"
-                          />
-                        )
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => handleEdit(story)}
-                          className="w-full aspect-video flex items-center justify-center bg-muted/40 border-b border-border text-muted-foreground hover:bg-muted/60 transition"
-                        >
-                          <ImagePlus className="w-6 h-6 mr-2" />
-                          Agregar portada
-                        </button>
-                      )}
-                      <div className="flex items-start justify-between gap-4 p-4">
-                        <div className="flex-1 min-w-0">
-                          <h3 className="font-medium text-lg mb-1 truncate">{story.title}</h3>
-                          <p className="text-sm text-muted-foreground mb-2">
-                            {format(new Date(story.updated_at), "PPP")}
-                          </p>
-                          {story.content && (
-                            <p className="text-muted-foreground line-clamp-2">{story.content}</p>
-                          )}
-                        </div>
-                        <div className="flex gap-2">
-                          <Button variant="ghost" size="icon" onClick={() => handleEdit(story)}>
-                            <Edit className="w-4 h-4" />
-                          </Button>
-                          <AlertDialog>
-                            <AlertDialogTrigger asChild>
-                              <Button variant="ghost" size="icon">
-                                <Trash2 className="w-4 h-4" />
-                              </Button>
-                            </AlertDialogTrigger>
-                            <AlertDialogContent>
-                              <AlertDialogHeader>
-                                <AlertDialogTitle>{t("myStories.deleteTitle")}</AlertDialogTitle>
-                                <AlertDialogDescription>{t("myStories.deleteDesc")}</AlertDialogDescription>
-                              </AlertDialogHeader>
-                              <AlertDialogFooter>
-                                <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
-                                <AlertDialogAction onClick={() => handleDelete(story.id)}>
-                                  {t("common.delete")}
-                                </AlertDialogAction>
-                              </AlertDialogFooter>
-                            </AlertDialogContent>
-                          </AlertDialog>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+            {stories?.map((story: any, idx: number) => (
+              <div key={story.id} className="relative group">
+                <StoryCard
+                  story={story}
+                  index={idx}
+                  onClick={() => navigate(`/story/${story.id}`)}
+                />
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button
+                      variant="destructive"
+                      size="icon"
+                      className="absolute top-2 right-2 h-7 w-7 opacity-0 group-hover:opacity-100 transition z-10"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>{t("myStories.deleteTitle")}</AlertDialogTitle>
+                      <AlertDialogDescription>{t("myStories.deleteDesc")}</AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
+                      <AlertDialogAction onClick={() => handleDelete(story.id)}>
+                        {t("common.delete")}
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              </div>
             ))}
           </div>
         )}
