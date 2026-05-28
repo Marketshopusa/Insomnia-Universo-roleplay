@@ -391,6 +391,7 @@ type Mode = "select" | "read" | "roleplay";
   }
  
   const coverImage = story.cover_image;
+  const isVideoCover = !!coverImage && /\.(mp4|webm|mov|m4v|ogv)(\?|$)/i.test(coverImage);
    const mediaCount = story.video_count > 0 ? story.video_count : story.image_count;
    const mediaType = story.video_count > 0 ? t("chat.videos") : t("chat.images");
    const categories = story.story_categories?.map((sc: any) => sc.categories).filter(Boolean) || [];
@@ -414,13 +415,24 @@ type Mode = "select" | "read" | "roleplay";
              <Card className="overflow-hidden bg-card border-border">
                {/* Cover Image */}
                <div className="aspect-[3/4] relative overflow-hidden">
-                 {coverImage ? (
-                   <img
-                     src={coverImage}
-                     alt={story.title}
-                     className="w-full h-full object-cover"
-                   />
-                 ) : (
+                {coverImage ? (
+                    isVideoCover ? (
+                      <video
+                        src={coverImage}
+                        className="w-full h-full object-cover"
+                        muted
+                        loop
+                        playsInline
+                        autoPlay
+                      />
+                    ) : (
+                      <img
+                        src={coverImage}
+                        alt={story.title}
+                        className="w-full h-full object-cover"
+                      />
+                    )
+                  ) : (
                    <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-secondary to-muted">
                      <span className="text-6xl">📖</span>
                    </div>

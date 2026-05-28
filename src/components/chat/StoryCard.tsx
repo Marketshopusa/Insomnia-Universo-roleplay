@@ -25,6 +25,7 @@ export const StoryCard = ({ story, onClick, index }: StoryCardProps) => {
   const mediaCount = story.video_count > 0 ? story.video_count : story.image_count;
   const mediaType = story.video_count > 0 ? t("chat.videos") : t("chat.images");
   const coverImage = story.cover_image;
+  const isVideoCover = !!coverImage && /\.(mp4|webm|mov|m4v|ogv)(\?|$)/i.test(coverImage);
 
   const [tTitle, tCharacter, tPlayer] = useTranslatedTexts([
     story.title,
@@ -45,11 +46,22 @@ export const StoryCard = ({ story, onClick, index }: StoryCardProps) => {
       {/* Cover */}
       <div className="aspect-[4/5] relative overflow-hidden bg-muted">
         {coverImage ? (
-          <img
-            src={coverImage}
-            alt={story.title}
-            className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
-          />
+          isVideoCover ? (
+            <video
+              src={coverImage}
+              className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+              muted
+              loop
+              playsInline
+              autoPlay
+            />
+          ) : (
+            <img
+              src={coverImage}
+              alt={story.title}
+              className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+            />
+          )
         ) : (
           <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-secondary to-muted">
             <span className="text-4xl text-muted-foreground">📖</span>
