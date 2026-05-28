@@ -130,7 +130,7 @@ type Mode = "select" | "read" | "roleplay";
  
    // Initialize with story intro message
    useEffect(() => {
-     if (story && messages.length === 0) {
+     if (story && sessionLoaded && messages.length === 0) {
        const introMessage: Message = {
          id: "intro",
          role: "assistant",
@@ -139,7 +139,7 @@ type Mode = "select" | "read" | "roleplay";
        };
        setMessages([introMessage]);
      }
-  }, [story, language, tTitle, tDescription, tCharacter, tPlayer]);
+  }, [story, sessionLoaded, language, tTitle, tDescription, tCharacter, tPlayer]);
 
   // Re-render intro when language changes
   useEffect(() => {
