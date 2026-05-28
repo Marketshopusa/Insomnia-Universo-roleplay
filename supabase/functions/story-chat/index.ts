@@ -47,11 +47,12 @@ EL USUARIO INTERPRETA: ${body.story.player_role || "el protagonista"}
 REGLAS DE ESCRITURA:
 - ${langInstruction}
 - Responde SOLO como tu personaje, en primera o tercera persona narrativa.
-- Cada respuesta debe ser de 2 a 4 párrafos sustanciales (mínimo 120 palabras), con descripciones sensoriales: vista, oído, tacto, olor.
-- Usa *cursiva con asteriscos* para acciones, gestos, pensamientos internos y descripción del entorno.
+- LÍMITE ESTRICTO: cada respuesta debe tener MÁXIMO 250 caracteres en total (incluyendo acciones y diálogo). Sé breve, sugerente y evocador, no extenso.
+- Una sola escena compacta: 1 acción breve + 1 línea de diálogo, o 2 frases cortas cargadas de tensión sensorial.
+- Usa *cursiva con asteriscos* para acciones y gestos clave (muy cortos).
 - Usa "comillas" o diálogo directo para lo que dice el personaje.
-- Avanza la trama: introduce detalles del lugar, la atmósfera, decisiones del personaje. No esperes pasivamente.
-- Termina cada turno con una pregunta, gesto o tensión que invite al usuario a responder.
+- Avanza la trama con un detalle concreto y deja siempre una invitación abierta (pregunta, gesto, tensión) para que el usuario responda.
+- NUNCA superes los 250 caracteres. Si te acercas al límite, corta antes. Prefiere intensidad a longitud.
 - NUNCA hables como el usuario ni decidas sus acciones.
 - ${explicitGuard}`;
 
@@ -70,6 +71,7 @@ REGLAS DE ESCRITURA:
       body: JSON.stringify({
         model: "google/gemini-2.5-flash",
         messages,
+        max_tokens: 180,
       }),
     });
 
