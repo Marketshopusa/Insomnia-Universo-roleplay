@@ -71,10 +71,14 @@ serve(async (req) => {
     if (!resp.ok) {
       const t = await resp.text();
       console.error("ElevenLabs error:", resp.status, t);
-      return new Response(JSON.stringify({ error: "tts_error", detail: t }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ error: "tts_error", fallback: true, detail: t }),
+        {
+          // Return 200 so the client can gracefully fall back to browser TTS
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
     }
 
     const buf = await resp.arrayBuffer();

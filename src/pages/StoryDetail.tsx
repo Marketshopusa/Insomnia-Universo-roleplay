@@ -257,10 +257,11 @@ type Mode = "select" | "read" | "roleplay";
        const { data, error } = await supabase.functions.invoke("text-to-speech", {
          body: { text, voice },
        });
-       if (error || !(data as any)?.audioContent) {
-         setPlayingId(null);
-         return;
-       }
+        if (error || !(data as any)?.audioContent) {
+          // ElevenLabs unavailable (e.g. quota exceeded) -> browser TTS fallback
+          speakWithBrowser(text, id);
+          return;
+        }
        const audio = new Audio(`data:audio/mpeg;base64,${(data as any).audioContent}`);
        audioRef.current = audio;
        audio.onended = () => setPlayingId(null);
@@ -277,15 +278,39 @@ type Mode = "select" | "read" | "roleplay";
        }
      } catch (e) {
        console.error("playAudio error:", e);
-       setPlayingId(null);
+        speakWithBrowser(text, id);
      }
    };
+
+    const speakWithBrowser = (text: string, id: string) => {
+      try {
+        if (typeof window === "undefined" || !("speechSynthesis" in window)) {
+          setPlayingId(null);
+          return;
+        }
+        // Strip markdown markers for cleaner narration
+        const clean = text.replace(/[*_#`"]/g, "").trim();
+        window.speechSynthesis.cancel();
+        const utter = new SpeechSynthesisUtterance(clean);
+        utter.lang = language === "es" ? "es-ES" : "en-US";
+        utter.onend = () => setPlayingId(null);
+        utter.onerror = () => setPlayingId(null);
+        setPlayingId(id);
+        window.speechSynthesis.speak(utter);
+      } catch (e) {
+        console.error("speakWithBrowser error:", e);
+        setPlayingId(null);
+      }
+    };
 
    const stopAudio = () => {
      if (audioRef.current) {
        audioRef.current.pause();
        audioRef.current = null;
      }
+      if (typeof window !== "undefined" && "speechSynthesis" in window) {
+        window.speechSynthesis.cancel();
+      }
      setPlayingId(null);
    };
 
