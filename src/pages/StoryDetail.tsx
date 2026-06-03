@@ -282,6 +282,32 @@ type Mode = "select" | "read" | "roleplay";
      }
    };
 
+    const pickFemaleVoice = (langCode: string): SpeechSynthesisVoice | null => {
+      const voices = window.speechSynthesis.getVoices();
+      if (!voices.length) return null;
+      const base = langCode.split("-")[0];
+      const inLang = voices.filter((v) =>
+        v.lang?.toLowerCase().startsWith(base)
+      );
+      const pool = inLang.length ? inLang : voices;
+      // Names commonly associated with pleasant female voices across platforms
+      const femaleHints = [
+        "female", "mujer", "femenina",
+        "mónica", "monica", "paulina", "lucia", "luciana", "helena",
+        "google español", "google us english", "samantha", "victoria",
+        "sara", "sabina", "elvira", "zira", "tessa", "karen", "fiona",
+      ];
+      const byHint = pool.find((v) =>
+        femaleHints.some((h) => v.name.toLowerCase().includes(h))
+      );
+      // Avoid obviously male voices when no explicit female match
+      const maleHints = ["male", "hombre", "diego", "jorge", "carlos", "pablo", "enrique", "george", "daniel", "fred"];
+      const notMale = pool.find(
+        (v) => !maleHints.some((h) => v.name.toLowerCase().includes(h))
+      );
+      return byHint || notMale || pool[0] || null;
+    };
+
     const speakWithBrowser = (text: string, id: string) => {
       try {
         if (typeof window === "undefined" || !("speechSynthesis" in window)) {
@@ -290,13 +316,34 @@ type Mode = "select" | "read" | "roleplay";
         }
         // Strip markdown markers for cleaner narration
         const clean = text.replace(/[*_#`"]/g, "").trim();
-        window.speechSynthesis.cancel();
-        const utter = new SpeechSynthesisUtterance(clean);
-        utter.lang = language === "es" ? "es-ES" : "en-US";
-        utter.onend = () => setPlayingId(null);
-        utter.onerror = () => setPlayingId(null);
-        setPlayingId(id);
-        window.speechSynthesis.speak(utter);
+        const langCode = language === "es" ? "es-ES" : "en-US";
+
+        const speak = () => {
+          window.speechSynthesis.cancel();
+          const utter = new SpeechSynthesisUtterance(clean);
+          utter.lang = langCode;
+          const voice = pickFemaleVoice(langCode);
+          if (voice) utter.voice = voice;
+          // Warm, calm telenovela narration
+          utter.rate = 0.95;
+          utter.pitch = 1.15;
+          utter.onend = () => setPlayingId(null);
+          utter.onerror = () => setPlayingId(null);
+          setPlayingId(id);
+          window.speechSynthesis.speak(utter);
+        };
+
+        // Voices may load asynchronously the first time
+        if (window.speechSynthesis.getVoices().length === 0) {
+          window.speechSynthesis.onvoiceschanged = () => {
+            window.speechSynthesis.onvoiceschanged = null;
+            speak();
+          };
+          // Trigger load
+          window.speechSynthesis.getVoices();
+        } else {
+          speak();
+        }
       } catch (e) {
         console.error("speakWithBrowser error:", e);
         setPlayingId(null);
