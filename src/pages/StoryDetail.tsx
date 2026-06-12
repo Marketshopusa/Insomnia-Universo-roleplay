@@ -666,6 +666,22 @@ type Mode = "select" | "read" | "roleplay";
                     <Button variant="outline" size="sm" onClick={generateNarrative} disabled={narrativeLoading} className="gap-2">
                       <RotateCw className="w-4 h-4" /> {t("mode.regenerate")}
                     </Button>
+                    {narrative && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => illustrateScene(narrative, "narrative")}
+                        disabled={illustratingId === "narrative"}
+                        className="gap-2"
+                      >
+                        {illustratingId === "narrative" ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Sparkles className="w-4 h-4" />
+                        )}
+                        {language === "es" ? "Ilustrar escena" : "Illustrate scene"}
+                      </Button>
+                    )}
                     <Button size="sm" onClick={() => setMode("roleplay")} className="gap-2">
                       <MessageSquare className="w-4 h-4" /> {t("mode.switchToRoleplay")}
                     </Button>
@@ -679,6 +695,14 @@ type Mode = "select" | "read" | "roleplay";
                     </div>
                   ) : (
                     <article className="max-w-none whitespace-pre-wrap text-foreground leading-relaxed">
+                      {sceneImages["narrative"] && (
+                        <img
+                          src={sceneImages["narrative"]}
+                          alt={language === "es" ? "Ilustración de la escena" : "Scene illustration"}
+                          className="w-full rounded-lg mb-6 border border-border"
+                          loading="lazy"
+                        />
+                      )}
                       {narrative.split("\n").map((line, i) => {
                         if (line.startsWith("## ")) return <h3 key={i} className="font-display text-xl mt-6 mb-3 text-primary">{line.replace(/^##\s/, "")}</h3>;
                         if (line.startsWith("# ")) return <h2 key={i} className="font-display text-2xl mt-6 mb-3">{line.replace(/^#\s/, "")}</h2>;
