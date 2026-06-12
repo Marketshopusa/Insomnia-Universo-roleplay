@@ -6,7 +6,7 @@
  import { Card } from "@/components/ui/card";
  import { Badge } from "@/components/ui/badge";
  import { Skeleton } from "@/components/ui/skeleton";
-import { ArrowLeft, Send, Play, Image as ImageIcon, Volume2, VolumeX, BookOpen, MessageSquare, Loader2, RotateCw } from "lucide-react";
+import { ArrowLeft, Send, Play, Image as ImageIcon, Volume2, VolumeX, BookOpen, MessageSquare, Loader2, RotateCw, Sparkles } from "lucide-react";
  import { useStory } from "@/hooks/useStories";
  import { useLanguage } from "@/contexts/LanguageContext";
 import { useTranslatedTexts, useTranslatedText } from "@/hooks/useTranslatedTexts";
@@ -49,6 +49,10 @@ type Mode = "select" | "read" | "roleplay";
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [sessionLoaded, setSessionLoaded] = useState(false);
    const audioUnlockedRef = useRef(false);
+
+   // Generated scene illustrations keyed by message id (or "narrative")
+   const [sceneImages, setSceneImages] = useState<Record<string, string>>({});
+   const [illustratingId, setIllustratingId] = useState<string | null>(null);
 
    // Unlock audio on first user gesture so later TTS playback isn't blocked by autoplay policy
    useEffect(() => {
@@ -361,6 +365,33 @@ type Mode = "select" | "read" | "roleplay";
      setPlayingId(null);
    };
 
+   // Generate a vivid illustration of a scene using the cover as visual reference
+   const illustrateScene = async (text: string, key: string) => {
+     if (!story || illustratingId) return;
+     setIllustratingId(key);
+     try {
+       const { data, error } = await supabase.functions.invoke("illustrate-scene", {
+         body: {
+           sceneText: text,
+           coverImageUrl: story.cover_image && !isVideoCover ? story.cover_image : undefined,
+           characterRole: story.character_role,
+           explicit: story.story_type === "real_sex" || !!story.has_explicit_images,
+           language,
+         },
+       });
+       if (error || !(data as any)?.imageUrl) {
+         toast({
+           title: language === "es" ? "No se pudo ilustrar la escena" : "Could not illustrate the scene",
+           variant: "destructive",
+         });
+         return;
+       }
+       setSceneImages((prev) => ({ ...prev, [key]: (data as any).imageUrl }));
+     } finally {
+       setIllustratingId(null);
+     }
+   };
+
    const generateNarrative = async () => {
      if (!story) return;
      setNarrativeLoading(true);
@@ -635,6 +666,22 @@ type Mode = "select" | "read" | "roleplay";
                     <Button variant="outline" size="sm" onClick={generateNarrative} disabled={narrativeLoading} className="gap-2">
                       <RotateCw className="w-4 h-4" /> {t("mode.regenerate")}
                     </Button>
+                    {narrative && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => illustrateScene(narrative, "narrative")}
+                        disabled={illustratingId === "narrative"}
+                        className="gap-2"
+                      >
+                        {illustratingId === "narrative" ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Sparkles className="w-4 h-4" />
+                        )}
+                        {language === "es" ? "Ilustrar escena" : "Illustrate scene"}
+                      </Button>
+                    )}
                     <Button size="sm" onClick={() => setMode("roleplay")} className="gap-2">
                       <MessageSquare className="w-4 h-4" /> {t("mode.switchToRoleplay")}
                     </Button>
@@ -648,6 +695,14 @@ type Mode = "select" | "read" | "roleplay";
                     </div>
                   ) : (
                     <article className="max-w-none whitespace-pre-wrap text-foreground leading-relaxed">
+                      {sceneImages["narrative"] && (
+                        <img
+                          src={sceneImages["narrative"]}
+                          alt={language === "es" ? "Ilustración de la escena" : "Scene illustration"}
+                          className="w-full rounded-lg mb-6 border border-border"
+                          loading="lazy"
+                        />
+                      )}
                       {narrative.split("\n").map((line, i) => {
                         if (line.startsWith("## ")) return <h3 key={i} className="font-display text-xl mt-6 mb-3 text-primary">{line.replace(/^##\s/, "")}</h3>;
                         if (line.startsWith("# ")) return <h2 key={i} className="font-display text-2xl mt-6 mb-3">{line.replace(/^#\s/, "")}</h2>;
@@ -720,6 +775,31 @@ type Mode = "select" | "read" | "roleplay";
                            minute: "2-digit",
                          })}
                        </span>
+                       {message.role === "assistant" && message.id !== "intro" && (
+                         <div className="mt-2">
+                           {sceneImages[message.id] ? (
+                             <img
+                               src={sceneImages[message.id]}
+                               alt={language === "es" ? "Ilustración de la escena" : "Scene illustration"}
+                               className="w-full max-w-xs rounded-lg border border-border"
+                               loading="lazy"
+                             />
+                           ) : (
+                             <button
+                               onClick={() => illustrateScene(message.content, message.id)}
+                               disabled={illustratingId === message.id}
+                               className="inline-flex items-center gap-1 text-xs text-primary hover:underline disabled:opacity-60"
+                             >
+                               {illustratingId === message.id ? (
+                                 <Loader2 className="w-3 h-3 animate-spin" />
+                               ) : (
+                                 <Sparkles className="w-3 h-3" />
+                               )}
+                               {language === "es" ? "Ilustrar esta escena" : "Illustrate this scene"}
+                             </button>
+                           )}
+                         </div>
+                       )}
                      </div>
                    </div>
                  ))}
