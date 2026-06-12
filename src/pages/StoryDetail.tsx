@@ -365,6 +365,33 @@ type Mode = "select" | "read" | "roleplay";
      setPlayingId(null);
    };
 
+   // Generate a vivid illustration of a scene using the cover as visual reference
+   const illustrateScene = async (text: string, key: string) => {
+     if (!story || illustratingId) return;
+     setIllustratingId(key);
+     try {
+       const { data, error } = await supabase.functions.invoke("illustrate-scene", {
+         body: {
+           sceneText: text,
+           coverImageUrl: story.cover_image && !isVideoCover ? story.cover_image : undefined,
+           characterRole: story.character_role,
+           explicit: story.story_type === "real_sex" || !!story.has_explicit_images,
+           language,
+         },
+       });
+       if (error || !(data as any)?.imageUrl) {
+         toast({
+           title: language === "es" ? "No se pudo ilustrar la escena" : "Could not illustrate the scene",
+           variant: "destructive",
+         });
+         return;
+       }
+       setSceneImages((prev) => ({ ...prev, [key]: (data as any).imageUrl }));
+     } finally {
+       setIllustratingId(null);
+     }
+   };
+
    const generateNarrative = async () => {
      if (!story) return;
      setNarrativeLoading(true);
