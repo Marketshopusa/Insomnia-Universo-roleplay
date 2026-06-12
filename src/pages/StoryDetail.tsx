@@ -6,7 +6,7 @@
  import { Card } from "@/components/ui/card";
  import { Badge } from "@/components/ui/badge";
  import { Skeleton } from "@/components/ui/skeleton";
-import { ArrowLeft, Send, Play, Image as ImageIcon, Volume2, VolumeX, BookOpen, MessageSquare, Loader2, RotateCw } from "lucide-react";
+import { ArrowLeft, Send, Play, Image as ImageIcon, Volume2, VolumeX, BookOpen, MessageSquare, Loader2, RotateCw, Sparkles } from "lucide-react";
  import { useStory } from "@/hooks/useStories";
  import { useLanguage } from "@/contexts/LanguageContext";
 import { useTranslatedTexts, useTranslatedText } from "@/hooks/useTranslatedTexts";
@@ -49,6 +49,10 @@ type Mode = "select" | "read" | "roleplay";
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [sessionLoaded, setSessionLoaded] = useState(false);
    const audioUnlockedRef = useRef(false);
+
+   // Generated scene illustrations keyed by message id (or "narrative")
+   const [sceneImages, setSceneImages] = useState<Record<string, string>>({});
+   const [illustratingId, setIllustratingId] = useState<string | null>(null);
 
    // Unlock audio on first user gesture so later TTS playback isn't blocked by autoplay policy
    useEffect(() => {
