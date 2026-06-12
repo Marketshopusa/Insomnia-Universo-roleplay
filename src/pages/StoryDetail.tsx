@@ -775,6 +775,31 @@ type Mode = "select" | "read" | "roleplay";
                            minute: "2-digit",
                          })}
                        </span>
+                       {message.role === "assistant" && message.id !== "intro" && (
+                         <div className="mt-2">
+                           {sceneImages[message.id] ? (
+                             <img
+                               src={sceneImages[message.id]}
+                               alt={language === "es" ? "Ilustración de la escena" : "Scene illustration"}
+                               className="w-full max-w-xs rounded-lg border border-border"
+                               loading="lazy"
+                             />
+                           ) : (
+                             <button
+                               onClick={() => illustrateScene(message.content, message.id)}
+                               disabled={illustratingId === message.id}
+                               className="inline-flex items-center gap-1 text-xs text-primary hover:underline disabled:opacity-60"
+                             >
+                               {illustratingId === message.id ? (
+                                 <Loader2 className="w-3 h-3 animate-spin" />
+                               ) : (
+                                 <Sparkles className="w-3 h-3" />
+                               )}
+                               {language === "es" ? "Ilustrar esta escena" : "Illustrate this scene"}
+                             </button>
+                           )}
+                         </div>
+                       )}
                      </div>
                    </div>
                  ))}
