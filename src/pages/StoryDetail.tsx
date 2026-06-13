@@ -743,17 +743,29 @@ type Mode = "select" | "read" | "roleplay";
                {/* Chat Header */}
                <div className="p-4 border-b border-border flex items-center justify-between">
                   <h2 className="font-display text-lg">{tTitle || story.title}</h2>
-                 <Button
-                   variant="ghost"
-                   size="icon"
-                   onClick={() => setIsMuted(!isMuted)}
-                 >
-                   {isMuted ? (
-                     <VolumeX className="w-5 h-5" />
-                   ) : (
-                     <Volume2 className="w-5 h-5" />
-                   )}
-                 </Button>
+                 <div className="flex items-center gap-1">
+                   <Button
+                     variant="ghost"
+                     size="sm"
+                     onClick={resetRoleplay}
+                     className="gap-2"
+                     title={language === "es" ? "Reiniciar y borrar la conversación" : "Reset and delete the conversation"}
+                   >
+                     <RotateCw className="w-4 h-4" />
+                     <span className="hidden sm:inline">{language === "es" ? "Reiniciar" : "Reset"}</span>
+                   </Button>
+                   <Button
+                     variant="ghost"
+                     size="icon"
+                     onClick={() => setIsMuted(!isMuted)}
+                   >
+                     {isMuted ? (
+                       <VolumeX className="w-5 h-5" />
+                     ) : (
+                       <Volume2 className="w-5 h-5" />
+                     )}
+                   </Button>
+                 </div>
                </div>
  
                {/* Messages */}
