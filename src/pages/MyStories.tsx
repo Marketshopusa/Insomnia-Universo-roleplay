@@ -168,6 +168,26 @@ const MyStories = () => {
     }
   };
 
+  // Resets ONLY the roleplay/conversation for a story (keeps the card).
+  const handleResetRoleplay = async (id: string) => {
+    if (!user) return;
+    setResetting(true);
+    try {
+      const { error } = await supabase
+        .from("story_sessions")
+        .delete()
+        .eq("user_id", user.id)
+        .eq("story_id", id);
+      if (error) throw error;
+      toast({ title: "Roleplay reiniciado. La conversación se borró y nadie podrá verla." });
+    } catch (error) {
+      toast({ title: "No se pudo reiniciar el roleplay", variant: "destructive" });
+    } finally {
+      setResetting(false);
+      setConfirmResetId(null);
+    }
+  };
+
   const CoverPicker = ({
     url,
     type,
