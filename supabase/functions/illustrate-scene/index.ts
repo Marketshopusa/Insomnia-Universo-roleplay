@@ -27,17 +27,22 @@ async function fetchImageAsBase64(url: string): Promise<string | null> {
 // Turn the long scene text into a compact, vivid SDXL-style visual prompt.
 async function buildVisualPrompt(
   sceneText: string,
+  focusText: string,
   characterRole: string,
+  playerRole: string,
+  storyTitle: string,
+  storyDescription: string,
   explicit: boolean,
   language: string,
 ): Promise<string> {
-  const fallback = sceneText.slice(0, 600)
+  const fallback = focusText.slice(0, 900) || sceneText.slice(0, 900)
   if (!LOVABLE_API_KEY) return fallback
   try {
     const sys =
-      'You convert a narrative passage into ONE concise English image-generation prompt (max 60 words). ' +
-      'Describe only what is visually in the current scene: subjects, pose, expression, clothing, setting, lighting, mood. ' +
-      'Keep the main character consistent. Output ONLY the prompt, comma-separated keywords and short phrases, no quotes, no explanations.' +
+      'You convert roleplay context into ONE concise English image-generation prompt (max 110 words). ' +
+      'Prioritize the latest roleplay moment over any reference image. Describe the actual action, body positions, facial expressions, clothing changes, setting, lighting, camera angle, and every visible participant. ' +
+      'If the player/second character is present or implied, include them clearly. Keep identity consistent but create a NEW composition; do not copy a cover-photo pose, outfit, phone, robe, or background unless the scene explicitly says so. ' +
+      'Output ONLY the prompt, comma-separated keywords and short phrases, no quotes, no explanations.' +
       (explicit ? ' Sensual and explicit details are allowed when present in the text.' : '')
     const res = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
@@ -51,7 +56,7 @@ async function buildVisualPrompt(
           { role: 'system', content: sys },
           {
             role: 'user',
-            content: `Main character: ${characterRole || 'the protagonist'}.\nScene language: ${language}.\nScene:\n${sceneText.slice(0, 2000)}`,
+            content: `Story title: ${storyTitle || ''}\nPremise: ${storyDescription || ''}\nMain character: ${characterRole || 'the protagonist'}\nPlayer/second character: ${playerRole || 'the player'}\nScene language: ${language}\nLatest moment to illustrate:\n${focusText.slice(0, 1200)}\n\nRecent roleplay context:\n${sceneText.slice(0, 2600)}`,
           },
         ],
       }),
@@ -80,8 +85,12 @@ Deno.serve(async (req) => {
 
     const body = await req.json().catch(() => ({}))
     const sceneText: string = (body?.sceneText || '').toString().trim()
+    const focusText: string = (body?.focusText || sceneText).toString().trim()
     const coverImageUrl: string | undefined = body?.coverImageUrl
     const characterRole: string = (body?.characterRole || '').toString()
+    const playerRole: string = (body?.playerRole || '').toString()
+    const storyTitle: string = (body?.storyTitle || '').toString()
+    const storyDescription: string = (body?.storyDescription || '').toString()
     const explicit: boolean = !!body?.explicit
     const language: string = (body?.language || 'es').toString()
 
@@ -92,11 +101,11 @@ Deno.serve(async (req) => {
       )
     }
 
-    const prompt = await buildVisualPrompt(sceneText, characterRole, explicit, language)
+    const prompt = await buildVisualPrompt(sceneText, focusText, characterRole, playerRole, storyTitle, storyDescription, explicit, language)
     const styleSuffix =
-      ', cinematic lighting, highly detailed, 8k, sharp focus, beautiful, romantic atmosphere'
+      ', new scene composition, dynamic pose, scene-accurate clothing, cinematic lighting, highly detailed, 8k, sharp focus, beautiful, romantic atmosphere'
     const negativePrompt =
-      'lowres, bad anatomy, bad hands, extra fingers, deformed, blurry, watermark, text, signature, ugly, distorted face, low quality'
+      'lowres, bad anatomy, bad hands, extra fingers, deformed, blurry, watermark, text, signature, ugly, distorted face, low quality, copied cover photo, same pose, static portrait, unwanted phone, unchanged robe, same outfit, solo when two people are described'
 
     const imageBase64 = coverImageUrl ? await fetchImageAsBase64(coverImageUrl) : null
 
@@ -121,7 +130,7 @@ Deno.serve(async (req) => {
     }
     if (imageBase64) {
       request.image_base64 = imageBase64
-      request.strength = 0.55 // keep enough of the original face/identity
+      request.strength = 0.82 // use the cover only as loose identity; allow new pose, clothing, setting and action
     }
 
     const startRes = await fetch(endpoint, {
