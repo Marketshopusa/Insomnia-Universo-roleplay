@@ -379,16 +379,40 @@ type Mode = "select" | "read" | "roleplay";
      toast({ title: language === "es" ? "Roleplay reiniciado. La conversación anterior se borró." : "Roleplay reset. Previous conversation deleted." });
    };
 
-   // Generate a vivid illustration of a scene using the cover as visual reference
+   const buildIllustrationContext = (text: string, key: string) => {
+     const targetIndex = messages.findIndex((m) => m.id === key);
+     const recentMessages = targetIndex >= 0
+       ? messages.slice(Math.max(0, targetIndex - 5), targetIndex + 1)
+       : [];
+     const recentContext = recentMessages
+       .filter((m) => m.id !== "intro")
+       .map((m) => `${m.role === "user" ? "Player" : "Character"}: ${m.content}`)
+       .join("\n\n");
+
+     return [
+       `Story: ${story?.title || ""}`,
+       `Premise: ${story?.description || ""}`,
+       `Character role: ${story?.character_role || ""}`,
+       `Player role: ${story?.player_role || ""}`,
+       recentContext ? `Recent roleplay context:\n${recentContext}` : "",
+       `Latest moment to illustrate:\n${text}`,
+     ].filter(Boolean).join("\n\n");
+   };
+
+   // Generate a vivid illustration of a scene; the cover is only a loose identity reference
    const illustrateScene = async (text: string, key: string) => {
      if (!story || illustratingId) return;
      setIllustratingId(key);
      try {
        const { data, error } = await supabase.functions.invoke("illustrate-scene", {
          body: {
-           sceneText: text,
+            sceneText: buildIllustrationContext(text, key),
+            focusText: text,
            coverImageUrl: story.cover_image && !isVideoCover ? story.cover_image : undefined,
            characterRole: story.character_role,
+            playerRole: story.player_role,
+            storyTitle: story.title,
+            storyDescription: story.description,
            explicit: story.story_type === "real_sex" || !!story.has_explicit_images,
            language,
          },
