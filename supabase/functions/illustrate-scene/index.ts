@@ -3,8 +3,10 @@ import { corsHeaders } from 'npm:@supabase/supabase-js@2/cors'
 const NOVITA_API_KEY = Deno.env.get('NOVITA_API_KEY')
 const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY')
 
-// Realistic, permissive (unfiltered) checkpoint hosted on Novita.
-const DEFAULT_MODEL = 'realisticVisionV51_v51VAE.safetensors'
+// Realistic, permissive (unfiltered) checkpoints hosted on Novita.
+// SFW/soft scenes use a high-quality realistic model; explicit roles use an uncensored model.
+const REALISTIC_MODEL = 'realisticVisionV60B1_v60B1VAE_190174.safetensors'
+const EXPLICIT_MODEL = 'uberRealisticPornMerge_urpmv13.safetensors'
 
 async function fetchImageAsBase64(url: string): Promise<string | null> {
   try {
