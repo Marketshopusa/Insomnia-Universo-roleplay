@@ -53,6 +53,10 @@ const MyStories = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [confirmResetId, setConfirmResetId] = useState<string | null>(null);
+  const [resetting, setResetting] = useState(false);
+
   const { data: stories, isLoading } = useQuery({
     queryKey: ["my-custom-stories", user?.id],
     queryFn: async () => {
