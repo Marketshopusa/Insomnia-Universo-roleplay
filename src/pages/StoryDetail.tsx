@@ -365,6 +365,20 @@ type Mode = "select" | "read" | "roleplay";
      setPlayingId(null);
    };
 
+   // Reset the roleplay: wipe the saved conversation so it starts fresh and stays private
+   const resetRoleplay = async () => {
+     if (!user || !storyId) return;
+     stopAudio();
+     await supabase
+       .from("story_sessions")
+       .delete()
+       .eq("user_id", user.id)
+       .eq("story_id", storyId);
+     setMessages(story ? [{ id: "intro", role: "assistant", content: getIntroMessage(story), timestamp: new Date() }] : []);
+     setSceneImages({});
+     toast({ title: language === "es" ? "Roleplay reiniciado. La conversación anterior se borró." : "Roleplay reset. Previous conversation deleted." });
+   };
+
    // Generate a vivid illustration of a scene using the cover as visual reference
    const illustrateScene = async (text: string, key: string) => {
      if (!story || illustratingId) return;
@@ -729,17 +743,29 @@ type Mode = "select" | "read" | "roleplay";
                {/* Chat Header */}
                <div className="p-4 border-b border-border flex items-center justify-between">
                   <h2 className="font-display text-lg">{tTitle || story.title}</h2>
-                 <Button
-                   variant="ghost"
-                   size="icon"
-                   onClick={() => setIsMuted(!isMuted)}
-                 >
-                   {isMuted ? (
-                     <VolumeX className="w-5 h-5" />
-                   ) : (
-                     <Volume2 className="w-5 h-5" />
-                   )}
-                 </Button>
+                 <div className="flex items-center gap-1">
+                   <Button
+                     variant="ghost"
+                     size="sm"
+                     onClick={resetRoleplay}
+                     className="gap-2"
+                     title={language === "es" ? "Reiniciar y borrar la conversación" : "Reset and delete the conversation"}
+                   >
+                     <RotateCw className="w-4 h-4" />
+                     <span className="hidden sm:inline">{language === "es" ? "Reiniciar" : "Reset"}</span>
+                   </Button>
+                   <Button
+                     variant="ghost"
+                     size="icon"
+                     onClick={() => setIsMuted(!isMuted)}
+                   >
+                     {isMuted ? (
+                       <VolumeX className="w-5 h-5" />
+                     ) : (
+                       <Volume2 className="w-5 h-5" />
+                     )}
+                   </Button>
+                 </div>
                </div>
  
                {/* Messages */}
