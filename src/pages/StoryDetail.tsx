@@ -365,6 +365,20 @@ type Mode = "select" | "read" | "roleplay";
      setPlayingId(null);
    };
 
+   // Reset the roleplay: wipe the saved conversation so it starts fresh and stays private
+   const resetRoleplay = async () => {
+     if (!user || !storyId) return;
+     stopAudio();
+     await supabase
+       .from("story_sessions")
+       .delete()
+       .eq("user_id", user.id)
+       .eq("story_id", storyId);
+     setMessages(story ? [{ id: "intro", role: "assistant", content: getIntroMessage(story), timestamp: new Date() }] : []);
+     setSceneImages({});
+     toast({ title: language === "es" ? "Roleplay reiniciado. La conversación anterior se borró." : "Roleplay reset. Previous conversation deleted." });
+   };
+
    // Generate a vivid illustration of a scene using the cover as visual reference
    const illustrateScene = async (text: string, key: string) => {
      if (!story || illustratingId) return;
