@@ -390,34 +390,88 @@ const MyStories = () => {
                   index={idx}
                   onClick={() => navigate(`/story/${story.id}`)}
                 />
-                <AlertDialog>
-                  <AlertDialogTrigger asChild>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
                     <Button
-                      variant="destructive"
+                      variant="secondary"
                       size="icon"
                       className="absolute top-2 right-2 h-7 w-7 opacity-0 group-hover:opacity-100 transition z-10"
                       onClick={(e) => e.stopPropagation()}
                     >
-                      <Trash2 className="w-3.5 h-3.5" />
+                      <MoreVertical className="w-3.5 h-3.5" />
                     </Button>
-                  </AlertDialogTrigger>
-                  <AlertDialogContent>
-                    <AlertDialogHeader>
-                      <AlertDialogTitle>{t("myStories.deleteTitle")}</AlertDialogTitle>
-                      <AlertDialogDescription>{t("myStories.deleteDesc")}</AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                      <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
-                      <AlertDialogAction onClick={() => handleDelete(story.id)}>
-                        {t("common.delete")}
-                      </AlertDialogAction>
-                    </AlertDialogFooter>
-                  </AlertDialogContent>
-                </AlertDialog>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent
+                    align="end"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <DropdownMenuItem
+                      onSelect={(e) => {
+                        e.preventDefault();
+                        setConfirmResetId(story.id);
+                      }}
+                    >
+                      <RotateCcw className="w-4 h-4 mr-2" />
+                      Reiniciar roleplay
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      className="text-destructive focus:text-destructive"
+                      onSelect={(e) => {
+                        e.preventDefault();
+                        setConfirmDeleteId(story.id);
+                      }}
+                    >
+                      <Trash2 className="w-4 h-4 mr-2" />
+                      Eliminar historia
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             ))}
           </div>
         )}
+
+        {/* Reset roleplay confirmation (keeps the card) */}
+        <AlertDialog open={!!confirmResetId} onOpenChange={(o) => !o && setConfirmResetId(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Reiniciar roleplay</AlertDialogTitle>
+              <AlertDialogDescription>
+                Esto borra tu conversación y empieza la historia desde cero. La tarjeta NO se elimina y nadie podrá ver el roleplay anterior.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={resetting}>{t("common.cancel")}</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => confirmResetId && handleResetRoleplay(confirmResetId)}
+                disabled={resetting}
+              >
+                {resetting ? "Reiniciando..." : "Reiniciar"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        {/* Delete story (card) confirmation */}
+        <AlertDialog open={!!confirmDeleteId} onOpenChange={(o) => !o && setConfirmDeleteId(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>{t("myStories.deleteTitle")}</AlertDialogTitle>
+              <AlertDialogDescription>{t("myStories.deleteDesc")}</AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => {
+                  if (confirmDeleteId) handleDelete(confirmDeleteId);
+                  setConfirmDeleteId(null);
+                }}
+              >
+                {t("common.delete")}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </MainLayout>
   );
