@@ -107,7 +107,7 @@ Deno.serve(async (req) => {
       : 'https://api.novita.ai/v3/async/txt2img'
 
     const request: Record<string, unknown> = {
-      model_name: DEFAULT_MODEL,
+      model_name: explicit ? EXPLICIT_MODEL : REALISTIC_MODEL,
       prompt: prompt + styleSuffix,
       negative_prompt: negativePrompt,
       width: 512,
