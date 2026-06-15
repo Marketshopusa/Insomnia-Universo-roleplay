@@ -142,9 +142,9 @@ Deno.serve(async (req) => {
 
     const prompt = await buildVisualPrompt(sceneText, focusText, characterRole, playerRole, storyTitle, storyDescription, explicit, language)
     const styleSuffix =
-      ', new scene composition, dynamic pose, scene-accurate clothing, cinematic lighting, highly detailed, 8k, sharp focus, beautiful, romantic atmosphere'
+      ', exact scene from the latest roleplay message, faithful body positions, faithful hand placement, faithful facial expression, new camera angle, new scene composition, dynamic pose, scene-accurate clothing, cinematic lighting, highly detailed, sharp focus, natural anatomy, proportional limbs'
     const negativePrompt =
-      'lowres, bad anatomy, bad hands, extra fingers, deformed, blurry, watermark, text, signature, ugly, distorted face, low quality, copied cover photo, same pose, static portrait, unwanted phone, unchanged robe, same outfit, solo when two people are described'
+      'lowres, bad anatomy, bad hands, bad fingers, extra fingers, missing fingers, fused fingers, extra arms, extra legs, missing limbs, broken limbs, twisted limbs, dislocated joints, elbow from head, arm through face, leg through body, malformed body, deformed, mutated, distorted face, asymmetrical face, blurry, low quality, ugly, watermark, text, signature, copied cover photo, same pose, static portrait, wrong pose, wrong action, wrong setting, invented wall, unwanted phone, random object, unchanged robe, same outfit, solo when two people are described'
 
     const imageBase64 = coverImageUrl ? await fetchImageAsBase64(coverImageUrl) : null
 
@@ -161,15 +161,15 @@ Deno.serve(async (req) => {
       width: 512,
       height: 768,
       image_num: 1,
-      steps: 28,
+      steps: 36,
       seed: -1,
       clip_skip: 1,
-      guidance_scale: 7,
+      guidance_scale: 8.5,
       sampler_name: 'DPM++ 2M Karras',
     }
     if (imageBase64) {
       request.image_base64 = imageBase64
-      request.strength = 0.82 // use the cover only as loose identity; allow new pose, clothing, setting and action
+      request.strength = 0.93 // use the cover only as a very loose identity reference; prioritize the roleplay action
     }
 
     const startRes = await fetch(endpoint, {
