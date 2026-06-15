@@ -265,6 +265,7 @@ Deno.serve(async (req) => {
     const storyDescription: string = (body?.storyDescription || '').toString()
     const explicit: boolean = !!body?.explicit
     const language: string = (body?.language || 'es').toString()
+    const dryRun: boolean = !!body?.dryRun
 
     if (!sceneText) {
       return new Response(
@@ -283,6 +284,13 @@ Deno.serve(async (req) => {
       'distorted face, asymmetrical face, fused bodies, impossible penetration, incoherent pose',
       ...blueprint.forbidden,
     ].join(', ')
+
+    if (dryRun) {
+      return new Response(
+        JSON.stringify({ prompt, negativePrompt, blueprint }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      )
+    }
 
     const request: Record<string, unknown> = {
       model_name: explicit ? EXPLICIT_MODEL : REALISTIC_MODEL,
