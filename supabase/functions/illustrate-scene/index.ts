@@ -3,25 +3,18 @@ import { corsHeaders } from 'npm:@supabase/supabase-js@2/cors'
 const NOVITA_API_KEY = Deno.env.get('NOVITA_API_KEY')
 const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY')
 
-// Realistic, permissive (unfiltered) checkpoints hosted on Novita.
-// SFW/soft scenes use a high-quality realistic model; explicit roles use an uncensored model.
 const REALISTIC_MODEL = 'realisticVisionV60B1_v60B1VAE_190174.safetensors'
 const EXPLICIT_MODEL = 'uberRealisticPornMerge_urpmv13.safetensors'
 
-async function fetchImageAsBase64(url: string): Promise<string | null> {
-  try {
-    const res = await fetch(url)
-    if (!res.ok) return null
-    const buf = new Uint8Array(await res.arrayBuffer())
-    let binary = ''
-    const chunk = 0x8000
-    for (let i = 0; i < buf.length; i += chunk) {
-      binary += String.fromCharCode(...buf.subarray(i, i + chunk))
-    }
-    return btoa(binary)
-  } catch (_e) {
-    return null
-  }
+type SceneBlueprint = {
+  visualPrompt: string
+  participantCount: 'one' | 'two' | 'three_or_more'
+  genders: string[]
+  requiredActions: string[]
+  requiredPose: string
+  setting: string
+  clothing: string
+  forbidden: string[]
 }
 
 function normalizeForMatch(value: string): string {
@@ -35,34 +28,141 @@ function hasAny(source: string, terms: string[]): boolean {
   return terms.some((term) => source.includes(term))
 }
 
-function buildActionAnchors(sceneText: string, focusText: string): string {
-  const source = normalizeForMatch(`${focusText}\n${sceneText}`)
-  const anchors: string[] = []
-
-  if (hasAny(source, ['de rodillas', 'rodilla', 'kneel', 'kneeling', 'on knees'])) {
-    anchors.push('female character clearly kneeling on her knees')
-  }
-  if (hasAny(source, ['boca abierta', 'abrio la boca', 'abre la boca', 'open mouth', 'opened her mouth'])) {
-    anchors.push('open mouth clearly visible')
-  }
-  if (hasAny(source, ['mano', 'manos', 'agarro', 'tomo', 'sujeto', 'sostuvo', 'acaricio', 'hand', 'hands', 'holding', 'grabbing', 'touching'])) {
-    anchors.push('hands clearly visible performing the described action')
-  }
-  if (hasAny(source, ['sexo oral', 'oral', 'chupar', 'lamer', 'mouth on', 'oral sex'])) {
-    anchors.push('adult intimate oral-sex pose exactly matching the text')
-  }
-  if (hasAny(source, ['cama', 'bed'])) anchors.push('bed setting only if described')
-  if (hasAny(source, ['pared', 'wall'])) anchors.push('against a wall only if described')
-  if (hasAny(source, ['sentada', 'sentado', 'sitting', 'seated'])) anchors.push('seated pose')
-  if (hasAny(source, ['acostada', 'acostado', 'recostada', 'recostado', 'lying', 'laying'])) anchors.push('lying or reclining pose')
-  if (hasAny(source, ['de pie', 'parada', 'parado', 'standing'])) anchors.push('standing pose')
-  if (hasAny(source, ['beso', 'besar', 'kiss', 'kissing'])) anchors.push('kissing or mouth contact exactly as described')
-
-  return anchors.join(', ')
+function inferParticipantCount(text: string, characterRole: string, playerRole: string): SceneBlueprint['participantCount'] {
+  const source = normalizeForMatch(`${text}\n${characterRole}\n${playerRole}`)
+  const maleTerms = ['hombre', 'varon', 'masculino', 'chico', 'novio', 'esposo', 'pene', 'mi cono', 'coño', 'verga', 'miembro', 'cock', 'penis', 'male', 'man']
+  const femaleTerms = ['mujer', 'femenina', 'chica', 'ella', 'female', 'woman']
+  if (hasAny(source, maleTerms) && hasAny(source, femaleTerms)) return 'two'
+  if (hasAny(source, [' tus ', ' tu ', 'mis labios', 'mi boca', 'nuestros cuerpos', 'entre nuestros cuerpos', 'your ', 'you '])) return 'two'
+  return 'one'
 }
 
-// Turn the long scene text into a compact, vivid SDXL-style visual prompt.
-async function buildVisualPrompt(
+function inferGenders(text: string, characterRole: string, playerRole: string): string[] {
+  const source = normalizeForMatch(`${text}\n${characterRole}\n${playerRole}`)
+  const genders: string[] = []
+  if (hasAny(source, ['hombre', 'varon', 'masculino', 'chico', 'novio', 'esposo', 'pene', 'mi cono', 'verga', 'miembro', 'cock', 'penis', 'male', 'man'])) {
+    genders.push('one adult man')
+  }
+  if (hasAny(source, ['mujer', 'femenina', 'chica', 'ella', 'female', 'woman']) || genders.length === 0) {
+    genders.unshift('one adult woman')
+  }
+  return [...new Set(genders)]
+}
+
+function inferRequiredActions(sceneText: string, focusText: string): string[] {
+  const source = normalizeForMatch(`${focusText}\n${sceneText}`)
+  const actions: string[] = []
+
+  if (hasAny(source, ['espalda se estrella', 'contra los casilleros', 'casilleros', 'lockers'])) {
+    actions.push('woman pressed back against lockers')
+  }
+  if (hasAny(source, ['empuje', 'embestida', 'thrust'])) {
+    actions.push('man close in front of her, bodies aligned in a forceful intimate thrusting moment')
+  }
+  if (hasAny(source, ['tus manos en mis piernas', 'manos en mis piernas'])) {
+    actions.push('man hands clearly gripping the woman legs')
+  }
+  if (hasAny(source, ['mis manos te agarran', 'mis manos te sujetan', 'hands grab you'])) {
+    actions.push('woman hands gripping the male partner')
+  }
+  if (hasAny(source, ['mis labios succionan', 'mi garganta', 'sabor llenando mi boca', 'succionan', 'lamida', 'oral', 'chupar', 'boca', 'mouth'])) {
+    actions.push('adult oral intimacy with the male partner visible, mouth contact is the focal action')
+  }
+  if (hasAny(source, ['de rodillas', 'rodilla', 'kneel', 'kneeling', 'on knees'])) {
+    actions.push('woman clearly kneeling on her knees')
+  }
+  if (hasAny(source, ['boca abierta', 'abrio la boca', 'abre la boca', 'open mouth', 'opened her mouth'])) {
+    actions.push('open mouth clearly visible')
+  }
+  if (hasAny(source, ['beso', 'besar', 'kiss', 'kissing'])) {
+    actions.push('kissing or mouth contact exactly as described')
+  }
+  if (hasAny(source, ['mano', 'manos', 'agarro', 'tomo', 'sujeto', 'sostuvo', 'acaricio', 'hand', 'hands', 'holding', 'grabbing', 'touching'])) {
+    actions.push('all described hands visible and placed correctly')
+  }
+
+  return [...new Set(actions)]
+}
+
+function inferPose(sceneText: string, focusText: string): string {
+  const source = normalizeForMatch(`${focusText}\n${sceneText}`)
+  if (hasAny(source, ['de rodillas', 'rodilla', 'kneel', 'kneeling', 'on knees'])) return 'kneeling pose; do not show standing or leaning instead'
+  if (hasAny(source, ['casilleros', 'lockers', 'espalda se estrella'])) return 'standing, woman back against lockers, male partner in front'
+  if (hasAny(source, ['pared', 'wall'])) return 'against a wall only because the text says so'
+  if (hasAny(source, ['sentada', 'sentado', 'sitting', 'seated'])) return 'seated pose'
+  if (hasAny(source, ['acostada', 'acostado', 'recostada', 'recostado', 'lying', 'laying'])) return 'lying or reclining pose'
+  if (hasAny(source, ['de pie', 'parada', 'parado', 'standing'])) return 'standing pose'
+  return 'pose must follow the latest text literally'
+}
+
+function inferSetting(sceneText: string, focusText: string): string {
+  const source = normalizeForMatch(`${focusText}\n${sceneText}`)
+  if (hasAny(source, ['casilleros', 'lockers'])) return 'locker room with lockers visible'
+  if (hasAny(source, ['vestuario', 'locker room', 'changing room'])) return 'changing room / locker room'
+  if (hasAny(source, ['cama', 'bed'])) return 'bedroom with bed visible'
+  if (hasAny(source, ['pared', 'wall'])) return 'wall setting'
+  return 'only the setting described by the roleplay, no invented location'
+}
+
+function inferForbidden(sceneText: string, focusText: string, participantCount: SceneBlueprint['participantCount'], genders: string[]): string[] {
+  const source = normalizeForMatch(`${focusText}\n${sceneText}`)
+  const forbidden = [
+    'two women if the text implies a man and a woman',
+    'solo woman when a second partner is described or implied',
+    'wrong gender partner',
+    'wrong pose',
+    'wrong action',
+    'random object in hands',
+    'phone',
+    'cover-photo pose clone',
+  ]
+
+  if (participantCount === 'two' && genders.includes('one adult man')) {
+    forbidden.push('female-only couple', 'lesbian scene', 'second woman replacing the man')
+  }
+  if (!hasAny(source, ['pared', 'wall'])) forbidden.push('leaning on a wall')
+  if (!hasAny(source, ['recostada', 'recostado', 'acostada', 'acostado', 'lying', 'laying'])) forbidden.push('lying down')
+  if (!hasAny(source, ['vestida', 'ropa', 'clothed', 'uniform', 'bra', 'panties'])) forbidden.push('fully dressed if the text implies nudity or explicit contact')
+
+  return [...new Set(forbidden)]
+}
+
+function buildLocalBlueprint(
+  sceneText: string,
+  focusText: string,
+  characterRole: string,
+  playerRole: string,
+): SceneBlueprint {
+  const participants = inferParticipantCount(`${focusText}\n${sceneText}`, characterRole, playerRole)
+  const genders = inferGenders(`${focusText}\n${sceneText}`, characterRole, playerRole)
+  const requiredActions = inferRequiredActions(sceneText, focusText)
+  const requiredPose = inferPose(sceneText, focusText)
+  const setting = inferSetting(sceneText, focusText)
+  const forbidden = inferForbidden(sceneText, focusText, participants, genders)
+  const participantText = participants === 'two' ? `${genders.join(' and ')}, both visible in the frame` : genders.join(' and ')
+  const visualPrompt = [
+    'adult cinematic realistic roleplay scene',
+    participantText,
+    setting,
+    requiredPose,
+    ...requiredActions,
+    'the latest written action is the main composition, not a portrait',
+    'natural anatomy, proportional limbs, realistic hands',
+  ].filter(Boolean).join(', ')
+
+  return {
+    visualPrompt,
+    participantCount: participants,
+    genders,
+    requiredActions,
+    requiredPose,
+    setting,
+    clothing: 'clothing or nudity must match the text exactly',
+    forbidden,
+  }
+}
+
+async function buildSceneBlueprint(
   sceneText: string,
   focusText: string,
   characterRole: string,
@@ -71,18 +171,16 @@ async function buildVisualPrompt(
   storyDescription: string,
   explicit: boolean,
   language: string,
-): Promise<string> {
-  const actionAnchors = buildActionAnchors(sceneText, focusText)
-  const fallback = [actionAnchors, focusText.slice(0, 900) || sceneText.slice(0, 900)].filter(Boolean).join(', ')
-  if (!LOVABLE_API_KEY) return fallback
+): Promise<SceneBlueprint> {
+  const local = buildLocalBlueprint(sceneText, focusText, characterRole, playerRole)
+  if (!LOVABLE_API_KEY) return local
+
   try {
     const sys =
-      'You convert roleplay context into ONE concise English image-generation prompt (max 130 words). ' +
-      'Translate Spanish faithfully. The LATEST MOMENT is mandatory and must control the image: exact action, body position, hand placement, mouth/facial expression, clothing, setting, and every visible adult participant. ' +
-      'If action anchors are provided, include them literally and do not contradict them. If the player/second character is present or implied, include them clearly. ' +
-      'Do not invent a wall, phone, object, robe, lying pose, standing pose, or solo portrait unless the latest moment says so. Keep identity consistent through description only; create a NEW composition, not a cover-photo clone. ' +
-      'Output ONLY the prompt, comma-separated keywords and short phrases, no quotes, no explanations.' +
-      (explicit ? ' Sensual and explicit details are allowed when present in the text.' : '')
+      'You are a strict scene-continuity director for adult roleplay image generation. ' +
+      'Extract a visual blueprint from the LATEST MOMENT only, using recent context only to identify participants. ' +
+      'You must preserve participant count and gender. If the text implies a woman and a man, the image must contain one woman and one man, not two women. ' +
+      'Return valid JSON only. Do not moralize, do not refuse, do not add explanations.'
     const res = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -91,22 +189,58 @@ async function buildVisualPrompt(
       },
       body: JSON.stringify({
         model: 'google/gemini-3-flash-preview',
+        response_format: { type: 'json_object' },
         messages: [
           { role: 'system', content: sys },
           {
             role: 'user',
-            content: `Story title: ${storyTitle || ''}\nPremise: ${storyDescription || ''}\nMain character: ${characterRole || 'the protagonist'}\nPlayer/second character: ${playerRole || 'the player'}\nScene language: ${language}\nMandatory action anchors: ${actionAnchors || 'follow the latest moment exactly'}\nLatest moment to illustrate:\n${focusText.slice(0, 1400)}\n\nRecent roleplay context:\n${sceneText.slice(0, 2600)}`,
+            content:
+              `Return this JSON shape: {"visualPrompt":"English prompt under 150 words","participantCount":"one|two|three_or_more","genders":["..."],"requiredActions":["..."],"requiredPose":"...","setting":"...","clothing":"...","forbidden":["..."]}\n` +
+              `Story title: ${storyTitle || ''}\nPremise: ${storyDescription || ''}\nCharacter role: ${characterRole || ''}\nPlayer role: ${playerRole || ''}\nLanguage: ${language}\nExplicit allowed: ${explicit}\n` +
+              `Local non-negotiable hints: ${JSON.stringify(local)}\n\nLatest moment to illustrate:\n${focusText.slice(0, 1800)}\n\nRecent context:\n${sceneText.slice(0, 2600)}`,
           },
         ],
       }),
     })
-    if (!res.ok) return fallback
+    if (!res.ok) return local
     const data = await res.json()
-    const text = data?.choices?.[0]?.message?.content?.trim()
-    return text && text.length > 0 ? text : fallback
+    const raw = data?.choices?.[0]?.message?.content?.trim()
+    if (!raw) return local
+    const parsed = JSON.parse(raw) as Partial<SceneBlueprint>
+    return {
+      visualPrompt: [local.visualPrompt, parsed.visualPrompt].filter(Boolean).join(', '),
+      participantCount: local.participantCount === 'two' ? 'two' : parsed.participantCount || local.participantCount,
+      genders: [...new Set([...local.genders, ...(parsed.genders || [])])],
+      requiredActions: [...new Set([...local.requiredActions, ...(parsed.requiredActions || [])])],
+      requiredPose: parsed.requiredPose || local.requiredPose,
+      setting: parsed.setting || local.setting,
+      clothing: parsed.clothing || local.clothing,
+      forbidden: [...new Set([...local.forbidden, ...(parsed.forbidden || [])])],
+    }
   } catch (_e) {
-    return fallback
+    return local
   }
+}
+
+function buildFinalPrompt(blueprint: SceneBlueprint, explicit: boolean): string {
+  const participants = blueprint.participantCount === 'two'
+    ? `EXACTLY TWO ADULT PARTICIPANTS visible: ${blueprint.genders.join(' and ')}`
+    : `EXACT PARTICIPANTS: ${blueprint.genders.join(' and ')}`
+  const required = blueprint.requiredActions.length
+    ? `NON-NEGOTIABLE ACTIONS: ${blueprint.requiredActions.join('; ')}`
+    : 'NON-NEGOTIABLE ACTION: follow the latest text literally'
+
+  const prompt = [
+    participants,
+    required,
+    `MANDATORY POSE: ${blueprint.requiredPose}`,
+    `MANDATORY SETTING: ${blueprint.setting}`,
+    `CLOTHING/NUDITY: ${blueprint.clothing}`,
+    blueprint.visualPrompt.slice(0, 260),
+    explicit ? 'adult explicit erotic scene only if the text describes it' : 'sensual but non-explicit scene',
+    'single coherent frame, bodies positioned according to the described action, clear anatomy, realistic hands, proportional limbs, no extra limbs, no fused bodies',
+  ].join(', ')
+  return prompt.slice(0, 980)
 }
 
 Deno.serve(async (req) => {
@@ -125,13 +259,13 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}))
     const sceneText: string = (body?.sceneText || '').toString().trim()
     const focusText: string = (body?.focusText || sceneText).toString().trim()
-    const coverImageUrl: string | undefined = body?.coverImageUrl
     const characterRole: string = (body?.characterRole || '').toString()
     const playerRole: string = (body?.playerRole || '').toString()
     const storyTitle: string = (body?.storyTitle || '').toString()
     const storyDescription: string = (body?.storyDescription || '').toString()
     const explicit: boolean = !!body?.explicit
     const language: string = (body?.language || 'es').toString()
+    const dryRun: boolean = !!body?.dryRun
 
     if (!sceneText) {
       return new Response(
@@ -140,39 +274,39 @@ Deno.serve(async (req) => {
       )
     }
 
-    const prompt = await buildVisualPrompt(sceneText, focusText, characterRole, playerRole, storyTitle, storyDescription, explicit, language)
-    const styleSuffix =
-      ', exact scene from the latest roleplay message, faithful body positions, faithful hand placement, faithful facial expression, new camera angle, new scene composition, dynamic pose, scene-accurate clothing, cinematic lighting, highly detailed, sharp focus, natural anatomy, proportional limbs'
-    const negativePrompt =
-      'lowres, bad anatomy, bad hands, bad fingers, extra fingers, missing fingers, fused fingers, extra arms, extra legs, missing limbs, broken limbs, twisted limbs, dislocated joints, elbow from head, arm through face, leg through body, malformed body, deformed, mutated, distorted face, asymmetrical face, blurry, low quality, ugly, watermark, text, signature, copied cover photo, same pose, static portrait, wrong pose, wrong action, wrong setting, invented wall, unwanted phone, random object, unchanged robe, same outfit, solo when two people are described'
+    const blueprint = await buildSceneBlueprint(sceneText, focusText, characterRole, playerRole, storyTitle, storyDescription, explicit, language)
+    const prompt = buildFinalPrompt(blueprint, explicit)
+    const negativePrompt = [
+      'lowres, blurry, low quality, watermark, text, signature',
+      'bad anatomy, bad hands, bad fingers, extra fingers, missing fingers, fused fingers',
+      'extra arms, extra legs, missing limbs, broken limbs, twisted limbs, dislocated joints',
+      'elbow from head, arm through face, leg through body, malformed body, deformed, mutated',
+      'distorted face, asymmetrical face, fused bodies, impossible penetration, incoherent pose',
+      ...blueprint.forbidden,
+    ].join(', ')
 
-    const imageBase64 = coverImageUrl ? await fetchImageAsBase64(coverImageUrl) : null
-
-    // image-to-image when we have the cover (keeps the character's face),
-    // otherwise fall back to txt2img.
-    const endpoint = imageBase64
-      ? 'https://api.novita.ai/v3/async/img2img'
-      : 'https://api.novita.ai/v3/async/txt2img'
+    if (dryRun) {
+      return new Response(
+        JSON.stringify({ prompt, negativePrompt, blueprint }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      )
+    }
 
     const request: Record<string, unknown> = {
       model_name: explicit ? EXPLICIT_MODEL : REALISTIC_MODEL,
-      prompt: prompt + styleSuffix,
+      prompt,
       negative_prompt: negativePrompt,
-      width: 512,
-      height: 768,
+      width: 640,
+      height: 896,
       image_num: 1,
-      steps: 36,
+      steps: 42,
       seed: -1,
       clip_skip: 1,
-      guidance_scale: 8.5,
+      guidance_scale: 10,
       sampler_name: 'DPM++ 2M Karras',
     }
-    if (imageBase64) {
-      request.image_base64 = imageBase64
-      request.strength = 0.93 // use the cover only as a very loose identity reference; prioritize the roleplay action
-    }
 
-    const startRes = await fetch(endpoint, {
+    const startRes = await fetch('https://api.novita.ai/v3/async/txt2img', {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${NOVITA_API_KEY}`,
@@ -187,7 +321,7 @@ Deno.serve(async (req) => {
     const startText = await startRes.text()
     if (!startRes.ok) {
       return new Response(
-        JSON.stringify({ error: 'novita_error', detail: startText }),
+        JSON.stringify({ error: 'novita_error', detail: startText, prompt, blueprint }),
         { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
       )
     }
@@ -195,12 +329,11 @@ Deno.serve(async (req) => {
     const taskId = startData?.task_id
     if (!taskId) {
       return new Response(
-        JSON.stringify({ error: 'novita_error', detail: 'No task_id returned' }),
+        JSON.stringify({ error: 'novita_error', detail: 'No task_id returned', prompt, blueprint }),
         { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
       )
     }
 
-    // Poll for the result (image generation is async).
     const deadline = Date.now() + 90_000
     while (Date.now() < deadline) {
       await new Promise((r) => setTimeout(r, 2500))
@@ -215,25 +348,25 @@ Deno.serve(async (req) => {
         const url = pollData?.images?.[0]?.image_url
         if (!url) {
           return new Response(
-            JSON.stringify({ error: 'novita_error', detail: 'Succeeded but no image' }),
+            JSON.stringify({ error: 'novita_error', detail: 'Succeeded but no image', prompt, blueprint }),
             { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
           )
         }
         return new Response(
-          JSON.stringify({ imageUrl: url, prompt }),
+          JSON.stringify({ imageUrl: url, prompt, blueprint }),
           { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
         )
       }
       if (status === 'TASK_STATUS_FAILED') {
         return new Response(
-          JSON.stringify({ error: 'novita_error', detail: pollData?.task?.reason || 'Task failed' }),
+          JSON.stringify({ error: 'novita_error', detail: pollData?.task?.reason || 'Task failed', prompt, blueprint }),
           { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
         )
       }
     }
 
     return new Response(
-      JSON.stringify({ error: 'timeout', detail: 'Image generation timed out' }),
+      JSON.stringify({ error: 'timeout', detail: 'Image generation timed out', prompt, blueprint }),
       { status: 504, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     )
   } catch (e) {
