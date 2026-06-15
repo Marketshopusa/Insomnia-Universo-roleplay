@@ -230,16 +230,17 @@ function buildFinalPrompt(blueprint: SceneBlueprint, explicit: boolean): string 
     ? `NON-NEGOTIABLE ACTIONS: ${blueprint.requiredActions.join('; ')}`
     : 'NON-NEGOTIABLE ACTION: follow the latest text literally'
 
-  return [
+  const prompt = [
     participants,
     required,
     `MANDATORY POSE: ${blueprint.requiredPose}`,
     `MANDATORY SETTING: ${blueprint.setting}`,
     `CLOTHING/NUDITY: ${blueprint.clothing}`,
-    blueprint.visualPrompt,
+    blueprint.visualPrompt.slice(0, 260),
     explicit ? 'adult explicit erotic scene only if the text describes it' : 'sensual but non-explicit scene',
     'single coherent frame, bodies positioned according to the described action, clear anatomy, realistic hands, proportional limbs, no extra limbs, no fused bodies',
   ].join(', ')
+  return prompt.slice(0, 980)
 }
 
 Deno.serve(async (req) => {
