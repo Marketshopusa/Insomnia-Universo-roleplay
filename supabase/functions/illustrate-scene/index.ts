@@ -277,22 +277,34 @@ function buildFinalPrompt(blueprint: SceneBlueprint, explicit: boolean): string 
   return prompt.slice(0, 1024)
 }
 
+type CandidateReview = {
+  index: number
+  pass: boolean
+  anatomyScore: number
+  poseScore: number
+  faceMouthScore: number
+  reason: string
+}
+
 async function pickBestCandidate(
   imageUrls: string[],
   prompt: string,
   blueprint: SceneBlueprint,
+  focusText: string,
 ): Promise<string | undefined> {
-  if (imageUrls.length <= 1 || !LOVABLE_API_KEY) return imageUrls[0]
+  if (imageUrls.length === 0) return undefined
+  if (!LOVABLE_API_KEY) return imageUrls[0]
 
   try {
     const content: Array<Record<string, unknown>> = [
       {
         type: 'text',
         text:
-          'Select the best generated image for a roleplay illustration. Judge only technical image quality and scene consistency. ' +
-          'Reject images with extra limbs, broken anatomy, fused bodies, arms through faces, impossible legs, wrong participant count, or wrong gender. ' +
-          'Return JSON only: {"bestIndex":0,"reason":"short"}. ' +
-          `Required scene: ${prompt}\nBlueprint: ${JSON.stringify(blueprint)}`,
+          'You are a strict image quality inspector for a paid adult roleplay product. Evaluate every candidate against the latest script and reject bad outputs. ' +
+          'Hard fail any image with warped mouth/lips/teeth/tongue, smeared face, fused mouths, extra/missing limbs, broken anatomy, fused bodies, arms through faces, impossible legs, wrong participant count, wrong gender, or a pose that does not match the script. ' +
+          'Score anatomy, pose, and faceMouth from 0 to 10. pass can be true only if anatomyScore >= 8, poseScore >= 8, faceMouthScore >= 8, participant count/gender are correct, and the pose follows the latest script. ' +
+          'Return JSON only: {"candidates":[{"index":0,"pass":false,"anatomyScore":0,"poseScore":0,"faceMouthScore":0,"reason":"short"}],"bestIndex":null,"reason":"short"}. ' +
+          `Latest script to match literally: ${focusText.slice(0, 1200)}\nRequired scene prompt: ${prompt}\nBlueprint: ${JSON.stringify(blueprint)}`,
       },
       ...imageUrls.slice(0, 3).map((url) => ({ type: 'image_url', image_url: { url } })),
     ]
@@ -313,13 +325,27 @@ async function pickBestCandidate(
     const data = await res.json()
     const raw = data?.choices?.[0]?.message?.content?.trim()
     const parsed = raw ? JSON.parse(raw) : null
-    const bestIndex = Number(parsed?.bestIndex)
-    if (Number.isInteger(bestIndex) && bestIndex >= 0 && bestIndex < imageUrls.length) return imageUrls[bestIndex]
+    const reviews = Array.isArray(parsed?.candidates) ? parsed.candidates as CandidateReview[] : []
+    const passing = reviews
+      .filter((review) =>
+        review?.pass === true &&
+        Number(review.anatomyScore) >= 8 &&
+        Number(review.poseScore) >= 8 &&
+        Number(review.faceMouthScore) >= 8 &&
+        Number.isInteger(Number(review.index)) &&
+        Number(review.index) >= 0 &&
+        Number(review.index) < imageUrls.length,
+      )
+      .sort((a, b) =>
+        (Number(b.anatomyScore) + Number(b.poseScore) + Number(b.faceMouthScore)) -
+        (Number(a.anatomyScore) + Number(a.poseScore) + Number(a.faceMouthScore)),
+      )
+    if (passing.length > 0) return imageUrls[Number(passing[0].index)]
   } catch (_e) {
-    return imageUrls[0]
+    return undefined
   }
 
-  return imageUrls[0]
+  return undefined
 }
 
 Deno.serve(async (req) => {
