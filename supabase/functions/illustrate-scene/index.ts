@@ -5,8 +5,8 @@ const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY')
 
 const REALISTIC_MODEL = 'realisticVisionV60B1_v60B1VAE_190174.safetensors'
 const EXPLICIT_MODEL = 'uberRealisticPornMerge_urpmv13.safetensors'
-const IMAGE_WIDTH = 512
-const IMAGE_HEIGHT = 768
+const IMAGE_WIDTH = 640
+const IMAGE_HEIGHT = 896
 
 type SceneBlueprint = {
   visualPrompt: string
@@ -94,6 +94,8 @@ function buildAnatomyGuard(sceneText: string, focusText: string): string[] {
     'each adult has exactly two arms, two legs, two hands, two feet, one head',
     'hands and legs must connect naturally to the correct body',
     'limbs must not cross through faces, heads, torsos, or other limbs',
+    'faces must be coherent and human; lips, mouth, jaw, tongue and teeth must be natural, never melted or warped',
+    'when faces are close together, keep both mouths anatomically separated and readable, no fused lips or smeared mouth area',
   ]
 
   if (hasAny(source, ['casilleros', 'lockers', 'pared', 'wall'])) {
@@ -101,6 +103,9 @@ function buildAnatomyGuard(sceneText: string, focusText: string): string[] {
   }
   if (hasAny(source, ['levantada', 'alzada', 'piernas', 'legs', 'thighs', 'cargada', 'lifted'])) {
     guards.push('if legs are lifted, show a believable supported pose with natural hips and knees, no split pose')
+  }
+  if (hasAny(source, ['boca', 'labios', 'lengua', 'dientes', 'besar', 'beso', 'gimo', 'quejido', 'mouth', 'lips', 'tongue', 'teeth', 'kiss'])) {
+    guards.push('facial expression may be intense, but the mouth must remain realistic with normal lips, teeth and jaw alignment')
   }
   if (hasAny(source, ['de rodillas', 'rodilla', 'kneel', 'kneeling', 'on knees'])) {
     guards.push('knees clearly on the floor, torso upright or naturally leaning, legs not duplicated')
@@ -265,27 +270,41 @@ function buildFinalPrompt(blueprint: SceneBlueprint, explicit: boolean): string 
     `CLOTHING/NUDITY: ${blueprint.clothing}`,
     blueprint.visualPrompt.slice(0, 420),
     explicit ? 'adult explicit erotic scene only if the text describes it' : 'sensual but non-explicit scene',
+    'POSE ACCURACY: recreate the exact body positions and contact points from the latest text, do not improvise a different pose',
+    'FACE AND MOUTH QUALITY: realistic lips, teeth, tongue and jaw, no warped mouth, no fused mouths, no smeared lips, no distorted bite',
     'quality gate: professional realistic photo, stable readable pose, believable body mechanics, correct limb count, realistic hands and feet, no extra limbs, no fused bodies',
   ].join(', ')
   return prompt.slice(0, 1024)
+}
+
+type CandidateReview = {
+  index: number
+  pass: boolean
+  anatomyScore: number
+  poseScore: number
+  faceMouthScore: number
+  reason: string
 }
 
 async function pickBestCandidate(
   imageUrls: string[],
   prompt: string,
   blueprint: SceneBlueprint,
+  focusText: string,
 ): Promise<string | undefined> {
-  if (imageUrls.length <= 1 || !LOVABLE_API_KEY) return imageUrls[0]
+  if (imageUrls.length === 0) return undefined
+  if (!LOVABLE_API_KEY) return imageUrls[0]
 
   try {
     const content: Array<Record<string, unknown>> = [
       {
         type: 'text',
         text:
-          'Select the best generated image for a roleplay illustration. Judge only technical image quality and scene consistency. ' +
-          'Reject images with extra limbs, broken anatomy, fused bodies, arms through faces, impossible legs, wrong participant count, or wrong gender. ' +
-          'Return JSON only: {"bestIndex":0,"reason":"short"}. ' +
-          `Required scene: ${prompt}\nBlueprint: ${JSON.stringify(blueprint)}`,
+          'You are a strict image quality inspector for a paid adult roleplay product. Evaluate every candidate against the latest script and reject bad outputs. ' +
+          'Hard fail any image with warped mouth/lips/teeth/tongue, smeared face, fused mouths, extra/missing limbs, broken anatomy, fused bodies, arms through faces, impossible legs, wrong participant count, wrong gender, or a pose that does not match the script. ' +
+          'Score anatomy, pose, and faceMouth from 0 to 10. pass can be true only if anatomyScore >= 8, poseScore >= 8, faceMouthScore >= 8, participant count/gender are correct, and the pose follows the latest script. ' +
+          'Return JSON only: {"candidates":[{"index":0,"pass":false,"anatomyScore":0,"poseScore":0,"faceMouthScore":0,"reason":"short"}],"bestIndex":null,"reason":"short"}. ' +
+          `Latest script to match literally: ${focusText.slice(0, 1200)}\nRequired scene prompt: ${prompt}\nBlueprint: ${JSON.stringify(blueprint)}`,
       },
       ...imageUrls.slice(0, 3).map((url) => ({ type: 'image_url', image_url: { url } })),
     ]
@@ -306,13 +325,27 @@ async function pickBestCandidate(
     const data = await res.json()
     const raw = data?.choices?.[0]?.message?.content?.trim()
     const parsed = raw ? JSON.parse(raw) : null
-    const bestIndex = Number(parsed?.bestIndex)
-    if (Number.isInteger(bestIndex) && bestIndex >= 0 && bestIndex < imageUrls.length) return imageUrls[bestIndex]
+    const reviews = Array.isArray(parsed?.candidates) ? parsed.candidates as CandidateReview[] : []
+    const passing = reviews
+      .filter((review) =>
+        review?.pass === true &&
+        Number(review.anatomyScore) >= 8 &&
+        Number(review.poseScore) >= 8 &&
+        Number(review.faceMouthScore) >= 8 &&
+        Number.isInteger(Number(review.index)) &&
+        Number(review.index) >= 0 &&
+        Number(review.index) < imageUrls.length,
+      )
+      .sort((a, b) =>
+        (Number(b.anatomyScore) + Number(b.poseScore) + Number(b.faceMouthScore)) -
+        (Number(a.anatomyScore) + Number(a.poseScore) + Number(a.faceMouthScore)),
+      )
+    if (passing.length > 0) return imageUrls[Number(passing[0].index)]
   } catch (_e) {
-    return imageUrls[0]
+    return undefined
   }
 
-  return imageUrls[0]
+  return undefined
 }
 
 Deno.serve(async (req) => {
@@ -355,6 +388,7 @@ Deno.serve(async (req) => {
       'extra feet, missing feet, duplicated legs, three legs, three arms, detached limb, floating limb',
       'elbow from head, arm through face, hand through face, leg through body, malformed body, deformed, mutated',
       'distorted face, asymmetrical face, fused bodies, tangled bodies, impossible penetration, incoherent pose, contortionist pose',
+      'deformed mouth, warped lips, melted lips, fused lips, fused mouths, smeared mouth, distorted teeth, bad teeth, extra teeth, deformed tongue, broken jaw, distorted jaw, face melting, mouth glitch',
       'broken spine, dislocated hip, unnatural knees, split legs unless explicitly described, body horror, doll-like anatomy',
       ...blueprint.forbidden,
     ].join(', ')
@@ -372,18 +406,18 @@ Deno.serve(async (req) => {
     negative_prompt: negativePrompt.slice(0, 1024),
       width: IMAGE_WIDTH,
       height: IMAGE_HEIGHT,
-      image_num: 3,
-      steps: 34,
+      image_num: 4,
+      steps: 38,
       seed: -1,
       clip_skip: 1,
-      guidance_scale: 8,
+      guidance_scale: 7.5,
       sampler_name: 'DPM++ 2M Karras',
       restore_faces: true,
       hires_fix: {
-        target_width: 640,
-        target_height: 960,
-        strength: 0.45,
-        upscaler: 'Latent',
+        target_width: 768,
+        target_height: 1072,
+        strength: 0.35,
+        upscaler: 'R-ESRGAN 4x+',
       },
     }
 
@@ -429,10 +463,10 @@ Deno.serve(async (req) => {
         const urls = (pollData?.images || [])
           .map((image: { image_url?: string }) => image?.image_url)
           .filter(Boolean)
-        const url = await pickBestCandidate(urls, prompt, blueprint)
+        const url = await pickBestCandidate(urls, prompt, blueprint, focusText)
         if (!url) {
           return new Response(
-            JSON.stringify({ error: 'novita_error', detail: 'Succeeded but no image', prompt, blueprint }),
+            JSON.stringify({ error: 'quality_rejected', detail: 'Generated images were rejected for anatomy, mouth/face quality, or pose mismatch. Please regenerate.', prompt, blueprint }),
             { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
           )
         }
