@@ -388,6 +388,7 @@ Deno.serve(async (req) => {
       'extra feet, missing feet, duplicated legs, three legs, three arms, detached limb, floating limb',
       'elbow from head, arm through face, hand through face, leg through body, malformed body, deformed, mutated',
       'distorted face, asymmetrical face, fused bodies, tangled bodies, impossible penetration, incoherent pose, contortionist pose',
+      'deformed mouth, warped lips, melted lips, fused lips, fused mouths, smeared mouth, distorted teeth, bad teeth, extra teeth, deformed tongue, broken jaw, distorted jaw, face melting, mouth glitch',
       'broken spine, dislocated hip, unnatural knees, split legs unless explicitly described, body horror, doll-like anatomy',
       ...blueprint.forbidden,
     ].join(', ')
@@ -405,18 +406,18 @@ Deno.serve(async (req) => {
     negative_prompt: negativePrompt.slice(0, 1024),
       width: IMAGE_WIDTH,
       height: IMAGE_HEIGHT,
-      image_num: 3,
-      steps: 34,
+      image_num: 4,
+      steps: 38,
       seed: -1,
       clip_skip: 1,
-      guidance_scale: 8,
+      guidance_scale: 7.5,
       sampler_name: 'DPM++ 2M Karras',
       restore_faces: true,
       hires_fix: {
-        target_width: 640,
-        target_height: 960,
-        strength: 0.45,
-        upscaler: 'Latent',
+        target_width: 768,
+        target_height: 1072,
+        strength: 0.35,
+        upscaler: 'R-ESRGAN 4x+',
       },
     }
 
@@ -462,10 +463,10 @@ Deno.serve(async (req) => {
         const urls = (pollData?.images || [])
           .map((image: { image_url?: string }) => image?.image_url)
           .filter(Boolean)
-        const url = await pickBestCandidate(urls, prompt, blueprint)
+        const url = await pickBestCandidate(urls, prompt, blueprint, focusText)
         if (!url) {
           return new Response(
-            JSON.stringify({ error: 'novita_error', detail: 'Succeeded but no image', prompt, blueprint }),
+            JSON.stringify({ error: 'quality_rejected', detail: 'Generated images were rejected for anatomy, mouth/face quality, or pose mismatch. Please regenerate.', prompt, blueprint }),
             { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
           )
         }
