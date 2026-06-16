@@ -263,7 +263,7 @@ function buildFinalPrompt(blueprint: SceneBlueprint, explicit: boolean): string 
     `MANDATORY POSE: ${blueprint.requiredPose}`,
     `MANDATORY SETTING: ${blueprint.setting}`,
     `CLOTHING/NUDITY: ${blueprint.clothing}`,
-    blueprint.visualPrompt.slice(0, 260),
+    blueprint.visualPrompt.slice(0, 420),
     explicit ? 'adult explicit erotic scene only if the text describes it' : 'sensual but non-explicit scene',
     'quality gate: professional realistic photo, stable readable pose, believable body mechanics, correct limb count, realistic hands and feet, no extra limbs, no fused bodies',
   ].join(', ')
@@ -368,8 +368,8 @@ Deno.serve(async (req) => {
 
     const request: Record<string, unknown> = {
       model_name: explicit ? EXPLICIT_MODEL : REALISTIC_MODEL,
-      prompt,
-      negative_prompt: negativePrompt,
+    prompt: prompt.slice(0, 1024),
+    negative_prompt: negativePrompt.slice(0, 1024),
       width: IMAGE_WIDTH,
       height: IMAGE_HEIGHT,
       image_num: 3,
