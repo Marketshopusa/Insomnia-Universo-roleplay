@@ -352,8 +352,10 @@ Deno.serve(async (req) => {
       'lowres, blurry, low quality, watermark, text, signature',
       'bad anatomy, bad hands, bad fingers, extra fingers, missing fingers, fused fingers',
       'extra arms, extra legs, missing limbs, broken limbs, twisted limbs, dislocated joints',
-      'elbow from head, arm through face, leg through body, malformed body, deformed, mutated',
-      'distorted face, asymmetrical face, fused bodies, impossible penetration, incoherent pose',
+      'extra feet, missing feet, duplicated legs, three legs, three arms, detached limb, floating limb',
+      'elbow from head, arm through face, hand through face, leg through body, malformed body, deformed, mutated',
+      'distorted face, asymmetrical face, fused bodies, tangled bodies, impossible penetration, incoherent pose, contortionist pose',
+      'broken spine, dislocated hip, unnatural knees, split legs unless explicitly described, body horror, doll-like anatomy',
       ...blueprint.forbidden,
     ].join(', ')
 
@@ -368,14 +370,21 @@ Deno.serve(async (req) => {
       model_name: explicit ? EXPLICIT_MODEL : REALISTIC_MODEL,
       prompt,
       negative_prompt: negativePrompt,
-      width: 640,
-      height: 896,
-      image_num: 1,
-      steps: 42,
+      width: IMAGE_WIDTH,
+      height: IMAGE_HEIGHT,
+      image_num: 3,
+      steps: 34,
       seed: -1,
       clip_skip: 1,
-      guidance_scale: 10,
+      guidance_scale: 8,
       sampler_name: 'DPM++ 2M Karras',
+      restore_faces: true,
+      hires_fix: {
+        target_width: 640,
+        target_height: 960,
+        strength: 0.45,
+        upscaler: 'Latent',
+      },
     }
 
     const startRes = await fetch('https://api.novita.ai/v3/async/txt2img', {
@@ -417,7 +426,10 @@ Deno.serve(async (req) => {
       const pollData = await pollRes.json()
       const status = pollData?.task?.status
       if (status === 'TASK_STATUS_SUCCEED') {
-        const url = pollData?.images?.[0]?.image_url
+        const urls = (pollData?.images || [])
+          .map((image: { image_url?: string }) => image?.image_url)
+          .filter(Boolean)
+        const url = await pickBestCandidate(urls, prompt, blueprint)
         if (!url) {
           return new Response(
             JSON.stringify({ error: 'novita_error', detail: 'Succeeded but no image', prompt, blueprint }),
