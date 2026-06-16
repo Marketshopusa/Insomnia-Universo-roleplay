@@ -5,6 +5,8 @@ const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY')
 
 const REALISTIC_MODEL = 'realisticVisionV60B1_v60B1VAE_190174.safetensors'
 const EXPLICIT_MODEL = 'uberRealisticPornMerge_urpmv13.safetensors'
+const IMAGE_WIDTH = 512
+const IMAGE_HEIGHT = 768
 
 type SceneBlueprint = {
   visualPrompt: string
@@ -84,6 +86,29 @@ function inferRequiredActions(sceneText: string, focusText: string): string[] {
   return [...new Set(actions)]
 }
 
+function buildAnatomyGuard(sceneText: string, focusText: string): string[] {
+  const source = normalizeForMatch(`${focusText}\n${sceneText}`)
+  const guards = [
+    'professional realistic photo with physically possible human biomechanics',
+    'simple readable composition, no acrobatic contortion, no tangled limbs',
+    'each adult has exactly two arms, two legs, two hands, two feet, one head',
+    'hands and legs must connect naturally to the correct body',
+    'limbs must not cross through faces, heads, torsos, or other limbs',
+  ]
+
+  if (hasAny(source, ['casilleros', 'lockers', 'pared', 'wall'])) {
+    guards.push('stable standing pose with feet planted or naturally supported, no floating body parts')
+  }
+  if (hasAny(source, ['levantada', 'alzada', 'piernas', 'legs', 'thighs', 'cargada', 'lifted'])) {
+    guards.push('if legs are lifted, show a believable supported pose with natural hips and knees, no split pose')
+  }
+  if (hasAny(source, ['de rodillas', 'rodilla', 'kneel', 'kneeling', 'on knees'])) {
+    guards.push('knees clearly on the floor, torso upright or naturally leaning, legs not duplicated')
+  }
+
+  return guards
+}
+
 function inferPose(sceneText: string, focusText: string): string {
   const source = normalizeForMatch(`${focusText}\n${sceneText}`)
   if (hasAny(source, ['de rodillas', 'rodilla', 'kneel', 'kneeling', 'on knees'])) return 'kneeling pose; do not show standing or leaning instead'
@@ -139,6 +164,7 @@ function buildLocalBlueprint(
   const requiredPose = inferPose(sceneText, focusText)
   const setting = inferSetting(sceneText, focusText)
   const forbidden = inferForbidden(sceneText, focusText, participants, genders)
+  const anatomyGuards = buildAnatomyGuard(sceneText, focusText)
   const participantText = participants === 'two' ? `${genders.join(' and ')}, both visible in the frame` : genders.join(' and ')
   const visualPrompt = [
     'adult cinematic realistic roleplay scene',
@@ -146,6 +172,7 @@ function buildLocalBlueprint(
     setting,
     requiredPose,
     ...requiredActions,
+    ...anatomyGuards,
     'the latest written action is the main composition, not a portrait',
     'natural anatomy, proportional limbs, realistic hands',
   ].filter(Boolean).join(', ')
@@ -236,11 +263,56 @@ function buildFinalPrompt(blueprint: SceneBlueprint, explicit: boolean): string 
     `MANDATORY POSE: ${blueprint.requiredPose}`,
     `MANDATORY SETTING: ${blueprint.setting}`,
     `CLOTHING/NUDITY: ${blueprint.clothing}`,
-    blueprint.visualPrompt.slice(0, 260),
+    blueprint.visualPrompt.slice(0, 420),
     explicit ? 'adult explicit erotic scene only if the text describes it' : 'sensual but non-explicit scene',
-    'single coherent frame, bodies positioned according to the described action, clear anatomy, realistic hands, proportional limbs, no extra limbs, no fused bodies',
+    'quality gate: professional realistic photo, stable readable pose, believable body mechanics, correct limb count, realistic hands and feet, no extra limbs, no fused bodies',
   ].join(', ')
-  return prompt.slice(0, 980)
+  return prompt.slice(0, 1024)
+}
+
+async function pickBestCandidate(
+  imageUrls: string[],
+  prompt: string,
+  blueprint: SceneBlueprint,
+): Promise<string | undefined> {
+  if (imageUrls.length <= 1 || !LOVABLE_API_KEY) return imageUrls[0]
+
+  try {
+    const content: Array<Record<string, unknown>> = [
+      {
+        type: 'text',
+        text:
+          'Select the best generated image for a roleplay illustration. Judge only technical image quality and scene consistency. ' +
+          'Reject images with extra limbs, broken anatomy, fused bodies, arms through faces, impossible legs, wrong participant count, or wrong gender. ' +
+          'Return JSON only: {"bestIndex":0,"reason":"short"}. ' +
+          `Required scene: ${prompt}\nBlueprint: ${JSON.stringify(blueprint)}`,
+      },
+      ...imageUrls.slice(0, 3).map((url) => ({ type: 'image_url', image_url: { url } })),
+    ]
+
+    const res = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'google/gemini-2.5-flash',
+        response_format: { type: 'json_object' },
+        messages: [{ role: 'user', content }],
+      }),
+    })
+    if (!res.ok) return imageUrls[0]
+    const data = await res.json()
+    const raw = data?.choices?.[0]?.message?.content?.trim()
+    const parsed = raw ? JSON.parse(raw) : null
+    const bestIndex = Number(parsed?.bestIndex)
+    if (Number.isInteger(bestIndex) && bestIndex >= 0 && bestIndex < imageUrls.length) return imageUrls[bestIndex]
+  } catch (_e) {
+    return imageUrls[0]
+  }
+
+  return imageUrls[0]
 }
 
 Deno.serve(async (req) => {
@@ -280,8 +352,10 @@ Deno.serve(async (req) => {
       'lowres, blurry, low quality, watermark, text, signature',
       'bad anatomy, bad hands, bad fingers, extra fingers, missing fingers, fused fingers',
       'extra arms, extra legs, missing limbs, broken limbs, twisted limbs, dislocated joints',
-      'elbow from head, arm through face, leg through body, malformed body, deformed, mutated',
-      'distorted face, asymmetrical face, fused bodies, impossible penetration, incoherent pose',
+      'extra feet, missing feet, duplicated legs, three legs, three arms, detached limb, floating limb',
+      'elbow from head, arm through face, hand through face, leg through body, malformed body, deformed, mutated',
+      'distorted face, asymmetrical face, fused bodies, tangled bodies, impossible penetration, incoherent pose, contortionist pose',
+      'broken spine, dislocated hip, unnatural knees, split legs unless explicitly described, body horror, doll-like anatomy',
       ...blueprint.forbidden,
     ].join(', ')
 
@@ -294,16 +368,23 @@ Deno.serve(async (req) => {
 
     const request: Record<string, unknown> = {
       model_name: explicit ? EXPLICIT_MODEL : REALISTIC_MODEL,
-      prompt,
-      negative_prompt: negativePrompt,
-      width: 640,
-      height: 896,
-      image_num: 1,
-      steps: 42,
+    prompt: prompt.slice(0, 1024),
+    negative_prompt: negativePrompt.slice(0, 1024),
+      width: IMAGE_WIDTH,
+      height: IMAGE_HEIGHT,
+      image_num: 3,
+      steps: 34,
       seed: -1,
       clip_skip: 1,
-      guidance_scale: 10,
+      guidance_scale: 8,
       sampler_name: 'DPM++ 2M Karras',
+      restore_faces: true,
+      hires_fix: {
+        target_width: 640,
+        target_height: 960,
+        strength: 0.45,
+        upscaler: 'Latent',
+      },
     }
 
     const startRes = await fetch('https://api.novita.ai/v3/async/txt2img', {
@@ -345,7 +426,10 @@ Deno.serve(async (req) => {
       const pollData = await pollRes.json()
       const status = pollData?.task?.status
       if (status === 'TASK_STATUS_SUCCEED') {
-        const url = pollData?.images?.[0]?.image_url
+        const urls = (pollData?.images || [])
+          .map((image: { image_url?: string }) => image?.image_url)
+          .filter(Boolean)
+        const url = await pickBestCandidate(urls, prompt, blueprint)
         if (!url) {
           return new Response(
             JSON.stringify({ error: 'novita_error', detail: 'Succeeded but no image', prompt, blueprint }),
