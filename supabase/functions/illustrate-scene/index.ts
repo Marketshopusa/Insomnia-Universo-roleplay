@@ -274,11 +274,11 @@ async function pickBestCandidate(
   imageUrls: string[],
   prompt: string,
   blueprint: SceneBlueprint,
-): Promise<string> {
+): Promise<string | undefined> {
   if (imageUrls.length <= 1 || !LOVABLE_API_KEY) return imageUrls[0]
 
   try {
-    const content = [
+    const content: Array<Record<string, unknown>> = [
       {
         type: 'text',
         text:
