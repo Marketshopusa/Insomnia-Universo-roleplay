@@ -5,8 +5,8 @@ const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY')
 
 const REALISTIC_MODEL = 'realisticVisionV60B1_v60B1VAE_190174.safetensors'
 const EXPLICIT_MODEL = 'uberRealisticPornMerge_urpmv13.safetensors'
-const IMAGE_WIDTH = 512
-const IMAGE_HEIGHT = 768
+const IMAGE_WIDTH = 640
+const IMAGE_HEIGHT = 896
 
 type SceneBlueprint = {
   visualPrompt: string
@@ -94,6 +94,8 @@ function buildAnatomyGuard(sceneText: string, focusText: string): string[] {
     'each adult has exactly two arms, two legs, two hands, two feet, one head',
     'hands and legs must connect naturally to the correct body',
     'limbs must not cross through faces, heads, torsos, or other limbs',
+    'faces must be coherent and human; lips, mouth, jaw, tongue and teeth must be natural, never melted or warped',
+    'when faces are close together, keep both mouths anatomically separated and readable, no fused lips or smeared mouth area',
   ]
 
   if (hasAny(source, ['casilleros', 'lockers', 'pared', 'wall'])) {
@@ -101,6 +103,9 @@ function buildAnatomyGuard(sceneText: string, focusText: string): string[] {
   }
   if (hasAny(source, ['levantada', 'alzada', 'piernas', 'legs', 'thighs', 'cargada', 'lifted'])) {
     guards.push('if legs are lifted, show a believable supported pose with natural hips and knees, no split pose')
+  }
+  if (hasAny(source, ['boca', 'labios', 'lengua', 'dientes', 'besar', 'beso', 'gimo', 'quejido', 'mouth', 'lips', 'tongue', 'teeth', 'kiss'])) {
+    guards.push('facial expression may be intense, but the mouth must remain realistic with normal lips, teeth and jaw alignment')
   }
   if (hasAny(source, ['de rodillas', 'rodilla', 'kneel', 'kneeling', 'on knees'])) {
     guards.push('knees clearly on the floor, torso upright or naturally leaning, legs not duplicated')
@@ -265,6 +270,8 @@ function buildFinalPrompt(blueprint: SceneBlueprint, explicit: boolean): string 
     `CLOTHING/NUDITY: ${blueprint.clothing}`,
     blueprint.visualPrompt.slice(0, 420),
     explicit ? 'adult explicit erotic scene only if the text describes it' : 'sensual but non-explicit scene',
+    'POSE ACCURACY: recreate the exact body positions and contact points from the latest text, do not improvise a different pose',
+    'FACE AND MOUTH QUALITY: realistic lips, teeth, tongue and jaw, no warped mouth, no fused mouths, no smeared lips, no distorted bite',
     'quality gate: professional realistic photo, stable readable pose, believable body mechanics, correct limb count, realistic hands and feet, no extra limbs, no fused bodies',
   ].join(', ')
   return prompt.slice(0, 1024)
