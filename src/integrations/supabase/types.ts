@@ -113,6 +113,101 @@ export type Database = {
         }
         Relationships: []
       }
+      shorts_episodes: {
+        Row: {
+          created_at: string
+          episode_number: number
+          error_message: string | null
+          id: string
+          job_id: string | null
+          poster_url: string | null
+          script: string
+          series_id: string
+          status: string
+          title: string
+          updated_at: string
+          video_prompt: string | null
+          video_url: string | null
+        }
+        Insert: {
+          created_at?: string
+          episode_number: number
+          error_message?: string | null
+          id?: string
+          job_id?: string | null
+          poster_url?: string | null
+          script: string
+          series_id: string
+          status?: string
+          title: string
+          updated_at?: string
+          video_prompt?: string | null
+          video_url?: string | null
+        }
+        Update: {
+          created_at?: string
+          episode_number?: number
+          error_message?: string | null
+          id?: string
+          job_id?: string | null
+          poster_url?: string | null
+          script?: string
+          series_id?: string
+          status?: string
+          title?: string
+          updated_at?: string
+          video_prompt?: string | null
+          video_url?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shorts_episodes_series_id_fkey"
+            columns: ["series_id"]
+            isOneToOne: false
+            referencedRelation: "shorts_series"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      shorts_series: {
+        Row: {
+          category: string
+          cover_url: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          is_adult: boolean
+          is_published: boolean
+          premise: string | null
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          category?: string
+          cover_url?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_adult?: boolean
+          is_published?: boolean
+          premise?: string | null
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          category?: string
+          cover_url?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_adult?: boolean
+          is_published?: boolean
+          premise?: string | null
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       stories: {
         Row: {
           character_role: string | null
