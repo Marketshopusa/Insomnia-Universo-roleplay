@@ -417,14 +417,49 @@ type Mode = "select" | "read" | "roleplay";
            language,
          },
        });
-       if (error || !(data as any)?.imageUrl) {
+        if (error || !(data as any)?.taskId) {
          toast({
            title: language === "es" ? "No se pudo ilustrar la escena" : "Could not illustrate the scene",
+            description: (data as any)?.detail || error?.message,
            variant: "destructive",
          });
          return;
        }
-       setSceneImages((prev) => ({ ...prev, [key]: (data as any).imageUrl }));
+        const taskId = (data as any).taskId as string;
+        let completedImageUrl: string | undefined;
+        for (let attempt = 0; attempt < 40; attempt += 1) {
+          await new Promise((resolve) => window.setTimeout(resolve, 3000));
+          const { data: statusData, error: statusError } = await supabase.functions.invoke("illustrate-scene", {
+            body: {
+              action: "status",
+              taskId,
+              prompt: (data as any).prompt,
+              blueprint: (data as any).blueprint,
+              focusText: text,
+            },
+          });
+          if (statusError || (statusData as any)?.error) {
+            toast({
+              title: language === "es" ? "No se pudo ilustrar la escena" : "Could not illustrate the scene",
+              description: (statusData as any)?.detail || statusError?.message,
+              variant: "destructive",
+            });
+            return;
+          }
+          if ((statusData as any)?.status === "complete" && (statusData as any)?.imageUrl) {
+            completedImageUrl = (statusData as any).imageUrl;
+            break;
+          }
+        }
+        if (!completedImageUrl) {
+          toast({
+            title: language === "es" ? "La ilustración está tardando demasiado" : "The illustration is taking too long",
+            description: language === "es" ? "Inténtalo nuevamente en unos minutos." : "Please try again in a few minutes.",
+            variant: "destructive",
+          });
+          return;
+        }
+        setSceneImages((prev) => ({ ...prev, [key]: completedImageUrl }));
      } finally {
        setIllustratingId(null);
      }
