@@ -371,6 +371,64 @@ Deno.serve(async (req) => {
     const explicit: boolean = !!body?.explicit
     const language: string = (body?.language || 'es').toString()
     const dryRun: boolean = !!body?.dryRun
+    const action: string = (body?.action || 'start').toString()
+
+    if (action === 'status') {
+      const taskId = (body?.taskId || '').toString().trim()
+      if (!taskId) {
+        return new Response(
+          JSON.stringify({ error: 'invalid_input', detail: 'taskId is required' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+        )
+      }
+
+      const pollRes = await fetch(
+        `https://api.novita.ai/v3/async/task-result?task_id=${encodeURIComponent(taskId)}`,
+        { headers: { Authorization: `Bearer ${NOVITA_API_KEY}` } },
+      )
+      const pollText = await pollRes.text()
+      if (!pollRes.ok) {
+        return new Response(
+          JSON.stringify({ error: 'novita_error', detail: pollText }),
+          { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+        )
+      }
+
+      const pollData = JSON.parse(pollText)
+      const status = pollData?.task?.status
+      if (status === 'TASK_STATUS_FAILED') {
+        return new Response(
+          JSON.stringify({ error: 'novita_error', detail: pollData?.task?.reason || 'Task failed' }),
+          { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+        )
+      }
+      if (status !== 'TASK_STATUS_SUCCEED') {
+        return new Response(
+          JSON.stringify({ status: 'processing' }),
+          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+        )
+      }
+
+      const urls = (pollData?.images || [])
+        .map((image: { image_url?: string }) => image?.image_url)
+        .filter(Boolean)
+      const statusPrompt = (body?.prompt || '').toString().slice(0, 1024)
+      const statusFocusText = (body?.focusText || '').toString().slice(0, 1800)
+      const statusBlueprint = body?.blueprint as SceneBlueprint | undefined
+      const url = statusBlueprint
+        ? await pickBestCandidate(urls, statusPrompt, statusBlueprint, statusFocusText)
+        : urls[0]
+      if (!url) {
+        return new Response(
+          JSON.stringify({ error: 'quality_rejected', detail: 'Generated images did not pass the quality check.' }),
+          { status: 422, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+        )
+      }
+      return new Response(
+        JSON.stringify({ status: 'complete', imageUrl: url }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      )
+    }
 
     if (!sceneText) {
       return new Response(
@@ -406,8 +464,8 @@ Deno.serve(async (req) => {
     negative_prompt: negativePrompt.slice(0, 1024),
       width: IMAGE_WIDTH,
       height: IMAGE_HEIGHT,
-      image_num: 4,
-      steps: 38,
+      image_num: 2,
+      steps: 30,
       seed: -1,
       clip_skip: 1,
       guidance_scale: 7.5,
@@ -449,43 +507,9 @@ Deno.serve(async (req) => {
       )
     }
 
-    const deadline = Date.now() + 90_000
-    while (Date.now() < deadline) {
-      await new Promise((r) => setTimeout(r, 2500))
-      const pollRes = await fetch(
-        `https://api.novita.ai/v3/async/task-result?task_id=${taskId}`,
-        { headers: { Authorization: `Bearer ${NOVITA_API_KEY}` } },
-      )
-      if (!pollRes.ok) continue
-      const pollData = await pollRes.json()
-      const status = pollData?.task?.status
-      if (status === 'TASK_STATUS_SUCCEED') {
-        const urls = (pollData?.images || [])
-          .map((image: { image_url?: string }) => image?.image_url)
-          .filter(Boolean)
-        const url = await pickBestCandidate(urls, prompt, blueprint, focusText)
-        if (!url) {
-          return new Response(
-            JSON.stringify({ error: 'quality_rejected', detail: 'Generated images were rejected for anatomy, mouth/face quality, or pose mismatch. Please regenerate.', prompt, blueprint }),
-            { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-          )
-        }
-        return new Response(
-          JSON.stringify({ imageUrl: url, prompt, blueprint }),
-          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-        )
-      }
-      if (status === 'TASK_STATUS_FAILED') {
-        return new Response(
-          JSON.stringify({ error: 'novita_error', detail: pollData?.task?.reason || 'Task failed', prompt, blueprint }),
-          { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-        )
-      }
-    }
-
     return new Response(
-      JSON.stringify({ error: 'timeout', detail: 'Image generation timed out', prompt, blueprint }),
-      { status: 504, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      JSON.stringify({ status: 'processing', taskId, prompt, blueprint }),
+      { status: 202, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     )
   } catch (e) {
     return new Response(
