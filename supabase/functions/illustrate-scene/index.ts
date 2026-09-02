@@ -417,7 +417,7 @@ Deno.serve(async (req) => {
         target_width: 768,
         target_height: 1072,
         strength: 0.35,
-        upscaler: 'R-ESRGAN 4x+',
+        upscaler: 'RealESRNet_x4plus',
       },
     }
 
