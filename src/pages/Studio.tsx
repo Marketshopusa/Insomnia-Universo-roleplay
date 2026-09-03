@@ -74,6 +74,63 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
     { value: "wild", label: t("studio.creativity.wild") },
   ];
 
+  const createVideosForNovel = async (generated: any) => {
+    const chapters = generated?.chapters ?? [];
+    if (chapters.length === 0) throw new Error("La novela no contiene capítulos para convertir en videos");
+
+    setGeneratingVideos(true);
+    setVideoProgress("Creando la serie de Shorts…");
+
+    const { data: series, error: seriesError } = await supabase
+      .from("shorts_series")
+      .insert({
+        title: generated.title || "Serie sin título",
+        premise: generated.logline || description || null,
+        category: "romance",
+        is_adult: !isSafeForWork,
+        created_by: user?.id,
+        is_published: true,
+      })
+      .select()
+      .single();
+    if (seriesError || !series) {
+      throw new Error(seriesError?.message || "No se pudo crear la serie de Shorts");
+    }
+
+    const episodesPayload = chapters.map((chapter: any, index: number) => ({
+      series_id: series.id,
+      episode_number: chapter.number ?? index + 1,
+      title: chapter.title || `Capítulo ${index + 1}`,
+      script: (chapter.content ?? "").slice(0, 2000),
+      video_prompt: `${chapter.video_prompt || chapter.content?.slice(0, 500) || ""}. Spoken dialogue, narration, captions and any visible text must be in ${language}.`,
+      status: "pending",
+    }));
+
+    const { data: episodes, error: episodesError } = await supabase
+      .from("shorts_episodes")
+      .insert(episodesPayload)
+      .select();
+    if (episodesError || !episodes) {
+      throw new Error(episodesError?.message || "No se pudieron crear los episodios");
+    }
+
+    let started = 0;
+    for (let index = 0; index < episodes.length; index += 1) {
+      setVideoProgress(`Iniciando video ${index + 1} de ${episodes.length}…`);
+      const { data, error } = await supabase.functions.invoke("shorts-video", {
+        body: { action: "create", episodeId: episodes[index].id },
+      });
+      if (!error && !data?.error) started += 1;
+    }
+
+    if (started === 0) throw new Error("La serie fue creada, pero el generador no pudo iniciar los videos");
+
+    toast({
+      title: "Proyecto y videos creados",
+      description: `${started} de ${episodes.length} videos están generándose en la pestaña Shorts.`,
+    });
+  };
+
   const handleGenerateProject = async () => {
     if (!user) {
       toast({ title: t("studio.toast.loginToCreate"), variant: "destructive" });
@@ -129,7 +186,7 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
         setCurrentProjectId(created.id);
       }
 
-      toast({ title: "Proyecto generado y guardado", description: generated.title });
+      await createVideosForNovel(generated);
     } catch (e) {
       toast({
         title: "No se pudo generar el proyecto",
@@ -138,6 +195,8 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
       });
     } finally {
       setGenerating(false);
+      setGeneratingVideos(false);
+      setVideoProgress("");
     }
   };
 
@@ -152,50 +211,8 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
       return;
     }
 
-    setGeneratingVideos(true);
     try {
-      setVideoProgress("Creando serie…");
-      const { data: series, error: sErr } = await supabase
-        .from("shorts_series")
-        .insert({
-          title: novel.title || "Serie sin título",
-          premise: novel.logline || description || null,
-          category: "romance",
-          is_adult: !isSafeForWork,
-          created_by: user.id,
-          is_published: true,
-        })
-        .select()
-        .single();
-      if (sErr || !series) throw sErr ?? new Error("No se pudo crear la serie");
-
-      const episodesPayload = chapters.map((ch: any, i: number) => ({
-        series_id: series.id,
-        episode_number: ch.number ?? i + 1,
-        title: ch.title || `Capítulo ${i + 1}`,
-        script: (ch.content ?? "").slice(0, 2000),
-        video_prompt: ch.video_prompt || ch.content?.slice(0, 500) || "",
-        status: "pending",
-      }));
-
-      const { data: episodes, error: eErr } = await supabase
-        .from("shorts_episodes")
-        .insert(episodesPayload)
-        .select();
-      if (eErr || !episodes) throw eErr ?? new Error("No se pudieron crear los episodios");
-
-      for (let i = 0; i < episodes.length; i++) {
-        setVideoProgress(`Generando video ${i + 1} de ${episodes.length}…`);
-        const { error: vErr } = await supabase.functions.invoke("shorts-video", {
-          body: { action: "create", episodeId: episodes[i].id },
-        });
-        if (vErr) console.error("shorts-video error", episodes[i].id, vErr);
-      }
-
-      toast({
-        title: "Videos en generación",
-        description: `Se lanzaron ${episodes.length} episodios. Míralos en la pestaña Shorts.`,
-      });
+      await createVideosForNovel(novel);
     } catch (e) {
       toast({
         title: "No se pudieron generar los videos",
@@ -410,18 +427,23 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
             </>
           ) : (
             <>
-              <Sparkles className="w-5 h-5 mr-2" /> Generar proyecto completo con IA
+              <Sparkles className="w-5 h-5 mr-2" /> Generar proyecto y videos con IA
             </>
           )}
         </Button>
 
         {novel && (
           <Card className="p-6 mb-6 space-y-6">
-            <div>
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
               <h2 className="font-display text-2xl">{novel.title}</h2>
               {novel.logline && (
                 <p className="text-sm text-muted-foreground mt-1">{novel.logline}</p>
               )}
+              </div>
+              <Link to="/shorts">
+                <Button variant="outline" className="rounded-none">Ver en Shorts</Button>
+              </Link>
             </div>
 
             {Array.isArray(novel.characters) && novel.characters.length > 0 && (
