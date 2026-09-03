@@ -42,12 +42,14 @@ Tu salida DEBE ser JSON valido, sin texto extra, con esta forma exacta:
   "setting": {"place":"...","time":"...","visual_style":"prompt en INGLES de estilo visual, paleta e iluminacion, consistente para toda la serie"},
   "outline": "resumen por capitulos en markdown",
   "chapters": [
-    {"number":1,"title":"...","summary":"...","characters_present":["..."],"content":"texto completo del capitulo","video_prompt":"prompt tecnico 9:16 que reutiliza literalmente las descripciones visuales de los personajes presentes y el visual_style; todo dialogo, narracion, subtitulo y texto visible debe estar en ${language}"}
+    {"number":1,"title":"...","summary":"...","characters_present":["..."],"content":"texto completo del capitulo","video_prompt":"prompt tecnico EN INGLES para un video 9:16 de 10 segundos que reutiliza literalmente las descripciones visuales de los personajes presentes y el visual_style; incluye tres momentos [0-3s], [3-7s], [7-10s], acciones visibles, desplazamiento, interaccion con el entorno y camara en movimiento; cualquier dialogo hablado debe estar en ${language}"}
   ]
 }
 REGLAS DE PERSISTENCIA (criticas):
 - Define los personajes UNA vez y no cambies jamas su apariencia, edad, nombre ni vestuario base.
 - Cada "video_prompt" debe repetir textualmente el "visual_prompt" de cada personaje que aparece, para que el generador de video no los altere.
+- Cada capitulo debe tener una puesta en escena distinta: alterna localizaciones, acciones, objetos, distancias de camara y movimientos. No repitas dos personajes quietos frente a frente hablando.
+- El video_prompt debe narrar una sola escena visual con movimiento continuo y tres beats temporales; evita poses estaticas y fotografias animadas.
 - El titulo, logline, outline, titulos de capitulos, contenido, narracion y dialogos deben estar completamente en ${language}.
 - Aunque las instrucciones visuales tecnicas esten en ingles, toda voz, conversacion, subtitulo o texto perceptible del short debe estar en ${language}.
 - Todos los personajes son adultos de 25+ anios.

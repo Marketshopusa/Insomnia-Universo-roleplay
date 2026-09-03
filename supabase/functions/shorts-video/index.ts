@@ -8,8 +8,17 @@ const corsHeaders = {
 
 const GATEWAY = "https://ai.gateway.lovable.dev/v1/videos";
 
+const SHOT_PLANS = [
+  "Start with a wide establishing shot as one character enters the space, then track beside them and finish on a meaningful object in their hand.",
+  "Start over one character's shoulder, follow the other character walking across the room, then arc around them as the emotional balance changes.",
+  "Begin on a close detail of hands interacting with a practical object, pull back while a character crosses the frame, then end on a reaction close-up.",
+  "Open with both characters at different depths and doing different actions, use a slow lateral dolly, then let one character leave the frame while the other reacts.",
+  "Begin outside or in a corridor with purposeful movement, follow one character through a doorway, then reveal the other character in a new composition.",
+  "Use a high-angle environmental shot, descend into a medium tracking shot while the characters move, then finish with a restrained emotional close-up.",
+];
+
 const SAFE_SUFFIX =
-  "Cinematic vertical short, adults over 25, elegant clothing, tasteful and suggestive romance only. No nudity, no sexual acts, no explicit content, no minors. Soft warm lighting, shallow depth of field, single continuous shot.";
+  "All characters are adults over 25 and remain elegantly dressed. Tasteful suggestive romance only. No nudity, sexual acts, explicit content, or minors. Natural anatomy, distinct bodies, realistic motion, no frozen poses, no text overlays, no subtitles, no logos.";
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -44,14 +53,28 @@ Deno.serve(async (req) => {
         return json({ status: "generating", jobId: episode.job_id });
       }
 
-      const prompt = `${episode.video_prompt || episode.script}. ${SAFE_SUFFIX}`;
+      const shotPlan = SHOT_PLANS[(Math.max(Number(episode.episode_number) || 1, 1) - 1) % SHOT_PLANS.length];
+      const prompt = `Create a complete 10-second cinematic vertical story scene, not a still image. Episode ${episode.episode_number}: ${episode.title}.
+
+Scene direction: ${episode.video_prompt || episode.script}.
+
+MANDATORY MOTION PLAN:
+- [0-3s] Establish a clearly different location, action, or prop and show purposeful body movement.
+- [3-7s] The characters change position in the frame while the camera tracks, pans, or arcs with them.
+- [7-10s] End on a new visual beat or reaction that advances the story.
+- ${shotPlan}
+- Do not stage two characters motionless, centered, face-to-face and merely talking.
+- Dialogue, if any, must be brief, naturally spoken in the language requested by the scene, and synchronized with visible action.
+
+${SAFE_SUFFIX}`;
       const res = await fetch(GATEWAY, {
         method: "POST",
         headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
         body: JSON.stringify({
           model: "google/gemini-omni-1.1-flash",
           input: prompt,
-          response_format: { type: "video", resolution: "720p", duration: "8s", aspect_ratio: "9:16" },
+          response_format: { type: "video", resolution: "720p", duration: "10s", aspect_ratio: "9:16" },
+          generation_config: { thinking_level: "low" },
         }),
       });
 
