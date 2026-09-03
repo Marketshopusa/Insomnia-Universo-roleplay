@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Loader2, Sparkles } from "lucide-react";
+import { Clapperboard, Loader2, Sparkles } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
  import { MainLayout } from "@/components/layout/MainLayout";
@@ -62,6 +62,8 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
   const [language, setLanguage] = useState("English");
   const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
+  const [generatingVideos, setGeneratingVideos] = useState(false);
+  const [videoProgress, setVideoProgress] = useState("");
   const [novel, setNovel] = useState<any>(null);
 
  
@@ -139,7 +141,73 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
     }
   };
 
- 
+  const handleGenerateVideos = async () => {
+    if (!user) {
+      toast({ title: t("studio.toast.loginToCreate"), variant: "destructive" });
+      return;
+    }
+    const chapters = novel?.chapters ?? [];
+    if (!novel || chapters.length === 0) {
+      toast({ title: "Primero genera el proyecto completo con IA", variant: "destructive" });
+      return;
+    }
+
+    setGeneratingVideos(true);
+    try {
+      setVideoProgress("Creando serie…");
+      const { data: series, error: sErr } = await supabase
+        .from("shorts_series")
+        .insert({
+          title: novel.title || "Serie sin título",
+          premise: novel.logline || description || null,
+          category: "romance",
+          is_adult: !isSafeForWork,
+          created_by: user.id,
+          is_published: true,
+        })
+        .select()
+        .single();
+      if (sErr || !series) throw sErr ?? new Error("No se pudo crear la serie");
+
+      const episodesPayload = chapters.map((ch: any, i: number) => ({
+        series_id: series.id,
+        episode_number: ch.number ?? i + 1,
+        title: ch.title || `Capítulo ${i + 1}`,
+        script: (ch.content ?? "").slice(0, 2000),
+        video_prompt: ch.video_prompt || ch.content?.slice(0, 500) || "",
+        status: "pending",
+      }));
+
+      const { data: episodes, error: eErr } = await supabase
+        .from("shorts_episodes")
+        .insert(episodesPayload)
+        .select();
+      if (eErr || !episodes) throw eErr ?? new Error("No se pudieron crear los episodios");
+
+      for (let i = 0; i < episodes.length; i++) {
+        setVideoProgress(`Generando video ${i + 1} de ${episodes.length}…`);
+        const { error: vErr } = await supabase.functions.invoke("shorts-video", {
+          body: { action: "create", episodeId: episodes[i].id },
+        });
+        if (vErr) console.error("shorts-video error", episodes[i].id, vErr);
+      }
+
+      toast({
+        title: "Videos en generación",
+        description: `Se lanzaron ${episodes.length} episodios. Míralos en la pestaña Shorts.`,
+      });
+    } catch (e) {
+      toast({
+        title: "No se pudieron generar los videos",
+        description: e instanceof Error ? e.message : undefined,
+        variant: "destructive",
+      });
+    } finally {
+      setGeneratingVideos(false);
+      setVideoProgress("");
+    }
+  };
+
    const handleWriteOutline = () => {
     toast({ title: t("studio.toast.outline"), description: t("studio.toast.outlineDesc") });
    };
@@ -403,6 +471,26 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
                 </div>
               ))}
             </div>
+
+            <Button
+              size="lg"
+              className="w-full h-14 text-base rounded-none"
+              onClick={handleGenerateVideos}
+              disabled={generatingVideos || generating}
+            >
+              {generatingVideos ? (
+                <>
+                  <Loader2 className="w-5 h-5 mr-2 animate-spin" /> {videoProgress || "Generando videos…"}
+                </>
+              ) : (
+                <>
+                  <Clapperboard className="w-5 h-5 mr-2" /> Generar videos capítulo por capítulo
+                </>
+              )}
+            </Button>
+            <p className="text-xs text-muted-foreground text-center">
+              Crea una serie en la pestaña Shorts con un episodio de video por capítulo, manteniendo la identidad de los personajes.
+            </p>
           </Card>
         )}
 
@@ -411,8 +499,6 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
           <Button variant="secondary" onClick={handleGenerateProject} disabled={generating}>
             {t("studio.writeNovel")}
           </Button>
-          <Button onClick={handleWriteOutline}>{t("studio.writeOutline")}</Button>
-
           <Button onClick={handleWriteOutline}>{t("studio.writeOutline")}</Button>
           <Button onClick={handleBlankNovel}>{t("studio.blankNovel")}</Button>
          </div>
