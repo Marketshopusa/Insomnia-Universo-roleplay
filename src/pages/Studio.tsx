@@ -66,21 +66,73 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
     { value: "wild", label: t("studio.creativity.wild") },
   ];
 
-   const handleWriteNovel = async () => {
-     if (!user) {
+  const handleGenerateProject = async () => {
+    if (!user) {
       toast({ title: t("studio.toast.loginToCreate"), variant: "destructive" });
-       return;
-     }
+      return;
+    }
+    if (description.trim().length < 10) {
+      toast({ title: "Describe tu idea con más detalle", variant: "destructive" });
+      return;
+    }
 
-    toast({
-      title: t("studio.toast.generating"),
-      description: t("studio.toast.generatingDesc"),
-    });
+    setGenerating(true);
+    setNovel(null);
+    try {
+      const { data, error } = await supabase.functions.invoke("generate-novel", {
+        body: {
+          description,
+          chapterCount,
+          language,
+          creativity,
+          isSafeForWork,
+        },
+      });
+      if (error || data?.error) throw new Error(data?.error || error?.message);
 
-    setTimeout(() => {
-      toast({ title: t("studio.toast.generated"), description: t("studio.toast.generatedDesc") });
-    }, 2000);
-   };
+      const generated = data.novel;
+      setNovel(generated);
+
+      const content = (generated.chapters ?? [])
+        .map((c: any) => `## ${c.number}. ${c.title}\n\n${c.content}`)
+        .join("\n\n");
+      const bible = JSON.stringify(
+        { characters: generated.characters, setting: generated.setting },
+        null,
+        2,
+      );
+
+      const payload = {
+        title: generated.title || "Proyecto sin título",
+        description,
+        content,
+        outline: `${generated.outline ?? ""}\n\n<!-- BIBLE\n${bible}\n-->`,
+        chapter_count: chapterCount,
+        language,
+        model,
+        creativity,
+        is_safe_for_work: isSafeForWork,
+      };
+
+      if (currentProjectId) {
+        await updateProject.mutateAsync({ id: currentProjectId, ...payload });
+      } else {
+        const created = await createProject.mutateAsync(payload);
+        setCurrentProjectId(created.id);
+      }
+
+      toast({ title: "Proyecto generado y guardado", description: generated.title });
+    } catch (e) {
+      toast({
+        title: "No se pudo generar el proyecto",
+        description: e instanceof Error ? e.message : undefined,
+        variant: "destructive",
+      });
+    } finally {
+      setGenerating(false);
+    }
+  };
+
  
    const handleWriteOutline = () => {
     toast({ title: t("studio.toast.outline"), description: t("studio.toast.outlineDesc") });
