@@ -54,8 +54,9 @@ Deno.serve(async (req) => {
 ${SAFETY_RULES}
 Responde SOLO JSON valido con esta forma:
 {"title":"...","logline":"...","episodes":[{"number":1,"title":"...","script":"...","video_prompt":"..."}]}
-- "script": narracion en ${language}, maximo 320 caracteres, con al menos una linea de dialogo entre comillas, terminando en un gancho.
-- "video_prompt": prompt en INGLES para un video vertical 9:16 de 10 segundos. Debe describir UNA escena filmable con tres momentos temporales: [0-3s], [3-7s] y [7-10s]. Incluye acciones fisicas visibles, desplazamiento de personajes, interaccion con objetos o entorno, movimiento de camara, luz, vestuario y ambiente sonoro.
+- "script": guion hablado en ${language}, maximo 320 caracteres, con narracion audible breve y dialogo directo de los personajes, terminando en un gancho.
+- "video_prompt": prompt en INGLES para un video vertical 9:16 de 15 segundos. Debe describir UNA escena filmable con tres momentos temporales: [0-5s], [5-10s] y [10-15s]. Incluye acciones fisicas visibles, desplazamiento de personajes, interaccion con objetos o entorno, movimiento de camara, luz, vestuario, ambiente sonoro y el dialogo o narracion audible en ${language}.
+- La historia debe entenderse por las voces y acciones dentro del video. Prohibido mostrar narracion, dialogos, subtitulos, captions o bloques de texto escritos sobre la imagen.
 - VARIEDAD OBLIGATORIA: cada episodio debe usar una localizacion, accion principal, utileria, composicion y movimiento de camara diferentes al episodio anterior.
 - Prohibido repetir la composicion estatica de dos personajes frente a frente hablando. No uses poses congeladas ni conviertas el video en una fotografia animada.
 - Los personajes son adultos, permanecen vestidos y no hay desnudez ni actos sexuales.`,

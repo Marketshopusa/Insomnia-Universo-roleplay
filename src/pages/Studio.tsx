@@ -102,7 +102,7 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
       episode_number: chapter.number ?? index + 1,
       title: chapter.title || `Capítulo ${index + 1}`,
       script: (chapter.content ?? "").slice(0, 2000),
-      video_prompt: `${chapter.video_prompt || chapter.content?.slice(0, 500) || ""}. Spoken dialogue, narration, captions and any visible text must be in ${language}.`,
+      video_prompt: `${chapter.video_prompt || chapter.content?.slice(0, 500) || ""}. Spoken dialogue and narration must be in ${language}. Tell the story through voices and actions only; never show captions, subtitles, narration, dialogue, or story text on screen.`,
       status: "pending",
     }));
 
