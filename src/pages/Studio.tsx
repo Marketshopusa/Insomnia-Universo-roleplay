@@ -51,13 +51,16 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
    const updateProject = useUpdateNovelProject();
    const deleteProject = useDeleteNovelProject();
  
-   const [model, setModel] = useState("apprentice-6");
-   const [creativity, setCreativity] = useState("balanced");
-   const [description, setDescription] = useState("");
-   const [chapterCount, setChapterCount] = useState(7);
-   const [isSafeForWork, setIsSafeForWork] = useState(false);
-   const [language, setLanguage] = useState("English");
-   const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
+  const [model, setModel] = useState("apprentice-6");
+  const [creativity, setCreativity] = useState("balanced");
+  const [description, setDescription] = useState("");
+  const [chapterCount, setChapterCount] = useState(7);
+  const [isSafeForWork, setIsSafeForWork] = useState(false);
+  const [language, setLanguage] = useState("English");
+  const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
+  const [generating, setGenerating] = useState(false);
+  const [novel, setNovel] = useState<any>(null);
+
  
   const creativityLevels = [
     { value: "conservative", label: t("studio.creativity.conservative") },
