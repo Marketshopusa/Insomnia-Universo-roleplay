@@ -141,7 +141,73 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
     }
   };
 
- 
+  const handleGenerateVideos = async () => {
+    if (!user) {
+      toast({ title: t("studio.toast.loginToCreate"), variant: "destructive" });
+      return;
+    }
+    const chapters = novel?.chapters ?? [];
+    if (!novel || chapters.length === 0) {
+      toast({ title: "Primero genera el proyecto completo con IA", variant: "destructive" });
+      return;
+    }
+
+    setGeneratingVideos(true);
+    try {
+      setVideoProgress("Creando serie…");
+      const { data: series, error: sErr } = await supabase
+        .from("shorts_series")
+        .insert({
+          title: novel.title || "Serie sin título",
+          premise: novel.logline || description || null,
+          category: "romance",
+          is_adult: !isSafeForWork,
+          created_by: user.id,
+          is_published: true,
+        })
+        .select()
+        .single();
+      if (sErr || !series) throw sErr ?? new Error("No se pudo crear la serie");
+
+      const episodesPayload = chapters.map((ch: any, i: number) => ({
+        series_id: series.id,
+        episode_number: ch.number ?? i + 1,
+        title: ch.title || `Capítulo ${i + 1}`,
+        script: (ch.content ?? "").slice(0, 2000),
+        video_prompt: ch.video_prompt || ch.content?.slice(0, 500) || "",
+        status: "pending",
+      }));
+
+      const { data: episodes, error: eErr } = await supabase
+        .from("shorts_episodes")
+        .insert(episodesPayload)
+        .select();
+      if (eErr || !episodes) throw eErr ?? new Error("No se pudieron crear los episodios");
+
+      for (let i = 0; i < episodes.length; i++) {
+        setVideoProgress(`Generando video ${i + 1} de ${episodes.length}…`);
+        const { error: vErr } = await supabase.functions.invoke("shorts-video", {
+          body: { action: "create", episodeId: episodes[i].id },
+        });
+        if (vErr) console.error("shorts-video error", episodes[i].id, vErr);
+      }
+
+      toast({
+        title: "Videos en generación",
+        description: `Se lanzaron ${episodes.length} episodios. Míralos en la pestaña Shorts.`,
+      });
+    } catch (e) {
+      toast({
+        title: "No se pudieron generar los videos",
+        description: e instanceof Error ? e.message : undefined,
+        variant: "destructive",
+      });
+    } finally {
+      setGeneratingVideos(false);
+      setVideoProgress("");
+    }
+  };
+
    const handleWriteOutline = () => {
     toast({ title: t("studio.toast.outline"), description: t("studio.toast.outlineDesc") });
    };
