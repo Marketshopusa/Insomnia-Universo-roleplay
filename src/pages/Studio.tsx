@@ -471,6 +471,26 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
                 </div>
               ))}
             </div>
+
+            <Button
+              size="lg"
+              className="w-full h-14 text-base rounded-none"
+              onClick={handleGenerateVideos}
+              disabled={generatingVideos || generating}
+            >
+              {generatingVideos ? (
+                <>
+                  <Loader2 className="w-5 h-5 mr-2 animate-spin" /> {videoProgress || "Generando videos…"}
+                </>
+              ) : (
+                <>
+                  <Clapperboard className="w-5 h-5 mr-2" /> Generar videos capítulo por capítulo
+                </>
+              )}
+            </Button>
+            <p className="text-xs text-muted-foreground text-center">
+              Crea una serie en la pestaña Shorts con un episodio de video por capítulo, manteniendo la identidad de los personajes.
+            </p>
           </Card>
         )}
 
