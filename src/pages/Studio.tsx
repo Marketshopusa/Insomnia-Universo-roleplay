@@ -1,4 +1,7 @@
- import { useState } from "react";
+import { useState } from "react";
+import { Loader2, Sparkles } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+
  import { MainLayout } from "@/components/layout/MainLayout";
  import { Button } from "@/components/ui/button";
  import { Textarea } from "@/components/ui/textarea";
@@ -51,13 +54,16 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
    const updateProject = useUpdateNovelProject();
    const deleteProject = useDeleteNovelProject();
  
-   const [model, setModel] = useState("apprentice-6");
-   const [creativity, setCreativity] = useState("balanced");
-   const [description, setDescription] = useState("");
-   const [chapterCount, setChapterCount] = useState(7);
-   const [isSafeForWork, setIsSafeForWork] = useState(false);
-   const [language, setLanguage] = useState("English");
-   const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
+  const [model, setModel] = useState("apprentice-6");
+  const [creativity, setCreativity] = useState("balanced");
+  const [description, setDescription] = useState("");
+  const [chapterCount, setChapterCount] = useState(7);
+  const [isSafeForWork, setIsSafeForWork] = useState(false);
+  const [language, setLanguage] = useState("English");
+  const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
+  const [generating, setGenerating] = useState(false);
+  const [novel, setNovel] = useState<any>(null);
+
  
   const creativityLevels = [
     { value: "conservative", label: t("studio.creativity.conservative") },
@@ -66,21 +72,73 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
     { value: "wild", label: t("studio.creativity.wild") },
   ];
 
-   const handleWriteNovel = async () => {
-     if (!user) {
+  const handleGenerateProject = async () => {
+    if (!user) {
       toast({ title: t("studio.toast.loginToCreate"), variant: "destructive" });
-       return;
-     }
+      return;
+    }
+    if (description.trim().length < 10) {
+      toast({ title: "Describe tu idea con más detalle", variant: "destructive" });
+      return;
+    }
 
-    toast({
-      title: t("studio.toast.generating"),
-      description: t("studio.toast.generatingDesc"),
-    });
+    setGenerating(true);
+    setNovel(null);
+    try {
+      const { data, error } = await supabase.functions.invoke("generate-novel", {
+        body: {
+          description,
+          chapterCount,
+          language,
+          creativity,
+          isSafeForWork,
+        },
+      });
+      if (error || data?.error) throw new Error(data?.error || error?.message);
 
-    setTimeout(() => {
-      toast({ title: t("studio.toast.generated"), description: t("studio.toast.generatedDesc") });
-    }, 2000);
-   };
+      const generated = data.novel;
+      setNovel(generated);
+
+      const content = (generated.chapters ?? [])
+        .map((c: any) => `## ${c.number}. ${c.title}\n\n${c.content}`)
+        .join("\n\n");
+      const bible = JSON.stringify(
+        { characters: generated.characters, setting: generated.setting },
+        null,
+        2,
+      );
+
+      const payload = {
+        title: generated.title || "Proyecto sin título",
+        description,
+        content,
+        outline: `${generated.outline ?? ""}\n\n<!-- BIBLE\n${bible}\n-->`,
+        chapter_count: chapterCount,
+        language,
+        model,
+        creativity,
+        is_safe_for_work: isSafeForWork,
+      };
+
+      if (currentProjectId) {
+        await updateProject.mutateAsync({ id: currentProjectId, ...payload });
+      } else {
+        const created = await createProject.mutateAsync(payload);
+        setCurrentProjectId(created.id);
+      }
+
+      toast({ title: "Proyecto generado y guardado", description: generated.title });
+    } catch (e) {
+      toast({
+        title: "No se pudo generar el proyecto",
+        description: e instanceof Error ? e.message : undefined,
+        variant: "destructive",
+      });
+    } finally {
+      setGenerating(false);
+    }
+  };
+
  
    const handleWriteOutline = () => {
     toast({ title: t("studio.toast.outline"), description: t("studio.toast.outlineDesc") });
@@ -271,9 +329,90 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
            </div>
          </Card>
  
-         {/* Action Buttons */}
-         <div className="grid grid-cols-3 gap-4 mb-6">
-          <Button onClick={handleWriteNovel}>{t("studio.writeNovel")}</Button>
+        {/* Generar proyecto completo */}
+        <Button
+          size="lg"
+          className="w-full mb-6 h-14 text-base rounded-none"
+          onClick={handleGenerateProject}
+          disabled={generating}
+        >
+          {generating ? (
+            <>
+              <Loader2 className="w-5 h-5 mr-2 animate-spin" /> Generando novela completa…
+            </>
+          ) : (
+            <>
+              <Sparkles className="w-5 h-5 mr-2" /> Generar proyecto completo con IA
+            </>
+          )}
+        </Button>
+
+        {novel && (
+          <Card className="p-6 mb-6 space-y-6">
+            <div>
+              <h2 className="font-display text-2xl">{novel.title}</h2>
+              {novel.logline && (
+                <p className="text-sm text-muted-foreground mt-1">{novel.logline}</p>
+              )}
+            </div>
+
+            {Array.isArray(novel.characters) && novel.characters.length > 0 && (
+              <div className="space-y-3">
+                <h3 className="text-sm uppercase tracking-[0.2em] text-accent">
+                  Biblia de personajes (persistente)
+                </h3>
+                {novel.characters.map((c: any, i: number) => (
+                  <div key={i} className="border border-border p-3 text-sm space-y-1">
+                    <p className="font-medium">
+                      {c.name} {c.age ? `· ${c.age}` : ""} {c.role ? `· ${c.role}` : ""}
+                    </p>
+                    <p className="text-muted-foreground">{c.appearance}</p>
+                    {c.wardrobe && <p className="text-muted-foreground">Vestuario: {c.wardrobe}</p>}
+                    {c.visual_prompt && (
+                      <p className="text-xs font-mono text-accent/80 break-words">
+                        {c.visual_prompt}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {novel.setting?.visual_style && (
+              <div className="border border-border p-3 text-sm">
+                <p className="font-medium mb-1">Estilo visual de la serie</p>
+                <p className="text-xs font-mono text-accent/80 break-words">
+                  {novel.setting.visual_style}
+                </p>
+              </div>
+            )}
+
+            <div className="space-y-4">
+              <h3 className="text-sm uppercase tracking-[0.2em] text-accent">Capítulos</h3>
+              {(novel.chapters ?? []).map((ch: any, i: number) => (
+                <div key={i} className="border border-border p-4 space-y-2">
+                  <p className="font-display text-lg">
+                    {ch.number}. {ch.title}
+                  </p>
+                  <p className="text-sm whitespace-pre-wrap leading-relaxed">{ch.content}</p>
+                  {ch.video_prompt && (
+                    <p className="text-xs font-mono text-muted-foreground break-words border-t border-border pt-2">
+                      Video prompt: {ch.video_prompt}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          </Card>
+        )}
+
+        {/* Action Buttons */}
+        <div className="grid grid-cols-3 gap-4 mb-6">
+          <Button variant="secondary" onClick={handleGenerateProject} disabled={generating}>
+            {t("studio.writeNovel")}
+          </Button>
+          <Button onClick={handleWriteOutline}>{t("studio.writeOutline")}</Button>
+
           <Button onClick={handleWriteOutline}>{t("studio.writeOutline")}</Button>
           <Button onClick={handleBlankNovel}>{t("studio.blankNovel")}</Button>
          </div>
