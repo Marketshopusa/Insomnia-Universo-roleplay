@@ -62,6 +62,8 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
   const [language, setLanguage] = useState("English");
   const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
+  const [generatingVideos, setGeneratingVideos] = useState(false);
+  const [videoProgress, setVideoProgress] = useState("");
   const [novel, setNovel] = useState<any>(null);
 
  
