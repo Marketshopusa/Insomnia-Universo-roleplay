@@ -54,17 +54,18 @@ Deno.serve(async (req) => {
       }
 
       const shotPlan = SHOT_PLANS[(Math.max(Number(episode.episode_number) || 1, 1) - 1) % SHOT_PLANS.length];
-      const prompt = `Create a complete 10-second cinematic vertical story scene, not a still image. Episode ${episode.episode_number}: ${episode.title}.
+      const prompt = `Create a complete 15-second cinematic vertical story scene, not a still image. Episode ${episode.episode_number}: ${episode.title}.
 
 Scene direction: ${episode.video_prompt || episode.script}.
 
 MANDATORY MOTION PLAN:
-- [0-3s] Establish a clearly different location, action, or prop and show purposeful body movement.
-- [3-7s] The characters change position in the frame while the camera tracks, pans, or arcs with them.
-- [7-10s] End on a new visual beat or reaction that advances the story.
+- [0-5s] Establish a clearly different location, action, or prop and show purposeful body movement.
+- [5-10s] The characters change position in the frame while the camera tracks, pans, or arcs with them.
+- [10-15s] End on a new visual beat or reaction that advances the story.
 - ${shotPlan}
 - Do not stage two characters motionless, centered, face-to-face and merely talking.
-- Dialogue, if any, must be brief, naturally spoken in the language requested by the scene, and synchronized with visible action.
+- Narration and dialogue must be naturally spoken in the language requested by the scene and synchronized with visible action.
+- Tell the story through voices and actions only. Never render narration, dialogue, captions, subtitles, or story text on screen.
 
 ${SAFE_SUFFIX}`;
       const res = await fetch(GATEWAY, {
@@ -73,7 +74,7 @@ ${SAFE_SUFFIX}`;
         body: JSON.stringify({
           model: "google/gemini-omni-1.1-flash",
           input: prompt,
-          response_format: { type: "video", resolution: "720p", duration: "10s", aspect_ratio: "9:16" },
+          response_format: { type: "video", resolution: "720p", duration: "15s", aspect_ratio: "9:16" },
           generation_config: { thinking_level: "low" },
         }),
       });

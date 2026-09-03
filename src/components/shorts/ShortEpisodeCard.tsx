@@ -106,7 +106,6 @@ export const ShortEpisodeCard = ({ series, episode, active, onUpdated }: Props) 
             {series.title} · N°{String(episode.episode_number).padStart(2, "0")}
           </p>
           <h3 className="font-display text-2xl mt-1">{episode.title}</h3>
-          <p className="text-sm text-muted-foreground mt-2 leading-relaxed">{episode.script}</p>
 
           {!videoUrl && (
             <Button className="mt-4 w-full rounded-none" onClick={handleGenerate} disabled={generating}>
