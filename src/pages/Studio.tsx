@@ -500,8 +500,6 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
             {t("studio.writeNovel")}
           </Button>
           <Button onClick={handleWriteOutline}>{t("studio.writeOutline")}</Button>
-
-          <Button onClick={handleWriteOutline}>{t("studio.writeOutline")}</Button>
           <Button onClick={handleBlankNovel}>{t("studio.blankNovel")}</Button>
          </div>
  
