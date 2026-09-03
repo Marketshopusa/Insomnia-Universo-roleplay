@@ -86,7 +86,7 @@ const Shorts = () => {
             <p className="text-[11px] uppercase tracking-[0.3em] text-accent">Insomnia Shorts</p>
             <h1 className="font-display text-3xl md:text-4xl mt-1">Series verticales generadas por IA</h1>
             <p className="text-sm text-muted-foreground mt-2 max-w-xl">
-              Micro-episodios sensuales de 8 segundos. Desliza para continuar la historia.
+              Micro-episodios cinematográficos de 10 segundos. Desliza para continuar la historia.
             </p>
           </div>
 

@@ -50,12 +50,15 @@ Deno.serve(async (req) => {
         messages: [
           {
             role: "system",
-            content: `Eres guionista de micro-series verticales tipo shorts, estilo romance sensual adulto (moderado, nunca explicito).
+             content: `Eres guionista y director de micro-series verticales tipo shorts, estilo romance sensual adulto (moderado, nunca explicito).
 ${SAFETY_RULES}
 Responde SOLO JSON valido con esta forma:
 {"title":"...","logline":"...","episodes":[{"number":1,"title":"...","script":"...","video_prompt":"..."}]}
 - "script": narracion en ${language}, maximo 320 caracteres, con al menos una linea de dialogo entre comillas, terminando en un gancho.
-- "video_prompt": prompt en INGLES para un modelo de video vertical 9:16 de 8 segundos. Describe encuadre, luz, movimiento de camara, vestuario elegante y emocion. Personajes adultos, vestidos, sin desnudez ni actos sexuales. Incluye el ambiente sonoro deseado.`,
+- "video_prompt": prompt en INGLES para un video vertical 9:16 de 10 segundos. Debe describir UNA escena filmable con tres momentos temporales: [0-3s], [3-7s] y [7-10s]. Incluye acciones fisicas visibles, desplazamiento de personajes, interaccion con objetos o entorno, movimiento de camara, luz, vestuario y ambiente sonoro.
+- VARIEDAD OBLIGATORIA: cada episodio debe usar una localizacion, accion principal, utileria, composicion y movimiento de camara diferentes al episodio anterior.
+- Prohibido repetir la composicion estatica de dos personajes frente a frente hablando. No uses poses congeladas ni conviertas el video en una fotografia animada.
+- Los personajes son adultos, permanecen vestidos y no hay desnudez ni actos sexuales.`,
           },
           {
             role: "user",
