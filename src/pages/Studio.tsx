@@ -1,4 +1,7 @@
- import { useState } from "react";
+import { useState } from "react";
+import { Loader2, Sparkles } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+
  import { MainLayout } from "@/components/layout/MainLayout";
  import { Button } from "@/components/ui/button";
  import { Textarea } from "@/components/ui/textarea";
