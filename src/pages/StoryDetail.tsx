@@ -340,11 +340,11 @@ type Mode = "select" | "read" | "roleplay";
           window.speechSynthesis.cancel();
           const utter = new SpeechSynthesisUtterance(clean);
           utter.lang = langCode;
-          const voice = pickFemaleVoice(langCode);
-          if (voice) utter.voice = voice;
-          // Warm, calm telenovela narration
+          const deviceVoice = pickDeviceVoice(langCode);
+          if (deviceVoice) utter.voice = deviceVoice;
+          // Warm, calm narration; pitch follows the chosen voice gender
           utter.rate = 0.95;
-          utter.pitch = 1.15;
+          utter.pitch = voiceGender(voiceRef.current) === "male" ? 0.9 : 1.15;
           utter.onend = () => setPlayingId(null);
           utter.onerror = () => setPlayingId(null);
           setPlayingId(id);
