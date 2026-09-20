@@ -79,6 +79,7 @@ serve(async (req) => {
       },
       body: JSON.stringify({
         model: "google/gemini-3.1-flash-tts-preview",
+        ...(stream ? { stream_format: "sse" } : {}),
         contents: [
           {
             role: "user",
@@ -93,6 +94,16 @@ serve(async (req) => {
         },
       }),
     });
+
+    if (stream && resp.ok && resp.body) {
+      return new Response(resp.body, {
+        headers: {
+          ...corsHeaders,
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+        },
+      });
+    }
 
     if (!resp.ok) {
       const t = await resp.text();
