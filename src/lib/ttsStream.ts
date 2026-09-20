@@ -11,89 +11,25 @@ export interface SpeechStream {
 }
 
 const SAMPLE_RATE = 24000;
-const START_BUFFER_SAMPLES = SAMPLE_RATE * 1.5;
 
-const WORKLET_SOURCE = `
-class PcmStreamProcessor extends AudioWorkletProcessor {
-  constructor(options) {
-    super();
-    this.queue = [];
-    this.offset = 0;
-    this.queuedSamples = 0;
-    this.started = false;
-    this.finished = false;
-    this.reportedEnd = false;
-    this.startBufferSamples = options.processorOptions.startBufferSamples;
-    this.port.onmessage = (event) => {
-      if (event.data.type === "chunk") {
-        const pcm = new Int16Array(event.data.buffer);
-        const floats = new Float32Array(pcm.length);
-        for (let i = 0; i < pcm.length; i += 1) floats[i] = pcm[i] / 32768;
-        this.queue.push(floats);
-        this.queuedSamples += floats.length;
-      } else if (event.data.type === "done") {
-        this.finished = true;
-      }
-    };
-  }
-
-  process(_inputs, outputs) {
-    const output = outputs[0][0];
-    output.fill(0);
-
-    if (!this.started) {
-      if (this.queuedSamples >= this.startBufferSamples || (this.finished && this.queuedSamples > 0)) {
-        this.started = true;
-        this.port.postMessage({ type: "started" });
-      } else {
-        return true;
-      }
-    }
-
-    let writeOffset = 0;
-    while (writeOffset < output.length && this.queue.length > 0) {
-      const current = this.queue[0];
-      const available = current.length - this.offset;
-      const amount = Math.min(output.length - writeOffset, available);
-      output.set(current.subarray(this.offset, this.offset + amount), writeOffset);
-      writeOffset += amount;
-      this.offset += amount;
-      this.queuedSamples -= amount;
-      if (this.offset >= current.length) {
-        this.queue.shift();
-        this.offset = 0;
-      }
-    }
-
-    if (this.finished && this.queuedSamples === 0 && !this.reportedEnd) {
-      this.reportedEnd = true;
-      this.port.postMessage({ type: "ended" });
-      return false;
-    }
-    return true;
-  }
-}
-registerProcessor("pcm-stream-processor", PcmStreamProcessor);
-`;
-
-function decodeBase64(value: string): ArrayBuffer {
+function decodeBase64(value: string): Uint8Array {
   const binary = atob(value);
-  const bytes = new Uint8Array(binary.length - (binary.length % 2));
+  const bytes = new Uint8Array(binary.length);
   for (let index = 0; index < bytes.length; index += 1) {
     bytes[index] = binary.charCodeAt(index);
   }
-  return bytes.buffer;
+  return bytes;
 }
 
 /**
- * Feeds streamed PCM into one AudioWorklet output. The worklet keeps a short
- * reserve and consumes it as a continuous sample stream, avoiding the gaps
- * created by hundreds of separately scheduled audio nodes.
+ * Receives every streamed PCM byte, verifies the terminal event, then plays
+ * one immutable AudioBuffer. A single source cannot underrun between network
+ * chunks and guarantees that narration and dialogue finish in full.
  */
 export function streamSpeech(text: string, voice: string): SpeechStream {
   const controller = new AbortController();
   let context: AudioContext | null = null;
-  let node: AudioWorkletNode | null = null;
+  let source: AudioBufferSourceNode | null = null;
   let stopped = false;
 
   let markStarted: () => void = () => {};
@@ -105,39 +41,22 @@ export function streamSpeech(text: string, voice: string): SpeechStream {
     if (stopped) return;
     stopped = true;
     controller.abort();
-    node?.disconnect();
-    node = null;
+    try {
+      source?.stop();
+    } catch {
+      // The source may not have started yet.
+    }
+    source?.disconnect();
+    source = null;
     void context?.close().catch(() => {});
     context = null;
   };
 
   const done = (async () => {
-    let workletUrl: string | null = null;
     try {
       context = new AudioContext({ sampleRate: SAMPLE_RATE });
       if (context.state === "suspended") await context.resume();
-
-      const workletBlob = new Blob([WORKLET_SOURCE], { type: "text/javascript" });
-      workletUrl = URL.createObjectURL(workletBlob);
-      await context.audioWorklet.addModule(workletUrl);
-      URL.revokeObjectURL(workletUrl);
-      workletUrl = null;
       if (stopped || !context) return;
-
-      node = new AudioWorkletNode(context, "pcm-stream-processor", {
-        outputChannelCount: [1],
-        processorOptions: { startBufferSamples: START_BUFFER_SAMPLES },
-      });
-      node.connect(context.destination);
-
-      let resolvePlayback: () => void = () => {};
-      const playbackEnded = new Promise<void>((resolve) => {
-        resolvePlayback = resolve;
-      });
-      node.port.onmessage = (event: MessageEvent<{ type?: string }>) => {
-        if (event.data.type === "started") markStarted();
-        if (event.data.type === "ended") resolvePlayback();
-      };
 
       const response = await fetch(FUNCTIONS_URL, {
         method: "POST",
@@ -155,6 +74,7 @@ export function streamSpeech(text: string, voice: string): SpeechStream {
 
       let terminalEventReceived = false;
       let audioBytesReceived = 0;
+      const chunks: Uint8Array[] = [];
       const processEventLine = (line: string) => {
         const normalized = line.trimEnd();
         if (!normalized.startsWith("data:")) return;
@@ -172,10 +92,10 @@ export function streamSpeech(text: string, voice: string): SpeechStream {
           terminalEventReceived = true;
           return;
         }
-        if (payload.type !== "speech.audio.delta" || !payload.audio || !node) return;
-        const buffer = decodeBase64(payload.audio);
-        audioBytesReceived += buffer.byteLength;
-        node.port.postMessage({ type: "chunk", buffer }, [buffer]);
+        if (payload.type !== "speech.audio.delta" || !payload.audio) return;
+        const chunk = decodeBase64(payload.audio);
+        audioBytesReceived += chunk.byteLength;
+        chunks.push(chunk);
       };
 
       const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
@@ -192,21 +112,47 @@ export function streamSpeech(text: string, voice: string): SpeechStream {
       if (stopped) return;
       if (eventBuffer.trim()) processEventLine(eventBuffer);
       if (!terminalEventReceived) throw new Error("tts_incomplete_stream");
-      if (audioBytesReceived < 2 || !node) throw new Error("tts_no_audio");
+      const usableBytes = audioBytesReceived - (audioBytesReceived % 2);
+      if (usableBytes < 2 || !context) throw new Error("tts_no_audio");
 
-      node.port.postMessage({ type: "done" });
+      const pcmBytes = new Uint8Array(usableBytes);
+      let byteOffset = 0;
+      for (const chunk of chunks) {
+        const remaining = usableBytes - byteOffset;
+        if (remaining <= 0) break;
+        const part = chunk.subarray(0, Math.min(chunk.length, remaining));
+        pcmBytes.set(part, byteOffset);
+        byteOffset += part.length;
+      }
+
+      const samples = new Int16Array(pcmBytes.buffer);
+      const audioBuffer = context.createBuffer(1, samples.length, SAMPLE_RATE);
+      const channel = audioBuffer.getChannelData(0);
+      for (let index = 0; index < samples.length; index += 1) {
+        channel[index] = samples[index] / 32768;
+      }
+
+      let resolvePlayback: () => void = () => {};
+      const playbackEnded = new Promise<void>((resolve) => {
+        resolvePlayback = resolve;
+      });
+      source = context.createBufferSource();
+      source.buffer = audioBuffer;
+      source.connect(context.destination);
+      source.onended = resolvePlayback;
+      source.start(context.currentTime + 0.03);
+      markStarted();
       await playbackEnded;
-      node.disconnect();
-      node = null;
+      source.disconnect();
+      source = null;
       if (!stopped && context) {
         await context.close().catch(() => {});
         context = null;
       }
     } catch (error) {
-      if (workletUrl) URL.revokeObjectURL(workletUrl);
       if (stopped || (error instanceof DOMException && error.name === "AbortError")) return;
-      node?.disconnect();
-      node = null;
+      source?.disconnect();
+      source = null;
       void context?.close().catch(() => {});
       context = null;
       throw error;
