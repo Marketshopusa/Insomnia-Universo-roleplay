@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 import { startWavRecording, blobToBase64, type WavRecorder } from "@/lib/wavRecorder";
+import { voiceGender } from "@/lib/voices";
 
 type CallState = "idle" | "listening" | "thinking" | "speaking";
 
@@ -90,8 +91,17 @@ export const CallDialog = ({
       utterance.lang = es ? "es-ES" : "en-US";
       utterance.rate = 0.98;
       utterance.pitch = 1.1;
+      const wantMale = voiceGender(voice) === "male";
+      utterance.pitch = wantMale ? 0.9 : 1.1;
+      const hints = wantMale
+        ? ["male", "hombre", "diego", "jorge", "carlos", "pablo", "enrique", "george", "daniel", "fred"]
+        : ["female", "mujer", "femenina", "monica", "mónica", "paulina", "lucia", "helena", "samantha", "sabina", "elvira", "zira"];
       const voices = window.speechSynthesis.getVoices();
-      const matchingVoice = voices.find((item) => item.lang.toLowerCase().startsWith(es ? "es" : "en"));
+      const pool = voices.filter((item) => item.lang.toLowerCase().startsWith(es ? "es" : "en"));
+      const candidates = pool.length ? pool : voices;
+      const matchingVoice =
+        candidates.find((item) => hints.some((hint) => item.name.toLowerCase().includes(hint))) ||
+        candidates[0];
       if (matchingVoice) utterance.voice = matchingVoice;
       utterance.onend = () => resolve();
       utterance.onerror = () => resolve();
