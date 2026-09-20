@@ -817,6 +817,18 @@ type Mode = "select" | "read" | "roleplay";
                <div className="p-4 border-b border-border flex items-center justify-between">
                   <h2 className="font-display text-lg">{tTitle || story.title}</h2>
                  <div className="flex items-center gap-1">
+                    <Select value={voice} onValueChange={changeVoice}>
+                      <SelectTrigger className="h-9 w-[132px] sm:w-[150px] rounded-none text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {STORY_VOICES.map((option) => (
+                          <SelectItem key={option.value} value={option.value} className="text-xs">
+                            {option.label} · {language === "es" ? option.descriptionEs : option.descriptionEn}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                     <CallDialog
                       story={story}
                       language={language}
