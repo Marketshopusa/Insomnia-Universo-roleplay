@@ -9,6 +9,7 @@
 import { ArrowLeft, Send, Play, Image as ImageIcon, Volume2, VolumeX, BookOpen, MessageSquare, Loader2, RotateCw, Sparkles } from "lucide-react";
 import { CallDialog } from "@/components/story/CallDialog";
 import { STORY_VOICES, getStoryVoice, setStoryVoice, voiceGender } from "@/lib/voices";
+import { streamSpeech, type SpeechStream } from "@/lib/ttsStream";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
  import { useStory } from "@/hooks/useStories";
  import { useLanguage } from "@/contexts/LanguageContext";
