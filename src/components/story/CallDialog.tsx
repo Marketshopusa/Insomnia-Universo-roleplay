@@ -46,6 +46,7 @@ export const CallDialog = ({
   const recorderRef = useRef<WavRecorder | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioUrlRef = useRef<string | null>(null);
+  const streamRef = useRef<SpeechStream | null>(null);
   const historyRef = useRef<Turn[]>(history);
   const activeRef = useRef(false);
   const timersRef = useRef<number[]>([]);
