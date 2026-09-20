@@ -2,38 +2,35 @@ const FUNCTIONS_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/text-to
 const ANON_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string;
 
 export interface SpeechStream {
-  /** resolves when the whole audio finished playing */
+  /** Resolves only after the complete audio has finished playing. */
   done: Promise<void>;
-  /** stops playback immediately */
+  /** Stops downloading and playback immediately. */
   stop: () => void;
-  /** resolves as soon as the first audio chunk starts playing */
+  /** Resolves when the complete, continuous track starts playing. */
   started: Promise<void>;
 }
 
+const SAMPLE_RATE = 24000;
+
+function decodeBase64(value: string): Uint8Array {
+  const binary = atob(value);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return bytes;
+}
+
 /**
- * Streams TTS audio (raw 24kHz PCM over SSE) and plays each chunk as it arrives,
- * so the voice starts almost immediately instead of waiting for the full file.
+ * Receives every PCM fragment, verifies the terminal event, then plays one
+ * continuous AudioBuffer. A single source avoids gaps caused by scheduling
+ * dozens of tiny, independently arriving browser audio nodes.
  */
 export function streamSpeech(text: string, voice: string): SpeechStream {
   const controller = new AbortController();
-  let ctx: AudioContext | null = null;
+  let context: AudioContext | null = null;
+  let source: AudioBufferSourceNode | null = null;
   let stopped = false;
-  let playhead = 0;
-  let pending = new Uint8Array(0);
-  let queuedBytes: Uint8Array[] = [];
-  let queuedByteLength = 0;
-  let playbackStarted = false;
-  const sources: AudioBufferSourceNode[] = [];
-  let lastPlayback: Promise<void> = Promise.resolve();
-
-  // A short reserve absorbs irregular network delivery. Without it, each
-  // sentence-sized SSE delta can run out just before the next one arrives.
-  const SAMPLE_RATE = 24000;
-  const BYTES_PER_SAMPLE = 2;
-  const START_BUFFER_SECONDS = 0.9;
-  const MIN_BLOCK_SECONDS = 0.12;
-  const START_BUFFER_BYTES = SAMPLE_RATE * BYTES_PER_SAMPLE * START_BUFFER_SECONDS;
-  const MIN_BLOCK_BYTES = SAMPLE_RATE * BYTES_PER_SAMPLE * MIN_BLOCK_SECONDS;
 
   let markStarted: () => void = () => {};
   const started = new Promise<void>((resolve) => {
@@ -41,134 +38,120 @@ export function streamSpeech(text: string, voice: string): SpeechStream {
   });
 
   const stop = () => {
+    if (stopped) return;
     stopped = true;
     controller.abort();
-    sources.forEach((s) => {
-      try {
-        s.stop();
-      } catch {
-        /* already stopped */
-      }
-    });
-    void ctx?.close().catch(() => {});
-    ctx = null;
+    try {
+      source?.stop();
+    } catch {
+      // The source may already have ended.
+    }
+    source = null;
+    void context?.close().catch(() => {});
+    context = null;
   };
 
   const done = (async () => {
     try {
-      ctx = new AudioContext({ sampleRate: SAMPLE_RATE });
-      if (ctx.state === "suspended") await ctx.resume().catch(() => {});
-
-      const scheduleBytes = (incoming: Uint8Array) => {
-        if (!ctx || stopped) return;
-        const bytes = new Uint8Array(pending.length + incoming.length);
-        bytes.set(pending);
-        bytes.set(incoming, pending.length);
-      const usable = bytes.length - (bytes.length % 2);
-      pending = bytes.slice(usable);
-      if (usable === 0) return;
-      const samples = new Int16Array(bytes.buffer, 0, usable / 2);
-      const floats = Float32Array.from(samples, (s) => s / 32768);
-        const buffer = ctx.createBuffer(1, floats.length, SAMPLE_RATE);
-      buffer.copyToChannel(floats, 0);
-      const source = ctx.createBufferSource();
-      source.buffer = buffer;
-      source.connect(ctx.destination);
-      if (playhead === 0) {
-          playhead = ctx.currentTime + 0.08;
-        markStarted();
-      } else {
-          playhead = Math.max(playhead, ctx.currentTime + 0.02);
-      }
-      source.start(playhead);
-      playhead += buffer.duration;
-      sources.push(source);
-      lastPlayback = new Promise<void>((resolve) => {
-        source.addEventListener("ended", () => resolve(), { once: true });
+      const response = await fetch(FUNCTIONS_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: ANON_KEY,
+          Authorization: `Bearer ${ANON_KEY}`,
+        },
+        body: JSON.stringify({ text, voice, stream: true }),
+        signal: controller.signal,
       });
-      };
 
-      const flushQueue = (force = false) => {
-        if (queuedByteLength === 0) return;
-        if (!playbackStarted && !force && queuedByteLength < START_BUFFER_BYTES) return;
-        if (playbackStarted && !force && queuedByteLength < MIN_BLOCK_BYTES) return;
+      if (!response.ok || !response.body) {
+        throw new Error(`tts_stream_failed_${response.status}`);
+      }
 
-        const combined = new Uint8Array(queuedByteLength);
-        let offset = 0;
-        for (const chunk of queuedBytes) {
-          combined.set(chunk, offset);
-          offset += chunk.length;
-        }
-        queuedBytes = [];
-        queuedByteLength = 0;
-        playbackStarted = true;
-        scheduleBytes(combined);
-      };
-
-      const enqueueChunk = (chunk: Uint8Array) => {
-        queuedBytes.push(chunk);
-        queuedByteLength += chunk.length;
-        flushQueue();
-      };
+      const chunks: Uint8Array[] = [];
+      let totalBytes = 0;
+      let terminalEventReceived = false;
 
       const processEventLine = (line: string) => {
-      const normalized = line.trimEnd();
-      if (!normalized.startsWith("data:")) return;
-      const raw = normalized.slice(5).trim();
-      if (!raw || raw === "[DONE]") return;
-      let payload: { type?: string; audio?: string };
-      try {
-        payload = JSON.parse(raw);
-      } catch {
-        return;
-      }
-      if (payload.type !== "speech.audio.delta" || !payload.audio) return;
-      const binary = atob(payload.audio);
-      const chunk = new Uint8Array(binary.length);
-      for (let i = 0; i < binary.length; i += 1) chunk[i] = binary.charCodeAt(i);
-        enqueueChunk(chunk);
+        const normalized = line.trimEnd();
+        if (!normalized.startsWith("data:")) return;
+        const raw = normalized.slice(5).trim();
+        if (!raw || raw === "[DONE]") return;
+
+        let payload: { type?: string; audio?: string };
+        try {
+          payload = JSON.parse(raw);
+        } catch {
+          return;
+        }
+
+        if (payload.type === "speech.audio.done") {
+          terminalEventReceived = true;
+          return;
+        }
+        if (payload.type !== "speech.audio.delta" || !payload.audio) return;
+
+        const chunk = decodeBase64(payload.audio);
+        chunks.push(chunk);
+        totalBytes += chunk.length;
       };
 
-      const res = await fetch(FUNCTIONS_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        apikey: ANON_KEY,
-        Authorization: `Bearer ${ANON_KEY}`,
-      },
-      body: JSON.stringify({ text, voice, stream: true }),
-      signal: controller.signal,
-    });
-      if (!res.ok || !res.body) throw new Error(`tts_stream_failed_${res.status}`);
-
-      const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
-      let textBuffer = "";
+      const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
+      let eventBuffer = "";
       while (!stopped) {
-        const { value, done: finished } = await reader.read();
-        if (finished) break;
-        textBuffer += value;
-        const lines = textBuffer.split(/\r?\n/);
-        textBuffer = lines.pop() ?? "";
-        for (const line of lines) {
-          processEventLine(line);
-        }
+        const { value, done: streamEnded } = await reader.read();
+        if (streamEnded) break;
+        eventBuffer += value;
+        const lines = eventBuffer.split(/\r?\n/);
+        eventBuffer = lines.pop() ?? "";
+        lines.forEach(processEventLine);
       }
 
-      // Process an event without a trailing newline, then schedule every byte
-      // left in the reserve before considering the speech complete.
-      if (textBuffer.trim()) processEventLine(textBuffer);
-      flushQueue(true);
+      if (stopped) return;
+      if (eventBuffer.trim()) processEventLine(eventBuffer);
+      if (!terminalEventReceived) throw new Error("tts_incomplete_stream");
+      if (totalBytes < 2) throw new Error("tts_no_audio");
 
-      if (playhead === 0) throw new Error("tts_no_audio");
+      const evenByteLength = totalBytes - (totalBytes % 2);
+      const pcm = new Uint8Array(evenByteLength);
+      let offset = 0;
+      for (const chunk of chunks) {
+        const remaining = evenByteLength - offset;
+        if (remaining <= 0) break;
+        const portion = chunk.subarray(0, Math.min(chunk.length, remaining));
+        pcm.set(portion, offset);
+        offset += portion.length;
+      }
 
-      // Wait for the browser's final scheduled source before reopening the mic.
-      await lastPlayback;
+      context = new AudioContext({ sampleRate: SAMPLE_RATE });
+      if (context.state === "suspended") await context.resume();
+      if (stopped) return;
+
+      const samples = new Int16Array(pcm.buffer, pcm.byteOffset, evenByteLength / 2);
+      const floats = new Float32Array(samples.length);
+      for (let index = 0; index < samples.length; index += 1) {
+        floats[index] = samples[index] / 32768;
+      }
+
+      const audioBuffer = context.createBuffer(1, floats.length, SAMPLE_RATE);
+      audioBuffer.copyToChannel(floats, 0);
+      source = context.createBufferSource();
+      source.buffer = audioBuffer;
+      source.connect(context.destination);
+
+      const playbackEnded = new Promise<void>((resolve) => {
+        source?.addEventListener("ended", () => resolve(), { once: true });
+      });
+      source.start(context.currentTime + 0.05);
+      markStarted();
+      await playbackEnded;
+
+      source = null;
       if (!stopped) {
-        void ctx?.close().catch(() => {});
-        ctx = null;
+        await context.close().catch(() => {});
+        context = null;
       }
     } catch (error) {
-      // An intentional stop/hang-up must not trigger browser speech fallback.
       if (stopped || (error instanceof DOMException && error.name === "AbortError")) return;
       throw error;
     }
