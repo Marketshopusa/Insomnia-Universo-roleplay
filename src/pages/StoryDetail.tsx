@@ -49,6 +49,7 @@ type Mode = "select" | "read" | "roleplay";
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [sessionLoaded, setSessionLoaded] = useState(false);
+  const [callOpen, setCallOpen] = useState(false);
    const audioUnlockedRef = useRef(false);
 
    // Generated scene illustrations keyed by message id (or "narrative")
@@ -805,6 +806,15 @@ type Mode = "select" | "read" | "roleplay";
                <div className="p-4 border-b border-border flex items-center justify-between">
                   <h2 className="font-display text-lg">{tTitle || story.title}</h2>
                  <div className="flex items-center gap-1">
+                   <Button
+                     variant="outline"
+                     size="sm"
+                     onClick={() => { stopAudio(); setCallOpen(true); }}
+                     className="gap-2"
+                   >
+                     <Phone className="w-4 h-4" />
+                     <span className="hidden sm:inline">{language === "es" ? "Llamar" : "Call"}</span>
+                   </Button>
                    <Button
                      variant="ghost"
                      size="sm"
