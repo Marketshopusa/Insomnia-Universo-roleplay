@@ -261,12 +261,13 @@ type Mode = "select" | "read" | "roleplay";
        const { data, error } = await supabase.functions.invoke("text-to-speech", {
          body: { text, voice },
        });
-        if (error || !(data as any)?.audioContent) {
-          // ElevenLabs unavailable (e.g. quota exceeded) -> browser TTS fallback
-          speakWithBrowser(text, id);
-          return;
-        }
-       const audio = new Audio(`data:audio/mpeg;base64,${(data as any).audioContent}`);
+         if (error || !(data as any)?.audioContent) {
+           // Voice service unavailable -> browser TTS fallback
+           speakWithBrowser(text, id);
+           return;
+         }
+        const mime = (data as any).mimeType || "audio/wav";
+        const audio = new Audio(`data:${mime};base64,${(data as any).audioContent}`);
        audioRef.current = audio;
        audio.onended = () => setPlayingId(null);
        audio.onerror = () => setPlayingId(null);

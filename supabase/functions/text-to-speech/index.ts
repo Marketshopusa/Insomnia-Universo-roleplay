@@ -1,5 +1,4 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { encode as base64Encode } from "https://deno.land/std@0.168.0/encoding/base64.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -7,16 +6,18 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
-// Map app voice keys -> ElevenLabs voice IDs (multilingual capable)
+// Map app voice keys -> Gemini prebuilt voices
 const VOICE_MAP: Record<string, string> = {
-  "scarlett-hd": "EXAVITQu4vr4xnSDxMaL", // Sarah - elegant female
-  "max-deep": "JBFqnCBsd6RMkjVDRZzb",    // George - deep male
-  "luna-sweet": "XrExE9yKIg1WjnnlVkGX",  // Matilda - sweet playful
+  "scarlett-hd": "Aoede", // warm, breezy female
+  "max-deep": "Charon", // deep male
+  "luna-sweet": "Leda", // youthful, sweet female
 };
 
 interface Body {
   text: string;
   voice?: string;
+  /** Optional tone/style instruction, e.g. "susurro íntimo y sereno" */
+  style?: string;
 }
 
 function stripMarkup(s: string) {
@@ -29,11 +30,21 @@ function stripMarkup(s: string) {
     .trim();
 }
 
+function base64Encode(buf: ArrayBuffer) {
+  const bytes = new Uint8Array(buf);
+  let binary = "";
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { text, voice }: Body = await req.json();
+    const { text, voice, style }: Body = await req.json();
     if (!text || !text.trim()) {
       return new Response(JSON.stringify({ error: "missing_text" }), {
         status: 400,
@@ -41,40 +52,45 @@ serve(async (req) => {
       });
     }
 
-    const apiKey = Deno.env.get("ELEVENLABS_API_KEY");
-    if (!apiKey) throw new Error("ELEVENLABS_API_KEY not configured");
+    const apiKey = Deno.env.get("LOVABLE_API_KEY");
+    if (!apiKey) throw new Error("LOVABLE_API_KEY not configured");
 
-    const voiceId = VOICE_MAP[voice || "scarlett-hd"] || VOICE_MAP["scarlett-hd"];
+    const voiceName = VOICE_MAP[voice || "scarlett-hd"] || voice || "Aoede";
     const cleaned = stripMarkup(text).slice(0, 2500);
+    const tone =
+      style ||
+      "con voz cálida, suave y serena, tono íntimo y sensual, ritmo pausado";
 
-    const resp = await fetch(
-      `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=mp3_44100_128`,
-      {
-        method: "POST",
-        headers: {
-          "xi-api-key": apiKey,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          text: cleaned,
-          model_id: "eleven_multilingual_v2",
-          voice_settings: {
-            stability: 0.5,
-            similarity_boost: 0.75,
-            style: 0.4,
-            use_speaker_boost: true,
+    const resp = await fetch("https://ai.gateway.lovable.dev/v1/audio/speech", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-3.1-flash-tts-preview",
+        contents: [
+          {
+            role: "user",
+            parts: [{ text: `Narra ${tone}: ${cleaned}` }],
           },
-        }),
-      }
-    );
+        ],
+        generationConfig: {
+          responseModalities: ["AUDIO"],
+          speechConfig: {
+            voiceConfig: { prebuiltVoiceConfig: { voiceName } },
+          },
+        },
+      }),
+    });
 
     if (!resp.ok) {
       const t = await resp.text();
-      console.error("ElevenLabs error:", resp.status, t);
+      console.error("Gemini TTS error:", resp.status, t);
       return new Response(
         JSON.stringify({ error: "tts_error", fallback: true, detail: t }),
         {
-          // Return 200 so the client can gracefully fall back to browser TTS
+          // 200 so the client can gracefully fall back to browser TTS
           status: 200,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         }
@@ -84,9 +100,10 @@ serve(async (req) => {
     const buf = await resp.arrayBuffer();
     const audioContent = base64Encode(buf);
 
-    return new Response(JSON.stringify({ audioContent }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({ audioContent, mimeType: "audio/wav" }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
   } catch (e) {
     console.error("text-to-speech error:", e);
     return new Response(
