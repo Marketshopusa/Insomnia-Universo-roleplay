@@ -507,6 +507,7 @@ type Mode = "select" | "read" | "roleplay";
    useEffect(() => {
      return () => {
        if (audioRef.current) audioRef.current.pause();
+       streamRef.current?.stop();
      };
    }, []);
  
