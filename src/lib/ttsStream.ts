@@ -21,6 +21,7 @@ export function streamSpeech(text: string, voice: string): SpeechStream {
   let playhead = 0;
   let pending = new Uint8Array(0);
   const sources: AudioBufferSourceNode[] = [];
+  let lastPlayback: Promise<void> = Promise.resolve();
 
   let markStarted: () => void = () => {};
   const started = new Promise<void>((resolve) => {
@@ -69,6 +70,27 @@ export function streamSpeech(text: string, voice: string): SpeechStream {
       source.start(playhead);
       playhead += buffer.duration;
       sources.push(source);
+      lastPlayback = new Promise<void>((resolve) => {
+        source.addEventListener("ended", () => resolve(), { once: true });
+      });
+    };
+
+    const processEventLine = (line: string) => {
+      const normalized = line.trimEnd();
+      if (!normalized.startsWith("data:")) return;
+      const raw = normalized.slice(5).trim();
+      if (!raw || raw === "[DONE]") return;
+      let payload: { type?: string; audio?: string };
+      try {
+        payload = JSON.parse(raw);
+      } catch {
+        return;
+      }
+      if (payload.type !== "speech.audio.delta" || !payload.audio) return;
+      const binary = atob(payload.audio);
+      const chunk = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i += 1) chunk[i] = binary.charCodeAt(i);
+      playChunk(chunk);
     };
 
     const res = await fetch(FUNCTIONS_URL, {
@@ -84,37 +106,27 @@ export function streamSpeech(text: string, voice: string): SpeechStream {
     if (!res.ok || !res.body) throw new Error(`tts_stream_failed_${res.status}`);
 
     const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
-    let buffer = "";
+    let textBuffer = "";
     while (!stopped) {
       const { value, done: finished } = await reader.read();
       if (finished) break;
-      buffer += value;
-      const parts = buffer.split("\n\n");
-      buffer = parts.pop() ?? "";
-      for (const part of parts) {
-        for (const line of part.split("\n")) {
-          if (!line.startsWith("data:")) continue;
-          const raw = line.slice(5).trim();
-          if (!raw || raw === "[DONE]") continue;
-          let payload: { type?: string; audio?: string };
-          try {
-            payload = JSON.parse(raw);
-          } catch {
-            continue;
-          }
-          if (payload.type !== "speech.audio.delta" || !payload.audio) continue;
-          const binary = atob(payload.audio);
-          const chunk = new Uint8Array(binary.length);
-          for (let i = 0; i < binary.length; i += 1) chunk[i] = binary.charCodeAt(i);
-          playChunk(chunk);
-        }
+      textBuffer += value;
+      const lines = textBuffer.split(/\r?\n/);
+      textBuffer = lines.pop() ?? "";
+      for (const line of lines) {
+        processEventLine(line);
       }
     }
 
+    // Some SSE servers close immediately after the final event without a newline.
+    // Process that tail instead of silently dropping the end of the spoken phrase.
+    if (textBuffer.trim()) processEventLine(textBuffer);
+
     if (playhead === 0) throw new Error("tts_no_audio");
 
-    const remaining = Math.max(0, playhead - (ctx?.currentTime ?? 0)) * 1000;
-    await new Promise<void>((resolve) => window.setTimeout(resolve, remaining + 120));
+    // Wait for the browser's final scheduled audio source, rather than estimating
+    // its duration with a timer that can finish early on throttled/mobile devices.
+    await lastPlayback;
     if (!stopped) {
       void ctx?.close().catch(() => {});
       ctx = null;
