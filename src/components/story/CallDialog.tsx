@@ -5,6 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 import { startWavRecording, blobToBase64, type WavRecorder } from "@/lib/wavRecorder";
 import { voiceGender } from "@/lib/voices";
+import { streamSpeech, type SpeechStream } from "@/lib/ttsStream";
 
 type CallState = "idle" | "listening" | "thinking" | "speaking";
 
