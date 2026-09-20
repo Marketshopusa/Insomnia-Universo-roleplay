@@ -738,7 +738,19 @@ type Mode = "select" | "read" | "roleplay";
               <Card className="bg-card border-border">
                 <div className="p-4 border-b border-border flex items-center justify-between flex-wrap gap-2">
                   <h2 className="font-display text-lg">{tTitle || story.title}</h2>
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 items-center">
+                    <Select value={voice} onValueChange={changeVoice}>
+                      <SelectTrigger className="h-9 w-[132px] sm:w-[150px] rounded-none text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {STORY_VOICES.map((option) => (
+                          <SelectItem key={option.value} value={option.value} className="text-xs">
+                            {option.label} · {language === "es" ? option.descriptionEs : option.descriptionEn}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                     {narrative && (
                       playingId === "narrative" ? (
                         <Button variant="outline" size="sm" onClick={stopAudio} className="gap-2">
