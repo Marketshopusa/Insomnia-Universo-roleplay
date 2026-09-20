@@ -6,11 +6,13 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
-// Map app voice keys -> Gemini prebuilt voices
+// Map app voice keys -> Gemini prebuilt voices (stable, never randomized)
 const VOICE_MAP: Record<string, string> = {
   "scarlett-hd": "Aoede", // warm, breezy female
-  "max-deep": "Charon", // deep male
   "luna-sweet": "Leda", // youthful, sweet female
+  "aria-calm": "Kore", // calm, elegant female
+  "max-deep": "Charon", // deep male
+  "leo-warm": "Puck", // warm, close male
 };
 
 interface Body {
