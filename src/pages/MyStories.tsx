@@ -17,7 +17,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { Link, useNavigate } from "react-router-dom";
 import { useLanguage } from "@/contexts/LanguageContext";
-import { Trash2, Plus, X, ImagePlus, Loader2, MoreVertical, RotateCcw } from "lucide-react";
+import { Trash2, Plus, X, ImagePlus, Loader2, MoreVertical, RotateCcw, Settings } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { StoryCard } from "@/components/chat/StoryCard";
@@ -74,6 +74,7 @@ const MyStories = () => {
   });
 
   const [isCreating, setIsCreating] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [newTitle, setNewTitle] = useState("");
   const [newDescription, setNewDescription] = useState("");
   const [newCharacter, setNewCharacter] = useState("");
@@ -113,6 +114,7 @@ const MyStories = () => {
   };
 
   const resetForm = () => {
+    setEditingId(null);
     setNewTitle("");
     setNewDescription("");
     setNewCharacter("");
@@ -124,6 +126,25 @@ const MyStories = () => {
     setNewCoverType(null);
   };
 
+  const guessMediaType = (url?: string | null) => {
+    if (!url) return null;
+    return /\.(mp4|webm|mov|m4v|ogv)(\?|$)/i.test(url) ? "video" : "image";
+  };
+
+  const openEdit = (story: any) => {
+    setEditingId(story.id);
+    setNewTitle(story.title ?? "");
+    setNewDescription(story.description ?? "");
+    setNewCharacter(story.character_role ?? "");
+    setNewPlayer(story.player_role ?? "hombre");
+    setNewType((story.story_type as any) ?? "roleplay");
+    setNewExplicit(!!story.has_explicit_images);
+    setNewContent("");
+    setNewCoverUrl(story.cover_image ?? null);
+    setNewCoverType(guessMediaType(story.cover_image));
+    setIsCreating(true);
+  };
+
   const handleCreate = async () => {
     if (!newTitle.trim()) {
       toast({ title: t("myStories.toast.needTitle"), variant: "destructive" });
@@ -132,25 +153,43 @@ const MyStories = () => {
     if (!user) return;
     setCreating(true);
     try {
-      const { error } = await supabase.from("stories").insert({
+      const payload = {
         title: newTitle.trim(),
         description: newDescription.trim() || newContent.slice(0, 140) || "Historia personalizada",
         cover_image: newCoverUrl,
         character_role: newCharacter.trim() || null,
         player_role: newPlayer || "hombre",
-        story_type: newExplicit ? "real_sex" : newType,
+        story_type: (newExplicit ? "real_sex" : newType) as "adventure" | "roleplay" | "real_sex",
         has_explicit_images: newExplicit,
-        source: "custom",
-        created_by: user.id,
-      });
-      if (error) throw error;
-      toast({ title: t("myStories.toast.created") });
+      };
+
+      if (editingId) {
+        const { error } = await supabase
+          .from("stories")
+          .update(payload)
+          .eq("id", editingId)
+          .eq("created_by", user.id);
+        if (error) throw error;
+        toast({ title: "Cambios guardados" });
+      } else {
+        const { error } = await supabase.from("stories").insert({
+          ...payload,
+          source: "custom",
+          created_by: user.id,
+        });
+        if (error) throw error;
+        toast({ title: t("myStories.toast.created") });
+      }
+
       setIsCreating(false);
       resetForm();
       queryClient.invalidateQueries({ queryKey: ["my-custom-stories"] });
       queryClient.invalidateQueries({ queryKey: ["stories"] });
     } catch (error) {
-      toast({ title: t("myStories.toast.createError"), variant: "destructive" });
+      toast({
+        title: editingId ? "No se pudieron guardar los cambios" : t("myStories.toast.createError"),
+        variant: "destructive",
+      });
     } finally {
       setCreating(false);
     }
@@ -260,14 +299,16 @@ const MyStories = () => {
             }}
           >
             <DialogTrigger asChild>
-              <Button className="gap-2">
+              <Button className="gap-2" onClick={() => resetForm()}>
                 <Plus className="w-4 h-4" />
                 {t("myStories.newStory")}
               </Button>
             </DialogTrigger>
             <DialogContent className="max-h-[90vh] overflow-y-auto">
               <DialogHeader>
-                <DialogTitle>{t("myStories.createNew")}</DialogTitle>
+                <DialogTitle>
+                  {editingId ? "Configurar historia" : t("myStories.createNew")}
+                </DialogTitle>
               </DialogHeader>
               <div className="space-y-4">
                 <div>
@@ -362,7 +403,13 @@ const MyStories = () => {
                     {t("common.cancel")}
                   </Button>
                   <Button onClick={handleCreate} disabled={creating || uploading}>
-                    {creating ? t("common.creating") : t("common.create")}
+                    {creating
+                      ? editingId
+                        ? "Guardando..."
+                        : t("common.creating")
+                      : editingId
+                        ? "Guardar cambios"
+                        : t("common.create")}
                   </Button>
                 </div>
               </div>
@@ -405,6 +452,15 @@ const MyStories = () => {
                     align="end"
                     onClick={(e) => e.stopPropagation()}
                   >
+                    <DropdownMenuItem
+                      onSelect={(e) => {
+                        e.preventDefault();
+                        openEdit(story);
+                      }}
+                    >
+                      <Settings className="w-4 h-4 mr-2" />
+                      Configurar / modificar
+                    </DropdownMenuItem>
                     <DropdownMenuItem
                       onSelect={(e) => {
                         e.preventDefault();
