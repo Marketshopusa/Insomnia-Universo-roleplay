@@ -58,6 +58,7 @@ type Mode = "select" | "read" | "roleplay";
     audioCacheRef.current.clear();
   };
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const streamRef = useRef<SpeechStream | null>(null);
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [sessionLoaded, setSessionLoaded] = useState(false);
    const audioUnlockedRef = useRef(false);
