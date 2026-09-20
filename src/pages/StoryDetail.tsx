@@ -352,6 +352,8 @@ type Mode = "select" | "read" | "roleplay";
     };
 
    const stopAudio = () => {
+     streamRef.current?.stop();
+     streamRef.current = null;
      if (audioRef.current) {
        audioRef.current.pause();
        audioRef.current = null;
