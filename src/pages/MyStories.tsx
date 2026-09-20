@@ -403,7 +403,13 @@ const MyStories = () => {
                     {t("common.cancel")}
                   </Button>
                   <Button onClick={handleCreate} disabled={creating || uploading}>
-                    {creating ? t("common.creating") : t("common.create")}
+                    {creating
+                      ? editingId
+                        ? "Guardando..."
+                        : t("common.creating")
+                      : editingId
+                        ? "Guardar cambios"
+                        : t("common.create")}
                   </Button>
                 </div>
               </div>
