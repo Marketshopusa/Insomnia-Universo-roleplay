@@ -6,7 +6,7 @@
  import { Card } from "@/components/ui/card";
  import { Badge } from "@/components/ui/badge";
  import { Skeleton } from "@/components/ui/skeleton";
-import { ArrowLeft, Send, Play, Image as ImageIcon, Volume2, VolumeX, BookOpen, MessageSquare, Loader2, RotateCw, Sparkles, Phone } from "lucide-react";
+import { ArrowLeft, Send, Play, Image as ImageIcon, Volume2, VolumeX, BookOpen, MessageSquare, Loader2, RotateCw, Sparkles } from "lucide-react";
 import { CallDialog } from "@/components/story/CallDialog";
  import { useStory } from "@/hooks/useStories";
  import { useLanguage } from "@/contexts/LanguageContext";
@@ -49,7 +49,6 @@ type Mode = "select" | "read" | "roleplay";
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [sessionLoaded, setSessionLoaded] = useState(false);
-  const [callOpen, setCallOpen] = useState(false);
    const audioUnlockedRef = useRef(false);
 
    // Generated scene illustrations keyed by message id (or "narrative")
@@ -806,15 +805,25 @@ type Mode = "select" | "read" | "roleplay";
                <div className="p-4 border-b border-border flex items-center justify-between">
                   <h2 className="font-display text-lg">{tTitle || story.title}</h2>
                  <div className="flex items-center gap-1">
-                   <Button
-                     variant="outline"
-                     size="sm"
-                     onClick={() => { stopAudio(); setCallOpen(true); }}
-                     className="gap-2"
-                   >
-                     <Phone className="w-4 h-4" />
-                     <span className="hidden sm:inline">{language === "es" ? "Llamar" : "Call"}</span>
-                   </Button>
+                    <CallDialog
+                      story={story}
+                      language={language}
+                      voice={voice}
+                      history={messages
+                        .filter((message) => message.id !== "intro")
+                        .map((message) => ({ role: message.role, content: message.content }))}
+                      onTurn={(userText, assistantText) => {
+                        setMessages((previous) => {
+                          const next: Message[] = [
+                            ...previous,
+                            { id: `${Date.now()}-u`, role: "user", content: userText, timestamp: new Date() },
+                            { id: `${Date.now()}-a`, role: "assistant", content: assistantText, timestamp: new Date() },
+                          ];
+                          saveSession(next, narrative || null, mode);
+                          return next;
+                        });
+                      }}
+                    />
                    <Button
                      variant="ghost"
                      size="sm"
@@ -943,28 +952,6 @@ type Mode = "select" | "read" | "roleplay";
          </div>
        </div>
 
-       <CallDialog
-         open={callOpen}
-         onOpenChange={setCallOpen}
-         story={story}
-         language={language}
-         voice={voice}
-         characterName={tCharacter || story.character_role || t("chat.char")}
-         history={messages
-           .filter((m) => m.id !== "intro")
-           .map((m) => ({ role: m.role, content: m.content }))}
-         onTurn={(userText, assistantText) => {
-           setMessages((prev) => {
-             const next: Message[] = [
-               ...prev,
-               { id: `${Date.now()}-u`, role: "user", content: userText, timestamp: new Date() },
-               { id: `${Date.now()}-a`, role: "assistant", content: assistantText, timestamp: new Date() },
-             ];
-             saveSession(next, narrative || null, mode);
-             return next;
-           });
-         }}
-       />
      </MainLayout>
    );
  };

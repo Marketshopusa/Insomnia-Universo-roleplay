@@ -33,6 +33,11 @@ All colors MUST be HSL.
     --destructive: 0 70% 50%;
     --destructive-foreground: 0 0% 100%;
 
+    --call-active: 145 62% 38%;
+    --call-active-foreground: 0 0% 100%;
+    --call-inactive: 0 70% 50%;
+    --call-inactive-foreground: 0 0% 100%;
+
     --border: 275 25% 24%;
     --input: 275 25% 24%;
     --ring: 310 60% 55%;
@@ -85,6 +90,10 @@ All colors MUST be HSL.
     --accent-foreground: 270 40% 10%;
     --destructive: 0 70% 50%;
     --destructive-foreground: 0 0% 100%;
+    --call-active: 145 62% 38%;
+    --call-active-foreground: 0 0% 100%;
+    --call-inactive: 0 70% 50%;
+    --call-inactive-foreground: 0 0% 100%;
     --border: 275 25% 24%;
     --input: 275 25% 24%;
     --ring: 310 60% 55%;

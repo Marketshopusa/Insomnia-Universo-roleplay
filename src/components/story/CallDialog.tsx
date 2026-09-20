@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Phone, PhoneOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Mic, PhoneOff, Loader2, Volume2, VolumeX, Square } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 import { startWavRecording, blobToBase64, type WavRecorder } from "@/lib/wavRecorder";
@@ -14,12 +13,9 @@ interface Turn {
 }
 
 interface CallDialogProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
   story: any;
   language: string;
   voice: string;
-  characterName: string;
   history: Turn[];
   onTurn: (userText: string, assistantText: string) => void;
 }
@@ -27,30 +23,34 @@ interface CallDialogProps {
 const SILENCE_MS = 1400;
 const MAX_TURN_MS = 30000;
 
+function audioUrlFromBase64(content: string, mimeType: string) {
+  const binary = window.atob(content);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return URL.createObjectURL(new Blob([bytes], { type: mimeType }));
+}
+
 export const CallDialog = ({
-  open,
-  onOpenChange,
   story,
   language,
   voice,
-  characterName,
   history,
   onTurn,
 }: CallDialogProps) => {
   const es = language === "es";
   const [state, setState] = useState<CallState>("idle");
-  const [muted, setMuted] = useState(false);
-  const [lastUser, setLastUser] = useState("");
-  const [lastReply, setLastReply] = useState("");
-  const [level, setLevel] = useState(0);
-
   const recorderRef = useRef<WavRecorder | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioUrlRef = useRef<string | null>(null);
   const historyRef = useRef<Turn[]>(history);
   const activeRef = useRef(false);
   const timersRef = useRef<number[]>([]);
 
-  useEffect(() => { historyRef.current = history; }, [history]);
+  useEffect(() => {
+    historyRef.current = history;
+  }, [history]);
 
   const clearTimers = () => {
     timersRef.current.forEach((id) => window.clearInterval(id));
@@ -59,13 +59,13 @@ export const CallDialog = ({
   };
 
   const stopSpeaking = () => {
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current = null;
+    audioRef.current?.pause();
+    audioRef.current = null;
+    if (audioUrlRef.current) {
+      URL.revokeObjectURL(audioUrlRef.current);
+      audioUrlRef.current = null;
     }
-    if (typeof window !== "undefined" && "speechSynthesis" in window) {
-      window.speechSynthesis.cancel();
-    }
+    window.speechSynthesis?.cancel();
   };
 
   const hangUp = () => {
@@ -75,55 +75,60 @@ export const CallDialog = ({
     recorderRef.current?.cancel();
     recorderRef.current = null;
     setState("idle");
-    setLevel(0);
-    onOpenChange(false);
   };
 
-  useEffect(() => {
-    if (!open) hangUp();
-    return () => {
-      activeRef.current = false;
-      clearTimers();
-      stopSpeaking();
-      recorderRef.current?.cancel();
-      recorderRef.current = null;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+  useEffect(() => hangUp, []);
 
-  const speak = (text: string) =>
+  const speakWithDevice = (text: string) =>
     new Promise<void>((resolve) => {
-      if (muted) return resolve();
-      const browserFallback = () => {
-        try {
-          if (!("speechSynthesis" in window)) return resolve();
-          window.speechSynthesis.cancel();
-          const utter = new SpeechSynthesisUtterance(text.replace(/[*_#`"]/g, ""));
-          utter.lang = es ? "es-ES" : "en-US";
-          utter.rate = 0.98;
-          utter.pitch = 1.1;
-          utter.onend = () => resolve();
-          utter.onerror = () => resolve();
-          window.speechSynthesis.speak(utter);
-        } catch {
-          resolve();
-        }
-      };
-
-      supabase.functions
-        .invoke("text-to-speech", { body: { text, voice } })
-        .then(({ data, error }) => {
-          const audioContent = (data as any)?.audioContent;
-          if (error || !audioContent) return browserFallback();
-          const mime = (data as any)?.mimeType || "audio/wav";
-          const audio = new Audio(`data:${mime};base64,${audioContent}`);
-          audioRef.current = audio;
-          audio.onended = () => resolve();
-          audio.onerror = () => browserFallback();
-          audio.play().catch(() => browserFallback());
-        })
-        .catch(() => browserFallback());
+      if (!("speechSynthesis" in window)) {
+        resolve();
+        return;
+      }
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text.replace(/[*_#`\"]/g, ""));
+      utterance.lang = es ? "es-ES" : "en-US";
+      utterance.rate = 0.98;
+      utterance.pitch = 1.1;
+      const voices = window.speechSynthesis.getVoices();
+      const matchingVoice = voices.find((item) => item.lang.toLowerCase().startsWith(es ? "es" : "en"));
+      if (matchingVoice) utterance.voice = matchingVoice;
+      utterance.onend = () => resolve();
+      utterance.onerror = () => resolve();
+      window.speechSynthesis.speak(utterance);
     });
+
+  const speak = async (text: string) => {
+    try {
+      const { data, error } = await supabase.functions.invoke("text-to-speech", {
+        body: { text, voice },
+      });
+      const audioContent = (data as any)?.audioContent as string | undefined;
+      if (error || !audioContent) {
+        await speakWithDevice(text);
+        return;
+      }
+
+      const audioUrl = audioUrlFromBase64(
+        audioContent,
+        ((data as any)?.mimeType as string | undefined) || "audio/wav",
+      );
+      audioUrlRef.current = audioUrl;
+      await new Promise<void>((resolve, reject) => {
+        const audio = new Audio(audioUrl);
+        audioRef.current = audio;
+        audio.preload = "auto";
+        audio.volume = 1;
+        audio.onended = () => resolve();
+        audio.onerror = () => reject(new Error("audio_playback_failed"));
+        audio.play().catch(reject);
+      });
+      stopSpeaking();
+    } catch {
+      stopSpeaking();
+      await speakWithDevice(text);
+    }
+  };
 
   const askCharacter = async (userText: string) => {
     const { data, error } = await supabase.functions.invoke("story-chat", {
@@ -145,69 +150,23 @@ export const CallDialog = ({
     return (data as any).content as string;
   };
 
-  const finishTurn = async () => {
-    const rec = recorderRef.current;
-    recorderRef.current = null;
-    clearTimers();
-    if (!rec) return;
-    setLevel(0);
-    setState("thinking");
-    const blob = await rec.stop();
-    if (!activeRef.current) return;
-
-    if (blob.size < 4096) {
-      if (activeRef.current) listen();
-      return;
-    }
-
-    const audio64 = await blobToBase64(blob);
-    const { data, error } = await supabase.functions.invoke("speech-to-text", {
-      body: { audio: audio64, mimeType: "audio/wav", language: es ? "es" : "en" },
-    });
-    const userText = ((data as any)?.text || "").trim();
-    if (error || !userText) {
-      if (activeRef.current) listen();
-      return;
-    }
-    setLastUser(userText);
-
-    const reply = await askCharacter(userText);
-    if (!activeRef.current) return;
-    if (!reply) {
-      toast({
-        title: es ? "El personaje no pudo responder" : "The character could not answer",
-        variant: "destructive",
-      });
-      if (activeRef.current) listen();
-      return;
-    }
-    setLastReply(reply);
-    historyRef.current = [
-      ...historyRef.current,
-      { role: "user", content: userText },
-      { role: "assistant", content: reply },
-    ];
-    onTurn(userText, reply);
-
-    setState("speaking");
-    await speak(reply);
-    if (activeRef.current) listen();
-  };
-
   const listen = async () => {
     try {
       activeRef.current = true;
       stopSpeaking();
       setState("listening");
-      const rec = await startWavRecording();
-      recorderRef.current = rec;
+      const recorder = await startWavRecording();
+      if (!activeRef.current) {
+        recorder.cancel();
+        return;
+      }
+      recorderRef.current = recorder;
 
       let silentFor = 0;
       let heardVoice = false;
       const meter = window.setInterval(() => {
-        const l = rec.getLevel();
-        setLevel(l);
-        if (l > 0.035) {
+        const level = recorder.getLevel();
+        if (level > 0.035) {
           heardVoice = true;
           silentFor = 0;
         } else {
@@ -215,18 +174,18 @@ export const CallDialog = ({
         }
         if (heardVoice && silentFor >= SILENCE_MS) {
           window.clearInterval(meter);
-          finishTurn();
+          void finishTurn();
         }
       }, 150);
       timersRef.current.push(meter);
 
       const maxTimer = window.setTimeout(() => {
         window.clearInterval(meter);
-        finishTurn();
+        void finishTurn();
       }, MAX_TURN_MS);
       timersRef.current.push(maxTimer);
     } catch {
-      setState("idle");
+      hangUp();
       toast({
         title: es ? "Necesito acceso al micrófono" : "Microphone access is needed",
         description: es
@@ -237,112 +196,68 @@ export const CallDialog = ({
     }
   };
 
-  const interrupt = () => {
-    stopSpeaking();
-    clearTimers();
-    recorderRef.current?.cancel();
+  const finishTurn = async () => {
+    const recorder = recorderRef.current;
     recorderRef.current = null;
-    listen();
+    clearTimers();
+    if (!recorder) return;
+    setState("thinking");
+    const blob = await recorder.stop();
+    if (!activeRef.current) return;
+
+    if (blob.size < 4096) {
+      void listen();
+      return;
+    }
+
+    const audio = await blobToBase64(blob);
+    const { data, error } = await supabase.functions.invoke("speech-to-text", {
+      body: { audio, mimeType: "audio/wav", language: es ? "es" : "en" },
+    });
+    const userText = ((data as any)?.text || "").trim();
+    if (error || !userText) {
+      if (activeRef.current) void listen();
+      return;
+    }
+
+    const reply = await askCharacter(userText);
+    if (!activeRef.current) return;
+    if (!reply) {
+      toast({
+        title: es ? "El personaje no pudo responder" : "The character could not answer",
+        variant: "destructive",
+      });
+      void listen();
+      return;
+    }
+
+    historyRef.current = [
+      ...historyRef.current,
+      { role: "user", content: userText },
+      { role: "assistant", content: reply },
+    ];
+    onTurn(userText, reply);
+    setState("speaking");
+    await speak(reply);
+    if (activeRef.current) void listen();
   };
 
-  const label =
-    state === "listening"
-      ? es ? "Te escucho…" : "Listening…"
-      : state === "thinking"
-      ? es ? "Pensando…" : "Thinking…"
-      : state === "speaking"
-      ? es ? "Hablando" : "Speaking"
-      : es ? "Llamada lista" : "Call ready";
+  const active = state !== "idle";
 
   return (
-    <Dialog open={open} onOpenChange={(v) => (v ? onOpenChange(true) : hangUp())}>
-      <DialogContent className="sm:max-w-md rounded-none border-border">
-        <div className="flex flex-col items-center text-center gap-5 py-4">
-          <div className="relative">
-            <div
-              className="w-28 h-28 border border-primary/50 bg-secondary flex items-center justify-center"
-              style={{
-                boxShadow:
-                  state === "listening"
-                    ? `0 0 ${10 + level * 120}px hsl(var(--primary) / 0.5)`
-                    : state === "speaking"
-                    ? "0 0 30px hsl(var(--accent) / 0.45)"
-                    : "none",
-              }}
-            >
-              {state === "thinking" ? (
-                <Loader2 className="w-10 h-10 text-primary animate-spin" />
-              ) : state === "speaking" ? (
-                <Volume2 className="w-10 h-10 text-accent" />
-              ) : (
-                <Mic className="w-10 h-10 text-primary" />
-              )}
-            </div>
-          </div>
-
-          <div>
-            <h3 className="font-display text-xl">{characterName}</h3>
-            <p className="text-sm text-muted-foreground">{label}</p>
-          </div>
-
-          <div className="w-full text-left space-y-2 min-h-[72px]">
-            {lastUser && (
-              <p className="text-xs text-muted-foreground">
-                <span className="text-primary">{es ? "Tú" : "You"}: </span>
-                {lastUser}
-              </p>
-            )}
-            {lastReply && (
-              <p className="text-sm text-foreground">
-                <span className="text-accent">{characterName}: </span>
-                {lastReply}
-              </p>
-            )}
-          </div>
-
-          <div className="flex flex-wrap items-center justify-center gap-2">
-            {state === "idle" ? (
-              <Button onClick={listen} className="gap-2 rounded-none">
-                <Mic className="w-4 h-4" />
-                {es ? "Iniciar llamada" : "Start call"}
-              </Button>
-            ) : (
-              <>
-                <Button variant="outline" onClick={interrupt} className="gap-2 rounded-none">
-                  <Square className="w-4 h-4" />
-                  {es ? "Interrumpir" : "Interrupt"}
-                </Button>
-                {state === "listening" && (
-                  <Button variant="outline" onClick={finishTurn} className="gap-2 rounded-none">
-                    {es ? "Enviar turno" : "Send turn"}
-                  </Button>
-                )}
-              </>
-            )}
-            <Button
-              variant="outline"
-              onClick={() => {
-                setMuted((m) => !m);
-                stopSpeaking();
-              }}
-              className="gap-2 rounded-none"
-            >
-              {muted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
-              {muted ? (es ? "Sin voz" : "Muted") : (es ? "Con voz" : "Voice on")}
-            </Button>
-            <Button variant="destructive" onClick={hangUp} className="gap-2 rounded-none">
-              <PhoneOff className="w-4 h-4" />
-              {es ? "Colgar" : "Hang up"}
-            </Button>
-          </div>
-
-          <p className="text-[11px] text-muted-foreground">
-            {es
-              ? "Habla y haz una pausa: el personaje te responderá con voz."
-              : "Speak and pause: the character will answer with voice."}
-          </p>
-        </div>
-      </DialogContent>
-    </Dialog>
+    <Button
+      type="button"
+      size="icon"
+      onClick={() => (active ? hangUp() : void listen())}
+      className={`h-10 w-10 shrink-0 rounded-full border transition-colors sm:h-11 sm:w-11 ${
+        active
+          ? "border-call-active/60 bg-call-active text-call-active-foreground hover:bg-call-active/90"
+          : "border-call-inactive/60 bg-call-inactive text-call-inactive-foreground hover:bg-call-inactive/90"
+      }`}
+      aria-label={active ? (es ? "Colgar llamada" : "Hang up call") : (es ? "Iniciar llamada" : "Start call")}
+      title={active ? (es ? "Colgar llamada" : "Hang up call") : (es ? "Iniciar llamada" : "Start call")}
+    >
+      {active ? <PhoneOff className="h-5 w-5" /> : <Phone className="h-5 w-5" />}
+    </Button>
   );
 };
