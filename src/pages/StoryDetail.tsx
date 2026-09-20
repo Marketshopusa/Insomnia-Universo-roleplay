@@ -9,6 +9,7 @@
 import { ArrowLeft, Send, Play, Image as ImageIcon, Volume2, VolumeX, BookOpen, MessageSquare, Loader2, RotateCw, Sparkles } from "lucide-react";
 import { CallDialog } from "@/components/story/CallDialog";
 import { STORY_VOICES, getStoryVoice, setStoryVoice, voiceGender } from "@/lib/voices";
+import { streamSpeech, type SpeechStream } from "@/lib/ttsStream";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
  import { useStory } from "@/hooks/useStories";
  import { useLanguage } from "@/contexts/LanguageContext";
@@ -57,6 +58,7 @@ type Mode = "select" | "read" | "roleplay";
     audioCacheRef.current.clear();
   };
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const streamRef = useRef<SpeechStream | null>(null);
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [sessionLoaded, setSessionLoaded] = useState(false);
    const audioUnlockedRef = useRef(false);
@@ -260,45 +262,26 @@ type Mode = "select" | "read" | "roleplay";
        });
    };
 
-   const playAudio = async (text: string, id: string) => {
+  const playAudio = async (text: string, id: string) => {
      try {
        if (audioRef.current) {
          audioRef.current.pause();
          audioRef.current = null;
        }
+       streamRef.current?.stop();
+       streamRef.current = null;
        setPlayingId(id);
        const activeVoice = voiceRef.current;
-       const cacheKey = `${activeVoice}::${text}`;
-       let src = audioCacheRef.current.get(cacheKey);
-       if (!src) {
-         const { data, error } = await supabase.functions.invoke("text-to-speech", {
-           body: { text, voice: activeVoice },
-         });
-         if (error || !(data as any)?.audioContent) {
-           // Voice service unavailable -> browser TTS fallback
-           speakWithBrowser(text, id);
-           return;
-         }
-         const mime = (data as any).mimeType || "audio/wav";
-         src = `data:${mime};base64,${(data as any).audioContent}`;
-         audioCacheRef.current.set(cacheKey, src);
-       }
-       const audio = new Audio(src);
-       audioRef.current = audio;
-       audio.onended = () => setPlayingId(null);
-       audio.onerror = () => setPlayingId(null);
-       try {
-         await audio.play();
-       } catch (playErr) {
-         console.warn("Autoplay bloqueado, esperando interacción del usuario:", playErr);
+       const speech = streamSpeech(text, activeVoice);
+       streamRef.current = speech;
+       await speech.done;
+       if (streamRef.current === speech) {
+         streamRef.current = null;
          setPlayingId(null);
-         toast({
-           title: "Toca para activar el audio",
-           description: "El navegador bloqueó la reproducción automática. Pulsa el botón ▶️ del mensaje para escucharlo.",
-         });
        }
      } catch (e) {
        console.error("playAudio error:", e);
+        streamRef.current = null;
         speakWithBrowser(text, id);
      }
    };
@@ -369,6 +352,8 @@ type Mode = "select" | "read" | "roleplay";
     };
 
    const stopAudio = () => {
+     streamRef.current?.stop();
+     streamRef.current = null;
      if (audioRef.current) {
        audioRef.current.pause();
        audioRef.current = null;
@@ -522,6 +507,7 @@ type Mode = "select" | "read" | "roleplay";
    useEffect(() => {
      return () => {
        if (audioRef.current) audioRef.current.pause();
+       streamRef.current?.stop();
      };
    }, []);
  

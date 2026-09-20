@@ -20,6 +20,8 @@ interface Body {
   voice?: string;
   /** Optional tone/style instruction, e.g. "susurro íntimo y sereno" */
   style?: string;
+  /** stream raw PCM over SSE for instant playback */
+  stream?: boolean;
 }
 
 function stripMarkup(s: string) {
@@ -46,7 +48,7 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { text, voice, style }: Body = await req.json();
+    const { text, voice, style, stream }: Body = await req.json();
     if (!text || !text.trim()) {
       return new Response(JSON.stringify({ error: "missing_text" }), {
         status: 400,
@@ -77,6 +79,7 @@ serve(async (req) => {
       },
       body: JSON.stringify({
         model: "google/gemini-3.1-flash-tts-preview",
+        ...(stream ? { stream_format: "sse" } : {}),
         contents: [
           {
             role: "user",
@@ -91,6 +94,16 @@ serve(async (req) => {
         },
       }),
     });
+
+    if (stream && resp.ok && resp.body) {
+      return new Response(resp.body, {
+        headers: {
+          ...corsHeaders,
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+        },
+      });
+    }
 
     if (!resp.ok) {
       const t = await resp.text();
