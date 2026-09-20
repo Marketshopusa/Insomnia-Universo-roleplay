@@ -20,6 +20,8 @@ interface Body {
   voice?: string;
   /** Optional tone/style instruction, e.g. "susurro íntimo y sereno" */
   style?: string;
+  /** stream raw PCM over SSE for instant playback */
+  stream?: boolean;
 }
 
 function stripMarkup(s: string) {
