@@ -61,7 +61,13 @@ serve(async (req) => {
     const cleaned = stripMarkup(text).slice(0, 2500);
     const tone =
       style ||
-      "con voz cálida, suave y serena, tono íntimo y sensual, ritmo pausado";
+      "con voz cálida, suave y serena, tono íntimo y sensual, ritmo natural";
+    const speechText = [
+      `Lee en voz alta el texto completo, palabra por palabra, ${tone}.`,
+      "Debes pronunciar tanto la narración y las acciones como el diálogo entre comillas.",
+      "No omitas, resumas ni conviertas ninguna parte en una indicación silenciosa.",
+      `TEXTO COMPLETO:\n${cleaned}`,
+    ].join(" ");
 
     const resp = await fetch("https://ai.gateway.lovable.dev/v1/audio/speech", {
       method: "POST",
@@ -74,7 +80,7 @@ serve(async (req) => {
         contents: [
           {
             role: "user",
-            parts: [{ text: `Narra ${tone}: ${cleaned}` }],
+            parts: [{ text: speechText }],
           },
         ],
         generationConfig: {
