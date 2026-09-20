@@ -48,7 +48,7 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { text, voice, style }: Body = await req.json();
+    const { text, voice, style, stream }: Body = await req.json();
     if (!text || !text.trim()) {
       return new Response(JSON.stringify({ error: "missing_text" }), {
         status: 400,
