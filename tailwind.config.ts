@@ -31,6 +31,14 @@ export default {
           DEFAULT: "hsl(var(--destructive))",
           foreground: "hsl(var(--destructive-foreground))",
         },
+        "call-active": {
+          DEFAULT: "hsl(var(--call-active))",
+          foreground: "hsl(var(--call-active-foreground))",
+        },
+        "call-inactive": {
+          DEFAULT: "hsl(var(--call-inactive))",
+          foreground: "hsl(var(--call-inactive-foreground))",
+        },
         muted: {
           DEFAULT: "hsl(var(--muted))",
           foreground: "hsl(var(--muted-foreground))",
