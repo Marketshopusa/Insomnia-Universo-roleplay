@@ -938,10 +938,33 @@ type Mode = "select" | "read" | "roleplay";
                  </div>
                </div>
              </Card>
-            )}
+             )}
            </div>
          </div>
        </div>
+
+       <CallDialog
+         open={callOpen}
+         onOpenChange={setCallOpen}
+         story={story}
+         language={language}
+         voice={voice}
+         characterName={tCharacter || story.character_role || t("chat.char")}
+         history={messages
+           .filter((m) => m.id !== "intro")
+           .map((m) => ({ role: m.role, content: m.content }))}
+         onTurn={(userText, assistantText) => {
+           setMessages((prev) => {
+             const next: Message[] = [
+               ...prev,
+               { id: `${Date.now()}-u`, role: "user", content: userText, timestamp: new Date() },
+               { id: `${Date.now()}-a`, role: "assistant", content: assistantText, timestamp: new Date() },
+             ];
+             saveSession(next, narrative || null, mode);
+             return next;
+           });
+         }}
+       />
      </MainLayout>
    );
  };
