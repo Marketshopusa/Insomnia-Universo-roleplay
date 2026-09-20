@@ -455,6 +455,15 @@ const MyStories = () => {
                     <DropdownMenuItem
                       onSelect={(e) => {
                         e.preventDefault();
+                        openEdit(story);
+                      }}
+                    >
+                      <Settings className="w-4 h-4 mr-2" />
+                      Configurar / modificar
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onSelect={(e) => {
+                        e.preventDefault();
                         setConfirmResetId(story.id);
                       }}
                     >
