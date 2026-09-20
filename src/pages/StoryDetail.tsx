@@ -8,6 +8,8 @@
  import { Skeleton } from "@/components/ui/skeleton";
 import { ArrowLeft, Send, Play, Image as ImageIcon, Volume2, VolumeX, BookOpen, MessageSquare, Loader2, RotateCw, Sparkles } from "lucide-react";
 import { CallDialog } from "@/components/story/CallDialog";
+import { STORY_VOICES, getStoryVoice, setStoryVoice, voiceGender } from "@/lib/voices";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
  import { useStory } from "@/hooks/useStories";
  import { useLanguage } from "@/contexts/LanguageContext";
 import { useTranslatedTexts, useTranslatedText } from "@/hooks/useTranslatedTexts";
@@ -45,7 +47,15 @@ type Mode = "select" | "read" | "roleplay";
   const [mode, setMode] = useState<Mode>("select");
   const [narrative, setNarrative] = useState<string>("");
   const [narrativeLoading, setNarrativeLoading] = useState(false);
-  const [voice] = useState<string>(() => localStorage.getItem("erota.voice") || "scarlett-hd");
+  const [voice, setVoice] = useState<string>(() => getStoryVoice(storyId));
+  const voiceRef = useRef<string>(voice);
+  const audioCacheRef = useRef<Map<string, string>>(new Map());
+  const changeVoice = (value: string) => {
+    setVoice(value);
+    voiceRef.current = value;
+    setStoryVoice(storyId, value);
+    audioCacheRef.current.clear();
+  };
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [sessionLoaded, setSessionLoaded] = useState(false);
@@ -230,8 +240,6 @@ type Mode = "select" | "read" | "roleplay";
      setInputMessage("");
      setIsTyping(true);
  
-     // Simulate AI response delay
-     await new Promise((resolve) => setTimeout(resolve, 1500 + Math.random() * 1000));
  
      const responseContent = await generateResponse(inputMessage);
      
@@ -259,16 +267,23 @@ type Mode = "select" | "read" | "roleplay";
          audioRef.current = null;
        }
        setPlayingId(id);
-       const { data, error } = await supabase.functions.invoke("text-to-speech", {
-         body: { text, voice },
-       });
+       const activeVoice = voiceRef.current;
+       const cacheKey = `${activeVoice}::${text}`;
+       let src = audioCacheRef.current.get(cacheKey);
+       if (!src) {
+         const { data, error } = await supabase.functions.invoke("text-to-speech", {
+           body: { text, voice: activeVoice },
+         });
          if (error || !(data as any)?.audioContent) {
            // Voice service unavailable -> browser TTS fallback
            speakWithBrowser(text, id);
            return;
          }
-        const mime = (data as any).mimeType || "audio/wav";
-        const audio = new Audio(`data:${mime};base64,${(data as any).audioContent}`);
+         const mime = (data as any).mimeType || "audio/wav";
+         src = `data:${mime};base64,${(data as any).audioContent}`;
+         audioCacheRef.current.set(cacheKey, src);
+       }
+       const audio = new Audio(src);
        audioRef.current = audio;
        audio.onended = () => setPlayingId(null);
        audio.onerror = () => setPlayingId(null);
@@ -288,30 +303,27 @@ type Mode = "select" | "read" | "roleplay";
      }
    };
 
-    const pickFemaleVoice = (langCode: string): SpeechSynthesisVoice | null => {
+    const femaleHints = [
+      "female", "mujer", "femenina",
+      "mónica", "monica", "paulina", "lucia", "luciana", "helena",
+      "google español", "google us english", "samantha", "victoria",
+      "sara", "sabina", "elvira", "zira", "tessa", "karen", "fiona",
+    ];
+    const maleHints = ["male", "hombre", "diego", "jorge", "carlos", "pablo", "enrique", "george", "daniel", "fred"];
+
+    // Device fallback keeps the gender of the voice chosen for this story
+    const pickDeviceVoice = (langCode: string): SpeechSynthesisVoice | null => {
       const voices = window.speechSynthesis.getVoices();
       if (!voices.length) return null;
       const base = langCode.split("-")[0];
-      const inLang = voices.filter((v) =>
-        v.lang?.toLowerCase().startsWith(base)
-      );
+      const inLang = voices.filter((v) => v.lang?.toLowerCase().startsWith(base));
       const pool = inLang.length ? inLang : voices;
-      // Names commonly associated with pleasant female voices across platforms
-      const femaleHints = [
-        "female", "mujer", "femenina",
-        "mónica", "monica", "paulina", "lucia", "luciana", "helena",
-        "google español", "google us english", "samantha", "victoria",
-        "sara", "sabina", "elvira", "zira", "tessa", "karen", "fiona",
-      ];
-      const byHint = pool.find((v) =>
-        femaleHints.some((h) => v.name.toLowerCase().includes(h))
-      );
-      // Avoid obviously male voices when no explicit female match
-      const maleHints = ["male", "hombre", "diego", "jorge", "carlos", "pablo", "enrique", "george", "daniel", "fred"];
-      const notMale = pool.find(
-        (v) => !maleHints.some((h) => v.name.toLowerCase().includes(h))
-      );
-      return byHint || notMale || pool[0] || null;
+      const wantMale = voiceGender(voiceRef.current) === "male";
+      const wanted = wantMale ? maleHints : femaleHints;
+      const other = wantMale ? femaleHints : maleHints;
+      const byHint = pool.find((v) => wanted.some((h) => v.name.toLowerCase().includes(h)));
+      const notOther = pool.find((v) => !other.some((h) => v.name.toLowerCase().includes(h)));
+      return byHint || notOther || pool[0] || null;
     };
 
     const speakWithBrowser = (text: string, id: string) => {
