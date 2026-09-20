@@ -62,6 +62,8 @@ export const CallDialog = ({
   };
 
   const stopSpeaking = () => {
+    streamRef.current?.stop();
+    streamRef.current = null;
     audioRef.current?.pause();
     audioRef.current = null;
     if (audioUrlRef.current) {
