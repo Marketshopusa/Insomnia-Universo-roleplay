@@ -110,32 +110,13 @@ export const CallDialog = ({
 
   const speak = async (text: string) => {
     try {
-      const { data, error } = await supabase.functions.invoke("text-to-speech", {
-        body: { text, voice },
-      });
-      const audioContent = (data as any)?.audioContent as string | undefined;
-      if (error || !audioContent) {
-        await speakWithDevice(text);
-        return;
-      }
-
-      const audioUrl = audioUrlFromBase64(
-        audioContent,
-        ((data as any)?.mimeType as string | undefined) || "audio/wav",
-      );
-      audioUrlRef.current = audioUrl;
-      await new Promise<void>((resolve, reject) => {
-        const audio = new Audio(audioUrl);
-        audioRef.current = audio;
-        audio.preload = "auto";
-        audio.volume = 1;
-        audio.onended = () => resolve();
-        audio.onerror = () => reject(new Error("audio_playback_failed"));
-        audio.play().catch(reject);
-      });
-      stopSpeaking();
+      const speech = streamSpeech(text, voice);
+      streamRef.current = speech;
+      await speech.done;
+      streamRef.current = null;
     } catch {
-      stopSpeaking();
+      streamRef.current?.stop();
+      streamRef.current = null;
       await speakWithDevice(text);
     }
   };
