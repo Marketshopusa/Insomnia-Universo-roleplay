@@ -299,14 +299,16 @@ const MyStories = () => {
             }}
           >
             <DialogTrigger asChild>
-              <Button className="gap-2">
+              <Button className="gap-2" onClick={() => resetForm()}>
                 <Plus className="w-4 h-4" />
                 {t("myStories.newStory")}
               </Button>
             </DialogTrigger>
             <DialogContent className="max-h-[90vh] overflow-y-auto">
               <DialogHeader>
-                <DialogTitle>{t("myStories.createNew")}</DialogTitle>
+                <DialogTitle>
+                  {editingId ? "Configurar historia" : t("myStories.createNew")}
+                </DialogTitle>
               </DialogHeader>
               <div className="space-y-4">
                 <div>
