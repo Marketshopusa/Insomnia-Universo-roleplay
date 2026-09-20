@@ -74,6 +74,7 @@ const MyStories = () => {
   });
 
   const [isCreating, setIsCreating] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [newTitle, setNewTitle] = useState("");
   const [newDescription, setNewDescription] = useState("");
   const [newCharacter, setNewCharacter] = useState("");
@@ -113,6 +114,7 @@ const MyStories = () => {
   };
 
   const resetForm = () => {
+    setEditingId(null);
     setNewTitle("");
     setNewDescription("");
     setNewCharacter("");
@@ -124,6 +126,25 @@ const MyStories = () => {
     setNewCoverType(null);
   };
 
+  const guessMediaType = (url?: string | null) => {
+    if (!url) return null;
+    return /\.(mp4|webm|mov|m4v|ogv)(\?|$)/i.test(url) ? "video" : "image";
+  };
+
+  const openEdit = (story: any) => {
+    setEditingId(story.id);
+    setNewTitle(story.title ?? "");
+    setNewDescription(story.description ?? "");
+    setNewCharacter(story.character_role ?? "");
+    setNewPlayer(story.player_role ?? "hombre");
+    setNewType((story.story_type as any) ?? "roleplay");
+    setNewExplicit(!!story.has_explicit_images);
+    setNewContent("");
+    setNewCoverUrl(story.cover_image ?? null);
+    setNewCoverType(guessMediaType(story.cover_image));
+    setIsCreating(true);
+  };
+
   const handleCreate = async () => {
     if (!newTitle.trim()) {
       toast({ title: t("myStories.toast.needTitle"), variant: "destructive" });
@@ -132,25 +153,43 @@ const MyStories = () => {
     if (!user) return;
     setCreating(true);
     try {
-      const { error } = await supabase.from("stories").insert({
+      const payload = {
         title: newTitle.trim(),
         description: newDescription.trim() || newContent.slice(0, 140) || "Historia personalizada",
         cover_image: newCoverUrl,
         character_role: newCharacter.trim() || null,
         player_role: newPlayer || "hombre",
-        story_type: newExplicit ? "real_sex" : newType,
+        story_type: (newExplicit ? "real_sex" : newType) as "adventure" | "roleplay" | "real_sex",
         has_explicit_images: newExplicit,
-        source: "custom",
-        created_by: user.id,
-      });
-      if (error) throw error;
-      toast({ title: t("myStories.toast.created") });
+      };
+
+      if (editingId) {
+        const { error } = await supabase
+          .from("stories")
+          .update(payload)
+          .eq("id", editingId)
+          .eq("created_by", user.id);
+        if (error) throw error;
+        toast({ title: "Cambios guardados" });
+      } else {
+        const { error } = await supabase.from("stories").insert({
+          ...payload,
+          source: "custom",
+          created_by: user.id,
+        });
+        if (error) throw error;
+        toast({ title: t("myStories.toast.created") });
+      }
+
       setIsCreating(false);
       resetForm();
       queryClient.invalidateQueries({ queryKey: ["my-custom-stories"] });
       queryClient.invalidateQueries({ queryKey: ["stories"] });
     } catch (error) {
-      toast({ title: t("myStories.toast.createError"), variant: "destructive" });
+      toast({
+        title: editingId ? "No se pudieron guardar los cambios" : t("myStories.toast.createError"),
+        variant: "destructive",
+      });
     } finally {
       setCreating(false);
     }
