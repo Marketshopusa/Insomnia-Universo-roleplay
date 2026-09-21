@@ -540,7 +540,7 @@ const MyStories = () => {
                     <DropdownMenuItem
                       onSelect={(e) => {
                         e.preventDefault();
-                        openEdit(story);
+                        setConfigStory(story as ConfigurableStory);
                       }}
                     >
                       <Settings className="w-4 h-4 mr-2" />
