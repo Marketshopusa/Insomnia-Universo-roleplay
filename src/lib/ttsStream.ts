@@ -10,8 +10,6 @@ export interface SpeechStream {
   started: Promise<void>;
 }
 
-const SAMPLE_RATE = 24000;
-
 function decodeBase64(value: string): Uint8Array {
   const binary = atob(value);
   const bytes = new Uint8Array(binary.length);
@@ -22,9 +20,8 @@ function decodeBase64(value: string): Uint8Array {
 }
 
 /**
- * Receives every streamed PCM byte, verifies the terminal event, then plays
- * one immutable AudioBuffer. A single source cannot underrun between network
- * chunks and guarantees that narration and dialogue finish in full.
+ * Requests one complete WAV file and lets the browser decode it before playing.
+ * This avoids PCM framing and mobile streaming issues that can cut or stutter.
  */
 export function streamSpeech(text: string, voice: string): SpeechStream {
   const controller = new AbortController();
@@ -65,72 +62,26 @@ export function streamSpeech(text: string, voice: string): SpeechStream {
           apikey: ANON_KEY,
           Authorization: `Bearer ${ANON_KEY}`,
         },
-        body: JSON.stringify({ text, voice, stream: true }),
+        body: JSON.stringify({ text, voice, stream: false }),
         signal: controller.signal,
       });
-      if (!response.ok || !response.body) {
-        throw new Error(`tts_stream_failed_${response.status}`);
+      const payload = await response.json().catch(() => null) as {
+        audioContent?: string;
+        message?: string;
+        detail?: string;
+      } | null;
+      if (!response.ok || !payload?.audioContent) {
+        throw new Error(payload?.message || payload?.detail || `tts_failed_${response.status}`);
       }
+      if (stopped || !context) return;
 
-      let terminalEventReceived = false;
-      let audioBytesReceived = 0;
-      const chunks: Uint8Array[] = [];
-      const processEventLine = (line: string) => {
-        const normalized = line.trimEnd();
-        if (!normalized.startsWith("data:")) return;
-        const raw = normalized.slice(5).trim();
-        if (!raw || raw === "[DONE]") return;
-
-        let payload: { type?: string; audio?: string };
-        try {
-          payload = JSON.parse(raw);
-        } catch {
-          return;
-        }
-
-        if (payload.type === "speech.audio.done") {
-          terminalEventReceived = true;
-          return;
-        }
-        if (payload.type !== "speech.audio.delta" || !payload.audio) return;
-        const chunk = decodeBase64(payload.audio);
-        audioBytesReceived += chunk.byteLength;
-        chunks.push(chunk);
-      };
-
-      const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
-      let eventBuffer = "";
-      while (!stopped) {
-        const { value, done: streamEnded } = await reader.read();
-        if (streamEnded) break;
-        eventBuffer += value;
-        const lines = eventBuffer.split(/\r?\n/);
-        eventBuffer = lines.pop() ?? "";
-        lines.forEach(processEventLine);
-      }
-
-      if (stopped) return;
-      if (eventBuffer.trim()) processEventLine(eventBuffer);
-      if (!terminalEventReceived) throw new Error("tts_incomplete_stream");
-      const usableBytes = audioBytesReceived - (audioBytesReceived % 2);
-      if (usableBytes < 2 || !context) throw new Error("tts_no_audio");
-
-      const pcmBytes = new Uint8Array(usableBytes);
-      let byteOffset = 0;
-      for (const chunk of chunks) {
-        const remaining = usableBytes - byteOffset;
-        if (remaining <= 0) break;
-        const part = chunk.subarray(0, Math.min(chunk.length, remaining));
-        pcmBytes.set(part, byteOffset);
-        byteOffset += part.length;
-      }
-
-      const samples = new Int16Array(pcmBytes.buffer);
-      const audioBuffer = context.createBuffer(1, samples.length, SAMPLE_RATE);
-      const channel = audioBuffer.getChannelData(0);
-      for (let index = 0; index < samples.length; index += 1) {
-        channel[index] = samples[index] / 32768;
-      }
+      const encodedAudio = decodeBase64(payload.audioContent);
+      const wavBytes = encodedAudio.buffer.slice(
+        encodedAudio.byteOffset,
+        encodedAudio.byteOffset + encodedAudio.byteLength,
+      );
+      const audioBuffer = await context.decodeAudioData(wavBytes);
+      if (stopped || !context || audioBuffer.length === 0) return;
 
       let resolvePlayback: () => void = () => {};
       const playbackEnded = new Promise<void>((resolve) => {
