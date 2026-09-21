@@ -350,24 +350,21 @@ Deno.serve(async (req) => {
 
     if (action === "probe") {
       const results: any[] = [];
-      const slugs = [
-        "ming-image-0.1-design",
-        "ming-image-0.1-design-layer",
-        "seedream-4-0-txt2img",
-        "qwen-image-txt2img",
+      const ep = "https://api.novita.ai/v3/async/qwen-image-txt2img";
+      const bodies: any[] = [
+        { prompt: "a red apple on a table, photorealistic" },
+        { input: { prompt: "a red apple on a table, photorealistic" }, extra: { response_image_type: "jpeg" } },
       ];
-      for (const slug of slugs) {
+      for (const body of bodies) {
         try {
-          const r = await fetch(`https://api.novita.ai/v3/async/${slug}`, {
+          const r = await fetch(ep, {
             method: "POST",
             headers: { Authorization: `Bearer ${NOVITA_API_KEY}`, "Content-Type": "application/json" },
-            body: JSON.stringify({
-              input: { prompt: "a red apple on a table, photorealistic", num_images: 1 },
-            }),
+            body: JSON.stringify(body),
           });
-          results.push({ ep: slug, status: r.status, body: (await r.text()).slice(0, 300) });
+          results.push({ sent: Object.keys(body).join(","), status: r.status, body: (await r.text()).slice(0, 300) });
         } catch (e) {
-          results.push({ ep: slug, error: String(e) });
+          results.push({ sent: Object.keys(body).join(","), error: String(e) });
         }
       }
       return json({ probe: results });
