@@ -295,6 +295,53 @@ export type Database = {
           },
         ]
       }
+      story_images: {
+        Row: {
+          created_at: string
+          error_message: string | null
+          id: string
+          image_url: string | null
+          sort_order: number
+          status: string
+          storage_path: string | null
+          story_id: string
+          task_id: string | null
+          visual_prompt: string | null
+        }
+        Insert: {
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          image_url?: string | null
+          sort_order?: number
+          status?: string
+          storage_path?: string | null
+          story_id: string
+          task_id?: string | null
+          visual_prompt?: string | null
+        }
+        Update: {
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          image_url?: string | null
+          sort_order?: number
+          status?: string
+          storage_path?: string | null
+          story_id?: string
+          task_id?: string | null
+          visual_prompt?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "story_images_story_id_fkey"
+            columns: ["story_id"]
+            isOneToOne: false
+            referencedRelation: "stories"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       story_sessions: {
         Row: {
           created_at: string
