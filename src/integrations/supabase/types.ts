@@ -295,6 +295,47 @@ export type Database = {
           },
         ]
       }
+      story_customizations: {
+        Row: {
+          cover_media_type: string | null
+          cover_media_url: string | null
+          created_at: string
+          id: string
+          story_id: string
+          updated_at: string
+          user_id: string
+          voice: string | null
+        }
+        Insert: {
+          cover_media_type?: string | null
+          cover_media_url?: string | null
+          created_at?: string
+          id?: string
+          story_id: string
+          updated_at?: string
+          user_id: string
+          voice?: string | null
+        }
+        Update: {
+          cover_media_type?: string | null
+          cover_media_url?: string | null
+          created_at?: string
+          id?: string
+          story_id?: string
+          updated_at?: string
+          user_id?: string
+          voice?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "story_customizations_story_id_fkey"
+            columns: ["story_id"]
+            isOneToOne: false
+            referencedRelation: "stories"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       story_images: {
         Row: {
           created_at: string
