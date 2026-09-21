@@ -1,7 +1,6 @@
 const FUNCTIONS_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/text-to-speech`;
 const ANON_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string;
 const PCM_SAMPLE_RATE = 24_000;
-const PREBUFFER_SAMPLES = PCM_SAMPLE_RATE * 2;
 
 export interface SpeechStream {
   /** Resolves only after the complete audio has finished playing. */
@@ -36,7 +35,7 @@ async function requestSpeech(text: string, voice: string, signal: AbortSignal) {
   return response;
 }
 
-function decodePcm(value: string, carry: Uint8Array): { samples: Float32Array; carry: Uint8Array } {
+function decodePcm(value: string, carry: Uint8Array): { bytes: Uint8Array; carry: Uint8Array } {
   const binary = atob(value);
   const bytes = new Uint8Array(carry.length + binary.length);
   bytes.set(carry);
@@ -45,78 +44,18 @@ function decodePcm(value: string, carry: Uint8Array): { samples: Float32Array; c
   }
   const usableLength = bytes.length - (bytes.length % 2);
   const nextCarry = bytes.slice(usableLength);
-  const samples = new Float32Array(usableLength / 2);
-  const view = new DataView(bytes.buffer, bytes.byteOffset, usableLength);
-  for (let index = 0; index < samples.length; index += 1) {
-    samples[index] = view.getInt16(index * 2, true) / 32768;
-  }
-  return { samples, carry: nextCarry };
+  return { bytes: bytes.slice(0, usableLength), carry: nextCarry };
 }
-
-const WORKLET_SOURCE = `
-class GaplessPcmPlayer extends AudioWorkletProcessor {
-  constructor(options) {
-    super();
-    this.queue = [];
-    this.offset = 0;
-    this.buffered = 0;
-    this.started = false;
-    this.ended = false;
-    this.drained = false;
-    this.prebuffer = options.processorOptions.prebuffer;
-    this.port.onmessage = (event) => {
-      if (event.data.type === "samples") {
-        const samples = event.data.samples;
-        this.queue.push(samples);
-        this.buffered += samples.length;
-      } else if (event.data.type === "end") {
-        this.ended = true;
-      }
-      if (!this.started && (this.buffered >= this.prebuffer || (this.ended && this.buffered > 0))) {
-        this.started = true;
-        this.port.postMessage({ type: "started" });
-      }
-    };
-  }
-
-  process(_inputs, outputs) {
-    const output = outputs[0][0];
-    output.fill(0);
-    if (!this.started) return true;
-    let writeOffset = 0;
-    while (writeOffset < output.length && this.queue.length > 0) {
-      const current = this.queue[0];
-      const available = current.length - this.offset;
-      const amount = Math.min(available, output.length - writeOffset);
-      output.set(current.subarray(this.offset, this.offset + amount), writeOffset);
-      writeOffset += amount;
-      this.offset += amount;
-      this.buffered -= amount;
-      if (this.offset === current.length) {
-        this.queue.shift();
-        this.offset = 0;
-      }
-    }
-    if (this.ended && this.buffered === 0 && !this.drained) {
-      this.drained = true;
-      this.port.postMessage({ type: "drained" });
-    }
-    return !this.drained;
-  }
-}
-registerProcessor("gapless-pcm-player", GaplessPcmPlayer);
-`;
 
 /**
- * Streams PCM into one AudioWorklet with a two-second reserve. The audio clock
- * consumes one continuous queue, so network packet boundaries cannot create
- * audible joins or the tiny gaps caused by scheduling many separate sources.
+ * Receives and validates the complete PCM response before starting one native
+ * AudioBufferSourceNode. Network stalls can therefore never insert silence or
+ * make playback finish before the final phrase.
  */
 export function streamSpeech(text: string, voice: string): SpeechStream {
   const controller = new AbortController();
   let context: AudioContext | null = null;
-  let node: AudioWorkletNode | null = null;
-  let workletUrl: string | null = null;
+  let source: AudioBufferSourceNode | null = null;
   let stopped = false;
   let finishPlayback: () => void = () => {};
 
@@ -130,12 +69,11 @@ export function streamSpeech(text: string, voice: string): SpeechStream {
     stopped = true;
     controller.abort();
     finishPlayback();
-    node?.disconnect();
-    node = null;
+    source?.stop();
+    source?.disconnect();
+    source = null;
     void context?.close().catch(() => {});
     context = null;
-    if (workletUrl) URL.revokeObjectURL(workletUrl);
-    workletUrl = null;
   };
 
   const done = (async () => {
@@ -144,23 +82,9 @@ export function streamSpeech(text: string, voice: string): SpeechStream {
       if (context.state === "suspended") await context.resume();
       if (stopped || !context) return;
 
-      workletUrl = URL.createObjectURL(new Blob([WORKLET_SOURCE], { type: "text/javascript" }));
-      await context.audioWorklet.addModule(workletUrl);
-      if (stopped || !context) return;
-
-      node = new AudioWorkletNode(context, "gapless-pcm-player", {
-        outputChannelCount: [1],
-        processorOptions: { prebuffer: PREBUFFER_SAMPLES },
-      });
-      node.connect(context.destination);
-
       const playbackEnded = new Promise<void>((resolve) => {
         finishPlayback = resolve;
       });
-      node.port.onmessage = (event: MessageEvent<{ type?: string }>) => {
-        if (event.data.type === "started") markStarted();
-        if (event.data.type === "drained") finishPlayback();
-      };
 
       const response = await requestSpeech(text, voice, controller.signal);
       if (!response) throw new Error("tts_no_response");
@@ -173,6 +97,8 @@ export function streamSpeech(text: string, voice: string): SpeechStream {
       let pendingText = "";
       let byteCarry: Uint8Array<ArrayBufferLike> = new Uint8Array(0);
       let receivedDone = false;
+      const chunks: Uint8Array[] = [];
+      let totalBytes = 0;
 
       const processLine = (line: string) => {
         if (!line.startsWith("data:")) return;
@@ -188,11 +114,12 @@ export function streamSpeech(text: string, voice: string): SpeechStream {
           receivedDone = true;
           return;
         }
-        if (event.type !== "speech.audio.delta" || !event.audio || !node) return;
+        if (event.type !== "speech.audio.delta" || !event.audio) return;
         const decoded = decodePcm(event.audio, byteCarry);
         byteCarry = decoded.carry;
-        if (decoded.samples.length > 0) {
-          node.port.postMessage({ type: "samples", samples: decoded.samples }, [decoded.samples.buffer]);
+        if (decoded.bytes.length > 0) {
+          chunks.push(decoded.bytes);
+          totalBytes += decoded.bytes.length;
         }
       };
 
@@ -207,7 +134,26 @@ export function streamSpeech(text: string, voice: string): SpeechStream {
       if (pendingText.trim()) processLine(pendingText);
       if (stopped) return;
       if (!receivedDone) throw new Error("tts_stream_incomplete");
-      node.port.postMessage({ type: "end" });
+      if (byteCarry.length > 0 || totalBytes === 0) throw new Error("tts_audio_incomplete");
+
+      const samples = new Float32Array(totalBytes / 2);
+      let sampleOffset = 0;
+      for (const chunk of chunks) {
+        const view = new DataView(chunk.buffer, chunk.byteOffset, chunk.byteLength);
+        for (let index = 0; index < chunk.byteLength; index += 2) {
+          samples[sampleOffset] = view.getInt16(index, true) / 32768;
+          sampleOffset += 1;
+        }
+      }
+      if (stopped || !context) return;
+      const buffer = context.createBuffer(1, samples.length, PCM_SAMPLE_RATE);
+      buffer.copyToChannel(samples, 0);
+      source = context.createBufferSource();
+      source.buffer = buffer;
+      source.connect(context.destination);
+      source.onended = finishPlayback;
+      markStarted();
+      source.start();
       await playbackEnded;
       if (!stopped) stop();
     } catch (error) {
