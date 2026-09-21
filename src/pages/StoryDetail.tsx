@@ -610,8 +610,6 @@ type Mode = "select" | "read" | "roleplay";
  
   const coverImage = story.cover_image;
   const isVideoCover = !!coverImage && /\.(mp4|webm|mov|m4v|ogv)(\?|$)/i.test(coverImage);
-   const mediaCount = story.video_count > 0 ? story.video_count : story.image_count;
-   const mediaType = story.video_count > 0 ? t("chat.videos") : t("chat.images");
    const categories = story.story_categories?.map((sc: any) => sc.categories).filter(Boolean) || [];
  
    return (
@@ -676,18 +674,7 @@ type Mode = "select" | "read" | "roleplay";
                           <span className="text-foreground">{tCharacter || story.character_role}</span>
                        </div>
                      )}
-                   </div>
- 
-                   {mediaCount > 0 && (
-                     <div className="flex items-center gap-2 mt-3 text-primary">
-                       {story.video_count > 0 ? (
-                         <Play className="w-4 h-4" />
-                       ) : (
-                         <ImageIcon className="w-4 h-4" />
-                       )}
-                       <span>{mediaCount} {mediaType}</span>
-                     </div>
-                   )}
+                  </div>
                  </div>
                </div>
  
