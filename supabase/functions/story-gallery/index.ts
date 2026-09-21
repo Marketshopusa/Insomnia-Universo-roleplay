@@ -350,23 +350,35 @@ Deno.serve(async (req) => {
 
     if (action === "probe") {
       const results: any[] = [];
-      const ep = "https://api.novita.ai/v3/async/qwen-image-txt2img";
-      const bodies: any[] = [
-        { prompt: "a red apple on a table, photorealistic" },
-        { input: { prompt: "a red apple on a table, photorealistic" }, extra: { response_image_type: "jpeg" } },
-      ];
-      for (const body of bodies) {
+      const tryPost = async (label: string, ep: string, body: any) => {
         try {
           const r = await fetch(ep, {
             method: "POST",
             headers: { Authorization: `Bearer ${NOVITA_API_KEY}`, "Content-Type": "application/json" },
             body: JSON.stringify(body),
           });
-          results.push({ sent: Object.keys(body).join(","), status: r.status, body: (await r.text()).slice(0, 300) });
+          results.push({ label, status: r.status, body: (await r.text()).slice(0, 300) });
         } catch (e) {
-          results.push({ sent: Object.keys(body).join(","), error: String(e) });
+          results.push({ label, error: String(e) });
         }
-      }
+      };
+      await tryPost("txt2img_full", "https://api.novita.ai/v3/async/qwen-image-txt2img", {
+        prompt: "a red apple, photorealistic",
+        negative_prompt: "lowres, blurry",
+        width: 640,
+        height: 896,
+        num_images: 1,
+        seed: -1,
+      });
+      await tryPost("edit_probe", "https://api.novita.ai/v3/async/qwen-image-edit", {
+        prompt: "make it blue",
+        image_base64: "iVBORw0KGgo=",
+      });
+      const r = await fetch(
+        "https://api.novita.ai/v3/async/task-result?task_id=ad5e4ce4-450f-46f3-b689-1d283a4ee63e",
+        { headers: { Authorization: `Bearer ${NOVITA_API_KEY}` } },
+      );
+      results.push({ label: "task-result", status: r.status, body: (await r.text()).slice(0, 300) });
       return json({ probe: results });
     }
 
