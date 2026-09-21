@@ -198,6 +198,12 @@ import { ShieldAlert, Lock, Sparkles } from "lucide-react";
                    key={story.id}
                    story={story}
                    index={idx}
+                   coverOverride={customizations?.[story.id]?.cover_media_url ?? null}
+                   onConfigure={
+                     user
+                       ? () => setConfigStory(story as ConfigurableStory)
+                       : () => navigate("/login")
+                   }
                    onClick={() => handleStoryClick(story.id)}
                  />
                ))}

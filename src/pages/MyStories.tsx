@@ -90,6 +90,8 @@ const MyStories = () => {
     }
   }, [location.hash, history]);
 
+  const [configStory, setConfigStory] = useState<ConfigurableStory | null>(null);
+  const { data: customizations, refetch: refetchCustomizations } = useStoryCustomizations();
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [confirmResetId, setConfirmResetId] = useState<string | null>(null);
   const [resetting, setResetting] = useState(false);
