@@ -613,6 +613,17 @@ const MyStories = () => {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
+        <StoryConfigDialog
+          story={configStory}
+          open={!!configStory}
+          onOpenChange={(open) => !open && setConfigStory(null)}
+          onSaved={() => {
+            refetchCustomizations();
+            queryClient.invalidateQueries({ queryKey: ["my-custom-stories"] });
+            queryClient.invalidateQueries({ queryKey: ["stories"] });
+          }}
+        />
       </div>
     </MainLayout>
   );
