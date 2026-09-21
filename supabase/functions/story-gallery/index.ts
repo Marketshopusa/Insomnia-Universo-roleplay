@@ -349,14 +349,28 @@ Deno.serve(async (req) => {
     }
 
     if (action === "probe") {
-      const r = await fetch("https://api.novita.ai/v3/openai/models", {
-        headers: { Authorization: `Bearer ${NOVITA_API_KEY}` },
-      });
-      const data = await r.json().catch(() => ({}));
-      const ids = (data?.data || []).map((m: any) => m.id).filter((id: string) =>
-        /seedream|flux|qwen|image|sdxl|sd-|sdx|janus|omni/i.test(id),
-      );
-      return json({ imageModels: ids });
+      const results: any[] = [];
+      const slugs = [
+        "ming-image-0.1-design",
+        "ming-image-0.1-design-layer",
+        "seedream-4-0-txt2img",
+        "qwen-image-txt2img",
+      ];
+      for (const slug of slugs) {
+        try {
+          const r = await fetch(`https://api.novita.ai/v3/async/${slug}`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${NOVITA_API_KEY}`, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              input: { prompt: "a red apple on a table, photorealistic", num_images: 1 },
+            }),
+          });
+          results.push({ ep: slug, status: r.status, body: (await r.text()).slice(0, 300) });
+        } catch (e) {
+          results.push({ ep: slug, error: String(e) });
+        }
+      }
+      return json({ probe: results });
     }
 
     return json({ error: "invalid_action" }, 400);
