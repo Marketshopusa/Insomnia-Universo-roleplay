@@ -60,7 +60,7 @@ serve(async (req) => {
     if (!apiKey) throw new Error("LOVABLE_API_KEY not configured");
 
     const voiceName = VOICE_MAP[voice || "scarlett-hd"] || voice || "Aoede";
-    const cleaned = stripMarkup(text).slice(0, 2500);
+    const cleaned = stripMarkup(text);
     const tone =
       style ||
       "con voz cálida, suave y serena, tono íntimo y sensual, ritmo natural";
@@ -108,11 +108,17 @@ serve(async (req) => {
     if (!resp.ok) {
       const t = await resp.text();
       console.error("Gemini TTS error:", resp.status, t);
+      let safeMessage = "La voz no está disponible en este momento.";
+      try {
+        const parsed = JSON.parse(t);
+        safeMessage = parsed?.message || parsed?.error?.message || safeMessage;
+      } catch {
+        // Keep the safe local message when the upstream body is not JSON.
+      }
       return new Response(
-        JSON.stringify({ error: "tts_error", fallback: true, detail: t }),
+        JSON.stringify({ error: "tts_error", message: safeMessage }),
         {
-          // 200 so the client can gracefully fall back to browser TTS
-          status: 200,
+          status: resp.status,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         }
       );

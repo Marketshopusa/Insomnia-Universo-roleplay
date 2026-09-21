@@ -20,6 +20,18 @@ interface ChatBody {
   explicit?: boolean;
 }
 
+const sleep = (milliseconds: number) =>
+  new Promise((resolve) => setTimeout(resolve, milliseconds));
+
+function retryDelay(response: Response, attempt: number) {
+  const retryAfter = response.headers.get("retry-after");
+  if (retryAfter) {
+    const seconds = Number(retryAfter);
+    if (Number.isFinite(seconds)) return Math.min(seconds * 1000, 5000);
+  }
+  return 700 * (attempt + 1) + Math.floor(Math.random() * 300);
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -64,17 +76,27 @@ REGLAS DE ESCRITURA:
       { role: "user", content: body.userMessage },
     ];
 
-    const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages,
-      }),
+    const requestBody = JSON.stringify({
+      model: "google/gemini-2.5-flash",
+      messages,
     });
+    let resp: Response | null = null;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${LOVABLE_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: requestBody,
+      });
+      const retryable = resp.status === 429 || resp.status >= 500;
+      if (!retryable || attempt === 1) break;
+      await resp.body?.cancel();
+      await sleep(retryDelay(resp, attempt));
+    }
+
+    if (!resp) throw new Error("AI gateway did not respond");
 
     if (resp.status === 429) {
       return new Response(JSON.stringify({ error: "rate_limited" }), {
@@ -91,8 +113,15 @@ REGLAS DE ESCRITURA:
     if (!resp.ok) {
       const txt = await resp.text();
       console.error("AI gateway error:", resp.status, txt);
-      return new Response(JSON.stringify({ error: "ai_error" }), {
-        status: 500,
+      let safeMessage = "El personaje no está disponible en este momento.";
+      try {
+        const parsed = JSON.parse(txt);
+        safeMessage = parsed?.message || parsed?.error?.message || safeMessage;
+      } catch {
+        // Keep the safe local message when the upstream body is not JSON.
+      }
+      return new Response(JSON.stringify({ error: "ai_error", message: safeMessage }), {
+        status: resp.status,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }

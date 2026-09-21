@@ -10,6 +10,7 @@ import { ArrowLeft, Send, Play, Image as ImageIcon, Volume2, VolumeX, BookOpen, 
 import { CallDialog } from "@/components/story/CallDialog";
 import { STORY_VOICES, getStoryVoice, setStoryVoice, voiceGender } from "@/lib/voices";
 import { streamSpeech, type SpeechStream } from "@/lib/ttsStream";
+import { invokeFunctionWithRetry } from "@/lib/invokeFunction";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
  import { useStory } from "@/hooks/useStories";
  import { useLanguage } from "@/contexts/LanguageContext";
@@ -198,9 +199,8 @@ type Mode = "select" | "read" | "roleplay";
     return `*${title}*\n\n${description}\n\n${t("story.youArePlaying")}: **${playerRole}**\n${t("story.iAmPlaying")}: **${characterRole}**\n\n*${t("story.sceneSet")}*`;
    };
  
-   const generateResponse = async (userMessage: string) => {
-    const { data, error } = await supabase.functions.invoke("story-chat", {
-      body: {
+   const generateResponse = async (userMessage: string): Promise<string | null> => {
+    const { data, error } = await invokeFunctionWithRetry<{ content?: string; error?: string }>("story-chat", {
         story: {
           title: story?.title,
           description: story?.description,
@@ -214,16 +214,13 @@ type Mode = "select" | "read" | "roleplay";
           .map((m) => ({ role: m.role, content: m.content })),
         userMessage,
         explicit: story?.story_type === "real_sex" || !!story?.has_explicit_images,
-      },
     });
     if (error || !data?.content) {
       const code = (data as any)?.error;
       if (code === "rate_limited") toast({ title: t("mode.rateLimited"), variant: "destructive" });
       else if (code === "credits_exhausted") toast({ title: t("mode.creditsExhausted"), variant: "destructive" });
       else toast({ title: t("mode.aiError"), variant: "destructive" });
-      return language === "es"
-        ? "*el personaje guarda silencio por un momento*"
-        : "*the character pauses for a moment*";
+      return null;
     }
     return data.content as string;
    };
@@ -243,7 +240,13 @@ type Mode = "select" | "read" | "roleplay";
      setIsTyping(true);
  
  
-     const responseContent = await generateResponse(inputMessage);
+     const responseContent = await generateResponse(userMessage.content);
+     if (!responseContent) {
+       setMessages((previous) => previous.filter((message) => message.id !== userMessage.id));
+       setInputMessage(userMessage.content);
+       setIsTyping(false);
+       return;
+     }
      
      const assistantMessage: Message = {
        id: (Date.now() + 1).toString(),
