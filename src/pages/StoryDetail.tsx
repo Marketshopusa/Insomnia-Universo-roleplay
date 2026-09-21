@@ -521,7 +521,7 @@ type Mode = "select" | "read" | "roleplay";
       if (!isTyping) {
         inputRef.current?.focus();
       }
-    }, [isTyping, messages]);
+    }, [isTyping]);
 
     const handleKeyPress = (e: React.KeyboardEvent) => {
      if (e.key === "Enter" && !e.shiftKey) {
