@@ -76,11 +76,27 @@ export const StoryCard = ({ story, onClick, index, onConfigure, coverOverride }:
 
         {/* Index badge — sello propio */}
         {typeof index === "number" && (
-          <div className="absolute top-0 right-0 px-2.5 py-1 bg-background/80 backdrop-blur border-l border-b border-border/60">
+          <div className="absolute bottom-0 right-0 px-2.5 py-1 bg-background/80 backdrop-blur border-l border-t border-border/60">
             <span className="font-display text-xs italic text-accent">
               N°{String(index + 1).padStart(2, "0")}
             </span>
           </div>
+        )}
+
+        {/* Configuration button — same model on every story card */}
+        {onConfigure && (
+          <button
+            type="button"
+            aria-label={t("common.settings") || "Configurar"}
+            title={t("common.settings") || "Configurar"}
+            onClick={(event) => {
+              event.stopPropagation();
+              onConfigure();
+            }}
+            className="absolute top-0 right-0 z-10 flex h-8 w-8 items-center justify-center border-l border-b border-border/60 bg-background/85 text-muted-foreground backdrop-blur transition-colors hover:bg-primary hover:text-primary-foreground"
+          >
+            <Settings className="h-3.5 w-3.5" />
+          </button>
         )}
 
         {/* Media chip — only when the story really has generated images */}
