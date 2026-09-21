@@ -160,6 +160,8 @@ async function launchTask(
     if (res.ok) {
       const data = await res.json();
       if (data?.task_id) return data.task_id as string;
+    } else {
+      console.error("novita img2img failed", res.status, (await res.text()).slice(0, 400));
     }
   }
 
@@ -168,7 +170,10 @@ async function launchTask(
     headers: { Authorization: `Bearer ${NOVITA_API_KEY}`, "Content-Type": "application/json" },
     body: JSON.stringify({ extra: { response_image_type: "jpeg" }, request }),
   });
-  if (!res.ok) return null;
+  if (!res.ok) {
+    console.error("novita txt2img failed", res.status, (await res.text()).slice(0, 400));
+    return null;
+  }
   const data = await res.json();
   return (data?.task_id as string) || null;
 }
