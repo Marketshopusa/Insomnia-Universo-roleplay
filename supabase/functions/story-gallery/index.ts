@@ -349,29 +349,14 @@ Deno.serve(async (req) => {
     }
 
     if (action === "probe") {
-      const results: any[] = [];
-      const tryPost = async (ep: string, body: any) => {
-        try {
-          const r = await fetch(ep, {
-            method: "POST",
-            headers: { Authorization: `Bearer ${NOVITA_API_KEY}`, "Content-Type": "application/json" },
-            body: JSON.stringify(body),
-          });
-          results.push({ ep, status: r.status, body: (await r.text()).slice(0, 400) });
-        } catch (e) {
-          results.push({ ep, error: String(e) });
-        }
-      };
-      const imgBody = {
-        model: "seedream-4.0",
-        prompt: "a red apple on a table, photorealistic",
-        n: 1,
-        size: "1024x1024",
-        response_format: "b64_json",
-      };
-      await tryPost("https://api.novita.ai/v3/openai/images/generations", imgBody);
-      await tryPost("https://api.novita.ai/v3/openai/images/edits", { model: "seedream-4.0" });
-      return json({ probe: results });
+      const r = await fetch("https://api.novita.ai/v3/openai/models", {
+        headers: { Authorization: `Bearer ${NOVITA_API_KEY}` },
+      });
+      const data = await r.json().catch(() => ({}));
+      const ids = (data?.data || []).map((m: any) => m.id).filter((id: string) =>
+        /seedream|flux|qwen|image|sdxl|sd-|sdx|janus|omni/i.test(id),
+      );
+      return json({ imageModels: ids });
     }
 
     return json({ error: "invalid_action" }, 400);
