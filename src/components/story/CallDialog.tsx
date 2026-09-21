@@ -6,6 +6,7 @@ import { toast } from "@/hooks/use-toast";
 import { startWavRecording, blobToBase64, type WavRecorder } from "@/lib/wavRecorder";
 import { voiceGender } from "@/lib/voices";
 import { streamSpeech, type SpeechStream } from "@/lib/ttsStream";
+import { invokeFunctionWithRetry } from "@/lib/invokeFunction";
 
 type CallState = "idle" | "listening" | "thinking" | "speaking";
 
@@ -126,8 +127,7 @@ export const CallDialog = ({
   };
 
   const askCharacter = async (userText: string) => {
-    const { data, error } = await supabase.functions.invoke("story-chat", {
-      body: {
+    const { data, error } = await invokeFunctionWithRetry<{ content?: string }>("story-chat", {
         story: {
           title: story?.title,
           description: story?.description,
@@ -139,7 +139,6 @@ export const CallDialog = ({
         history: historyRef.current.slice(-12),
         userMessage: userText,
         explicit: story?.story_type === "real_sex" || !!story?.has_explicit_images,
-      },
     });
     if (error || !(data as any)?.content) return "";
     return (data as any).content as string;

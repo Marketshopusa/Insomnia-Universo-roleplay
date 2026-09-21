@@ -10,6 +10,7 @@ import { ArrowLeft, Send, Play, Image as ImageIcon, Volume2, VolumeX, BookOpen, 
 import { CallDialog } from "@/components/story/CallDialog";
 import { STORY_VOICES, getStoryVoice, setStoryVoice, voiceGender } from "@/lib/voices";
 import { streamSpeech, type SpeechStream } from "@/lib/ttsStream";
+import { invokeFunctionWithRetry } from "@/lib/invokeFunction";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
  import { useStory } from "@/hooks/useStories";
  import { useLanguage } from "@/contexts/LanguageContext";
@@ -199,8 +200,7 @@ type Mode = "select" | "read" | "roleplay";
    };
  
    const generateResponse = async (userMessage: string): Promise<string | null> => {
-    const { data, error } = await supabase.functions.invoke("story-chat", {
-      body: {
+    const { data, error } = await invokeFunctionWithRetry<{ content?: string; error?: string }>("story-chat", {
         story: {
           title: story?.title,
           description: story?.description,
@@ -214,7 +214,6 @@ type Mode = "select" | "read" | "roleplay";
           .map((m) => ({ role: m.role, content: m.content })),
         userMessage,
         explicit: story?.story_type === "real_sex" || !!story?.has_explicit_images,
-      },
     });
     if (error || !data?.content) {
       const code = (data as any)?.error;
