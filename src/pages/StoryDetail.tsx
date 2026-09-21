@@ -117,7 +117,7 @@ type Mode = "select" | "read" | "roleplay";
    useEffect(() => {
      if (!galleryPending || !storyId) return;
      const iv = setInterval(async () => {
-       const { data } = await invokeFunctionWithRetry<{ done?: boolean }>("story-gallery", {
+       const { data } = await invokeFunctionWithRetry<any>("story-gallery", {
          action: "status",
          storyId,
        });
