@@ -35,6 +35,87 @@ async function requestSpeech(text: string, voice: string, signal: AbortSignal) {
   return response;
 }
 
+function splitSpeechText(text: string, maximumLength = 280): string[] {
+  const clean = text.trim();
+  if (clean.length <= maximumLength) return clean ? [clean] : [];
+  const sentences = clean.match(/[^.!?…]+[.!?…]+|[^.!?…]+$/g) ?? [clean];
+  const chunks: string[] = [];
+  let current = "";
+
+  const pushCurrent = () => {
+    const value = current.trim();
+    if (value) chunks.push(value);
+    current = "";
+  };
+
+  for (const sentence of sentences) {
+    const trimmed = sentence.trim();
+    if (!trimmed) continue;
+    if (trimmed.length > maximumLength) {
+      pushCurrent();
+      const words = trimmed.split(/\s+/);
+      for (const word of words) {
+        if (current && `${current} ${word}`.length > maximumLength) pushCurrent();
+        current = current ? `${current} ${word}` : word;
+      }
+      pushCurrent();
+      continue;
+    }
+    if (current && `${current} ${trimmed}`.length > maximumLength) pushCurrent();
+    current = current ? `${current} ${trimmed}` : trimmed;
+  }
+  pushCurrent();
+  return chunks;
+}
+
+async function receivePcm(text: string, voice: string, signal: AbortSignal) {
+  const response = await requestSpeech(text, voice, signal);
+  if (!response) throw new Error("tts_no_response");
+  if (!response.ok || !response.body) {
+    const payload = await response.json().catch(() => null) as { message?: string; detail?: string } | null;
+    throw new Error(payload?.message || payload?.detail || `tts_failed_${response.status}`);
+  }
+
+  const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
+  let pendingText = "";
+  let byteCarry: Uint8Array<ArrayBufferLike> = new Uint8Array(0);
+  let receivedDone = false;
+  const chunks: Uint8Array[] = [];
+
+  const processLine = (line: string) => {
+    if (!line.startsWith("data:")) return;
+    const raw = line.slice(5).trim();
+    if (!raw || raw === "[DONE]") return;
+    let event: { type?: string; audio?: string };
+    try {
+      event = JSON.parse(raw);
+    } catch {
+      return;
+    }
+    if (event.type === "speech.audio.done") {
+      receivedDone = true;
+      return;
+    }
+    if (event.type !== "speech.audio.delta" || !event.audio) return;
+    const decoded = decodePcm(event.audio, byteCarry);
+    byteCarry = decoded.carry;
+    if (decoded.bytes.length > 0) chunks.push(decoded.bytes);
+  };
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    pendingText += value;
+    const lines = pendingText.split(/\r?\n/);
+    pendingText = lines.pop() ?? "";
+    lines.forEach(processLine);
+  }
+  if (pendingText.trim()) processLine(pendingText);
+  if (!receivedDone) throw new Error("tts_stream_incomplete");
+  if (byteCarry.length > 0 || chunks.length === 0) throw new Error("tts_audio_incomplete");
+  return chunks;
+}
+
 function decodePcm(value: string, carry: Uint8Array): { bytes: Uint8Array; carry: Uint8Array } {
   const binary = atob(value);
   const bytes = new Uint8Array(carry.length + binary.length);
@@ -86,55 +167,14 @@ export function streamSpeech(text: string, voice: string): SpeechStream {
         finishPlayback = resolve;
       });
 
-      const response = await requestSpeech(text, voice, controller.signal);
-      if (!response) throw new Error("tts_no_response");
-      if (!response.ok || !response.body) {
-        const payload = await response.json().catch(() => null) as { message?: string; detail?: string } | null;
-        throw new Error(payload?.message || payload?.detail || `tts_failed_${response.status}`);
-      }
-
-      const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
-      let pendingText = "";
-      let byteCarry: Uint8Array<ArrayBufferLike> = new Uint8Array(0);
-      let receivedDone = false;
-      const chunks: Uint8Array[] = [];
-      let totalBytes = 0;
-
-      const processLine = (line: string) => {
-        if (!line.startsWith("data:")) return;
-        const raw = line.slice(5).trim();
-        if (!raw || raw === "[DONE]") return;
-        let event: { type?: string; audio?: string };
-        try {
-          event = JSON.parse(raw);
-        } catch {
-          return;
-        }
-        if (event.type === "speech.audio.done") {
-          receivedDone = true;
-          return;
-        }
-        if (event.type !== "speech.audio.delta" || !event.audio) return;
-        const decoded = decodePcm(event.audio, byteCarry);
-        byteCarry = decoded.carry;
-        if (decoded.bytes.length > 0) {
-          chunks.push(decoded.bytes);
-          totalBytes += decoded.bytes.length;
-        }
-      };
-
-      while (true) {
-        const { value, done: streamEnded } = await reader.read();
-        if (streamEnded) break;
-        pendingText += value;
-        const lines = pendingText.split(/\r?\n/);
-        pendingText = lines.pop() ?? "";
-        lines.forEach(processLine);
-      }
-      if (pendingText.trim()) processLine(pendingText);
+      const textChunks = splitSpeechText(text);
+      if (textChunks.length === 0) return;
+      const responses = await Promise.all(
+        textChunks.map((chunk) => receivePcm(chunk, voice, controller.signal)),
+      );
       if (stopped) return;
-      if (!receivedDone) throw new Error("tts_stream_incomplete");
-      if (byteCarry.length > 0 || totalBytes === 0) throw new Error("tts_audio_incomplete");
+      const chunks = responses.flat();
+      const totalBytes = chunks.reduce((sum, chunk) => sum + chunk.byteLength, 0);
 
       const samples = new Float32Array(totalBytes / 2);
       let sampleOffset = 0;
