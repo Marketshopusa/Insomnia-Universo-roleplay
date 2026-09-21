@@ -48,7 +48,8 @@ import { AdultConsentDialog } from "@/components/adult/AdultConsentDialog";
      { href: "/shorts", label: "Shorts" },
      { href: "/plans", label: t("nav.plans") },
      { href: "/studio", label: t("nav.novelStudio") },
-     { href: "/my-stories", label: t("nav.myStories") },
+      { href: "/my-stories", label: t("nav.myStories") },
+      { href: "/my-stories#historial", label: "Historial" },
       { href: "/", label: t("nav.home") },
    ];
  

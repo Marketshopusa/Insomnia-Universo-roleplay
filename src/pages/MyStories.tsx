@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,9 +15,9 @@ import {
 } from "@/components/ui/select";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useLanguage } from "@/contexts/LanguageContext";
-import { Trash2, Plus, X, ImagePlus, Loader2, MoreVertical, RotateCcw, Settings } from "lucide-react";
+import { Trash2, Plus, X, ImagePlus, Loader2, MoreVertical, RotateCcw, Settings, History, Play } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { StoryCard } from "@/components/chat/StoryCard";
@@ -52,6 +52,41 @@ const MyStories = () => {
   const { t } = useLanguage();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+
+  // Historial: últimas historias leídas o jugadas (story_sessions)
+  const { data: history } = useQuery({
+    queryKey: ["reading-history", user?.id],
+    queryFn: async () => {
+      if (!user) return [];
+      const { data: sessions, error } = await supabase
+        .from("story_sessions")
+        .select("id, story_id, last_mode, updated_at")
+        .eq("user_id", user.id)
+        .order("updated_at", { ascending: false })
+        .limit(12);
+      if (error) throw error;
+      const ids = [...new Set((sessions || []).map((s: any) => s.story_id))];
+      if (ids.length === 0) return [];
+      const { data: storiesData } = await supabase
+        .from("stories")
+        .select("id, title, cover_image, story_type")
+        .in("id", ids);
+      const byId = new Map((storiesData || []).map((s: any) => [s.id, s]));
+      return (sessions || [])
+        .filter((s: any) => byId.has(s.story_id))
+        .map((s: any) => ({ ...s, story: byId.get(s.story_id) }));
+    },
+    enabled: !!user,
+  });
+
+  const location = useLocation();
+  useEffect(() => {
+    if (location.hash === "#historial") {
+      setTimeout(() => {
+        document.getElementById("historial")?.scrollIntoView({ behavior: "smooth" });
+      }, 100);
+    }
+  }, [location.hash, history]);
 
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [confirmResetId, setConfirmResetId] = useState<string | null>(null);
@@ -289,6 +324,50 @@ const MyStories = () => {
     <MainLayout>
       <div className="container mx-auto px-4 py-8 max-w-6xl">
         <h1 className="text-3xl font-display text-center mb-8">{t("myStories.title")}</h1>
+
+        {history && history.length > 0 && (
+          <section id="historial" className="mb-10">
+            <div className="flex items-center gap-2 mb-4">
+              <History className="w-5 h-5 text-primary" />
+              <h2 className="text-xl font-display">Historial</h2>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+              {history.map((item: any) => (
+                <div
+                  key={item.id}
+                  onClick={() => navigate(`/story/${item.story_id}`)}
+                  className="group cursor-pointer border border-border/60 bg-card/60 overflow-hidden hover:border-primary/60 transition"
+                >
+                  <div className="aspect-[4/5] relative bg-muted">
+                    {item.story?.cover_image ? (
+                      <img
+                        src={item.story.cover_image}
+                        alt={item.story.title}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-3xl">📖</div>
+                    )}
+                    <div className="absolute inset-0 bg-gradient-to-t from-background via-background/30 to-transparent" />
+                    <div className="absolute bottom-2 left-2 right-2 flex items-center gap-1 text-[10px] uppercase tracking-wider text-accent">
+                      <Play className="w-3 h-3" />
+                      {item.last_mode === "roleplay" ? "Roleplay" : "Lectura"}
+                    </div>
+                  </div>
+                  <div className="p-2">
+                    <p className="text-xs font-medium line-clamp-2 group-hover:text-primary transition-colors">
+                      {item.story?.title}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground mt-1">
+                      {new Date(item.updated_at).toLocaleDateString()}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
 
         <div className="flex justify-end mb-6">
           <Dialog
