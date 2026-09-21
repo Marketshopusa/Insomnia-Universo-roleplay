@@ -87,8 +87,9 @@ export const StoryCard = ({ story, onClick, index, onConfigure, coverOverride }:
         {onConfigure && (
           <button
             type="button"
-            aria-label={t("common.settings") || "Configurar"}
-            title={t("common.settings") || "Configurar"}
+            data-testid="story-configure"
+            aria-label="Configurar"
+            title="Configurar"
             onClick={(event) => {
               event.stopPropagation();
               onConfigure();
