@@ -21,6 +21,8 @@ import { Trash2, Plus, X, ImagePlus, Loader2, MoreVertical, RotateCcw, Settings,
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { StoryCard } from "@/components/chat/StoryCard";
+import { StoryConfigDialog, type ConfigurableStory } from "@/components/story/StoryConfigDialog";
+import { useStoryCustomizations } from "@/hooks/useStoryCustomizations";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -88,6 +90,8 @@ const MyStories = () => {
     }
   }, [location.hash, history]);
 
+  const [configStory, setConfigStory] = useState<ConfigurableStory | null>(null);
+  const { data: customizations, refetch: refetchCustomizations } = useStoryCustomizations();
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [confirmResetId, setConfirmResetId] = useState<string | null>(null);
   const [resetting, setResetting] = useState(false);
@@ -514,6 +518,8 @@ const MyStories = () => {
                 <StoryCard
                   story={story}
                   index={idx}
+                  coverOverride={customizations?.[story.id]?.cover_media_url ?? null}
+                  onConfigure={() => setConfigStory(story as ConfigurableStory)}
                   onClick={() => navigate(`/story/${story.id}`)}
                 />
                 <DropdownMenu>
@@ -521,7 +527,7 @@ const MyStories = () => {
                     <Button
                       variant="secondary"
                       size="icon"
-                      className="absolute top-2 right-2 h-7 w-7 opacity-0 group-hover:opacity-100 transition z-10"
+                      className="absolute top-10 right-2 h-7 w-7 opacity-0 group-hover:opacity-100 transition z-10"
                       onClick={(e) => e.stopPropagation()}
                     >
                       <MoreVertical className="w-3.5 h-3.5" />
@@ -534,7 +540,7 @@ const MyStories = () => {
                     <DropdownMenuItem
                       onSelect={(e) => {
                         e.preventDefault();
-                        openEdit(story);
+                        setConfigStory(story as ConfigurableStory);
                       }}
                     >
                       <Settings className="w-4 h-4 mr-2" />
@@ -607,6 +613,17 @@ const MyStories = () => {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
+        <StoryConfigDialog
+          story={configStory}
+          open={!!configStory}
+          onOpenChange={(open) => !open && setConfigStory(null)}
+          onSaved={() => {
+            refetchCustomizations();
+            queryClient.invalidateQueries({ queryKey: ["my-custom-stories"] });
+            queryClient.invalidateQueries({ queryKey: ["stories"] });
+          }}
+        />
       </div>
     </MainLayout>
   );

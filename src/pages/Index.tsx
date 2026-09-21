@@ -5,7 +5,9 @@ import { FilterBar } from "@/components/chat/FilterBar";
  import { CategoryTags } from "@/components/chat/CategoryTags";
  import { StoryCard } from "@/components/chat/StoryCard";
  import { Pagination } from "@/components/chat/Pagination";
-import { AudioQuickControl } from "@/components/chat/AudioQuickControl";
+  import { AudioQuickControl } from "@/components/chat/AudioQuickControl";
+import { StoryConfigDialog, type ConfigurableStory } from "@/components/story/StoryConfigDialog";
+import { useStoryCustomizations } from "@/hooks/useStoryCustomizations";
  import { useStories, useCategories } from "@/hooks/useStories";
  import { useLanguage } from "@/contexts/LanguageContext";
 import { useAuth } from "@/contexts/AuthContext";
@@ -37,6 +39,9 @@ import { ShieldAlert, Lock, Sparkles } from "lucide-react";
    const [isMuted, setIsMuted] = useState(false);
    const [autoplay, setAutoplay] = useState(true);
  
+   const [configStory, setConfigStory] = useState<ConfigurableStory | null>(null);
+   const { data: customizations, refetch: refetchCustomizations } = useStoryCustomizations();
+
    const { data: categoriesData } = useCategories();
    const { data: storiesData, isLoading } = useStories({
      type: storyType,
@@ -193,6 +198,12 @@ import { ShieldAlert, Lock, Sparkles } from "lucide-react";
                    key={story.id}
                    story={story}
                    index={idx}
+                   coverOverride={customizations?.[story.id]?.cover_media_url ?? null}
+                   onConfigure={
+                     user
+                       ? () => setConfigStory(story as ConfigurableStory)
+                       : () => navigate("/login")
+                   }
                    onClick={() => handleStoryClick(story.id)}
                  />
                ))}
@@ -242,6 +253,12 @@ import { ShieldAlert, Lock, Sparkles } from "lucide-react";
           open={consentOpen}
           onConfirm={handleConsent}
           onCancel={() => setConsentOpen(false)}
+        />
+        <StoryConfigDialog
+          story={configStory}
+          open={!!configStory}
+          onOpenChange={(open) => !open && setConfigStory(null)}
+          onSaved={() => refetchCustomizations()}
         />
      </MainLayout>
    );

@@ -1,4 +1,4 @@
-import { Image as ImageIcon, ArrowUpRight } from "lucide-react";
+import { Image as ImageIcon, ArrowUpRight, Settings } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useTranslatedTexts } from "@/hooks/useTranslatedTexts";
 import { cn } from "@/lib/utils";
@@ -18,11 +18,15 @@ interface StoryCardProps {
   story: Story;
   onClick?: () => void;
   index?: number;
+  /** Shows the configuration button on the card when provided. */
+  onConfigure?: () => void;
+  /** Personal cover (image, gif or video) chosen by the signed-in user. */
+  coverOverride?: string | null;
 }
 
-export const StoryCard = ({ story, onClick, index }: StoryCardProps) => {
+export const StoryCard = ({ story, onClick, index, onConfigure, coverOverride }: StoryCardProps) => {
   const { t } = useLanguage();
-  const coverImage = story.cover_image;
+  const coverImage = coverOverride || story.cover_image;
   const isVideoCover = !!coverImage && /\.(mp4|webm|mov|m4v|ogv)(\?|$)/i.test(coverImage);
 
   const [tTitle, tCharacter, tPlayer] = useTranslatedTexts([
@@ -72,11 +76,28 @@ export const StoryCard = ({ story, onClick, index }: StoryCardProps) => {
 
         {/* Index badge — sello propio */}
         {typeof index === "number" && (
-          <div className="absolute top-0 right-0 px-2.5 py-1 bg-background/80 backdrop-blur border-l border-b border-border/60">
+          <div className="absolute bottom-0 right-0 px-2.5 py-1 bg-background/80 backdrop-blur border-l border-t border-border/60">
             <span className="font-display text-xs italic text-accent">
               N°{String(index + 1).padStart(2, "0")}
             </span>
           </div>
+        )}
+
+        {/* Configuration button — same model on every story card */}
+        {onConfigure && (
+          <button
+            type="button"
+            data-testid="story-configure"
+            aria-label="Configurar"
+            title="Configurar"
+            onClick={(event) => {
+              event.stopPropagation();
+              onConfigure();
+            }}
+            className="absolute top-0 right-0 z-10 flex h-8 w-8 items-center justify-center border-l border-b border-border/60 bg-background/85 text-muted-foreground backdrop-blur transition-colors hover:bg-primary hover:text-primary-foreground"
+          >
+            <Settings className="h-3.5 w-3.5" />
+          </button>
         )}
 
         {/* Media chip — only when the story really has generated images */}
