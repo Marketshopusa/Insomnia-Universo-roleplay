@@ -518,6 +518,8 @@ const MyStories = () => {
                 <StoryCard
                   story={story}
                   index={idx}
+                  coverOverride={customizations?.[story.id]?.cover_media_url ?? null}
+                  onConfigure={() => setConfigStory(story as ConfigurableStory)}
                   onClick={() => navigate(`/story/${story.id}`)}
                 />
                 <DropdownMenu>

@@ -254,6 +254,12 @@ import { ShieldAlert, Lock, Sparkles } from "lucide-react";
           onConfirm={handleConsent}
           onCancel={() => setConsentOpen(false)}
         />
+        <StoryConfigDialog
+          story={configStory}
+          open={!!configStory}
+          onOpenChange={(open) => !open && setConfigStory(null)}
+          onSaved={() => refetchCustomizations()}
+        />
      </MainLayout>
    );
  };
