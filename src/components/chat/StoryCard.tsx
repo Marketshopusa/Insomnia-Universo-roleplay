@@ -1,4 +1,4 @@
-import { Image as ImageIcon, ArrowUpRight } from "lucide-react";
+import { Image as ImageIcon, ArrowUpRight, Settings } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useTranslatedTexts } from "@/hooks/useTranslatedTexts";
 import { cn } from "@/lib/utils";
@@ -18,11 +18,15 @@ interface StoryCardProps {
   story: Story;
   onClick?: () => void;
   index?: number;
+  /** Shows the configuration button on the card when provided. */
+  onConfigure?: () => void;
+  /** Personal cover (image, gif or video) chosen by the signed-in user. */
+  coverOverride?: string | null;
 }
 
-export const StoryCard = ({ story, onClick, index }: StoryCardProps) => {
+export const StoryCard = ({ story, onClick, index, onConfigure, coverOverride }: StoryCardProps) => {
   const { t } = useLanguage();
-  const coverImage = story.cover_image;
+  const coverImage = coverOverride || story.cover_image;
   const isVideoCover = !!coverImage && /\.(mp4|webm|mov|m4v|ogv)(\?|$)/i.test(coverImage);
 
   const [tTitle, tCharacter, tPlayer] = useTranslatedTexts([
