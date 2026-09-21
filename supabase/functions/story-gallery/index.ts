@@ -126,56 +126,59 @@ async function launchTask(
   initImageB64: string | null,
   explicit: boolean,
 ): Promise<string | null> {
-  const request: Record<string, unknown> = {
-    model_name: explicit ? EXPLICIT_MODEL : REALISTIC_MODEL,
-    prompt: prompt.slice(0, 1024),
-    negative_prompt: NEGATIVE_PROMPT.slice(0, 1024),
+  const safePrompt = prompt.slice(0, 1900);
+  const negative = NEGATIVE_PROMPT.slice(0, 900);
+
+  // Image-to-image from the story cover so the face stays consistent.
+  if (initImageB64) {
+    const dataUri = `data:image/jpeg;base64,${initImageB64}`;
+    const variants = [
+      { prompt: safePrompt, image: dataUri, enable_safety_checker: false },
+      { prompt: safePrompt, image: initImageB64, enable_safety_checker: false },
+    ];
+    for (const body of variants) {
+      try {
+        const res = await fetch("https://api.novita.ai/v3/async/qwen-image-edit", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${NOVITA_API_KEY}`, "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.task_id) return data.task_id as string;
+        } else {
+          console.error(`novita qwen-image-edit failed (${Object.keys(body).join(",")})`, res.status, (await res.text()).slice(0, 300));
+        }
+      } catch (err) {
+        console.error("novita qwen-image-edit threw", err);
+      }
+    }
+  }
+
+  const txtBody: Record<string, unknown> = {
+    prompt: safePrompt,
+    negative_prompt: negative,
     width: WIDTH,
     height: HEIGHT,
-    image_num: 1,
-    steps: 30,
+    num_images: 1,
     seed: -1,
-    clip_skip: 1,
-    guidance_scale: 7.5,
-    sampler_name: "DPM++ 2M Karras",
-    restore_faces: true,
-    hires_fix: {
-      target_width: 768,
-      target_height: 1072,
-      strength: 0.35,
-      upscaler: "RealESRNet_x4plus",
-    },
+    enable_safety_checker: false,
   };
-
-  // Prefer image-to-image from the story cover so the face stays consistent.
-  if (initImageB64) {
-    const res = await fetch("https://api.novita.ai/v3/async/img2img", {
+  try {
+    const res = await fetch("https://api.novita.ai/v3/async/qwen-image-txt2img", {
       method: "POST",
       headers: { Authorization: `Bearer ${NOVITA_API_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        extra: { response_image_type: "jpeg" },
-        request: { ...request, init_image: initImageB64 },
-      }),
+      body: JSON.stringify(txtBody),
     });
     if (res.ok) {
       const data = await res.json();
       if (data?.task_id) return data.task_id as string;
-    } else {
-      console.error("novita img2img failed", res.status, (await res.text()).slice(0, 400));
     }
+    console.error("novita qwen-image-txt2img failed", res.status, (await res.text()).slice(0, 300));
+  } catch (err) {
+    console.error("novita qwen-image-txt2img threw", err);
   }
-
-  const res = await fetch("https://api.novita.ai/v3/async/txt2img", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${NOVITA_API_KEY}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ extra: { response_image_type: "jpeg" }, request }),
-  });
-  if (!res.ok) {
-    console.error("novita txt2img failed", res.status, (await res.text()).slice(0, 400));
-    return null;
-  }
-  const data = await res.json();
-  return (data?.task_id as string) || null;
+  return null;
 }
 
 Deno.serve(async (req) => {
