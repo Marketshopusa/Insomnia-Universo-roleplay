@@ -10,6 +10,30 @@ export interface SpeechStream {
   started: Promise<void>;
 }
 
+const wait = (milliseconds: number) =>
+  new Promise((resolve) => window.setTimeout(resolve, milliseconds));
+
+async function requestSpeech(text: string, voice: string, signal: AbortSignal) {
+  let response: Response | null = null;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    response = await fetch(FUNCTIONS_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: ANON_KEY,
+        Authorization: `Bearer ${ANON_KEY}`,
+      },
+      body: JSON.stringify({ text, voice, stream: false }),
+      signal,
+    });
+    const retryable = response.status === 429 || response.status >= 500;
+    if (!retryable || attempt === 1) return response;
+    await response.body?.cancel();
+    await wait(800 + Math.floor(Math.random() * 300));
+  }
+  return response;
+}
+
 function decodeBase64(value: string): Uint8Array {
   const binary = atob(value);
   const bytes = new Uint8Array(binary.length);
@@ -55,16 +79,8 @@ export function streamSpeech(text: string, voice: string): SpeechStream {
       if (context.state === "suspended") await context.resume();
       if (stopped || !context) return;
 
-      const response = await fetch(FUNCTIONS_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          apikey: ANON_KEY,
-          Authorization: `Bearer ${ANON_KEY}`,
-        },
-        body: JSON.stringify({ text, voice, stream: false }),
-        signal: controller.signal,
-      });
+      const response = await requestSpeech(text, voice, controller.signal);
+      if (!response) throw new Error("tts_no_response");
       const payload = await response.json().catch(() => null) as {
         audioContent?: string;
         message?: string;

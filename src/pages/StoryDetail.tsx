@@ -243,6 +243,7 @@ type Mode = "select" | "read" | "roleplay";
  
      const responseContent = await generateResponse(userMessage.content);
      if (!responseContent) {
+       setMessages((previous) => previous.filter((message) => message.id !== userMessage.id));
        setInputMessage(userMessage.content);
        setIsTyping(false);
        return;
