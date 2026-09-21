@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -17,7 +17,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { Link, useNavigate } from "react-router-dom";
 import { useLanguage } from "@/contexts/LanguageContext";
-import { Trash2, Plus, X, ImagePlus, Loader2, MoreVertical, RotateCcw, Settings } from "lucide-react";
+import { Trash2, Plus, X, ImagePlus, Loader2, MoreVertical, RotateCcw, Settings, History, Play } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { StoryCard } from "@/components/chat/StoryCard";
@@ -52,6 +52,38 @@ const MyStories = () => {
   const { t } = useLanguage();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+
+  // Historial: últimas historias leídas o jugadas (story_sessions)
+  const { data: history } = useQuery({
+    queryKey: ["reading-history", user?.id],
+    queryFn: async () => {
+      if (!user) return [];
+      const { data: sessions, error } = await supabase
+        .from("story_sessions")
+        .select("id, story_id, last_mode, updated_at")
+        .eq("user_id", user.id)
+        .order("updated_at", { ascending: false })
+        .limit(12);
+      if (error) throw error;
+      const ids = [...new Set((sessions || []).map((s: any) => s.story_id))];
+      if (ids.length === 0) return [];
+      const { data: storiesData } = await supabase
+        .from("stories")
+        .select("id, title, cover_image, story_type")
+        .in("id", ids);
+      const byId = new Map((storiesData || []).map((s: any) => [s.id, s]));
+      return (sessions || [])
+        .filter((s: any) => byId.has(s.story_id))
+        .map((s: any) => ({ ...s, story: byId.get(s.story_id) }));
+    },
+    enabled: !!user,
+  });
+
+  useEffect(() => {
+    if (window.location.hash === "#historial") {
+      document.getElementById("historial")?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [history]);
 
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [confirmResetId, setConfirmResetId] = useState<string | null>(null);
