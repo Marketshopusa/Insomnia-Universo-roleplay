@@ -348,6 +348,43 @@ Deno.serve(async (req) => {
       return json({ started: true, launched });
     }
 
+    if (action === "probe") {
+      const probeBody = {
+        extra: { response_image_type: "jpeg" },
+        request: {
+          model_name: REALISTIC_MODEL,
+          prompt: "a red apple on a table",
+          negative_prompt: "lowres",
+          width: 512,
+          height: 512,
+          image_num: 1,
+          steps: 10,
+          seed: -1,
+          guidance_scale: 7,
+          sampler_name: "DPM++ 2M Karras",
+        },
+      };
+      const endpoints = [
+        "https://api.novita.ai/v3/async/txt2img",
+        "https://api.novita.ai/async/txt2img",
+        "https://api.novita.ai/v3/async/model-list",
+      ];
+      const results: any[] = [];
+      for (const ep of endpoints) {
+        try {
+          const r = await fetch(ep, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${NOVITA_API_KEY}`, "Content-Type": "application/json" },
+            body: JSON.stringify(probeBody),
+          });
+          results.push({ ep, status: r.status, body: (await r.text()).slice(0, 300) });
+        } catch (e) {
+          results.push({ ep, error: String(e) });
+        }
+      }
+      return json({ probe: results });
+    }
+
     return json({ error: "invalid_action" }, 400);
   } catch (e) {
     console.error("story-gallery error", e);
