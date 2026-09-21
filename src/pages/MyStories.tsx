@@ -322,6 +322,50 @@ const MyStories = () => {
       <div className="container mx-auto px-4 py-8 max-w-6xl">
         <h1 className="text-3xl font-display text-center mb-8">{t("myStories.title")}</h1>
 
+        {history && history.length > 0 && (
+          <section id="historial" className="mb-10">
+            <div className="flex items-center gap-2 mb-4">
+              <History className="w-5 h-5 text-primary" />
+              <h2 className="text-xl font-display">Historial</h2>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+              {history.map((item: any) => (
+                <div
+                  key={item.id}
+                  onClick={() => navigate(`/story/${item.story_id}`)}
+                  className="group cursor-pointer border border-border/60 bg-card/60 overflow-hidden hover:border-primary/60 transition"
+                >
+                  <div className="aspect-[4/5] relative bg-muted">
+                    {item.story?.cover_image ? (
+                      <img
+                        src={item.story.cover_image}
+                        alt={item.story.title}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-3xl">📖</div>
+                    )}
+                    <div className="absolute inset-0 bg-gradient-to-t from-background via-background/30 to-transparent" />
+                    <div className="absolute bottom-2 left-2 right-2 flex items-center gap-1 text-[10px] uppercase tracking-wider text-accent">
+                      <Play className="w-3 h-3" />
+                      {item.last_mode === "roleplay" ? "Roleplay" : "Lectura"}
+                    </div>
+                  </div>
+                  <div className="p-2">
+                    <p className="text-xs font-medium line-clamp-2 group-hover:text-primary transition-colors">
+                      {item.story?.title}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground mt-1">
+                      {new Date(item.updated_at).toLocaleDateString()}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+
         <div className="flex justify-end mb-6">
           <Dialog
             open={isCreating}
