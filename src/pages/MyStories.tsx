@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/select";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { Trash2, Plus, X, ImagePlus, Loader2, MoreVertical, RotateCcw, Settings, History, Play } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -79,11 +79,14 @@ const MyStories = () => {
     enabled: !!user,
   });
 
+  const location = useLocation();
   useEffect(() => {
-    if (window.location.hash === "#historial") {
-      document.getElementById("historial")?.scrollIntoView({ behavior: "smooth" });
+    if (location.hash === "#historial") {
+      setTimeout(() => {
+        document.getElementById("historial")?.scrollIntoView({ behavior: "smooth" });
+      }, 100);
     }
-  }, [history]);
+  }, [location.hash, history]);
 
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [confirmResetId, setConfirmResetId] = useState<string | null>(null);
