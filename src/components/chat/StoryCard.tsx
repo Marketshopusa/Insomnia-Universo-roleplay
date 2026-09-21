@@ -1,25 +1,25 @@
-import { ArrowUpRight } from "lucide-react";
+import { Image as ImageIcon, ArrowUpRight } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useTranslatedTexts } from "@/hooks/useTranslatedTexts";
 import { cn } from "@/lib/utils";
- 
- interface Story {
-   id: string;
-   title: string;
-   cover_image?: string | null;
-   player_role?: string | null;
-   character_role?: string | null;
-   video_count: number;
-   image_count: number;
-   has_explicit_images: boolean;
- }
- 
- interface StoryCardProps {
-   story: Story;
-   onClick?: () => void;
+
+interface Story {
+  id: string;
+  title: string;
+  cover_image?: string | null;
+  player_role?: string | null;
+  character_role?: string | null;
+  video_count: number;
+  image_count: number;
+  has_explicit_images: boolean;
+}
+
+interface StoryCardProps {
+  story: Story;
+  onClick?: () => void;
   index?: number;
- }
- 
+}
+
 export const StoryCard = ({ story, onClick, index }: StoryCardProps) => {
   const { t } = useLanguage();
   const coverImage = story.cover_image;
@@ -30,8 +30,8 @@ export const StoryCard = ({ story, onClick, index }: StoryCardProps) => {
     story.character_role,
     story.player_role,
   ]);
- 
-   return (
+
+  return (
     <article
       onClick={onClick}
       className={cn(
@@ -63,6 +63,22 @@ export const StoryCard = ({ story, onClick, index }: StoryCardProps) => {
         ) : (
           <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-secondary to-muted">
             <span className="text-4xl text-muted-foreground">📖</span>
+          </div>
+        )}
+
+        {/* Vertical gradient + side accent line */}
+        <div className="absolute inset-0 bg-gradient-to-t from-background via-background/40 to-transparent" />
+        <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-gradient-to-b from-primary via-accent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+
+        {/* Index badge — sello propio */}
+        {typeof index === "number" && (
+          <div className="absolute top-0 right-0 px-2.5 py-1 bg-background/80 backdrop-blur border-l border-b border-border/60">
+            <span className="font-display text-xs italic text-accent">
+              N°{String(index + 1).padStart(2, "0")}
+            </span>
+          </div>
+        )}
+
         {/* Media chip — only when the story really has generated images */}
         {story.image_count > 0 && (
           <div className="absolute top-2 left-2 flex items-center gap-1 px-2 py-0.5 bg-primary/90 text-primary-foreground text-[10px] font-medium uppercase tracking-wider">
@@ -70,6 +86,7 @@ export const StoryCard = ({ story, onClick, index }: StoryCardProps) => {
             <span>{story.image_count}</span>
           </div>
         )}
+      </div>
 
       {/* Footer info — fuera de la imagen, no overlay */}
       <div className="p-3 space-y-1.5">
@@ -88,11 +105,11 @@ export const StoryCard = ({ story, onClick, index }: StoryCardProps) => {
         </div>
         <div className="flex items-center justify-between pt-2 border-t border-border/40">
           <span className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
-            Insomnia
+            {story.image_count > 0 ? `${story.image_count} ${t("chat.images")}` : "Insomnia"}
           </span>
           <ArrowUpRight className="w-3.5 h-3.5 text-muted-foreground group-hover:text-primary group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all" />
         </div>
       </div>
     </article>
-   );
- };
+  );
+};
