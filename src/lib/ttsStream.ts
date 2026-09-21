@@ -92,10 +92,7 @@ export function streamSpeech(text: string, voice: string): SpeechStream {
       if (stopped || !context) return;
 
       const encodedAudio = decodeBase64(payload.audioContent);
-      const wavBytes = encodedAudio.buffer.slice(
-        encodedAudio.byteOffset,
-        encodedAudio.byteOffset + encodedAudio.byteLength,
-      );
+      const wavBytes = new Uint8Array(encodedAudio).buffer;
       const audioBuffer = await context.decodeAudioData(wavBytes);
       if (stopped || !context || audioBuffer.length === 0) return;
 
