@@ -79,17 +79,6 @@ export const StoryCard = ({ story, onClick, index }: StoryCardProps) => {
           </div>
         )}
 
-        {/* Media chip */}
-        {mediaCount > 0 && (
-          <div className="absolute top-2 left-2 flex items-center gap-1 px-2 py-0.5 bg-primary/90 text-primary-foreground text-[10px] font-medium uppercase tracking-wider">
-            {story.video_count > 0 ? (
-              <Play className="w-3 h-3" />
-            ) : (
-              <ImageIcon className="w-3 h-3" />
-            )}
-            <span>{mediaCount}</span>
-          </div>
-        )}
       </div>
 
       {/* Footer info — fuera de la imagen, no overlay */}
