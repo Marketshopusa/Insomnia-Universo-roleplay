@@ -81,6 +81,79 @@ type Mode = "select" | "read" | "roleplay";
      "Generate again",
    ]);
 
+   const loadGallery = async () => {
+     if (!storyId) return;
+     const { data } = await (supabase as any)
+       .from("story_images")
+       .select("id, status, storage_path, error_message, sort_order")
+       .eq("story_id", storyId)
+       .order("sort_order");
+     const rows = (data as any[]) || [];
+     setGallery(rows);
+     const next: Record<string, string> = { ...gallerySigned };
+     for (const row of rows) {
+       if (row.status === "ready" && row.storage_path && !next[row.id]) {
+         const cached = galleryUrlCache.current[row.id];
+         if (cached) { next[row.id] = cached; continue; }
+         const { data: signed } = await supabase.storage
+           .from("story-gallery")
+           .createSignedUrl(row.storage_path, 60 * 60 * 24 * 7);
+         if (signed?.signedUrl) {
+           galleryUrlCache.current[row.id] = signed.signedUrl;
+           next[row.id] = signed.signedUrl;
+         }
+       }
+     }
+     setGallerySigned(next);
+   };
+
+   useEffect(() => {
+     setGallery([]);
+     setGallerySigned({});
+     loadGallery();
+   }, [storyId]);
+
+   const galleryPending = gallery.some((r) => r.status === "pending");
+   useEffect(() => {
+     if (!galleryPending || !storyId) return;
+     const iv = setInterval(async () => {
+       const { data } = await invokeFunctionWithRetry<{ done?: boolean }>("story-gallery", {
+         action: "status",
+         storyId,
+       });
+       if (data?.images) await loadGallery();
+       if (data?.done) {
+         setGallery((prev) => prev); // loadGallery already refreshed state
+       }
+     }, 5000);
+     return () => clearInterval(iv);
+   }, [galleryPending, storyId]);
+
+   const startGallery = async () => {
+     if (!story || !user) {
+       toast({ title: language === "es" ? "Inicia sesión para crear la galería" : "Sign in to create the gallery" });
+       return;
+     }
+     setGalleryBusy(true);
+     try {
+       const { data, error } = await invokeFunctionWithRetry<any>("story-gallery", {
+         action: "start",
+         storyId: story.id,
+         language,
+       });
+       if (error || data?.error) throw new Error(data?.detail || data?.error || "gallery_error");
+       await loadGallery();
+     } catch (e: any) {
+       toast({
+         title: language === "es" ? "No se pudo crear la galería" : "Could not create the gallery",
+         description: String(e?.message || e).slice(0, 140),
+         variant: "destructive",
+       });
+     } finally {
+       setGalleryBusy(false);
+     }
+   };
+
    // Unlock audio on first user gesture so later TTS playback isn't blocked by autoplay policy
    useEffect(() => {
      const unlock = () => {
