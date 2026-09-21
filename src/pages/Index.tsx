@@ -39,6 +39,9 @@ import { ShieldAlert, Lock, Sparkles } from "lucide-react";
    const [isMuted, setIsMuted] = useState(false);
    const [autoplay, setAutoplay] = useState(true);
  
+   const [configStory, setConfigStory] = useState<ConfigurableStory | null>(null);
+   const { data: customizations, refetch: refetchCustomizations } = useStoryCustomizations();
+
    const { data: categoriesData } = useCategories();
    const { data: storiesData, isLoading } = useStories({
      type: storyType,

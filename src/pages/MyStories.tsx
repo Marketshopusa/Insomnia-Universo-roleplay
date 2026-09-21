@@ -21,6 +21,8 @@ import { Trash2, Plus, X, ImagePlus, Loader2, MoreVertical, RotateCcw, Settings,
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { StoryCard } from "@/components/chat/StoryCard";
+import { StoryConfigDialog, type ConfigurableStory } from "@/components/story/StoryConfigDialog";
+import { useStoryCustomizations } from "@/hooks/useStoryCustomizations";
 import {
   DropdownMenu,
   DropdownMenuContent,
