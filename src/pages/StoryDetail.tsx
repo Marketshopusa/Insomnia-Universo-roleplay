@@ -41,7 +41,8 @@ type Mode = "select" | "read" | "roleplay";
    const { data: story, isLoading } = useStory(storyId || "");
    
    const [messages, setMessages] = useState<Message[]>([]);
-   const [inputMessage, setInputMessage] = useState("");
+  const [inputMessage, setInputMessage] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
    const [isTyping, setIsTyping] = useState(false);
    const [isMuted, setIsMuted] = useState(false);
    const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -514,7 +515,15 @@ type Mode = "select" | "read" | "roleplay";
      };
    }, []);
  
-   const handleKeyPress = (e: React.KeyboardEvent) => {
+    // Mantener el cursor en el cuadro de mensaje: al terminar de responder el
+    // personaje (o al recuperarse de un error), el foco vuelve solo.
+    useEffect(() => {
+      if (!isTyping) {
+        inputRef.current?.focus();
+      }
+    }, [isTyping]);
+
+    const handleKeyPress = (e: React.KeyboardEvent) => {
      if (e.key === "Enter" && !e.shiftKey) {
        e.preventDefault();
        handleSendMessage();
@@ -978,8 +987,9 @@ type Mode = "select" | "read" | "roleplay";
                {/* Input Area */}
                <div className="p-4 border-t border-border">
                  <div className="flex gap-2">
-                   <Input
-                     value={inputMessage}
+                    <Input
+                      ref={inputRef}
+                      value={inputMessage}
                      onChange={(e) => setInputMessage(e.target.value)}
                      onKeyPress={handleKeyPress}
                      placeholder={t("story.typeMessage")}
