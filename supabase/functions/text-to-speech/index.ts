@@ -93,6 +93,7 @@ serve(async (req) => {
           },
         },
       }),
+      signal: req.signal,
     });
 
     if (stream && resp.ok && resp.body) {
@@ -132,6 +133,7 @@ serve(async (req) => {
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (e) {
+    if (req.signal.aborted) return new Response(null, { status: 499, headers: corsHeaders });
     console.error("text-to-speech error:", e);
     return new Response(
       JSON.stringify({ error: e instanceof Error ? e.message : "unknown" }),
