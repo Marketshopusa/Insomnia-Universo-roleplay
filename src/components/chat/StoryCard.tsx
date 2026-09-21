@@ -63,23 +63,13 @@ export const StoryCard = ({ story, onClick, index }: StoryCardProps) => {
         ) : (
           <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-secondary to-muted">
             <span className="text-4xl text-muted-foreground">📖</span>
+        {/* Media chip — only when the story really has generated images */}
+        {story.image_count > 0 && (
+          <div className="absolute top-2 left-2 flex items-center gap-1 px-2 py-0.5 bg-primary/90 text-primary-foreground text-[10px] font-medium uppercase tracking-wider">
+            <ImageIcon className="w-3 h-3" />
+            <span>{story.image_count}</span>
           </div>
         )}
-
-        {/* Vertical gradient + side accent line */}
-        <div className="absolute inset-0 bg-gradient-to-t from-background via-background/40 to-transparent" />
-        <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-gradient-to-b from-primary via-accent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-
-        {/* Index badge — sello propio */}
-        {typeof index === "number" && (
-          <div className="absolute top-0 right-0 px-2.5 py-1 bg-background/80 backdrop-blur border-l border-b border-border/60">
-            <span className="font-display text-xs italic text-accent">
-              N°{String(index + 1).padStart(2, "0")}
-            </span>
-          </div>
-        )}
-
-      </div>
 
       {/* Footer info — fuera de la imagen, no overlay */}
       <div className="p-3 space-y-1.5">
