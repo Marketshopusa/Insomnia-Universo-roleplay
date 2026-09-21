@@ -2,8 +2,6 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.58.0";
 
 const NOVITA_API_KEY = Deno.env.get("NOVITA_API_KEY") ?? "";
 const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY") ?? "";
-const REALISTIC_MODEL = "realisticVisionV60B1_v60B1VAE_190174.safetensors";
-const EXPLICIT_MODEL = "uberRealisticPornMerge_urpmv13.safetensors";
 const BUCKET = "story-gallery";
 const MAX_IMAGES = 8;
 const BATCH = 4;
