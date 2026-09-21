@@ -198,7 +198,7 @@ type Mode = "select" | "read" | "roleplay";
     return `*${title}*\n\n${description}\n\n${t("story.youArePlaying")}: **${playerRole}**\n${t("story.iAmPlaying")}: **${characterRole}**\n\n*${t("story.sceneSet")}*`;
    };
  
-   const generateResponse = async (userMessage: string) => {
+   const generateResponse = async (userMessage: string): Promise<string | null> => {
     const { data, error } = await supabase.functions.invoke("story-chat", {
       body: {
         story: {
@@ -221,9 +221,7 @@ type Mode = "select" | "read" | "roleplay";
       if (code === "rate_limited") toast({ title: t("mode.rateLimited"), variant: "destructive" });
       else if (code === "credits_exhausted") toast({ title: t("mode.creditsExhausted"), variant: "destructive" });
       else toast({ title: t("mode.aiError"), variant: "destructive" });
-      return language === "es"
-        ? "*el personaje guarda silencio por un momento*"
-        : "*the character pauses for a moment*";
+      return null;
     }
     return data.content as string;
    };
@@ -243,7 +241,12 @@ type Mode = "select" | "read" | "roleplay";
      setIsTyping(true);
  
  
-     const responseContent = await generateResponse(inputMessage);
+     const responseContent = await generateResponse(userMessage.content);
+     if (!responseContent) {
+       setInputMessage(userMessage.content);
+       setIsTyping(false);
+       return;
+     }
      
      const assistantMessage: Message = {
        id: (Date.now() + 1).toString(),

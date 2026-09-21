@@ -60,7 +60,7 @@ serve(async (req) => {
     if (!apiKey) throw new Error("LOVABLE_API_KEY not configured");
 
     const voiceName = VOICE_MAP[voice || "scarlett-hd"] || voice || "Aoede";
-    const cleaned = stripMarkup(text).slice(0, 2500);
+    const cleaned = stripMarkup(text);
     const tone =
       style ||
       "con voz cálida, suave y serena, tono íntimo y sensual, ritmo natural";

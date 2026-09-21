@@ -51,7 +51,7 @@ export function streamSpeech(text: string, voice: string): SpeechStream {
 
   const done = (async () => {
     try {
-      context = new AudioContext({ sampleRate: SAMPLE_RATE });
+      context = new AudioContext();
       if (context.state === "suspended") await context.resume();
       if (stopped || !context) return;
 
