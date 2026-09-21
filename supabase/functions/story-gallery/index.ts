@@ -350,17 +350,27 @@ Deno.serve(async (req) => {
 
     if (action === "probe") {
       const results: any[] = [];
-      const tryGet = async (ep: string) => {
+      const tryPost = async (ep: string, body: any) => {
         try {
-          const r = await fetch(ep, { headers: { Authorization: `Bearer ${NOVITA_API_KEY}` } });
-          results.push({ ep, status: r.status, body: (await r.text()).slice(0, 250) });
+          const r = await fetch(ep, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${NOVITA_API_KEY}`, "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          });
+          results.push({ ep, status: r.status, body: (await r.text()).slice(0, 400) });
         } catch (e) {
           results.push({ ep, error: String(e) });
         }
       };
-      await tryGet("https://api.novita.ai/v3/models");
-      await tryGet("https://api.novita.ai/v3/openai/models");
-      await tryGet("https://api.novita.ai/v3/async/task-result?task_id=probe");
+      const imgBody = {
+        model: "seedream-4.0",
+        prompt: "a red apple on a table, photorealistic",
+        n: 1,
+        size: "1024x1024",
+        response_format: "b64_json",
+      };
+      await tryPost("https://api.novita.ai/v3/openai/images/generations", imgBody);
+      await tryPost("https://api.novita.ai/v3/openai/images/edits", { model: "seedream-4.0" });
       return json({ probe: results });
     }
 
