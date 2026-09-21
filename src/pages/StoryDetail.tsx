@@ -906,9 +906,34 @@ type Mode = "select" | "read" | "roleplay";
                            minute: "2-digit",
                          })}
                        </span>
-                       {message.role === "assistant" && message.id !== "intro" && (
-                         <div className="mt-2">
-                           {sceneImages[message.id] ? (
+                        {message.role === "assistant" && (
+                          <button
+                            onClick={() =>
+                              playingId === message.id
+                                ? stopAudio()
+                                : void playAudio(message.content, message.id)
+                            }
+                            className="mt-2 inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                            aria-label={
+                              playingId === message.id
+                                ? (language === "es" ? "Detener voz" : "Stop voice")
+                                : (language === "es" ? "Escuchar mensaje" : "Listen to message")
+                            }
+                            title={language === "es" ? "Escuchar mensaje" : "Listen to message"}
+                          >
+                            {playingId === message.id ? (
+                              <VolumeX className="w-3 h-3" />
+                            ) : (
+                              <Play className="w-3 h-3" />
+                            )}
+                            {playingId === message.id
+                              ? (language === "es" ? "Detener" : "Stop")
+                              : (language === "es" ? "Escuchar" : "Listen")}
+                          </button>
+                        )}
+                        {message.role === "assistant" && message.id !== "intro" && (
+                          <div className="mt-2">
+                            {sceneImages[message.id] ? (
                              <img
                                src={sceneImages[message.id]}
                                alt={language === "es" ? "Ilustración de la escena" : "Scene illustration"}
