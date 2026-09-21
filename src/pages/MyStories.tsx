@@ -527,7 +527,7 @@ const MyStories = () => {
                     <Button
                       variant="secondary"
                       size="icon"
-                      className="absolute top-2 right-2 h-7 w-7 opacity-0 group-hover:opacity-100 transition z-10"
+                      className="absolute top-10 right-2 h-7 w-7 opacity-0 group-hover:opacity-100 transition z-10"
                       onClick={(e) => e.stopPropagation()}
                     >
                       <MoreVertical className="w-3.5 h-3.5" />
