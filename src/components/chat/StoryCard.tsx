@@ -22,8 +22,6 @@ import { cn } from "@/lib/utils";
  
 export const StoryCard = ({ story, onClick, index }: StoryCardProps) => {
   const { t } = useLanguage();
-  const mediaCount = story.video_count > 0 ? story.video_count : story.image_count;
-  const mediaType = story.video_count > 0 ? t("chat.videos") : t("chat.images");
   const coverImage = story.cover_image;
   const isVideoCover = !!coverImage && /\.(mp4|webm|mov|m4v|ogv)(\?|$)/i.test(coverImage);
 
