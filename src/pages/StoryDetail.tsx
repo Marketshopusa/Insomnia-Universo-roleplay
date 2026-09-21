@@ -763,19 +763,88 @@ type Mode = "select" | "read" | "roleplay";
                  </div>
                </div>
  
-               {/* Categories */}
-               {categories.length > 0 && (
-                 <div className="p-4 border-t border-border">
-                   <div className="flex flex-wrap gap-2">
-                      {categories.map((cat: any, i: number) => (
-                       <Badge key={cat.id} variant="secondary" className="text-xs">
-                          {tCategoryNames[i] || cat.name}
-                       </Badge>
-                     ))}
-                   </div>
-                 </div>
-               )}
-             </Card>
+                {/* Categories */}
+                {categories.length > 0 && (
+                  <div className="p-4 border-t border-border">
+                    <div className="flex flex-wrap gap-2">
+                       {categories.map((cat: any, i: number) => (
+                        <Badge key={cat.id} variant="secondary" className="text-xs">
+                           {tCategoryNames[i] || cat.name}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Real character gallery — only images that actually exist */}
+                <div className="p-4 border-t border-border">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="font-display text-sm uppercase tracking-[0.2em] text-accent">
+                      {tGalleryTitle}
+                    </h3>
+                    {gallery.filter((r) => r.status === "ready").length > 0 && (
+                      <span className="text-xs text-muted-foreground">
+                        {gallery.filter((r) => r.status === "ready").length}
+                      </span>
+                    )}
+                  </div>
+                  {gallery.filter((r) => r.status === "ready").length === 0 && gallery.every((r) => r.status !== "pending") ? (
+                    <Button
+                      onClick={startGallery}
+                      disabled={galleryBusy}
+                      variant="outline"
+                      className="w-full gap-2 rounded-none"
+                    >
+                      {galleryBusy ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <ImageIcon className="w-4 h-4" />
+                      )}
+                      {tCreateGallery}
+                    </Button>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-2">
+                      {gallery.map((img) =>
+                        img.status === "ready" && gallerySigned[img.id] ? (
+                          <a
+                            key={img.id}
+                            href={gallerySigned[img.id]}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="block aspect-[3/4] overflow-hidden border border-border"
+                          >
+                            <img
+                              src={gallerySigned[img.id]}
+                              alt=""
+                              loading="lazy"
+                              className="w-full h-full object-cover transition-transform duration-500 hover:scale-105"
+                            />
+                          </a>
+                        ) : img.status === "pending" ? (
+                          <div
+                            key={img.id}
+                            className="aspect-[3/4] border border-border flex flex-col items-center justify-center gap-2 bg-muted/40"
+                          >
+                            <Loader2 className="w-4 h-4 animate-spin text-primary" />
+                            <span className="text-[10px] text-muted-foreground">{tGenerating}</span>
+                          </div>
+                        ) : null,
+                      )}
+                      {gallery.some((r) => r.status === "failed") && (
+                        <Button
+                          onClick={startGallery}
+                          disabled={galleryBusy}
+                          variant="outline"
+                          size="sm"
+                          className="col-span-2 gap-2 rounded-none"
+                        >
+                          <RotateCw className="w-4 h-4" /> {tRetry}
+                        </Button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </Card>
            </div>
  
            {/* Chat Panel */}
