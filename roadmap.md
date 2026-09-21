@@ -6,3 +6,4 @@
 - [x] Ampliar los Shorts a 15 segundos y contar la historia con voces y acciones, sin relato superpuesto.
 - [x] Evitar cortes y micropausas en la voz completa del chat y la llamada.
 - [x] Recuperar automáticamente respuestas del personaje ante fallos temporales.
+- [x] Galería real de imágenes bajo demanda: contador verdadero en tarjetas, generación con Novita (qwen-image), aprobada y verificada de extremo a extremo.
