@@ -69,6 +69,18 @@ type Mode = "select" | "read" | "roleplay";
    const [sceneImages, setSceneImages] = useState<Record<string, string>>({});
    const [illustratingId, setIllustratingId] = useState<string | null>(null);
 
+   // ---- Real character gallery (on-demand) ----
+   const [gallery, setGallery] = useState<any[]>([]);
+   const [galleryBusy, setGalleryBusy] = useState(false);
+   const [gallerySigned, setGallerySigned] = useState<Record<string, string>>({});
+   const galleryUrlCache = useRef<Record<string, string>>({});
+   const [tGalleryTitle, tCreateGallery, tGenerating, tRetry] = useTranslatedTexts([
+     "Gallery",
+     "Create image gallery",
+     "Generating…",
+     "Generate again",
+   ]);
+
    // Unlock audio on first user gesture so later TTS playback isn't blocked by autoplay policy
    useEffect(() => {
      const unlock = () => {
