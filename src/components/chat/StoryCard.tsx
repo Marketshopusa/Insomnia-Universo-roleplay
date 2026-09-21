@@ -98,7 +98,7 @@ export const StoryCard = ({ story, onClick, index }: StoryCardProps) => {
         </div>
         <div className="flex items-center justify-between pt-2 border-t border-border/40">
           <span className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
-            {mediaCount > 0 ? `${mediaCount} ${mediaType}` : "Insomnia"}
+            Insomnia
           </span>
           <ArrowUpRight className="w-3.5 h-3.5 text-muted-foreground group-hover:text-primary group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all" />
         </div>
