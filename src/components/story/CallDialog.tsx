@@ -20,7 +20,7 @@ interface CallDialogProps {
   language: string;
   voice: string;
   history: Turn[];
-  onTurn: (userText: string, assistantText: string) => void;
+  onTurn: (userText: string, assistantText: string | null) => void;
 }
 
 const SILENCE_MS = 1400;
@@ -217,8 +217,13 @@ export const CallDialog = ({
     const reply = await askCharacter(userText);
     if (!activeRef.current) return;
     if (!reply) {
+      historyRef.current = [...historyRef.current, { role: "user", content: userText }];
+      onTurn(userText, null);
       toast({
         title: es ? "El personaje no pudo responder" : "The character could not answer",
+        description: es
+          ? "Guardamos lo que dijiste. La llamada continuará escuchando."
+          : "What you said was saved. The call will keep listening.",
         variant: "destructive",
       });
       void listen();

@@ -6,7 +6,7 @@
  import { Card } from "@/components/ui/card";
  import { Badge } from "@/components/ui/badge";
  import { Skeleton } from "@/components/ui/skeleton";
-import { ArrowLeft, Send, Play, Image as ImageIcon, Volume2, VolumeX, BookOpen, MessageSquare, Loader2, RotateCw, Sparkles } from "lucide-react";
+import { ArrowLeft, Send, Play, Image as ImageIcon, Volume2, VolumeX, BookOpen, MessageSquare, Loader2, RotateCw, Sparkles, ChevronDown, ChevronUp } from "lucide-react";
 import { CallDialog } from "@/components/story/CallDialog";
 import { STORY_VOICES, getStoryVoice, setStoryVoice, voiceGender } from "@/lib/voices";
 import { streamSpeech, type SpeechStream } from "@/lib/ttsStream";
@@ -72,6 +72,7 @@ type Mode = "select" | "read" | "roleplay";
    // ---- Real character gallery (on-demand) ----
    const [gallery, setGallery] = useState<any[]>([]);
    const [galleryBusy, setGalleryBusy] = useState(false);
+   const [galleryOpen, setGalleryOpen] = useState(false);
    const [gallerySigned, setGallerySigned] = useState<Record<string, string>>({});
    const galleryUrlCache = useRef<Record<string, string>>({});
    const [tGalleryTitle, tCreateGallery, tGenerating, tRetry] = useTranslatedTexts([
@@ -110,6 +111,7 @@ type Mode = "select" | "read" | "roleplay";
    useEffect(() => {
      setGallery([]);
      setGallerySigned({});
+     setGalleryOpen(false);
      loadGallery();
    }, [storyId]);
 
@@ -777,18 +779,34 @@ type Mode = "select" | "read" | "roleplay";
                 )}
 
                 {/* Real character gallery — only images that actually exist */}
-                <div className="p-4 border-t border-border">
-                  <div className="flex items-center justify-between mb-3">
-                    <h3 className="font-display text-sm uppercase tracking-[0.2em] text-accent">
-                      {tGalleryTitle}
-                    </h3>
-                    {gallery.filter((r) => r.status === "ready").length > 0 && (
-                      <span className="text-xs text-muted-foreground">
-                        {gallery.filter((r) => r.status === "ready").length}
+                <div className="border-t border-border">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={() => setGalleryOpen((open) => !open)}
+                    aria-expanded={galleryOpen}
+                    aria-controls="story-gallery-content"
+                    className="flex h-auto w-full items-center justify-between rounded-none px-4 py-3 hover:bg-secondary/40"
+                  >
+                    <span className="flex items-center gap-2">
+                      <span className="font-display text-sm uppercase tracking-[0.2em] text-accent">
+                        {tGalleryTitle}
                       </span>
+                      {gallery.filter((r) => r.status === "ready").length > 0 && (
+                        <span className="text-xs text-muted-foreground">
+                          {gallery.filter((r) => r.status === "ready").length}
+                        </span>
+                      )}
+                    </span>
+                    {galleryOpen ? (
+                      <ChevronUp className="h-4 w-4" aria-hidden="true" />
+                    ) : (
+                      <ChevronDown className="h-4 w-4" aria-hidden="true" />
                     )}
-                  </div>
-                  {gallery.filter((r) => r.status === "ready").length === 0 && gallery.every((r) => r.status !== "pending") ? (
+                  </Button>
+                  {galleryOpen && (
+                    <div id="story-gallery-content" className="px-4 pb-4">
+                    {gallery.filter((r) => r.status === "ready").length === 0 && gallery.every((r) => r.status !== "pending") ? (
                     <Button
                       onClick={startGallery}
                       disabled={galleryBusy}
@@ -802,7 +820,7 @@ type Mode = "select" | "read" | "roleplay";
                       )}
                       {tCreateGallery}
                     </Button>
-                  ) : (
+                    ) : (
                     <div className="grid grid-cols-2 gap-2">
                       {gallery.map((img) =>
                         img.status === "ready" && gallerySigned[img.id] ? (
@@ -841,6 +859,8 @@ type Mode = "select" | "read" | "roleplay";
                           <RotateCw className="w-4 h-4" /> {tRetry}
                         </Button>
                       )}
+                    </div>
+                    )}
                     </div>
                   )}
                 </div>
@@ -992,8 +1012,10 @@ type Mode = "select" | "read" | "roleplay";
                           const next: Message[] = [
                             ...previous,
                             { id: `${Date.now()}-u`, role: "user", content: userText, timestamp: new Date() },
-                            { id: `${Date.now()}-a`, role: "assistant", content: assistantText, timestamp: new Date() },
                           ];
+                           if (assistantText) {
+                             next.push({ id: `${Date.now()}-a`, role: "assistant", content: assistantText, timestamp: new Date() });
+                           }
                           saveSession(next, narrative || null, mode);
                           return next;
                         });
