@@ -288,7 +288,7 @@ type Mode = "select" | "read" | "roleplay";
    };
  
    const generateResponse = async (userMessage: string): Promise<string | null> => {
-    const { data, error } = await invokeFunctionWithRetry<{ content?: string; error?: string }>("story-chat", {
+    const { data, error } = await invokeFunctionWithRetry<{ content?: string; error?: string; message?: string }>("story-chat", {
         story: {
           title: story?.title,
           description: story?.description,
@@ -307,6 +307,11 @@ type Mode = "select" | "read" | "roleplay";
       const code = (data as any)?.error;
       if (code === "rate_limited") toast({ title: t("mode.rateLimited"), variant: "destructive" });
       else if (code === "credits_exhausted") toast({ title: t("mode.creditsExhausted"), variant: "destructive" });
+      else if (code === "content_blocked") toast({
+        title: language === "es" ? "Esta escena no puede continuar" : "This scene cannot continue",
+        description: data?.message,
+        variant: "destructive",
+      });
       else toast({ title: t("mode.aiError"), variant: "destructive" });
       return null;
     }
