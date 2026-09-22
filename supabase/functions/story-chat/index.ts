@@ -46,7 +46,7 @@ serve(async (req) => {
         : "Always respond in natural, fluent English.";
 
     const explicitGuard = body.explicit
-      ? "El usuario ha consentido contenido explícito adulto. Puedes describir escenas íntimas con detalle sensorial, lenguaje adulto y tensión erótica realista, manteniendo siempre consentimiento entre adultos ficticios."
+      ? "El usuario ha consentido contenido explícito adulto. Todos los personajes son adultos de 18 años o más, salvo que el texto indique explícitamente una edad menor. Palabras como chica, joven, jovencita, hermana o hermanastra describen identidad o relación y NO implican minoría de edad. Puedes describir escenas íntimas con detalle sensorial, lenguaje adulto y tensión erótica realista, manteniendo siempre consentimiento entre adultos ficticios. Si el texto establece explícitamente que alguien es menor de 18 años, no continúes la escena sexual."
       : "Mantén el contenido sugerente pero sin descripciones sexuales explícitas.";
 
     const systemPrompt = `Eres un narrador inmersivo de roleplay interactivo de alta calidad.
@@ -153,8 +153,8 @@ REGLAS DE ESCRITURA:
         return new Response(JSON.stringify({
           error: "content_blocked",
           message: body.language === "es"
-            ? "La IA detuvo esta respuesta porque el contenido incluye una persona menor de 18 años en una situación sexual. Cambia la edad a 18 años o más para continuar."
-            : "The AI stopped this response because the content includes someone under 18 in a sexual situation. Change the age to 18 or older to continue.",
+            ? "La IA detuvo esta respuesta. Si la escena solo incluye adultos, vuelve a intentarlo; palabras como chica, joven o hermana no significan que el personaje sea menor."
+            : "The AI stopped this response. If the scene only includes adults, try again; words such as girl, young woman, or sister do not mean the character is underage.",
         }), {
           status: 200,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
