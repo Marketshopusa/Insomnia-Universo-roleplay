@@ -35,10 +35,10 @@ async function requestSpeech(text: string, voice: string, signal: AbortSignal) {
   return response;
 }
 
-function splitSpeechText(text: string, maximumLength = 280): string[] {
-  const clean = text.trim();
-  if (clean.length <= maximumLength) return clean ? [clean] : [];
-  const sentences = clean.match(/[^.!?…]+[.!?…]+|[^.!?…]+$/g) ?? [clean];
+function splitSpeechText(text: string, maximumLength = 110): string[] {
+  const clean = text.replace(/[*_#`]/g, "").replace(/\s+/g, " ").trim();
+  if (!clean) return [];
+  const sentences = clean.match(/[^.!?…]+(?:\.{3}|[.!?…]+)|[^.!?…]+$/g) ?? [clean];
   const chunks: string[] = [];
   let current = "";
 
@@ -53,10 +53,18 @@ function splitSpeechText(text: string, maximumLength = 280): string[] {
     if (!trimmed) continue;
     if (trimmed.length > maximumLength) {
       pushCurrent();
-      const words = trimmed.split(/\s+/);
-      for (const word of words) {
-        if (current && `${current} ${word}`.length > maximumLength) pushCurrent();
-        current = current ? `${current} ${word}` : word;
+      const clauses = trimmed.split(/(?<=[,;:])\s+/);
+      for (const clause of clauses) {
+        if (clause.length <= maximumLength) {
+          if (current && `${current} ${clause}`.length > maximumLength) pushCurrent();
+          current = current ? `${current} ${clause}` : clause;
+          continue;
+        }
+        const words = clause.split(/\s+/);
+        for (const word of words) {
+          if (current && `${current} ${word}`.length > maximumLength) pushCurrent();
+          current = current ? `${current} ${word}` : word;
+        }
       }
       pushCurrent();
       continue;
@@ -116,6 +124,26 @@ async function receivePcm(text: string, voice: string, signal: AbortSignal) {
   return chunks;
 }
 
+function trimBoundarySilence(bytes: Uint8Array, retainMilliseconds = 70) {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const sampleCount = Math.floor(bytes.byteLength / 2);
+  const threshold = 180;
+  const retainSamples = Math.floor((PCM_SAMPLE_RATE * retainMilliseconds) / 1000);
+  let firstAudible = 0;
+  let lastAudible = sampleCount - 1;
+
+  while (firstAudible < sampleCount && Math.abs(view.getInt16(firstAudible * 2, true)) < threshold) {
+    firstAudible += 1;
+  }
+  while (lastAudible > firstAudible && Math.abs(view.getInt16(lastAudible * 2, true)) < threshold) {
+    lastAudible -= 1;
+  }
+
+  const start = Math.max(0, firstAudible - retainSamples);
+  const end = Math.min(sampleCount, lastAudible + retainSamples + 1);
+  return bytes.slice(start * 2, end * 2);
+}
+
 function decodePcm(value: string, carry: Uint8Array): { bytes: Uint8Array; carry: Uint8Array } {
   const binary = atob(value);
   const bytes = new Uint8Array(carry.length + binary.length);
@@ -169,8 +197,22 @@ export function streamSpeech(text: string, voice: string): SpeechStream {
 
       const textChunks = splitSpeechText(text);
       if (textChunks.length === 0) return;
+      // Gemini can occasionally mark a long utterance complete after speaking
+      // only its opening. Short, sentence-safe requests make every part
+      // independently complete; they are then joined before playback so the
+      // browser still receives one continuous native audio track.
       const responses = await Promise.all(
-        textChunks.map((chunk) => receivePcm(chunk, voice, controller.signal)),
+        textChunks.map(async (chunk) => {
+          const pcm = await receivePcm(chunk, voice, controller.signal);
+          const joinedLength = pcm.reduce((sum, part) => sum + part.byteLength, 0);
+          const joined = new Uint8Array(joinedLength);
+          let offset = 0;
+          for (const part of pcm) {
+            joined.set(part, offset);
+            offset += part.byteLength;
+          }
+          return [trimBoundarySilence(joined)];
+        }),
       );
       if (stopped) return;
       const chunks = responses.flat();
