@@ -13,4 +13,4 @@
 - [x] Hacer que la galería de cada historia abra y cierre sin desplazar el chat cuando está cerrada.
 
 - [x] Mostrar la causa real cuando la IA bloquea una escena y evitar reintentos inútiles.
-- [ ] Eliminar definitivamente la narración parcial del TTS y verificar varias generaciones consecutivas.
+- [x] Eliminar definitivamente la narración parcial del TTS y verificar varias generaciones consecutivas.

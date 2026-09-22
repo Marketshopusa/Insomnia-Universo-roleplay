@@ -35,7 +35,7 @@ async function requestSpeech(text: string, voice: string, signal: AbortSignal) {
   return response;
 }
 
-function splitSpeechText(text: string, maximumLength = 110): string[] {
+function splitSpeechText(text: string, maximumLength = 70): string[] {
   const clean = text.replace(/[*_#`]/g, "").replace(/\s+/g, " ").trim();
   if (!clean) return [];
   const sentences = clean.match(/[^.!?…]+(?:\.{3}|[.!?…]+)|[^.!?…]+$/g) ?? [clean];
@@ -76,7 +76,7 @@ function splitSpeechText(text: string, maximumLength = 110): string[] {
   return chunks;
 }
 
-async function receivePcm(text: string, voice: string, signal: AbortSignal) {
+async function receivePcmOnce(text: string, voice: string, signal: AbortSignal) {
   const response = await requestSpeech(text, voice, signal);
   if (!response) throw new Error("tts_no_response");
   if (!response.ok || !response.body) {
@@ -121,7 +121,26 @@ async function receivePcm(text: string, voice: string, signal: AbortSignal) {
   if (pendingText.trim()) processLine(pendingText);
   if (!receivedDone) throw new Error("tts_stream_incomplete");
   if (byteCarry.length > 0 || chunks.length === 0) throw new Error("tts_audio_incomplete");
+  const totalBytes = chunks.reduce((sum, chunk) => sum + chunk.byteLength, 0);
+  const audioSeconds = totalBytes / 2 / PCM_SAMPLE_RATE;
+  const spokenWords = text.match(/[\p{L}\p{N}]+/gu)?.length ?? 0;
+  const minimumSeconds = Math.max(0.8, spokenWords * 0.19);
+  if (audioSeconds < minimumSeconds) throw new Error("tts_audio_too_short");
   return chunks;
+}
+
+async function receivePcm(text: string, voice: string, signal: AbortSignal) {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      return await receivePcmOnce(text, voice, signal);
+    } catch (error) {
+      if (signal.aborted) throw error;
+      lastError = error;
+      if (attempt < 2) await wait(350 + attempt * 300);
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error("tts_audio_incomplete");
 }
 
 function trimBoundarySilence(bytes: Uint8Array, retainMilliseconds = 70) {
