@@ -152,7 +152,9 @@ REGLAS DE ESCRITURA:
       if (blockedBySafety) {
         return new Response(JSON.stringify({
           error: "content_blocked",
-          message: "La IA detuvo esta respuesta porque el contenido incluye una persona menor de 18 años en una situación sexual. Cambia la edad a 18 años o más para continuar.",
+          message: body.language === "es"
+            ? "La IA detuvo esta respuesta porque el contenido incluye una persona menor de 18 años en una situación sexual. Cambia la edad a 18 años o más para continuar."
+            : "The AI stopped this response because the content includes someone under 18 in a sexual situation. Change the age to 18 or older to continue.",
         }), {
           status: 200,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
