@@ -1012,8 +1012,10 @@ type Mode = "select" | "read" | "roleplay";
                           const next: Message[] = [
                             ...previous,
                             { id: `${Date.now()}-u`, role: "user", content: userText, timestamp: new Date() },
-                            { id: `${Date.now()}-a`, role: "assistant", content: assistantText, timestamp: new Date() },
                           ];
+                           if (assistantText) {
+                             next.push({ id: `${Date.now()}-a`, role: "assistant", content: assistantText, timestamp: new Date() });
+                           }
                           saveSession(next, narrative || null, mode);
                           return next;
                         });
