@@ -81,7 +81,9 @@ REGLAS DE ESCRITURA:
       messages,
     });
     let resp: Response | null = null;
-    for (let attempt = 0; attempt < 2; attempt += 1) {
+    let data: any = null;
+    let content = "";
+    for (let attempt = 0; attempt < 3; attempt += 1) {
       resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
         method: "POST",
         headers: {
@@ -91,9 +93,24 @@ REGLAS DE ESCRITURA:
         body: requestBody,
       });
       const retryable = resp.status === 429 || resp.status >= 500;
-      if (!retryable || attempt === 1) break;
-      await resp.body?.cancel();
-      await sleep(retryDelay(resp, attempt));
+      if (retryable) {
+        if (attempt === 2) break;
+        await resp.body?.cancel();
+        await sleep(retryDelay(resp, attempt));
+        continue;
+      }
+      if (!resp.ok) break;
+
+      data = await resp.json();
+      content = String(data?.choices?.[0]?.message?.content || "").trim();
+      if (content) break;
+
+      const finishReason = data?.choices?.[0]?.finish_reason;
+      const refusal = data?.choices?.[0]?.message?.refusal;
+      const terminalEmpty = Boolean(refusal) || finishReason === "content_filter" || finishReason === "safety";
+      console.warn("story-chat empty response", { attempt: attempt + 1, finishReason, terminalEmpty });
+      if (terminalEmpty || attempt === 2) break;
+      await sleep(700 * (attempt + 1) + Math.floor(Math.random() * 300));
     }
 
     if (!resp) throw new Error("AI gateway did not respond");
@@ -126,8 +143,12 @@ REGLAS DE ESCRITURA:
       });
     }
 
-    const data = await resp.json();
-    const content: string = data.choices?.[0]?.message?.content || "";
+    if (!content) {
+      return new Response(JSON.stringify({ error: "empty_response", message: "El personaje no generó una respuesta." }), {
+        status: 503,
+        headers: { ...corsHeaders, "Content-Type": "application/json", "Retry-After": "1" },
+      });
+    }
 
     return new Response(JSON.stringify({ content }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
