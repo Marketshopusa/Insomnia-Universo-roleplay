@@ -11,3 +11,5 @@
 - [x] Modelo único de tarjeta con botón de configuración en toda la app: portada (imagen, gif o video) y voz, en historias propias y del catálogo.
 - [x] Recuperar respuestas vacías del personaje sin perder el mensaje del usuario.
 - [x] Hacer que la galería de cada historia abra y cierre sin desplazar el chat cuando está cerrada.
+
+- [x] Mostrar la causa real cuando la IA bloquea una escena y evitar reintentos inútiles.

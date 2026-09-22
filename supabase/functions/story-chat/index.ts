@@ -83,6 +83,7 @@ REGLAS DE ESCRITURA:
     let resp: Response | null = null;
     let data: any = null;
     let content = "";
+    let blockedBySafety = false;
     for (let attempt = 0; attempt < 3; attempt += 1) {
       resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
         method: "POST",
@@ -109,7 +110,11 @@ REGLAS DE ESCRITURA:
       const refusal = data?.choices?.[0]?.message?.refusal;
       const terminalEmpty = Boolean(refusal) || finishReason === "content_filter" || finishReason === "safety";
       console.warn("story-chat empty response", { attempt: attempt + 1, finishReason, terminalEmpty });
-      if (terminalEmpty || attempt === 2) break;
+      if (terminalEmpty) {
+        blockedBySafety = true;
+        break;
+      }
+      if (attempt === 2) break;
       await sleep(700 * (attempt + 1) + Math.floor(Math.random() * 300));
     }
 
@@ -144,6 +149,17 @@ REGLAS DE ESCRITURA:
     }
 
     if (!content) {
+      if (blockedBySafety) {
+        return new Response(JSON.stringify({
+          error: "content_blocked",
+          message: body.language === "es"
+            ? "La IA detuvo esta respuesta porque el contenido incluye una persona menor de 18 años en una situación sexual. Cambia la edad a 18 años o más para continuar."
+            : "The AI stopped this response because the content includes someone under 18 in a sexual situation. Change the age to 18 or older to continue.",
+        }), {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
       return new Response(JSON.stringify({ error: "empty_response", message: "El personaje no generó una respuesta." }), {
         status: 503,
         headers: { ...corsHeaders, "Content-Type": "application/json", "Retry-After": "1" },

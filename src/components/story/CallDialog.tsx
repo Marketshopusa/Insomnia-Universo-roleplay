@@ -127,7 +127,7 @@ export const CallDialog = ({
   };
 
   const askCharacter = async (userText: string) => {
-    const { data, error } = await invokeFunctionWithRetry<{ content?: string }>("story-chat", {
+    const { data, error } = await invokeFunctionWithRetry<{ content?: string; error?: string; message?: string }>("story-chat", {
         story: {
           title: story?.title,
           description: story?.description,
@@ -140,8 +140,10 @@ export const CallDialog = ({
         userMessage: userText,
         explicit: story?.story_type === "real_sex" || !!story?.has_explicit_images,
     });
-    if (error || !(data as any)?.content) return "";
-    return (data as any).content as string;
+    if (error || !data?.content) {
+      return { content: "", error: data?.error, message: data?.message };
+    }
+    return { content: data.content, error: undefined, message: undefined };
   };
 
   const listen = async () => {
@@ -214,16 +216,19 @@ export const CallDialog = ({
       return;
     }
 
-    const reply = await askCharacter(userText);
+    const replyResult = await askCharacter(userText);
+    const reply = replyResult.content;
     if (!activeRef.current) return;
     if (!reply) {
       historyRef.current = [...historyRef.current, { role: "user", content: userText }];
       onTurn(userText, null);
       toast({
-        title: es ? "El personaje no pudo responder" : "The character could not answer",
-        description: es
+        title: replyResult.error === "content_blocked"
+          ? (es ? "Esta escena no puede continuar" : "This scene cannot continue")
+          : (es ? "El personaje no pudo responder" : "The character could not answer"),
+        description: replyResult.message || (es
           ? "Guardamos lo que dijiste. La llamada continuará escuchando."
-          : "What you said was saved. The call will keep listening.",
+          : "What you said was saved. The call will keep listening."),
         variant: "destructive",
       });
       void listen();
