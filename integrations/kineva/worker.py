@@ -6,6 +6,7 @@ import json
 import mimetypes
 import os
 import re
+import shutil
 import subprocess
 import tempfile
 from pathlib import Path
@@ -43,6 +44,18 @@ def one(graph, kind):
         raise ValueError(f"Expected one {kind}, found {len(found)}")
     return found[0]
 
+def normalized_words(value):
+    return " ".join(str(value or "").split())
+
+
+def verify_locked_dialogue(report, spoken_script):
+    shots = (report.get("locked_plan") or {}).get("shots") or []
+    lines = [str(item.get("line") or "") for shot in shots
+             for item in (shot.get("dialogue") or [])]
+    if len(shots) != 1 or normalized_words(" ".join(lines)) != normalized_words(spoken_script):
+        raise RuntimeError("Locked plan altered the exact spoken segment")
+
+
 def make_prompt(template, job, image_name, manifest_path):
     graph = copy.deepcopy(template)
     if not all(isinstance(node.get("inputs"), dict) for node in graph.values()):
@@ -50,8 +63,14 @@ def make_prompt(template, job, image_name, manifest_path):
     one(graph, "MinimaxStoryPlanner")[1]["inputs"]["story"] = job["prompt"]
     one(graph, "LoadImage")[1]["inputs"]["image"] = image_name
     one(graph, "KinevaStoryCastFromManifest")[1]["inputs"]["manifest_path"] = str(manifest_path)
+    spoken_script = str(job.get("spoken_script") or "").strip()
+    if not spoken_script:
+        raise ValueError("Missing exact spoken script for Kineva shot")
     one(graph, "KinevaPlanLock")[1]["inputs"].update({
         "profile": job["profile"], "preserve_dialogue": True,
+        "exact_dialogue": spoken_script,
+        "dialogue_language": str((job.get("bible") or {}).get("language") or "Spanish"),
+        "project_id": job["project_name"],
         "force_single_take": False, "presenter_visible": False, "lock_camera": False,
     })
     background_lock = one(graph, "KinevaStaticBackgroundLock")[1]["inputs"]
@@ -131,6 +150,7 @@ def render(job, cloud, comfy, template, input_dir, output_dir):
     if not output.is_file():
         raise RuntimeError("Master Export video is missing")
     report = find_manifest(output_dir, project_name, name)
+    verify_locked_dialogue(report, job["spoken_script"])
     storage_path = f"episodes/{job['episode_id']}/kineva/{job['id']}.mp4"
     if output.stat().st_size > 50_000_000:
         raise RuntimeError("Video exceeds 50 MB; configure resumable upload")
@@ -268,19 +288,43 @@ def run_once(cloud, comfy, template, input_dir, output_dir):
         process_assembly(cloud, output_dir, job["episode_id"])
     return True
 
+def validate_runtime(comfy, template, input_dir, output_dir):
+    for directory in (input_dir, output_dir):
+        if not directory.is_dir():
+            raise RuntimeError("ComfyUI directory missing: " + str(directory))
+    for executable in ("ffmpeg", "ffprobe"):
+        if not shutil.which(executable):
+            raise RuntimeError("Required executable missing from PATH: " + executable)
+    available = comfy.call("GET", "/object_info")
+    required_nodes = {node["class_type"] for node in template.values()}
+    missing = required_nodes.difference(available)
+    if missing:
+        raise RuntimeError("ComfyUI nodes missing: " + ", ".join(sorted(missing)))
+    plan_inputs = available["KinevaPlanLock"]["input"]["required"]
+    fields = {"exact_dialogue", "dialogue_language", "project_id"}
+    if not fields.issubset(plan_inputs):
+        raise RuntimeError("Restart ComfyUI to load the current KinevaPlanLock node")
+    return True
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--workflow-api", type=Path, required=True)
     parser.add_argument("--input-dir", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--once", action="store_true")
+    parser.add_argument("--preflight", action="store_true")
     args = parser.parse_args()
-    url, key = os.environ["SUPABASE_URL"], os.environ["SUPABASE_SERVICE_ROLE_KEY"]
-    cloud = Api(url, key)
     comfy = Api(os.environ.get("KINEVA_COMFY_URL", "http://127.0.0.1:8188"))
     template = json.loads(args.workflow_api.read_text(encoding="utf-8"))
     one(template, "MinimaxStoryPlanner")
     one(template, "KinevaMasterExport")
+    validate_runtime(comfy, template, args.input_dir, args.output_dir)
+    if args.preflight:
+        print("Kineva local preflight OK", flush=True)
+        return
+    url, key = os.environ["SUPABASE_URL"], os.environ["SUPABASE_SERVICE_ROLE_KEY"]
+    cloud = Api(url, key)
     while True:
         worked = run_once(cloud, comfy, template, args.input_dir, args.output_dir)
         if args.once:

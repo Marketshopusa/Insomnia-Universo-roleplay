@@ -1,4 +1,7 @@
 -- A chapter can contain several timed shots; publish only after all latest takes assemble.
+ALTER TABLE public.kineva_render_jobs
+  ADD COLUMN spoken_script TEXT;
+
 ALTER TABLE public.shorts_episodes
   ADD COLUMN kineva_shot_count INTEGER CHECK (kineva_shot_count BETWEEN 1 AND 12),
   ADD COLUMN kineva_assembly_version INTEGER NOT NULL DEFAULT 0,

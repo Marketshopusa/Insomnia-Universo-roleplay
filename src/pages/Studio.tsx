@@ -79,6 +79,11 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
   const createVideosForNovel = async (generated: any) => {
     const chapters = generated?.chapters ?? [];
     if (chapters.length === 0) throw new Error("La novela no contiene capítulos para convertir en videos");
+    if (videoProvider === "kineva") {
+      const oversized = chapters.find((chapter: { content?: string }) =>
+        ((chapter.content ?? "").trim().match(/\S+/gu) ?? []).length > 384);
+      if (oversized) throw new Error("Un capítulo supera las 384 palabras permitidas para esta vista previa de Kineva. Genera capítulos más breves antes de crear la serie.");
+    }
 
     setGeneratingVideos(true);
     setVideoProgress("Creando la serie de Shorts…");
@@ -149,7 +154,9 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
 
     toast({
       title: "Proyecto y videos creados",
-      description: `${started} de ${episodes.length} videos están generándose en la pestaña Shorts.`,
+      description: videoProvider === "kineva"
+        ? "Primera entrega en cola; las demás quedan listas para iniciar en Shorts."
+        : `${started} de ${episodes.length} videos se están generando en la pestaña Shorts.`,
     });
   };
 
@@ -173,6 +180,7 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
           language,
           creativity,
           isSafeForWork,
+          videoProvider,
         },
       });
       if (error || data?.error) throw new Error(data?.error || error?.message);
@@ -352,7 +360,9 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
              <SelectTrigger><SelectValue /></SelectTrigger>
              <SelectContent>
                <SelectItem value="gateway">Generador actual</SelectItem>
+                {import.meta.env.VITE_KINEVA_ENABLED === "true" && (
                <SelectItem value="kineva">Kineva local · miniseries</SelectItem>
+                )}
              </SelectContent>
            </Select>
          </Card>

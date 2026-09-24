@@ -66,7 +66,7 @@ Deno.serve(async (req) => {
     const service = createClient(url, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
     const { data: jobs, error: jobsError } = await service
       .from("kineva_render_jobs")
-      .select("id,shot,take,status,prompt,output_path,error_message,created_at")
+      .select("id,shot,take,status,prompt,spoken_script,output_path,error_message,created_at")
       .eq("episode_id", episodeId).order("created_at", { ascending: true });
     if (jobsError) throw jobsError;
     const current = latestTakes(jobs ?? []);
@@ -125,15 +125,17 @@ Deno.serve(async (req) => {
       if (!previous) return reply({ error: "shot_not_found" }, 404);
       payload = [{
         episode_id: episode.id, owner_id: auth.user.id,
-        project_name: "insomnia_" + episode.series_id.replaceAll("-", "").slice(0, 16),
-        profile: "MINISERIES", prompt: previous.prompt, bible: series.kineva_bible ?? {},
+        project_name: "insomnia_" + episode.series_id.replaceAll("-", ""),
+        profile: "MINISERIES", prompt: previous.prompt,
+        spoken_script: previous.spoken_script, bible: series.kineva_bible ?? {},
         reference_image_path: ref, shot: shotNumber, take: Number(previous.take) + 1,
       }];
     } else if (current.length) {
       payload = current.filter((job) => job.status === "failed").map((job) => ({
         episode_id: episode.id, owner_id: auth.user.id,
-        project_name: "insomnia_" + episode.series_id.replaceAll("-", "").slice(0, 16),
-        profile: "MINISERIES", prompt: job.prompt, bible: series.kineva_bible ?? {},
+        project_name: "insomnia_" + episode.series_id.replaceAll("-", ""),
+        profile: "MINISERIES", prompt: job.prompt,
+        spoken_script: job.spoken_script, bible: series.kineva_bible ?? {},
         reference_image_path: ref, shot: job.shot, take: Number(job.take) + 1,
       }));
       if (!payload.length) return reply({ status: "assembling", ready,
@@ -146,8 +148,8 @@ Deno.serve(async (req) => {
       const bible = JSON.stringify(series.kineva_bible ?? {}).slice(0, 12000);
       payload = chunks.map((dialogue, index) => ({
         episode_id: episode.id, owner_id: auth.user.id,
-        project_name: "insomnia_" + episode.series_id.replaceAll("-", "").slice(0, 16),
-        profile: "MINISERIES",
+        project_name: "insomnia_" + episode.series_id.replaceAll("-", ""),
+        profile: "MINISERIES", spoken_script: dialogue,
         prompt: [
           "Create a connected 9:16 cinematic shot. Maintain the same identity, wardrobe,",
           "setting and voice across the entire episode. One shot, one continuous take.",
