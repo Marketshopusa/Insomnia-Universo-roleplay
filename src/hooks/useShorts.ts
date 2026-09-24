@@ -24,6 +24,7 @@ export interface ShortsEpisode {
   status: string;
   error_message: string | null;
   job_id: string | null;
+  kineva_shot_count: number | null;
 }
 
 export interface SeriesWithEpisodes extends ShortsSeries {

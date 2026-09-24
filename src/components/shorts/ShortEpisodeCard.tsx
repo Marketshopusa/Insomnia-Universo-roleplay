@@ -27,7 +27,9 @@ export const ShortEpisodeCard = ({
   const kineva = series.video_provider === "kineva";
   const renderFunction = kineva ? "kineva-video" : "shorts-video";
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
-  const [generating, setGenerating] = useState(episode.status === "generating");
+  const [generating, setGenerating] = useState(["generating", "assembling"].includes(episode.status));
+  const [shotNumber, setShotNumber] = useState(1);
+  const [progress, setProgress] = useState("");
   const [muted, setMuted] = useState(true);
   const videoRef = useRef<HTMLVideoElement>(null);
   const pollRef = useRef<number | null>(null);
@@ -63,6 +65,9 @@ export const ShortEpisodeCard = ({
         body: { action: "status", episodeId: episode.id },
       });
       if (error) return;
+      if (typeof data?.total === "number" && data.total > 0) {
+        setProgress(`${data.ready ?? 0}/${data.total} tomas listas`);
+      }
       if (data?.status === "completed") {
         window.clearInterval(pollRef.current!);
         setGenerating(false);
@@ -72,6 +77,7 @@ export const ShortEpisodeCard = ({
         window.clearInterval(pollRef.current!);
         setGenerating(false);
         toast.error(data.error ?? "No se pudo generar el video");
+        onUpdated();
       }
     }, 7000);
   };
@@ -79,7 +85,7 @@ export const ShortEpisodeCard = ({
   const handleGenerate = async (action: "create" | "repair" = "create") => {
     setGenerating(true);
     const { data, error } = await supabase.functions.invoke(renderFunction, {
-      body: { action, episodeId: episode.id },
+      body: { action, episodeId: episode.id, shot: shotNumber },
     });
     if (error || data?.error) {
       setGenerating(false);
@@ -105,7 +111,7 @@ export const ShortEpisodeCard = ({
   };
 
   useEffect(() => {
-    if (episode.status === "generating" && !episode.video_url) poll();
+    if (["generating", "assembling"].includes(episode.status)) poll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -130,6 +136,9 @@ export const ShortEpisodeCard = ({
             {series.title} · N°{String(episode.episode_number).padStart(2, "0")}
           </p>
           <h3 className="font-display text-2xl mt-1">{episode.title}</h3>
+          {generating && kineva && (
+            <p className="text-xs text-accent mt-2">{progress || "Kineva preparando tomas…"}</p>
+          )}
 
           {!videoUrl && series.created_by === user?.id && (
             <Button
@@ -153,15 +162,18 @@ export const ShortEpisodeCard = ({
         </div>
 
         {videoUrl && kineva && series.created_by === user?.id && (
-          <Button
-            className="absolute top-4 left-4 rounded-none"
-            size="sm"
-            variant="outline"
-            onClick={() => handleGenerate("repair")}
-            disabled={generating}
-          >
-            {generating ? "Reparando…" : "Regenerar toma"}
-          </Button>
+          <div className="absolute top-4 left-4 flex items-center gap-1 bg-background/80 p-1">
+            <label htmlFor={`shot-${episode.id}`} className="sr-only">Número de toma</label>
+            <input id={`shot-${episode.id}`} type="number" min={1}
+              max={episode.kineva_shot_count ?? 1} value={shotNumber}
+              onChange={(event) => setShotNumber(Math.max(1, Math.min(
+                episode.kineva_shot_count ?? 1, Number(event.target.value) || 1)))}
+              className="w-12 bg-background border border-border text-center text-sm" />
+            <Button size="sm" variant="outline" onClick={() => handleGenerate("repair")}
+              disabled={generating}>
+              {generating ? "Reparando…" : "Regenerar toma"}
+            </Button>
+          </div>
         )}
 
         {videoUrl && (

@@ -6,6 +6,8 @@ import json
 import mimetypes
 import os
 import re
+import subprocess
+import tempfile
 from pathlib import Path
 import sys
 import time
@@ -137,10 +139,114 @@ def render(job, cloud, comfy, template, input_dir, output_dir):
                headers={"Content-Type": "video/mp4", "x-upsert": "true"})
     return storage_path, report
 
+
+def probe_video(path):
+    result = subprocess.run(
+        ["ffprobe", "-v", "error", "-show_streams", "-show_format",
+         "-of", "json", str(path)],
+        capture_output=True, text=True, timeout=30, check=True)
+    info = json.loads(result.stdout)
+    video = next((s for s in info["streams"] if s["codec_type"] == "video"), None)
+    audio = next((s for s in info["streams"] if s["codec_type"] == "audio"), None)
+    duration = float(info["format"].get("duration", 0))
+    if not video or not audio or duration <= 0:
+        raise RuntimeError("Video or audio missing from " + path.name)
+    return video["width"], video["height"], video.get("avg_frame_rate"), duration
+
+def assemble(assembly, cloud, output_dir):
+    episode_id = assembly["episode_id"]
+    version = int(assembly["version"])
+    paths = assembly["paths"]
+    if not isinstance(paths, list) or not 1 <= len(paths) <= 12:
+        raise RuntimeError("Invalid shot list")
+    with tempfile.TemporaryDirectory(prefix="kineva_assemble_") as temporary:
+        directory = Path(temporary)
+        clips = []
+        for index, path in enumerate(paths):
+            if not isinstance(path, str) or not path.startswith(
+                    "episodes/" + episode_id + "/kineva/") or not path.endswith(".mp4"):
+                raise RuntimeError("Invalid shot storage path")
+            data = cloud.call("GET", "/storage/v1/object/authenticated/shorts-media/" +
+                              quote(path, safe="/"), raw=True)
+            clip = directory / ("shot_%02d.mp4" % (index + 1))
+            clip.write_bytes(data)
+            clips.append(clip)
+        media = [probe_video(clip) for clip in clips]
+        if len({(width, height, fps) for width, height, fps, _ in media}) != 1:
+            raise RuntimeError("Shot dimensions or frame rates do not match")
+        if any("'" in str(clip) for clip in clips):
+            raise RuntimeError("Unsupported quote in temporary path")
+        concat = directory / "concat.txt"
+        concat.write_text("".join("file '%s'\n" % clip.as_posix() for clip in clips),
+                          encoding="utf-8")
+        final = directory / "episode.mp4"
+        def encode(options):
+            command = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+                       "-f", "concat", "-safe", "0", "-i", str(concat),
+                       "-map", "0:v:0", "-map", "0:a:0", "-c:v", "libx264",
+                       "-preset", "medium", "-pix_fmt", "yuv420p", *options,
+                       "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart",
+                       str(final)]
+            result = subprocess.run(command, capture_output=True, text=True, timeout=1800)
+            if result.returncode:
+                raise RuntimeError("FFmpeg assembly: " + result.stderr[-800:])
+        encode(["-crf", "20"])
+        if final.stat().st_size > 48_000_000:
+            duration = sum(item[3] for item in media)
+            bitrate = max(650_000, min(2_000_000, int(44_000_000 * 8 / duration) - 128_000))
+            encode(["-b:v", str(bitrate), "-maxrate", str(bitrate),
+                    "-bufsize", str(bitrate * 2)])
+        if final.stat().st_size > 50_000_000:
+            raise RuntimeError("Episode exceeds 50 MB Storage limit; split the scene")
+        final_meta = probe_video(final)
+        expected = sum(item[3] for item in media)
+        if abs(final_meta[3] - expected) > max(1.5, 0.12 * len(clips)):
+            raise RuntimeError("Assembled duration differs from the shot total")
+        destination = ("episodes/" + episode_id + "/kineva/assembly_v" +
+                       str(version) + ".mp4")
+        cloud.call("POST", "/storage/v1/object/shorts-media/" +
+                   quote(destination, safe="/"), payload=final.read_bytes(), raw=True,
+                   headers={"Content-Type": "video/mp4", "x-upsert": "true"})
+        report = {"version": 1, "episode_id": episode_id, "assembly_version": version,
+                  "shot_paths": paths, "duration_seconds": final_meta[3],
+                  "width": final_meta[0], "height": final_meta[1],
+                  "audio_present": True, "size_bytes": final.stat().st_size}
+        folder = output_dir / "kineva_manifests"
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / ("assembly_" + episode_id + "_v" + str(version) + ".json")).write_text(
+            json.dumps(report, indent=2), encoding="utf-8")
+        return destination
+
+def process_assembly(cloud, output_dir, episode_id):
+    assembly = cloud.call("POST", "/rest/v1/rpc/claim_kineva_assembly",
+                          {"p_episode_id": episode_id})
+    if not assembly:
+        return False
+    try:
+        path = assemble(assembly, cloud, output_dir)
+        payload = {"p_episode_id": episode_id, "p_version": assembly["version"],
+                   "p_success": True, "p_output_path": path}
+    except Exception as error:
+        print("Assembly failed", episode_id, repr(error), file=sys.stderr, flush=True)
+        payload = {"p_episode_id": episode_id, "p_version": assembly["version"],
+                   "p_success": False, "p_error": str(error)[:500]}
+    if cloud.call("POST", "/rest/v1/rpc/finish_kineva_assembly", payload) is not True:
+        raise RuntimeError("Assembly was superseded")
+    return True
+
+def pending_assembly(cloud, output_dir):
+    episodes = cloud.call(
+        "GET", "/rest/v1/shorts_episodes?select=id&status=in.(generating,assembling)"
+               "&kineva_shot_count=not.is.null&limit=20")
+    for episode in episodes:
+        if process_assembly(cloud, output_dir, episode["id"]):
+            return True
+    return False
+
 def run_once(cloud, comfy, template, input_dir, output_dir):
     jobs = cloud.call("POST", "/rest/v1/rpc/claim_kineva_job", {})
     if not jobs:
-        return False
+        return pending_assembly(cloud, output_dir)
     job = jobs[0]
     print("Claimed", job["id"], flush=True)
     try:
@@ -158,6 +264,8 @@ def run_once(cloud, comfy, template, input_dir, output_dir):
     done = cloud.call("POST", "/rest/v1/rpc/finish_kineva_job", payload)
     if done is not True:
         raise RuntimeError("Job lease expired; result was not published")
+    if payload["p_success"]:
+        process_assembly(cloud, output_dir, job["episode_id"])
     return True
 
 def main():

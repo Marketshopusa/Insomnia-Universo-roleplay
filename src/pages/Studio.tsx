@@ -121,7 +121,7 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
       series_id: series.id,
       episode_number: chapter.number ?? index + 1,
       title: chapter.title || `Capítulo ${index + 1}`,
-      script: (chapter.content ?? "").slice(0, 2000),
+      script: chapter.content ?? "",
       video_prompt: `${chapter.video_prompt || chapter.content?.slice(0, 500) || ""}. Spoken dialogue and narration must be in ${language}. Tell the story through voices and actions only; never show captions, subtitles, narration, dialogue, or story text on screen.`,
       status: "pending",
     }));
@@ -135,11 +135,12 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
     }
 
     let started = 0;
-    for (let index = 0; index < episodes.length; index += 1) {
+    const episodesToStart = videoProvider === "kineva" ? episodes.slice(0, 1) : episodes;
+    for (let index = 0; index < episodesToStart.length; index += 1) {
       setVideoProgress(`Iniciando video ${index + 1} de ${episodes.length}…`);
       const functionName = videoProvider === "kineva" ? "kineva-video" : "shorts-video";
       const { data, error } = await supabase.functions.invoke(functionName, {
-        body: { action: "create", episodeId: episodes[index].id },
+        body: { action: "create", episodeId: episodesToStart[index].id },
       });
       if (!error && !data?.error) started += 1;
     }

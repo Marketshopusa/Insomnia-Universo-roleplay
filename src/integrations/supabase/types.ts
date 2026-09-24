@@ -120,6 +120,9 @@ export type Database = {
           error_message: string | null
           id: string
           job_id: string | null
+          kineva_shot_count: number | null
+          kineva_assembly_version: number
+          kineva_assembly_started_at: string | null
           poster_url: string | null
           script: string
           series_id: string
@@ -135,6 +138,9 @@ export type Database = {
           error_message?: string | null
           id?: string
           job_id?: string | null
+          kineva_shot_count?: number | null
+          kineva_assembly_version?: number
+          kineva_assembly_started_at?: string | null
           poster_url?: string | null
           script: string
           series_id: string
@@ -150,6 +156,9 @@ export type Database = {
           error_message?: string | null
           id?: string
           job_id?: string | null
+          kineva_shot_count?: number | null
+          kineva_assembly_version?: number
+          kineva_assembly_started_at?: string | null
           poster_url?: string | null
           script?: string
           series_id?: string
