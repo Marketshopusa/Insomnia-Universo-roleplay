@@ -514,7 +514,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      publish_kineva_series: {
+        Args: { p_series_id: string }
+        Returns: boolean
+      }
     }
     Enums: {
       story_source: "crafted" | "custom"

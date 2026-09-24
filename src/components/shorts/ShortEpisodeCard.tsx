@@ -30,6 +30,10 @@ export const ShortEpisodeCard = ({
   const [generating, setGenerating] = useState(["generating", "assembling"].includes(episode.status));
   const [shotNumber, setShotNumber] = useState(1);
   const [progress, setProgress] = useState("");
+  const [publishing, setPublishing] = useState(false);
+  const canPublish = kineva && !series.is_published &&
+    series.episodes.length > 0 && series.episodes.every((item) =>
+      item.status === "ready" && !!item.video_url);
   const [muted, setMuted] = useState(true);
   const videoRef = useRef<HTMLVideoElement>(null);
   const pollRef = useRef<number | null>(null);
@@ -110,6 +114,23 @@ export const ShortEpisodeCard = ({
     poll();
   };
 
+  const handlePublish = async () => {
+    if (!user || !window.confirm(
+      "¿Publicar toda la serie? Revisa antes la imagen, la voz y el audio de cada episodio."
+    )) return;
+    setPublishing(true);
+    const { data, error } = await supabase.rpc("publish_kineva_series", {
+      p_series_id: series.id,
+    });
+    setPublishing(false);
+    if (error || !data) {
+      toast.error("La serie solo puede publicarse cuando todos los episodios están listos.");
+      return;
+    }
+    toast.success("Serie publicada.");
+    onUpdated();
+  };
+
   useEffect(() => {
     if (["generating", "assembling"].includes(episode.status)) poll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -136,6 +157,17 @@ export const ShortEpisodeCard = ({
             {series.title} · N°{String(episode.episode_number).padStart(2, "0")}
           </p>
           <h3 className="font-display text-2xl mt-1">{episode.title}</h3>
+          {kineva && !series.is_published && series.created_by === user?.id && (
+            <div className="mt-2 text-xs text-accent">
+              <p>Vista previa del creador. La serie aún no aparece en el catálogo público.</p>
+              {canPublish && (
+                <Button size="sm" variant="outline" className="mt-2"
+                  onClick={handlePublish} disabled={publishing}>
+                  {publishing ? "Publicando..." : "Publicar serie revisada"}
+                </Button>
+              )}
+            </div>
+          )}
           {generating && kineva && (
             <p className="text-xs text-accent mt-2">{progress || "Kineva preparando tomas…"}</p>
           )}

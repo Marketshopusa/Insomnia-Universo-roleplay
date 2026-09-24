@@ -7,6 +7,7 @@ export interface ShortsSeries {
   premise: string | null;
   category: string;
   is_adult: boolean;
+  is_published: boolean;
   cover_url: string | null;
   created_by: string | null;
   video_provider: "gateway" | "kineva";

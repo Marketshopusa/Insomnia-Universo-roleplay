@@ -10,7 +10,7 @@ the private reference image; ComfyUI remains bound to localhost.
   when VITE_KINEVA_ENABLED=true. Insomnia remains the creator UI and Shorts player.
 - The novel generator asks for short, connected chapters in Kineva mode; Studio
   rejects chapters over 384 spoken words before uploading assets. The novel's
-  character and setting bible is copied into a series record.
+  character and setting bible is copied into a draft series record.
 - The creator uploads one reference image (PNG/JPEG/WebP, at most 10 MB) to a private bucket.
 - A signed-in allowlisted creator queues a chapter through kineva-video. The function
   checks ownership, splits all spoken words into at most 12 shots (32 words each),
@@ -20,6 +20,8 @@ the private reference image; ComfyUI remains bound to localhost.
   API template, obtains the Kineva QC manifest, uploads the master video, and marks
   each shot. After all latest takes pass QC, FFmpeg joins the shots and publishes
   one episode video. The old render remains visible while a repair is queued.
+  The owner reviews every episode in Shorts and publishes the series explicitly
+  after all montages are ready.
 - The stable KINEVA_WORKFLOW_MASTER_QUALITY.json is outside this integration.
 
 ## Runtime preparation

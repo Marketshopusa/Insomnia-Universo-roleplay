@@ -114,7 +114,7 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
         category: "romance",
         is_adult: !isSafeForWork,
         created_by: user?.id,
-        is_published: true,
+        is_published: videoProvider !== "kineva",
       })
       .select()
       .single();

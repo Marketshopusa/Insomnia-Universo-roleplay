@@ -149,3 +149,29 @@ REVOKE ALL ON FUNCTION public.finish_kineva_assembly(UUID, INTEGER, BOOLEAN, TEX
   FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.finish_kineva_assembly(UUID, INTEGER, BOOLEAN, TEXT, TEXT)
   TO service_role;
+
+
+-- Only the owner may publish after every episode has a completed montage.
+CREATE OR REPLACE FUNCTION public.publish_kineva_series(p_series_id UUID)
+RETURNS BOOLEAN
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE owner UUID; provider TEXT;
+BEGIN
+  SELECT created_by, video_provider INTO owner, provider
+    FROM public.shorts_series WHERE id = p_series_id FOR UPDATE;
+  IF NOT FOUND OR owner IS DISTINCT FROM auth.uid() OR provider <> 'kineva' THEN
+    RAISE EXCEPTION 'Not the Kineva series owner';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM public.shorts_episodes WHERE series_id = p_series_id)
+     OR EXISTS (SELECT 1 FROM public.shorts_episodes
+                WHERE series_id = p_series_id
+                  AND (status <> 'ready' OR video_url IS NULL
+                       OR job_id NOT LIKE 'kineva:assembly:%')) THEN
+    RAISE EXCEPTION 'All episodes must have completed montages';
+  END IF;
+  UPDATE public.shorts_series SET is_published = TRUE WHERE id = p_series_id;
+  RETURN TRUE;
+END; $$;
+REVOKE ALL ON FUNCTION public.publish_kineva_series(UUID)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.publish_kineva_series(UUID) TO authenticated;
