@@ -43,7 +43,9 @@ the private reference image; ComfyUI remains bound to localhost.
 3. Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY only in the local worker's
    environment. Do not enter them into React, a browser, Cursor chat, or git.
    Ensure ComfyUI is running at http://127.0.0.1:8188 (or set KINEVA_COMFY_URL).
-4. On the Windows workstation run:
+4. On the Windows workstation, the optional `integrations/kineva/start-worker.ps1`
+   launcher runs preflight first and prompts for the privileged key without
+   echoing it or saving it in the repository. Or run the Python worker manually:
 
    py -3 integrations\kineva\worker.py --workflow-api "C:\Users\synth\Documents\Kineva-Workflows\ACTIVE\KINEVA_MINISERIES_API_TEMPLATE.json" --input-dir "C:\Users\synth\AppData\Local\Comfy-Desktop\ComfyUI-Shared\input" --output-dir "C:\Users\synth\AppData\Local\Comfy-Desktop\ComfyUI-Shared\output"
 
