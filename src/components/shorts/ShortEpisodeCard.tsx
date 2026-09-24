@@ -1,9 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
+import { useAuth } from "@/contexts/AuthContext";
 import { Loader2, Play, Sparkles, Volume2, VolumeX } from "lucide-react";
 import { toast } from "sonner";
-import { getSignedVideoUrl, type SeriesWithEpisodes, type ShortsEpisode } from "@/hooks/useShorts";
+import {
+  getSignedVideoUrl,
+  type SeriesWithEpisodes,
+  type ShortsEpisode,
+} from "@/hooks/useShorts";
 
 interface Props {
   series: SeriesWithEpisodes;
@@ -12,7 +17,15 @@ interface Props {
   onUpdated: () => void;
 }
 
-export const ShortEpisodeCard = ({ series, episode, active, onUpdated }: Props) => {
+export const ShortEpisodeCard = ({
+  series,
+  episode,
+  active,
+  onUpdated,
+}: Props) => {
+  const { user } = useAuth();
+  const kineva = series.video_provider === "kineva";
+  const renderFunction = kineva ? "kineva-video" : "shorts-video";
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [generating, setGenerating] = useState(episode.status === "generating");
   const [muted, setMuted] = useState(true);
@@ -36,14 +49,17 @@ export const ShortEpisodeCard = ({ series, episode, active, onUpdated }: Props) 
     else el.pause();
   }, [active, videoUrl]);
 
-  useEffect(() => () => {
-    if (pollRef.current) window.clearInterval(pollRef.current);
-  }, []);
+  useEffect(
+    () => () => {
+      if (pollRef.current) window.clearInterval(pollRef.current);
+    },
+    [],
+  );
 
   const poll = () => {
     if (pollRef.current) window.clearInterval(pollRef.current);
     pollRef.current = window.setInterval(async () => {
-      const { data, error } = await supabase.functions.invoke("shorts-video", {
+      const { data, error } = await supabase.functions.invoke(renderFunction, {
         body: { action: "status", episodeId: episode.id },
       });
       if (error) return;
@@ -60,14 +76,18 @@ export const ShortEpisodeCard = ({ series, episode, active, onUpdated }: Props) 
     }, 7000);
   };
 
-  const handleGenerate = async () => {
+  const handleGenerate = async (action: "create" | "repair" = "create") => {
     setGenerating(true);
-    const { data, error } = await supabase.functions.invoke("shorts-video", {
-      body: { action: "create", episodeId: episode.id },
+    const { data, error } = await supabase.functions.invoke(renderFunction, {
+      body: { action, episodeId: episode.id },
     });
     if (error || data?.error) {
       setGenerating(false);
-      toast.error(data?.detail ? "El generador rechazó la escena" : "No se pudo iniciar la generación");
+      toast.error(
+        data?.detail
+          ? "El generador rechazó la escena"
+          : "No se pudo iniciar la generación",
+      );
       return;
     }
     if (data?.status === "completed") {
@@ -76,7 +96,11 @@ export const ShortEpisodeCard = ({ series, episode, active, onUpdated }: Props) 
       onUpdated();
       return;
     }
-    toast.info("Generando episodio… puede tardar 1-3 minutos");
+    toast.info(
+      kineva
+        ? "Kineva ha puesto la toma en cola. Puede tardar bastante tiempo."
+        : "Generando episodio...",
+    );
     poll();
   };
 
@@ -107,27 +131,49 @@ export const ShortEpisodeCard = ({ series, episode, active, onUpdated }: Props) 
           </p>
           <h3 className="font-display text-2xl mt-1">{episode.title}</h3>
 
-          {!videoUrl && (
-            <Button className="mt-4 w-full rounded-none" onClick={handleGenerate} disabled={generating}>
+          {!videoUrl && series.created_by === user?.id && (
+            <Button
+              className="mt-4 w-full rounded-none"
+              onClick={() => handleGenerate()}
+              disabled={generating}
+            >
               {generating ? (
                 <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Generando episodio…
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Generando
+                  episodio…
                 </>
               ) : (
                 <>
-                  <Sparkles className="w-4 h-4 mr-2" /> Generar video del episodio
+                  <Sparkles className="w-4 h-4 mr-2" /> Generar video del
+                  episodio
                 </>
               )}
             </Button>
           )}
         </div>
 
+        {videoUrl && kineva && series.created_by === user?.id && (
+          <Button
+            className="absolute top-4 left-4 rounded-none"
+            size="sm"
+            variant="outline"
+            onClick={() => handleGenerate("repair")}
+            disabled={generating}
+          >
+            {generating ? "Reparando…" : "Regenerar toma"}
+          </Button>
+        )}
+
         {videoUrl && (
           <button
             onClick={() => setMuted((m) => !m)}
             className="absolute top-4 right-4 p-2 bg-background/70 border border-border"
           >
-            {muted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+            {muted ? (
+              <VolumeX className="w-4 h-4" />
+            ) : (
+              <Volume2 className="w-4 h-4" />
+            )}
           </button>
         )}
 

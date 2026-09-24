@@ -16,3 +16,6 @@ verify_jwt = false
 
 [functions.shorts-video]
 verify_jwt = false
+
+[functions.kineva-video]
+verify_jwt = true

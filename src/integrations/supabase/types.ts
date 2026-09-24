@@ -178,6 +178,9 @@ export type Database = {
           id: string
           is_adult: boolean
           is_published: boolean
+          video_provider: "gateway" | "kineva"
+          kineva_bible: Json
+          kineva_reference_image_path: string | null
           premise: string | null
           title: string
           updated_at: string
@@ -190,6 +193,9 @@ export type Database = {
           id?: string
           is_adult?: boolean
           is_published?: boolean
+          video_provider?: "gateway" | "kineva"
+          kineva_bible?: Json
+          kineva_reference_image_path?: string | null
           premise?: string | null
           title: string
           updated_at?: string
@@ -202,6 +208,9 @@ export type Database = {
           id?: string
           is_adult?: boolean
           is_published?: boolean
+          video_provider?: "gateway" | "kineva"
+          kineva_bible?: Json
+          kineva_reference_image_path?: string | null
           premise?: string | null
           title?: string
           updated_at?: string

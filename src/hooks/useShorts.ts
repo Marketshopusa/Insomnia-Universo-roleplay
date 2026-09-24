@@ -9,6 +9,7 @@ export interface ShortsSeries {
   is_adult: boolean;
   cover_url: string | null;
   created_by: string | null;
+  video_provider: "gateway" | "kineva";
   created_at: string;
 }
 
@@ -22,6 +23,7 @@ export interface ShortsEpisode {
   video_url: string | null;
   status: string;
   error_message: string | null;
+  job_id: string | null;
 }
 
 export interface SeriesWithEpisodes extends ShortsSeries {

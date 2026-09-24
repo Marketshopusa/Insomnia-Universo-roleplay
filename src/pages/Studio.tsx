@@ -55,6 +55,8 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
    const deleteProject = useDeleteNovelProject();
  
   const [model, setModel] = useState("apprentice-6");
+  const [videoProvider, setVideoProvider] = useState<"gateway" | "kineva">("gateway");
+  const [referenceImage, setReferenceImage] = useState<File | null>(null);
   const [creativity, setCreativity] = useState("balanced");
   const [description, setDescription] = useState("");
   const [chapterCount, setChapterCount] = useState(7);
@@ -81,9 +83,27 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
     setGeneratingVideos(true);
     setVideoProgress("Creando la serie de Shorts…");
 
+    let referencePath: string | null = null;
+    if (videoProvider === "kineva") {
+      if (!referenceImage || !user) throw new Error("Kineva necesita una imagen de referencia para mantener la identidad visual");
+      const ext = referenceImage.name.split(".").pop()?.toLowerCase();
+      if (!ext || !["png", "jpg", "jpeg", "webp"].includes(ext) || referenceImage.size > 10_000_000) {
+        throw new Error("Usa una imagen PNG, JPEG o WebP de hasta 10 MB");
+      }
+      referencePath = `${user.id}/${crypto.randomUUID()}.${ext}`;
+      const { error: uploadError } = await supabase.storage
+        .from("kineva-references").upload(referencePath, referenceImage, { upsert: false });
+      if (uploadError) throw uploadError;
+    }
+
     const { data: series, error: seriesError } = await supabase
       .from("shorts_series")
       .insert({
+        video_provider: videoProvider,
+        kineva_reference_image_path: referencePath,
+        kineva_bible: videoProvider === "kineva" ? {
+          characters: generated.characters ?? [], setting: generated.setting ?? {}, language,
+        } : {},
         title: generated.title || "Serie sin título",
         premise: generated.logline || description || null,
         category: "romance",
@@ -117,7 +137,8 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
     let started = 0;
     for (let index = 0; index < episodes.length; index += 1) {
       setVideoProgress(`Iniciando video ${index + 1} de ${episodes.length}…`);
-      const { data, error } = await supabase.functions.invoke("shorts-video", {
+      const functionName = videoProvider === "kineva" ? "kineva-video" : "shorts-video";
+      const { data, error } = await supabase.functions.invoke(functionName, {
         body: { action: "create", episodeId: episodes[index].id },
       });
       if (!error && !data?.error) started += 1;
@@ -324,6 +345,16 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
         <h1 className="text-3xl font-display text-center mb-8">{t("studio.title")}</h1>
  
          {/* AI Settings */}
+         <Card className="p-6 mb-6 space-y-2">
+           <Label>Motor de video</Label>
+           <Select value={videoProvider} onValueChange={(v) => setVideoProvider(v as "gateway" | "kineva")}>
+             <SelectTrigger><SelectValue /></SelectTrigger>
+             <SelectContent>
+               <SelectItem value="gateway">Generador actual</SelectItem>
+               <SelectItem value="kineva">Kineva local · miniseries</SelectItem>
+             </SelectContent>
+           </Select>
+         </Card>
          <Card className="p-6 mb-6">
           <h2 className="text-lg font-medium text-center mb-6">{t("studio.aiSection")}</h2>
            
@@ -362,7 +393,19 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
            </div>
          </Card>
  
-         {/* Description */}
+         {videoProvider === "kineva" && (
+          <Card className="p-6 mb-6 space-y-3">
+            <Label htmlFor="kineva-reference">Referencia visual para toda la miniserie</Label>
+            <input id="kineva-reference" type="file" accept="image/png,image/jpeg,image/webp"
+              onChange={(event) => setReferenceImage(event.target.files?.[0] ?? null)}
+              className="block w-full text-sm" />
+            <p className="text-xs text-muted-foreground">
+              Kineva usa esta imagen para los personajes y el escenario. El render requiere el trabajador local activo.
+            </p>
+          </Card>
+        )}
+
+        {/* Description */}
          <Card className="p-6 mb-6">
           <h2 className="text-lg font-medium text-center mb-4">{t("studio.description")}</h2>
            <Textarea
