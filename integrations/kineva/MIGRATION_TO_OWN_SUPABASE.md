@@ -253,8 +253,14 @@ proveedores nuevos antes de aprobar la seleccion y sus costos.
    de postura y encuadre en el fotograma 10. El Plan Lock del perfil
    TALKING_PRESENTER ignoraba `exact_dialogue`; se corrigio en el nodo
    local y se valido en runtime un plan con el texto hablado exacto.
-   Otra toma corta en DEV esta en curso. No aceptar una toma hasta comprobar
-   QC, continuidad visual y el audio hablado. Al iniciar ComfyUI, usar
+   La segunda toma de 5,875 s pasa QC temporal y transcripcion de las
+   cinco palabras, pero empieza con las piernas y mueve la camara hasta
+   el rostro: no cumple el encuadre fijo. La tercera vista previa
+   (544x960, sin upscale) ya muestra el rostro en el primer fotograma,
+   pero se aleja gradualmente; falla la condicion de camara inmovil y
+   el QC senala resolucion inferior a 720 px, esperable en la vista
+   previa. Pasar a control visual del primer frame/pose y QC de
+   composicion antes de conectar el worker. Al iniciar ComfyUI, usar
    `start-comfy.ps1` para suministrar `llama-server` al planner.
 4. Probar dos tomas, montaje, reparacion de una toma y publicacion manual;
    verificar que otra cuenta no ve borradores ni puede firmar sus videos.

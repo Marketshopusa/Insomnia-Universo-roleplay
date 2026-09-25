@@ -23,6 +23,28 @@ manifiesto antes de subir la toma. Esta comprobacion evita **perdidas de texto e
 el plan**; no demuestra que cada palabra sea audible en el video final. El
 reconocimiento de voz y una revision humana deben comprobar la pista de audio.
 
+### Encuadre y habla antes de aceptar una toma
+
+El QC actual detecta fallos tecnicos, ausencia de audio y saltos bruscos,
+pero **no detecta un movimiento de camara continuo que cambie el encuadre
+respecto a la referencia**. El segundo render lo demuestra: `qc.issues=[]`
+aun cuando la toma arranca en los pies. La tercera vista previa parte
+del rostro, pero se aleja durante la toma sin generar un corte temporal.
+Para TALKING_PRESENTER y tomas
+marcadas con camara fija, revisar al menos el primer fotograma, la
+primera mitad de segundo y el final frente a la imagen de referencia;
+exigir que el rostro/torso esten visibles desde el comienzo y que
+fondo, ropa y posicion permanezcan coherentes. Antes de automatizar esa
+puerta, medir similitud de composicion y presencia del personaje sobre
+tomas aprobadas y fallidas, con revision humana de los casos dudosos.
+
+Una transcripcion local puede detectar dialogo omitido o instrucciones
+visuales habladas, como ocurrio en la primera toma. Guardar evidencia
+de texto planeado, audio transcrito y escucha humana para confirmar
+idioma, timbre, pronunciacion y labios. El worker aun solo comprueba
+que el texto del plan coincida y que exista audio; el creador debe
+revisar el borrador antes de publicarlo.
+
 ## Puertas de aceptacion
 
 ### 1. Conexion de Insomnia (pendiente de migracion controlada)
@@ -55,12 +77,17 @@ reconocimiento de voz y una revision humana deben comprobar la pista de audio.
   el preflight del worker no lo comprueba. Despues de validar la toma DEV,
   iniciar el worker con `SUPABASE_URL` y `SUPABASE_SERVICE_ROLE_KEY` solo
   en su proceso local.
-- La prueba H3 de una sola persona fallo QC en el fotograma 10: pasa
-  bruscamente de sentada a de pie. Plan Lock ignoraba `exact_dialogue`
-  en TALKING_PRESENTER; el nodo DEV ahora lo exige y la prueba runtime de
-  plan confirma el texto exacto. Una segunda toma corta con postura fija
-  esta en curso. Exigir QC, identidad, fondo y audio correcto antes de
-  conectar el worker a trabajos reales.
+- La primera prueba H3 de una persona fallo QC en el fotograma 10 y
+  leyo instrucciones visuales en voz alta. Plan Lock ignoraba
+  `exact_dialogue`; se corrigio y la segunda toma de 5,875 s produjo
+  exactamente el dialogo solicitado segun una transcripcion local.
+  Esa segunda toma pasa QC temporal, pero hace un barrido desde las
+  piernas al rostro pese a pedir camara fija. La tercera vista previa
+  sin upscale empieza con el rostro visible, pero se aleja durante
+  la toma; su QC tambien senala la resolucion 544x960, esperada
+  para esta prueba. Ya no basta con afinar el prompt: exigir control
+  de primer frame/pose y QC de composicion antes de conectar el
+  worker a trabajos reales.
 - Probar en Studio una serie corta con referencia propia, dos tomas, estado en
   Shorts, montaje reproducible y denegacion a otra cuenta. Confirmar que una
   referencia privada de otro usuario no se acepta.
@@ -121,9 +148,22 @@ dialogo exacto y una toma con personaje visible, conserva la camara fija
 y bloquea cortes. Se agrego el texto hablado al workflow
 `KINEVA_MINISERIES_DEV.json`. Tras reiniciar ComfyUI, una prueba runtime
 de plan sin render confirmo 1 toma y 5 palabras exactas, sin advertencias.
-Un segundo render DEV de 5,2 s, con la misma referencia, postura sentada
-y dialogo exacto, esta en curso; aun no tiene QC ni revision de audio.
-Los prompts API, manifiestos y trazas estan fuera de Git bajo
+El segundo render DEV produjo 5,875 s de video H.264/AAC (768x1360,
+24 fps). El manifiesto tiene `qc.issues=[]` y salto temporal maximo
+0,081742 (<0,18); una transcripcion local con faster-whisper-small
+obtuvo solo las cinco palabras solicitadas. Sin embargo, la revision de
+12 fotogramas muestra un barrido ascendente desde las piernas hasta
+el rostro durante los tres primeros segundos. La referencia empieza
+con rostro y torso de una mujer sentada ante el muro; la toma no
+cumple la camara fija y no esta aceptada. La tercera prueba de vista previa (544x960, 5,875 s)
+consiguio rostro y torso visibles desde el primer fotograma, pero
+aleja el encuadre progresivamente hacia las piernas. El QC marca
+solo la baja resolucion intencional; no detecta el reencuadre suave.
+Ninguna de estas tomas supera la revision visual de camara fija.
+El siguiente paso es anclar el primer frame o la pose con una
+referencia de movimiento y agregar comprobaciones de composicion;
+no promover el DEV por un QC temporal limpio. Los prompts API,
+manifiestos y trazas estan fuera de Git bajo
 `Kineva-Workflows/ACTIVE/DEV_TESTS/`. El worker conectado no se inicio.
 El archivo Master Quality conserva su hash de referencia.
 

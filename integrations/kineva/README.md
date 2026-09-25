@@ -76,8 +76,12 @@ a single-person reference produced a 15.08-second video with AAC audio, but QC
 flagged a seated-to-standing jump at frame 10. Its Plan Lock also spoke the
 visual description instead of the five exact words: the installed and tracked
 node have been fixed. A plan-only runtime smoke confirmed the exact dialogue;
-a short visual retry is in progress. The video and spoken audio still require
-acceptance before a connected Studio-to-Shorts test.
+a short second render has correct transcribed dialogue and no temporal QC issues,
+but pans from feet to face instead of opening on the reference composition.
+The low-resolution framing preview starts with the face but gradually zooms
+out; technical QC marks its deliberate 544x960 resolution as too small.
+A frame/pose anchor and composition checks are the next DEV tasks before
+a connected Studio-to-Shorts test.
 
 ## Shared Supabase: Insomnia and Kineva
 
@@ -106,7 +110,7 @@ changing the published app. The PR remains a draft; no cloud writes yet.
 | Gate | Evidence required |
 | --- | --- |
 | DEV nodes | /object_info has Plan Lock, Voice Router, Background Lock, QC, Master Export, project context and motion preprocessors. Confirmed 2026-09-24. |
-| DEV runtime | The first H3 test failed QC at frame 14 with multiple people in the reference. The second H3 test used one person and produced H.264/AAC video, but failed QC at frame 10 (a seated-to-standing jump) and failed exact-dialogue comparison. Plan Lock is fixed in DEV; a plan-only runtime test passed and a 5.2-second visual retry is running. Audio needs transcription and human review. |
+| DEV runtime | The first test failed QC at frame 14. A one-person test failed QC at frame 10 and spoke its visual instructions. Plan Lock was fixed; the next 5.875-second H.264/AAC render passed temporal QC and local transcription of the exact five words, but visually pans from legs to face. The lower-resolution framing preview starts on the face, then zooms out. It fails the size check by design; first-frame and camera controls need engineering before the connected test. |
 | Job contract | Five migrations, Edge Function, worker and synthetic two-shot FFmpeg assembly pass local checks; seven contract tests cover exact dialogue, presenter settings and lease renewal. Privacy policy and SQL still need connected verification. No cloud mutation yet. |
 | Connected smoke | Deploy migration/function, upload a neutral reference, queue one short episode, verify ownership rejection, output path, manifest and playback. Pending. |
 | Micro miniseries | Render 2â€“3 linked clips with the same reference, wardrobe, setting, voice and scene bible; compare identity and audio across cuts. Pending. |
