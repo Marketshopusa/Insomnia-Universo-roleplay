@@ -89,9 +89,16 @@ def make_prompt(template, job, image_name, manifest_path):
     one(graph, "KinevaRunManifest")[1]["inputs"]["project_name"] = name
     return graph, name
 
-def wait_for_render(comfy, prompt_id, export_node, interval=10, timeout=6900):
+def wait_for_render(comfy, prompt_id, export_node, heartbeat=None,
+                    interval=10, timeout=28800):
     deadline = time.monotonic() + timeout
+    if heartbeat:
+        heartbeat()
+    next_heartbeat = time.monotonic() + 300
     while time.monotonic() < deadline:
+        if heartbeat and time.monotonic() >= next_heartbeat:
+            heartbeat()
+            next_heartbeat = time.monotonic() + 300
         history = comfy.call("GET", "/history/" + quote(prompt_id)).get(prompt_id)
         if history:
             status = history.get("status", {})
@@ -101,9 +108,11 @@ def wait_for_render(comfy, prompt_id, export_node, interval=10, timeout=6900):
             videos = output.get("images", [])
             if not videos:
                 raise RuntimeError("Master Export did not return a video")
+            if heartbeat:
+                heartbeat()
             return videos[0]
         time.sleep(interval)
-    raise TimeoutError("ComfyUI render exceeded the worker lease")
+    raise TimeoutError("ComfyUI render exceeded the eight-hour limit")
 
 def find_manifest(output_dir, project_name, saved_name):
     folder = output_dir / "kineva_manifests"
@@ -119,7 +128,7 @@ def find_manifest(output_dir, project_name, saved_name):
         return report
     raise RuntimeError("Missing Kineva Run Manifest for this render")
 
-def render(job, cloud, comfy, template, input_dir, output_dir):
+def render(job, cloud, comfy, template, input_dir, output_dir, heartbeat=None):
     ref = job["reference_image_path"]
     if not ref or not re.fullmatch(re.escape(job["owner_id"]) + r"/[0-9a-f-]{36}\.(png|jpg|jpeg|webp)", ref, flags=re.I):
         raise ValueError("Missing owned reference image")
@@ -139,7 +148,7 @@ def render(job, cloud, comfy, template, input_dir, output_dir):
     created = comfy.call("POST", "/prompt", {"prompt": graph, "client_id": "insomnia-kineva"})
     if "error" in created:
         raise RuntimeError("ComfyUI rejected prompt: " + str(created))
-    video = wait_for_render(comfy, created["prompt_id"], export_node)
+    video = wait_for_render(comfy, created["prompt_id"], export_node, heartbeat=heartbeat)
     if video.get("type") != "output":
         raise RuntimeError("Unexpected ComfyUI output type")
     name = Path(video["filename"]).name
@@ -151,6 +160,8 @@ def render(job, cloud, comfy, template, input_dir, output_dir):
         raise RuntimeError("Master Export video is missing")
     report = find_manifest(output_dir, project_name, name)
     verify_locked_dialogue(report, job["spoken_script"])
+    if heartbeat:
+        heartbeat()
     storage_path = f"episodes/{job['episode_id']}/kineva/{job['id']}.mp4"
     if output.stat().st_size > 50_000_000:
         raise RuntimeError("Video exceeds 50 MB; configure resumable upload")
@@ -269,12 +280,19 @@ def run_once(cloud, comfy, template, input_dir, output_dir):
         return pending_assembly(cloud, output_dir)
     job = jobs[0]
     print("Claimed", job["id"], flush=True)
+    def renew():
+        valid = cloud.call("POST", "/rest/v1/rpc/renew_kineva_job",
+                           {"p_job_id": job["id"], "p_lease_token": job["lease_token"]})
+        if valid is not True:
+            raise RuntimeError("Job lease was reclaimed by another worker")
     try:
         # Episode number is server-owned. The worker reads it before building the graph.
         episode = cloud.call("GET", "/rest/v1/shorts_episodes?id=eq." +
                              quote(job["episode_id"]) + "&select=episode_number")
         job["episode_number"] = episode[0]["episode_number"]
-        path, report = render(job, cloud, comfy, template, input_dir, output_dir)
+        path, report = render(job, cloud, comfy, template, input_dir, output_dir,
+                              heartbeat=renew)
+        renew()
         payload = {"p_job_id": job["id"], "p_lease_token": job["lease_token"],
                    "p_success": True, "p_output_path": path, "p_manifest": report}
     except Exception as error:

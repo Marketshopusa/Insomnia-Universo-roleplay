@@ -26,8 +26,10 @@ the private reference image; ComfyUI remains bound to localhost.
 
 ## Runtime preparation
 
-1. Apply supabase/migrations/20260924220000_kineva_render_jobs.sql and then
-   20260924221000_kineva_multishot.sql to the Insomnia project. Deploy the
+1. Apply supabase/migrations/20260924220000_kineva_render_jobs.sql,
+   20260924221000_kineva_multishot.sql,
+   20260925144000_kineva_job_renewal.sql and
+   20260925145500_shorts_media_privacy.sql in that order to the Insomnia project. Deploy the
    kineva-video Edge Function. Set KINEVA_ALLOWED_USER_IDS to comma-separated
    creator UUIDs in the function environment. Confirm owner and private storage
    policies; never place the service-role key in a browser or repo.
@@ -59,27 +61,34 @@ the private reference image; ComfyUI remains bound to localhost.
 
 ## Offline checks
 
-From the Insomnia repository run `py -3 -m unittest integrations.kineva.test_contract -v` to verify that Plan Lock restores each spoken segment, rejects an extra planner shot and refuses an unsafe project ID. The worker `--preflight` checks ComfyUI without cloud access. A schema-only test on a separate ComfyUI instance does not replace a full H3 clip or a connected Insomnia Studio-to-Shorts test.
+From the Insomnia repository run `py -3 -m unittest integrations.kineva.test_contract -v` to verify that Plan Lock restores each spoken segment, rejects an extra planner shot and refuses an unsafe project ID. The worker `--preflight` checks ComfyUI without cloud access. The separate ComfyUI H3 test produced a video, but QC flagged an abrupt visual
+change at frame 14. A clean, single-character reference and an aligned prompt
+must pass QC before a connected Insomnia Studio-to-Shorts test.
 
 ## Supabase connection when the project owner is available
 
 The frontend already has its public project URL and publishable key. Sign in to
 Supabase for this exact Insomnia project with an Owner/Admin account, link the
-Supabase CLI, inspect the pending migrations, then apply both in order and deploy
+Supabase CLI, inspect the pending migrations, then apply all four in order and deploy
 generate-novel plus kineva-video. Set KINEVA_ALLOWED_USER_IDS in Edge Function
 secrets to the creator Auth UUID. The local worker needs SUPABASE_URL and the
 privileged SUPABASE_SERVICE_ROLE_KEY only in its private process environment;
 never commit or send that key through Cursor chat. After ComfyUI restarts and
 --preflight passes, perform a private neutral render and an owner-denial check
-through Insomnia Studio and Shorts. The draft PR is not a live deployment.
+through Insomnia Studio and Shorts. The draft PR is not a live deployment. On 2026-09-25 the CLI login succeeded,
+but the authenticated account could not list or link project
+pbormuamewbajnylzfqs (insufficient privileges). Do not target the separate
+kineva-staging project to bypass this access issue. If the owner creates a new
+Supabase project, follow [the migration runbook](MIGRATION_TO_OWN_SUPABASE.md)
+for Lovable Cloud export and a private preview before switching the app.
 
 ## Production gates
 
 | Gate | Evidence required |
 | --- | --- |
 | DEV nodes | /object_info has Plan Lock, Voice Router, Background Lock, QC, Master Export, project context and motion preprocessors. Confirmed 2026-09-24. |
-| DEV runtime | Prior full graph has video, audio, QC and manifest; Pose/Depth and H3 Depth ControlNet succeeded. New Plan Lock fields loaded in a separate ComfyUI instance on 2026-09-24. A full clip with the new exact-dialogue field is pending. |
-| Job contract | Two migrations, Edge Function, worker and synthetic two-shot FFmpeg assembly pass local checks; plan text equality passes local positive/negative cases. No cloud mutation yet. |
+| DEV runtime | The H3 test finished: 15.08 seconds, H.264 video, AAC audio, exact locked plan text. QC rejected an abrupt identity/background switch at frame 14 (0.58 s); the reference had multiple people while the prompt asked for one woman. Retry with a matching single-character reference. Spoken audio needs transcription and human review. |
+| Job contract | Four migrations, Edge Function, worker and synthetic two-shot FFmpeg assembly pass local checks; plan text equality and renewal behavior pass local tests. Privacy policy and SQL still need connected verification. No cloud mutation yet. |
 | Connected smoke | Deploy migration/function, upload a neutral reference, queue one short episode, verify ownership rejection, output path, manifest and playback. Pending. |
 | Micro miniseries | Render 2â€“3 linked clips with the same reference, wardrobe, setting, voice and scene bible; compare identity and audio across cuts. Pending. |
 | Selective repair | Request a second take of one shot; verify other episodes and prior video remain intact and only the approved take replaces the published path. Pending. |
@@ -106,8 +115,8 @@ control, voice reference and seed explicit per shot.
 3. Measure spoken audio against the locked text (speech recognition), face similarity,
    background drift, lip sync,
    frame breaks and loudness across 2â€“3 clips. Put thresholds into the QC manifest.
-4. Add a worker heartbeat, lease renewal for long jobs, resumable video upload,
-   automatic retry policy, private review before publishing, and a credit reservation
-   before moving this choice beyond controlled creators.
+4. Test lease renewal with an actual connected long render; add resumable video
+   upload, automatic retry policy, private review before publishing, and a credit
+   reservation before moving this choice beyond controlled creators.
 5. Promote DEV into a versioned production profile only after the connected tests
    and human review. Keep the historical master unchanged.

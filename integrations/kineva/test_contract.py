@@ -4,6 +4,7 @@ from pathlib import Path
 import sys
 import types
 import unittest
+from unittest.mock import patch
 
 HERE = Path(__file__).resolve().parent
 
@@ -66,6 +67,49 @@ class DialogueContractTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Unsafe"):
             lock.KinevaPlanLock.execute(
                 self.plan, profile="MINISERIES", project_id="../outside")
+
+
+class RenderLeaseTest(unittest.TestCase):
+    def test_long_render_renews_lease_and_keeps_video(self):
+        clock = [0]
+        renewals = []
+
+        class FakeComfy:
+            calls = 0
+
+            def call(self, method, path):
+                self.calls += 1
+                if self.calls < 3:
+                    return {}
+                return {"prompt": {
+                    "status": {"status_str": "success"},
+                    "outputs": {"export": {"images": [
+                        {"filename": "shot.mp4", "type": "output"}
+                    ]}},
+                }}
+
+        def advance(seconds):
+            clock[0] += seconds
+
+        with patch.object(worker.time, "monotonic", side_effect=lambda: clock[0]), \
+             patch.object(worker.time, "sleep", side_effect=advance):
+            video = worker.wait_for_render(
+                FakeComfy(), "prompt", "export", heartbeat=lambda: renewals.append(clock[0]),
+                interval=301, timeout=3600)
+        self.assertEqual(video["filename"], "shot.mp4")
+        self.assertEqual(renewals, [0, 301, 602, 602])
+
+    def test_lost_lease_stops_waiting_for_render(self):
+        class FakeComfy:
+            def call(self, method, path):
+                raise AssertionError("Should not poll after the lease is lost")
+
+        def lost_lease():
+            raise RuntimeError("lease reclaimed")
+
+        with self.assertRaisesRegex(RuntimeError, "reclaimed"):
+            worker.wait_for_render(
+                FakeComfy(), "prompt", "export", heartbeat=lost_lease)
 
 
 if __name__ == "__main__":

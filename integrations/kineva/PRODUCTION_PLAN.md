@@ -16,7 +16,7 @@ referencias y resultados. La rama de trabajo es
 | Version | Nuevo intento de una sola toma | Se conserva el video anterior durante la reparacion |
 | Publicacion | Video unido con audio y manifiesto | El worker deja el montaje listo tras QC basico de todas las tomas; el creador publica la serie despues de revisarla |
 
-Las series de Kineva se crean sin publicar y solo el dueno las ve en el catalogo por RLS. El bucket heredado `shorts-media` permite lectura del archivo a quien conozca su ruta: antes de usar material sensible, mover las previsualizaciones a un bucket privado con URLs temporales.
+Las series de Kineva se crean sin publicar y solo el dueno las ve en el catalogo por RLS. El bucket heredado `shorts-media` sigue siendo publico en el backend antiguo. La migracion `20260925145500_shorts_media_privacy.sql` crea el bucket en el proyecto nuevo como privado y restringe la firma de URLs al video actual de una serie publicada o a su dueno. Falta probar ambas cuentas despues del despliegue.
 
 El texto hablado se fija despues del planificador y se compara con el plan del
 manifiesto antes de subir la toma. Esta comprobacion evita **perdidas de texto en
@@ -28,13 +28,17 @@ reconocimiento de voz y una revision humana deben comprobar la pista de audio.
 ### 1. Conexion de Insomnia (pendiente de acceso al proyecto)
 
 - Revisar historia de migraciones en el Supabase de Insomnia. Aplicar
-  `20260924220000_kineva_render_jobs.sql` y
-  `20260924221000_kineva_multishot.sql` en orden.
+  `20260924220000_kineva_render_jobs.sql`,
+  `20260924221000_kineva_multishot.sql` y
+  `20260925144000_kineva_job_renewal.sql` y
+  `20260925145500_shorts_media_privacy.sql` en orden.
 - Desplegar `generate-novel` y `kineva-video`; habilitar un UUID de creador
   mediante `KINEVA_ALLOWED_USER_IDS`.
 - Reiniciar el ComfyUI principal para cargar Plan Lock actualizado. Ejecutar
   `worker.py --preflight` sin clave de servidor; despues iniciar el worker con
   `SUPABASE_URL` y `SUPABASE_SERVICE_ROLE_KEY` solo en su proceso local.
+- Repetir primero el clip H3 con una referencia de una sola persona y prompt
+  coherente; exigir QC sin saltos y revisar identidad y audio antes de conectar.
 - Probar en Studio una serie corta con referencia propia, dos tomas, estado en
   Shorts, montaje reproducible y denegacion a otra cuenta. Confirmar que una
   referencia privada de otro usuario no se acepta.
@@ -64,16 +68,28 @@ comparar que el resto del episodio no cambie.
 
 ### 4. Operacion sostenida (pendiente)
 
-Renovar leases durante renders extensos; reintentos con limites; subida reanudable
-para archivos grandes; presupuesto/reserva de creditos; metricas de cola,
-duracion y fallos; revision de derechos de imagen y voz. Mantener el worker y
-ComfyUI encendidos para aceptar nuevas solicitudes.
+El worker renueva su lease cada cinco minutos y puede recuperar un lease
+vencido tras suspender Windows si nadie reclamo el trabajo. Aun faltan reintentos
+con limites, subida reanudable para archivos grandes, presupuesto/reserva de
+creditos, metricas de cola, duracion y fallos y revision de derechos de imagen
+y voz. Mantener el worker y ComfyUI encendidos para aceptar nuevas solicitudes.
 
 ## Estado y limite de esta rama
 
-La generacion local anterior del DEV produjo video, audio, QC y manifiesto. La
-nueva interfaz de Plan Lock cargo en ComfyUI temporal y las pruebas del texto
-exacto pasaron. Falta terminar un clip H3 nuevo con esos campos y ejecutar el
-recorrido conectado Studio -> Supabase -> worker -> Shorts. No se modifica
+El clip H3 del DEV termino en la instancia temporal de ComfyUI: 15,08 s,
+video H.264, audio AAC y plan bloqueado con el texto exacto solicitado, sin
+advertencias del Plan Lock. **No paso QC:** el manifiesto detecto un salto en
+el fotograma 14 (0,58 s). La inspeccion muestra un cambio brusco de protagonista
+y fondo. La referencia usada contenia varias personas y el prompt pedia una
+mujer; se debe repetir con una sola persona y direccion coherente. El worker
+rechazaria esta toma por la incidencia. La prueba tampoco transcribe el audio
+hablado. La instancia temporal se cerro despues de la prueba. El tiempo de
+pared incluyo una noche y no sirve como medida de velocidad de render.
+
+El 25 de septiembre la CLI inicio sesion, pero la cuenta autenticada no lista
+`pbormuamewbajnylzfqs` y `supabase link` deniega el acceso al proyecto de
+Insomnia. `kineva-staging` es otro proyecto y no se usara para este despliegue.
+Falta ejecutar el recorrido conectado Studio -> Supabase -> worker -> Shorts
+cuando el propietario habilite el acceso a Insomnia. No se modifica
 `KINEVA_WORKFLOW_MASTER_QUALITY.json` hasta que el DEV supere las pruebas
 conectadas y la revision visual.

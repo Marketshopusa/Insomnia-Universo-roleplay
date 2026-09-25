@@ -411,7 +411,7 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
               onChange={(event) => setReferenceImage(event.target.files?.[0] ?? null)}
               className="block w-full text-sm" />
             <p className="text-xs text-muted-foreground">
-              Kineva usa esta imagen para los personajes y el escenario. El render requiere el trabajador local activo.
+              Elige una imagen con un protagonista claro, sin otras personas ni montajes, y describe un escenario coherente. El render requiere el trabajador local activo.
             </p>
           </Card>
         )}
