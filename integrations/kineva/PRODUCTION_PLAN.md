@@ -37,9 +37,12 @@ reconocimiento de voz y una revision humana deben comprobar la pista de audio.
   tambien el bucket `story-gallery` tras examinar el export de Storage.
 - Desplegar `generate-novel` y `kineva-video`; habilitar un UUID de creador
   mediante `KINEVA_ALLOWED_USER_IDS`.
-- Reiniciar el ComfyUI principal para cargar Plan Lock actualizado. Ejecutar
-  `worker.py --preflight` sin clave de servidor; despues iniciar el worker con
-  `SUPABASE_URL` y `SUPABASE_SERVICE_ROLE_KEY` solo en su proceso local.
+- El ComfyUI principal en 8188 se reinicio el 25 de septiembre: Plan Lock
+  actualizado y `start-worker.ps1 -PreflightOnly` pasaron. El nuevo
+  `start-comfy.ps1` fija `MSB_LLAMA_SERVER` al ejecutable local del planner;
+  el preflight del worker no lo comprueba. Despues de validar la toma DEV,
+  iniciar el worker con `SUPABASE_URL` y `SUPABASE_SERVICE_ROLE_KEY` solo
+  en su proceso local.
 - Repetir primero el clip H3 con una referencia de una sola persona y prompt
   coherente; exigir QC sin saltos y revisar identidad y audio antes de conectar.
 - Probar en Studio una serie corta con referencia propia, dos tomas, estado en
@@ -88,6 +91,15 @@ mujer; se debe repetir con una sola persona y direccion coherente. El worker
 rechazaria esta toma por la incidencia. La prueba tampoco transcribe el audio
 hablado. La instancia temporal se cerro despues de la prueba. El tiempo de
 pared incluyo una noche y no sirve como medida de velocidad de render.
+
+El 25 de septiembre se reinicio ComfyUI principal y el preflight local del
+worker paso. Una nueva toma de prueba con referencia de una sola persona,
+dialogo corto y un solo plano fue aceptada por ComfyUI. El planner y la voz
+se ejecutaron; la generacion H3 y su refinamiento siguen activos. Todavia no
+hay video ni QC de esa toma para aprobarla. El primer intento se detuvo porque
+el proceso no tenia `MSB_LLAMA_SERVER`; se corrigio el arranque local y se
+volvio a enviar la toma. El prompt API de la prueba se guarda fuera de git en
+`Kineva-Workflows/ACTIVE/DEV_TESTS/`. No se ha iniciado el worker conectado.
 
 El 25 de septiembre la CLI inicio sesion, pero la cuenta autenticada no lista
 `pbormuamewbajnylzfqs` (Lovable Cloud). El propietario propuso un solo

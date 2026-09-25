@@ -128,11 +128,12 @@ proveedores nuevos antes de aprobar la seleccion y sus costos.
 2. Probar registro/inicio de sesion, perfiles, categorias, historias,
    Studio, Shorts, portadas y acceso de otra cuenta. Verificar que los
    registros migrados conservan usuarios y referencias.
-3. En Kineva, reiniciar ComfyUI principal cuando no haya trabajos, ejecutar
-   `start-worker.ps1 -PreflightOnly`, seleccionar una referencia de **una
-   sola persona** y generar una toma neutral que pase QC. La prueba H3 del
-   24-25 de septiembre cambio abruptamente de personaje en el fotograma 14
-   y debe repetirse.
+3. En Kineva, la instancia principal se reinicio sin trabajos el 25 de
+   septiembre y `start-worker.ps1 -PreflightOnly` paso. Una prueba nueva con
+   referencia de **una sola persona** se esta renderizando; esperar el
+   manifiesto, QC y revision visual antes de aceptarla. La prueba H3 anterior
+   cambio abruptamente de personaje en el fotograma 14. Al iniciar ComfyUI,
+   usar `start-comfy.ps1` para suministrar el `llama-server` local al planner.
 4. Probar dos tomas, montaje, reparacion de una toma y publicacion manual;
    verificar que otra cuenta no ve borradores ni puede firmar sus videos.
    Transcribir y revisar el dialogo audible: el bloqueo del texto en el
