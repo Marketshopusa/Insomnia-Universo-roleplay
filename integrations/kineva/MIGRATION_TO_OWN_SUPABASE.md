@@ -14,11 +14,13 @@ propietario. No se ha cambiado el destino ni se ha escrito en Kineva Supabase.
   `site_settings` y `audio_tracks`. Hay datos; no tratarlo como vacio.
   Ninguno de esos nombres coincide con las 12 tablas publicas de Insomnia
   presentes en el respaldo. La rama agrega `kineva_render_jobs` como tabla
-  numero 13. Auth, Storage, funciones y politicas del **destino** siguen
-  requiriendo auditoria. Su historial remoto de migraciones esta vacio.
-  Un `db push --dry-run`
-  propone las 16 migraciones del repositorio, pero no valida que cada SQL
-  sea compatible con el esquema existente.
+  numero 13. El respaldo del destino confirma 1 usuario Kineva, 2 series,
+  2 episodios, 4 personajes, 6 imagenes, 1 ajuste y 0 pistas de audio.
+  Auth no tiene usuarios ni identidades; Storage tiene 3 buckets y 29
+  objetos. Su historial remoto de migraciones esta vacio.
+  `db push --dry-run` enumera las 17 migraciones, incluida la nueva
+  privacidad de `story-gallery`. Un dry-run no valida que cada SQL sea
+  compatible con el esquema existente.
 - El respaldo descargado confirma 12 tablas publicas, 108 historias, 2 series
   de Shorts y 9 episodios; contiene ademas 2 usuarios de Auth y 2 perfiles.
   Cambiar solamente las variables VITE_ no traslada los datos; la app sigue
@@ -88,13 +90,13 @@ de `shorts-media`.
 `auth`, `storage`, `realtime` y otras extensiones del proyecto de origen. Orden
 para integrar en el unico Supabase compartido:
 
-1. Obtener respaldo verificable de `kineva-staging`, incluidos esquema, datos,
-   Auth y Storage. El script [backup-kineva-staging.ps1](backup-kineva-staging.ps1)
-   crea una copia logica de la **base** con `pg_dump` y verifica su indice;
-   pide host y contrasena solo en la PC. Los bytes de Storage se respaldan
-   aparte. Inventariar UUID/correos de Auth, triggers, funciones, politicas y
-   buckets; comprobar colisiones con los 2 usuarios del origen.
-2. Comparar el esquema publico real del backup con las 16 migraciones del
+1. Conservar los dos backups de base y los dos ZIP de Storage verificados
+   fuera de Git. Repetir los snapshots si cambia algun origen antes del
+   corte. El destino tiene 0 usuarios Auth; el correo del usuario Kineva
+   heredado coincide con uno de los usuarios de Insomnia. Conciliar ese
+   acceso sin sobreescribir contrasenas ni asumir que los IDs enteros y UUID
+   son equivalentes.
+2. Comparar el esquema publico real del backup con las 17 migraciones del
    repositorio y el esquema actual de Kineva. Seleccionar solo los objetos
    propios de Insomnia; no importar esquemas administrados ni roles enteros.
 3. Preparar tablas, indices, RLS y funciones de Insomnia sin borrar tablas ni
@@ -108,9 +110,12 @@ para integrar en el unico Supabase compartido:
    nuevo en el destino, que tiene otro secreto JWT.
 5. Crear los cuatro buckets de Insomnia con sus permisos revisados y subir
    los 33 archivos. El origen marca `story-gallery` y `shorts-media` privados,
-   pero tiene politicas SELECT amplias para ambos. Restringir `story-gallery`
-   al acceso previsto y aplicar la politica revisada de `shorts-media` antes
-   de exponerlos. No traer el bucket de exportacion.
+   pero tiene politicas SELECT amplias para ambos. Aplicar las migraciones
+   nuevas de privacidad: la galeria solo admite lectura de imagenes `ready`
+   vinculadas a historias visibles y Shorts de episodios propios o publicados.
+   Los 12 objetos de galeria coinciden con `story_images.storage_path` y
+   tienen estado `ready`. Probar acceso anonimo, propio y ajeno tras aplicar
+   los SQL. No traer el bucket de exportacion.
 6. Inventariar y actualizar las URL absolutas antiguas tras copiar los medios;
    el host Lovable anterior aparece al menos en 9 filas publicas (8 historias,
    1 historia de usuario). No cambiar rutas relativas ya validas de los 8
@@ -124,26 +129,78 @@ Fuentes: [exportacion de Lovable Cloud](https://docs.lovable.dev/features/advanc
 [migracion externa de Lovable](https://docs.lovable.dev/tips-tricks/external-deployment-hosting)
 y [migracion de usuarios Auth](https://supabase.com/docs/guides/troubleshooting/migrating-auth-users-between-projects).
 
+## 2A. Respaldo verificado del Supabase Kineva
+
+El 25 de septiembre se genero y verifico en Descargas
+`kineva-staging-20260925-155839.backup` (388 621 bytes; SHA-256
+`7704375a385576f85f93ac701fd67bf6aac1009c4bab4582f3de46031477de18`).
+Es un backup PostgreSQL custom con 615 entradas de indice. El contenido
+publico de Kineva conserva estas filas: `users` 1, `series` 2,
+`episodes` 2, `characters` 4, `images` 6,
+`site_settings` 1 y `audio_tracks` 0. Auth del destino tiene 0
+usuarios y 0 identidades, y no tiene el trigger de perfil de Insomnia.
+Los nombres de las tablas publicas, funciones publicas y buckets del origen
+no colisionan con los del destino. Las columnas de `auth.users` y
+`auth.identities` de ambos snapshots coinciden en nombre y orden.
+Los ACL tambien difieren: el origen Lovable concede permisos al rol
+`sandbox_exec` y el destino conserva el rol `kineva_runtime`.
+Excluir ACL y roles del origen durante el traslado; preservar los permisos
+de Kineva y definir permisos minimos de Insomnia para roles existentes.
+
+El `public.users` heredado de Kineva usa ID **entero** y contrasena bcrypt;
+Insomnia relaciona perfiles e historias con usuarios Auth de ID **UUID**.
+Un correo aparece en ambos sistemas. Mantener el usuario Kineva y las dos
+cuentas Auth sin sobreescribir credenciales; cualquier enlace de identidades
+entre aplicaciones requiere un mapeo explicito y una prueba de acceso.
+El trigger de Insomnia crea `public.profiles` tras registrar un usuario
+Auth: controlar ese trigger al cargar las dos cuentas y sus dos perfiles.
+
+Los bytes de Storage del destino se copiaron por separado en Descargas.
+`kineva-staging-storage-20260925-155839.zip` contiene exactamente
+29 objetos, 29 896 551 bytes comprimidos, SHA-256
+`94914c127d0754c70619a0c1b73bba811d8be83f9f3f8b688a420620c50a9774`.
+El inventario `kineva-staging-storage-20260925-155839-inventory.csv`
+tiene SHA-256
+`5bcc800bc44fa0ac470c594e0a43199a96e8e94ab1bde78a9c0272dc418f4280`.
+Las 29 rutas y tamanos coinciden con `storage.objects`; el ZIP pasa CRC.
+
+| Bucket Kineva | Objetos | Bytes sin comprimir | Acceso |
+| --- | ---: | ---: | --- |
+| `dubs` | 12 | 851 616 | Privado |
+| `images` | 15 | 7 838 513 | Privado |
+| `renders` | 2 | 22 951 827 | Privado |
+| **Total** | **29** | **31 641 956** | |
+
+Conservar backup, ZIP, inventario y copias de archivos fuera de Git y del
+chat. Estos snapshots son del 25 de septiembre: si el origen o el destino
+reciben escrituras nuevas, generar un delta o respaldo actualizado antes
+del corte. Aun faltan comparacion completa de definiciones SQL, politicas
+RLS y ensayo de restauracion selectiva. No se ha importado nada al destino.
+
 ## 3. Preparar el esquema y la aplicacion
 
-- Hay 16 migraciones en `supabase/migrations/`: 12 anteriores de Insomnia,
-  dos de trabajos y montaje Kineva, una de renovacion de lease y una de
-  `shorts-media` privado. En el destino existente, ya se ejecutaron
+- Hay 17 migraciones en `supabase/migrations/`: 12 anteriores de Insomnia,
+  dos de trabajos y montaje Kineva, una de renovacion de lease y dos de
+  privacidad para `shorts-media` y `story-gallery`. En el destino existente,
+  ya se ejecutaron
   `bunx supabase migration list --project-ref cexzmelshvbgabihtfvx` y
   `bunx supabase db push --dry-run --skip-vault --project-ref cexzmelshvbgabihtfvx`.
-  El historial remoto no tiene entradas y el dry-run enumera las 16. No hacer
-  un `db push` completo hasta comprobar colisiones y respaldar el destino.
+  El historial remoto no tiene entradas y el dry-run enumera las 17.
+  El destino ya se respaldo: no hacer un `db push` completo hasta comparar
+  definiciones, politicas y orden de las migraciones en un ensayo aislado.
 - Verificar tablas, politicas RLS, RPC, triggers y los buckets
   `story-covers`, `user-story-covers`, `story-gallery`,
-  `shorts-media` y `kineva-references`. El repositorio contiene una
-  politica SELECT amplia para `story-gallery`, pero ninguna migracion crea
-  ese bucket: el backup confirma que es privado y que tiene 12 objetos.
-  Crear el bucket y decidir el acceso por usuario/historia antes de migrar
-  esa politica. `shorts-media` es privado en el origen, aunque su politica
-  original permite SELECT de todos sus objetos. La ultima migracion elimina
-  esa politica y permite leer solo el video de un episodio visible o propio;
-  las 8 rutas originales de episodios coinciden con `storage.objects.name`.
-  Probarla con ambas cuentas tras migrar.
+  `shorts-media` y `kineva-references`. Los buckets actuales de Kineva
+  (`dubs`, `images`, `renders`) son privados y no comparten nombre con
+  los cuatro de Insomnia; mantener sus objetos y permisos. La nueva
+  migracion `20260925160000_story_gallery_privacy.sql` crea la galeria
+  privada (limite 10 MB) y sustituye la politica amplia del origen:
+  solo puede leerse un objeto con ruta `stories/<story_id>/...` si coincide
+  con un registro `story_images.storage_path` en estado `ready` unido a la
+  historia. Las 12 rutas antiguas cumplen estas condiciones. La migracion
+  `20260925145500_shorts_media_privacy.sql` restringe los videos a episodios
+  visibles o propios; las 8 rutas antiguas coinciden con `storage.objects.name`.
+  Probar ambas politicas con sesion anonima y dos cuentas antes del corte.
 - Desplegar las Edge Functions que usa Insomnia, ademas de
   `generate-novel` y `kineva-video`; revisar las 11 carpetas en
   `supabase/functions/`. Confirmar configuracion JWT en `config.toml`.
@@ -191,12 +248,14 @@ proveedores nuevos antes de aprobar la seleccion y sus costos.
 2. Probar registro/inicio de sesion, perfiles, categorias, historias,
    Studio, Shorts, portadas y acceso de otra cuenta. Verificar que los
    registros migrados conservan usuarios y referencias.
-3. En Kineva, la instancia principal se reinicio sin trabajos el 25 de
-   septiembre y `start-worker.ps1 -PreflightOnly` paso. Una prueba nueva con
-   referencia de **una sola persona** se esta renderizando; esperar el
-   manifiesto, QC y revision visual antes de aceptarla. La prueba H3 anterior
-   cambio abruptamente de personaje en el fotograma 14. Al iniciar ComfyUI,
-   usar `start-comfy.ps1` para suministrar el `llama-server` local al planner.
+3. En Kineva, `start-worker.ps1 -PreflightOnly` paso. La prueba H3 con
+   referencia de una persona termino con audio, pero fallo QC por un salto
+   de postura y encuadre en el fotograma 10. El Plan Lock del perfil
+   TALKING_PRESENTER ignoraba `exact_dialogue`; se corrigio en el nodo
+   local y se valido en runtime un plan con el texto hablado exacto.
+   Otra toma corta en DEV esta en curso. No aceptar una toma hasta comprobar
+   QC, continuidad visual y el audio hablado. Al iniciar ComfyUI, usar
+   `start-comfy.ps1` para suministrar `llama-server` al planner.
 4. Probar dos tomas, montaje, reparacion de una toma y publicacion manual;
    verificar que otra cuenta no ve borradores ni puede firmar sus videos.
    Transcribir y revisar el dialogo audible: el bloqueo del texto en el

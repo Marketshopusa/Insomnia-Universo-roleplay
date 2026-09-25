@@ -57,6 +57,43 @@ class DialogueContractTest(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "altered"):
             worker.verify_locked_dialogue({"locked_plan": plan}, words)
 
+    def test_presenter_exact_dialogue_wins_over_scene_description(self):
+        words = "Hola. Hoy empieza nuestra historia."
+        plan, report, _ = lock.KinevaPlanLock.execute(
+            self.plan, profile="TALKING_PRESENTER",
+            exact_dialogue=words, dialogue_language="Spanish")
+        self.assertEqual(plan["shots"][0]["dialogue"][0]["line"], words)
+        self.assertEqual(plan["shots"][0]["dialogue"][0]["language"], "Spanish")
+        self.assertNotIn("paraphrase", plan["shots"][0]["dialogue"][0]["line"])
+        self.assertIn("exact spoken dialogue", report)
+        worker.verify_locked_dialogue({"locked_plan": plan}, words)
+        with self.assertRaisesRegex(ValueError, "requires exact_dialogue"):
+            lock.KinevaPlanLock.execute(
+                self.plan, profile="TALKING_PRESENTER", exact_dialogue="")
+
+    def test_worker_uses_presenter_camera_and_single_take_controls(self):
+        kinds = ("MinimaxStoryPlanner", "LoadImage", "KinevaStoryCastFromManifest",
+                 "KinevaPlanLock", "KinevaStaticBackgroundLock",
+                 "KinevaVoiceRouter", "KinevaPromptTrace",
+                 "KinevaProjectContext", "KinevaRunManifest")
+        template = {str(i): {"class_type": kind, "inputs": {}}
+                    for i, kind in enumerate(kinds)}
+        job = {"profile": "TALKING_PRESENTER", "prompt": "One fixed shot.",
+               "spoken_script": "Hola.", "bible": {"language": "Spanish"},
+               "project_name": "insomnia_test", "id": "00000000-0000-4000-8000-000000000001",
+               "episode_number": 1, "shot": 1, "take": 1}
+        graph, _ = worker.make_prompt(template, job, "reference.png", Path("cast.json"))
+        controls = worker.one(graph, "KinevaPlanLock")[1]["inputs"]
+        self.assertEqual(controls["exact_dialogue"], "Hola.")
+        self.assertTrue(all(controls[key] for key in
+                            ("force_single_take", "presenter_visible", "lock_camera")))
+        self.assertTrue(worker.one(graph, "KinevaStaticBackgroundLock")[1]["inputs"]["enabled"])
+        job["profile"] = "MINISERIES"
+        mini, _ = worker.make_prompt(template, job, "reference.png", Path("cast.json"))
+        controls = worker.one(mini, "KinevaPlanLock")[1]["inputs"]
+        self.assertFalse(any(controls[key] for key in
+                             ("force_single_take", "presenter_visible", "lock_camera")))
+
     def test_multiple_planner_shots_fail_before_upload(self):
         self.plan["shots"] *= 2
         with self.assertRaisesRegex(ValueError, "one shot"):

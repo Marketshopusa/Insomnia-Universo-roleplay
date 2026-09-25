@@ -66,15 +66,17 @@ def make_prompt(template, job, image_name, manifest_path):
     spoken_script = str(job.get("spoken_script") or "").strip()
     if not spoken_script:
         raise ValueError("Missing exact spoken script for Kineva shot")
+    presenter = job["profile"] == "TALKING_PRESENTER"
     one(graph, "KinevaPlanLock")[1]["inputs"].update({
         "profile": job["profile"], "preserve_dialogue": True,
         "exact_dialogue": spoken_script,
         "dialogue_language": str((job.get("bible") or {}).get("language") or "Spanish"),
         "project_id": job["project_name"],
-        "force_single_take": False, "presenter_visible": False, "lock_camera": False,
+        "force_single_take": presenter, "presenter_visible": presenter,
+        "lock_camera": presenter,
     })
     background_lock = one(graph, "KinevaStaticBackgroundLock")[1]["inputs"]
-    background_lock["enabled"] = job["profile"] == "TALKING_PRESENTER"
+    background_lock["enabled"] = presenter
     if not background_lock["enabled"]:
         background_lock.pop("foreground_mask", None)
         graph = {key: node for key, node in graph.items()

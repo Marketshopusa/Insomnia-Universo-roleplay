@@ -17,21 +17,6 @@ def _visible_characters(plan):
         and str(c.get("name") or "").strip()
     ]
 
-def _scene_text_for_shot(plan, shot_index):
-    scenes = (plan or {}).get("scenes") or []
-    shots = (plan or {}).get("shots") or []
-    if not scenes:
-        return ""
-    if len(shots) == 1:
-        return " ".join(
-            str(s.get("text") or "").strip()
-            for s in scenes if str(s.get("text") or "").strip()
-        ).strip()
-    if 0 <= shot_index < len(scenes):
-        return str(scenes[shot_index].get("text") or "").strip()
-    return ""
-
-
 class KinevaPlanLock(io.ComfyNode):
     """Deterministic guardrail between Story Planner and Director."""
 
@@ -44,7 +29,7 @@ class KinevaPlanLock(io.ComfyNode):
             description=(
                 "Locks planner output for Kineva production profiles. "
                 "TALKING_PRESENTER removes accidental POV/cuts and preserves "
-                "the full planned scene text as spoken dialogue."
+                "only the supplied exact dialogue as speech."
             ),
             inputs=[
                 StoryPlan.Input("story_plan"),
@@ -109,8 +94,12 @@ class KinevaPlanLock(io.ComfyNode):
             report["changes"].append("Persistent project identity locked.")
 
         if profile == "TALKING_PRESENTER":
-            if not primary:
-                report["warnings"].append("No visible primary character found.")
+            exact_dialogue = str(exact_dialogue or "").strip()
+            if preserve_dialogue and (not exact_dialogue or len(shots) != 1 or not primary):
+                raise ValueError(
+                    "TALKING_PRESENTER requires exact_dialogue, one shot, "
+                    "and a visible speaker; visual instructions are not spoken dialogue."
+                )
 
             for i, shot in enumerate(shots):
                 if presenter_visible and shot.get("pov"):
@@ -146,15 +135,12 @@ class KinevaPlanLock(io.ComfyNode):
                         beat["camera"] = ""
 
                 if preserve_dialogue and primary:
-                    source_text = _scene_text_for_shot(plan, i)
+                    source_text = exact_dialogue
                     if source_text:
                         old_dialogue = shot.get("dialogue") or []
-                        language = "Spanish"
+                        language = str(dialogue_language or "Spanish").strip()
                         delivery = "naturally and conversationally"
                         if old_dialogue:
-                            language = str(
-                                old_dialogue[0].get("language") or language
-                            )
                             delivery = str(
                                 old_dialogue[0].get("delivery") or delivery
                             )
@@ -175,7 +161,7 @@ class KinevaPlanLock(io.ComfyNode):
 
                         if old_line != source_text:
                             report["changes"].append(
-                                f"shot {i}: dialogue restored from full scene text"
+                                f"shot {i}: exact spoken dialogue restored"
                             )
 
                 shot["action"] = str(shot.get("action") or "")

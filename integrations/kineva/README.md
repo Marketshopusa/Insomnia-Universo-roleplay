@@ -28,8 +28,9 @@ the private reference image; ComfyUI remains bound to localhost.
 
 1. Apply supabase/migrations/20260924220000_kineva_render_jobs.sql,
    20260924221000_kineva_multishot.sql,
-   20260925144000_kineva_job_renewal.sql and
-   20260925145500_shorts_media_privacy.sql in that order to the shared project only after a backup and schema audit. Deploy the
+   20260925144000_kineva_job_renewal.sql,
+   20260925145500_shorts_media_privacy.sql and
+   20260925160000_story_gallery_privacy.sql in that order to the shared project only after a backup and schema audit. Deploy the
    kineva-video Edge Function. Set KINEVA_ALLOWED_USER_IDS to comma-separated
    creator UUIDs in the function environment. Confirm owner and private storage
    policies; never place the service-role key in a browser or repo.
@@ -67,9 +68,16 @@ the private reference image; ComfyUI remains bound to localhost.
 
 ## Offline checks
 
-From the Insomnia repository run `py -3 -m unittest integrations.kineva.test_contract -v` to verify that Plan Lock restores each spoken segment, rejects an extra planner shot and refuses an unsafe project ID. The worker `--preflight` checks ComfyUI without cloud access. The separate ComfyUI H3 test produced a video, but QC flagged an abrupt visual
-change at frame 14. A clean, single-character reference and an aligned prompt
-must pass QC before a connected Insomnia Studio-to-Shorts test.
+From the Insomnia repository run `py -3 -m unittest integrations.kineva.test_contract -v`
+to verify the exact MINISERIES and TALKING_PRESENTER script, camera/take settings,
+extra-shot rejection, unsafe project ID and worker lease behavior (7 tests).
+The worker `--preflight` checks ComfyUI without cloud access. The H3 test with
+a single-person reference produced a 15.08-second video with AAC audio, but QC
+flagged a seated-to-standing jump at frame 10. Its Plan Lock also spoke the
+visual description instead of the five exact words: the installed and tracked
+node have been fixed. A plan-only runtime smoke confirmed the exact dialogue;
+a short visual retry is in progress. The video and spoken audio still require
+acceptance before a connected Studio-to-Shorts test.
 
 ## Shared Supabase: Insomnia and Kineva
 
@@ -77,14 +85,17 @@ Insomnia remains the main app. The owner chose the existing `kineva-staging`
 project (`cexzmelshvbgabihtfvx`) as the candidate for one shared Supabase.
 The current frontend still uses Lovable Cloud (`pbormuamewbajnylzfqs`).
 Read-only inspection found seven existing Kineva tables with data and no
-recorded remote migrations; dry-run lists all 16 Insomnia migration files.
+recorded remote migrations; the read-only dry-run lists all 17 migrations, without validating SQL compatibility.
 This inventory does not prove that a full push or a database restore is safe.
 
-The Lovable database backup and the 33 Storage files are downloaded and
-verified. Follow [the migration runbook](MIGRATION_TO_OWN_SUPABASE.md) and use
-[the local backup script](backup-kineva-staging.ps1) to back up the existing
-Kineva database before adding Insomnia schema and data. Storage file bytes
-require a separate backup. Keep Kineva tables and users intact. After verifying
+The Lovable database backup and 33 Storage files are verified. The
+[local backup script](backup-kineva-staging.ps1) generated and verified the
+Kineva database backup; its 29 Storage files were separately copied and
+verified against metadata. The existing Kineva `public.users` record has an
+integer ID and shares an email with an incoming Auth UUID account. Preserve
+both identities and their credentials. Follow
+[the migration runbook](MIGRATION_TO_OWN_SUPABASE.md) for the selective
+import; keep the backups and media outside Git. After verifying
 Auth, storage and Edge Functions, configure `KINEVA_ALLOWED_USER_IDS` with the
 creator's Auth UUID. The worker keeps its service-role key only in its local
 process. Run the private Studio-to-Shorts smoke and access-denial tests before
@@ -95,8 +106,8 @@ changing the published app. The PR remains a draft; no cloud writes yet.
 | Gate | Evidence required |
 | --- | --- |
 | DEV nodes | /object_info has Plan Lock, Voice Router, Background Lock, QC, Master Export, project context and motion preprocessors. Confirmed 2026-09-24. |
-| DEV runtime | The H3 test finished: 15.08 seconds, H.264 video, AAC audio, exact locked plan text. QC rejected an abrupt identity/background switch at frame 14 (0.58 s); the reference had multiple people while the prompt asked for one woman. Retry with a matching single-character reference. Spoken audio needs transcription and human review. |
-| Job contract | Four migrations, Edge Function, worker and synthetic two-shot FFmpeg assembly pass local checks; plan text equality and renewal behavior pass local tests. Privacy policy and SQL still need connected verification. No cloud mutation yet. |
+| DEV runtime | The first H3 test failed QC at frame 14 with multiple people in the reference. The second H3 test used one person and produced H.264/AAC video, but failed QC at frame 10 (a seated-to-standing jump) and failed exact-dialogue comparison. Plan Lock is fixed in DEV; a plan-only runtime test passed and a 5.2-second visual retry is running. Audio needs transcription and human review. |
+| Job contract | Five migrations, Edge Function, worker and synthetic two-shot FFmpeg assembly pass local checks; seven contract tests cover exact dialogue, presenter settings and lease renewal. Privacy policy and SQL still need connected verification. No cloud mutation yet. |
 | Connected smoke | Deploy migration/function, upload a neutral reference, queue one short episode, verify ownership rejection, output path, manifest and playback. Pending. |
 | Micro miniseries | Render 2â€“3 linked clips with the same reference, wardrobe, setting, voice and scene bible; compare identity and audio across cuts. Pending. |
 | Selective repair | Request a second take of one shot; verify other episodes and prior video remain intact and only the approved take replaces the published path. Pending. |

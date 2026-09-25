@@ -27,19 +27,26 @@ reconocimiento de voz y una revision humana deben comprobar la pista de audio.
 
 ### 1. Conexion de Insomnia (pendiente de migracion controlada)
 
-- Respaldar primero el Supabase compartido `kineva-staging` y auditar su
-  Auth, triggers, Storage y las 16 migraciones propuestas por el dry-run.
+- Ya se verificaron copias de base y Storage del Supabase compartido
+  `kineva-staging`: 7 tablas Kineva, 0 usuarios Auth, 3 buckets y 29
+  objetos. Insomnia tiene 12 tablas, 2 usuarios Auth y 33 objetos en otros
+  4 buckets. Hay un correo compartido entre el usuario Kineva heredado de
+  ID entero y un usuario Auth UUID; mapear identidades y comprobar accesos.
+  Auditar definiciones SQL, RLS, triggers y las 17 migraciones enumeradas
+  por el dry-run, que no comprueba compatibilidad del contenido SQL.
   Preparar las tablas de Insomnia de forma selectiva; aplicar en orden
   `20260924220000_kineva_render_jobs.sql`,
   `20260924221000_kineva_multishot.sql`,
-  `20260925144000_kineva_job_renewal.sql` y
-  `20260925145500_shorts_media_privacy.sql` solo tras validar el esquema
+  `20260925144000_kineva_job_renewal.sql`,
+  `20260925145500_shorts_media_privacy.sql` y
+  `20260925160000_story_gallery_privacy.sql` solo tras validar el esquema
   anterior y las politicas. No ejecutar `db push` completo en el destino
   que ya tiene datos Kineva.
 - Auditar y adaptar las diez Edge Functions de Insomnia que llaman al gateway
-  de IA de Lovable; su clave no se traslada al Supabase propio. Crear el
-  bucket `story-gallery` privado y revisar su SELECT amplio del origen antes
-  de subir sus 12 archivos.
+  de IA de Lovable; su clave no se traslada al Supabase propio. La nueva
+  migracion crea `story-gallery` privado y exige imagen `ready` vinculada
+  a una historia visible. Las 12 rutas del backup cumplen la condicion;
+  probar SELECT anonimo, propio y ajeno despues de subirlas.
 - Desplegar `generate-novel` y `kineva-video`; habilitar un UUID de creador
   mediante `KINEVA_ALLOWED_USER_IDS`.
 - El ComfyUI principal en 8188 se reinicio el 25 de septiembre: Plan Lock
@@ -48,8 +55,12 @@ reconocimiento de voz y una revision humana deben comprobar la pista de audio.
   el preflight del worker no lo comprueba. Despues de validar la toma DEV,
   iniciar el worker con `SUPABASE_URL` y `SUPABASE_SERVICE_ROLE_KEY` solo
   en su proceso local.
-- Repetir primero el clip H3 con una referencia de una sola persona y prompt
-  coherente; exigir QC sin saltos y revisar identidad y audio antes de conectar.
+- La prueba H3 de una sola persona fallo QC en el fotograma 10: pasa
+  bruscamente de sentada a de pie. Plan Lock ignoraba `exact_dialogue`
+  en TALKING_PRESENTER; el nodo DEV ahora lo exige y la prueba runtime de
+  plan confirma el texto exacto. Una segunda toma corta con postura fija
+  esta en curso. Exigir QC, identidad, fondo y audio correcto antes de
+  conectar el worker a trabajos reales.
 - Probar en Studio una serie corta con referencia propia, dos tomas, estado en
   Shorts, montaje reproducible y denegacion a otra cuenta. Confirmar que una
   referencia privada de otro usuario no se acepta.
@@ -98,29 +109,35 @@ hablado. La instancia temporal se cerro despues de la prueba. El tiempo de
 pared incluyo una noche y no sirve como medida de velocidad de render.
 
 El 25 de septiembre se reinicio ComfyUI principal y el preflight local del
-worker paso. Una nueva toma de prueba con referencia de una sola persona,
-dialogo corto y un solo plano fue aceptada por ComfyUI. El planner y la voz
-se ejecutaron; la generacion H3 y su refinamiento siguen activos. Todavia no
-hay video ni QC de esa toma para aprobarla. El primer intento se detuvo porque
-el proceso no tenia `MSB_LLAMA_SERVER`; se corrigio el arranque local y se
-volvio a enviar la toma. El prompt API de la prueba se guarda fuera de git en
-`Kineva-Workflows/ACTIVE/DEV_TESTS/`. No se ha iniciado el worker conectado.
+worker paso. La prueba H3 con referencia de una persona termino con video
+H.264/AAC de 15,083 s (768x1360, 24 fps), pero **fallo QC**: un salto
+de postura y encuadre en el fotograma 10 (0,417 s; puntuacion 0,227979
+sobre umbral 0,18). El manifiesto tambien mostraba el texto descriptivo
+completo como dialogo, pese a pedir cinco palabras en `exact_dialogue`.
+El worker la habria rechazado por cualquiera de ambos motivos.
 
-El 25 de septiembre la CLI inicio sesion, pero la cuenta autenticada no lista
-`pbormuamewbajnylzfqs` (Lovable Cloud). El propietario propuso un solo
-Supabase para Insomnia y Kineva: usar `kineva-staging`
-(`cexzmelshvbgabihtfvx`) como destino compartido. Una inspeccion de solo
-lectura encontro siete tablas Kineva con datos y ninguna migracion registrada;
-el dry-run propone las 16 de Insomnia. El ZIP de Storage y su CSV se recibieron
-y verificaron: 33 objetos en cuatro buckets, 49 033 175 bytes. El backup
-PostgreSQL custom de Lovable tambien se recibio e inspecciono **sin restaurar**:
-contiene 12 tablas publicas, 2 usuarios Auth con identidades y perfiles, y las
-33 rutas de Storage correspondientes. El origen incluye sesiones y objetos
-internos que no se deben restaurar completos sobre Kineva. Faltan el respaldo
-y auditoria de Auth/esquema del destino, la migracion selectiva, la sustitucion
-del gateway de IA y el recorrido conectado Studio -> Supabase -> worker ->
-Shorts. El script de copia logica de Kineva esta preparado y paso su
-prueba local de herramientas; espera host y contrasena en la propia PC.
-Los medios aun no se han importado. No se modifica
-`KINEVA_WORKFLOW_MASTER_QUALITY.json` hasta que el DEV supere las pruebas
-conectadas y la revision visual.
+Se corrigio KinevaPlanLock en el nodo local: TALKING_PRESENTER requiere un
+dialogo exacto y una toma con personaje visible, conserva la camara fija
+y bloquea cortes. Se agrego el texto hablado al workflow
+`KINEVA_MINISERIES_DEV.json`. Tras reiniciar ComfyUI, una prueba runtime
+de plan sin render confirmo 1 toma y 5 palabras exactas, sin advertencias.
+Un segundo render DEV de 5,2 s, con la misma referencia, postura sentada
+y dialogo exacto, esta en curso; aun no tiene QC ni revision de audio.
+Los prompts API, manifiestos y trazas estan fuera de Git bajo
+`Kineva-Workflows/ACTIVE/DEV_TESTS/`. El worker conectado no se inicio.
+El archivo Master Quality conserva su hash de referencia.
+
+El propietario eligio un solo Supabase, `kineva-staging`
+(`cexzmelshvbgabihtfvx`), para Insomnia principal y Kineva como motor.
+Se recibieron y verificaron el backup PostgreSQL custom de Lovable y
+33 archivos de Storage (49 033 175 bytes). La copia de la base de Kineva
+tambien esta verificada (388 621 bytes; SHA-256
+`7704375a385576f85f93ac701fd67bf6aac1009c4bab4582f3de46031477de18`);
+sus 29 archivos de Storage (31 641 956 bytes) estan respaldados aparte.
+Ambas copias e inventarios siguen en Descargas y fuera de Git. El destino
+tiene 0 usuarios Auth, pero el usuario heredado `public.users` comparte
+un correo con un usuario Auth de Insomnia; requiere mapeo explicito.
+Faltan el ensayo de migracion selectiva, la sustitucion del gateway de IA
+de Lovable y las pruebas conectadas Studio -> Supabase -> worker -> Shorts.
+No se ha escrito en Supabase ni modificado
+`KINEVA_WORKFLOW_MASTER_QUALITY.json`.
