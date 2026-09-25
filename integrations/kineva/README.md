@@ -29,7 +29,7 @@ the private reference image; ComfyUI remains bound to localhost.
 1. Apply supabase/migrations/20260924220000_kineva_render_jobs.sql,
    20260924221000_kineva_multishot.sql,
    20260925144000_kineva_job_renewal.sql and
-   20260925145500_shorts_media_privacy.sql in that order to the Insomnia project. Deploy the
+   20260925145500_shorts_media_privacy.sql in that order to the shared project only after a backup and schema audit. Deploy the
    kineva-video Edge Function. Set KINEVA_ALLOWED_USER_IDS to comma-separated
    creator UUIDs in the function environment. Confirm owner and private storage
    policies; never place the service-role key in a browser or repo.
@@ -65,22 +65,22 @@ From the Insomnia repository run `py -3 -m unittest integrations.kineva.test_con
 change at frame 14. A clean, single-character reference and an aligned prompt
 must pass QC before a connected Insomnia Studio-to-Shorts test.
 
-## Supabase connection when the project owner is available
+## Shared Supabase: Insomnia and Kineva
 
-The frontend already has its public project URL and publishable key. Sign in to
-Supabase for this exact Insomnia project with an Owner/Admin account, link the
-Supabase CLI, inspect the pending migrations, then apply all four in order and deploy
-generate-novel plus kineva-video. Set KINEVA_ALLOWED_USER_IDS in Edge Function
-secrets to the creator Auth UUID. The local worker needs SUPABASE_URL and the
-privileged SUPABASE_SERVICE_ROLE_KEY only in its private process environment;
-never commit or send that key through Cursor chat. After ComfyUI restarts and
---preflight passes, perform a private neutral render and an owner-denial check
-through Insomnia Studio and Shorts. The draft PR is not a live deployment. On 2026-09-25 the CLI login succeeded,
-but the authenticated account could not list or link project
-pbormuamewbajnylzfqs (insufficient privileges). Do not target the separate
-kineva-staging project to bypass this access issue. If the owner creates a new
-Supabase project, follow [the migration runbook](MIGRATION_TO_OWN_SUPABASE.md)
-for Lovable Cloud export and a private preview before switching the app.
+Insomnia remains the main app. The owner chose the existing `kineva-staging`
+project (`cexzmelshvbgabihtfvx`) as the candidate for one shared Supabase.
+The current frontend still uses Lovable Cloud (`pbormuamewbajnylzfqs`).
+Read-only inspection found seven existing Kineva tables with data and no
+recorded remote migrations; dry-run lists all 16 Insomnia migration files.
+This inventory does not prove that a full push or a database restore is safe.
+
+Follow [the migration runbook](MIGRATION_TO_OWN_SUPABASE.md) to export Lovable
+Cloud data and files, back up the existing Kineva database, then add Insomnia
+schema and data without replacing Kineva tables or users. After verifying
+Auth, storage and Edge Functions, configure `KINEVA_ALLOWED_USER_IDS` with the
+creator's Auth UUID. The worker keeps its service-role key only in its local
+process. Run the private Studio-to-Shorts smoke and access-denial tests before
+changing the published app. The PR remains a draft; no cloud writes yet.
 
 ## Production gates
 

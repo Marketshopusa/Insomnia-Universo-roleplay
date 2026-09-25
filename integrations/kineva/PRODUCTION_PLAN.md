@@ -87,9 +87,12 @@ hablado. La instancia temporal se cerro despues de la prueba. El tiempo de
 pared incluyo una noche y no sirve como medida de velocidad de render.
 
 El 25 de septiembre la CLI inicio sesion, pero la cuenta autenticada no lista
-`pbormuamewbajnylzfqs` y `supabase link` deniega el acceso al proyecto de
-Insomnia. `kineva-staging` es otro proyecto y no se usara para este despliegue.
-Falta ejecutar el recorrido conectado Studio -> Supabase -> worker -> Shorts
-cuando el propietario habilite el acceso a Insomnia. No se modifica
+`pbormuamewbajnylzfqs` (Lovable Cloud). El propietario propuso un solo
+Supabase para Insomnia y Kineva: usar `kineva-staging`
+(`cexzmelshvbgabihtfvx`) como destino compartido. Una inspeccion de solo
+lectura encontro siete tablas Kineva con datos y ninguna migracion registrada;
+el dry-run propone las 16 de Insomnia. Faltan el respaldo de Kineva, la
+exportacion de Lovable, la conciliacion de esquemas y usuarios, y el recorrido
+conectado Studio -> Supabase -> worker -> Shorts. No se modifica
 `KINEVA_WORKFLOW_MASTER_QUALITY.json` hasta que el DEV supere las pruebas
 conectadas y la revision visual.
