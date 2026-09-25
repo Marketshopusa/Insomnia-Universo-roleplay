@@ -16,7 +16,7 @@ referencias y resultados. La rama de trabajo es
 | Version | Nuevo intento de una sola toma | Se conserva el video anterior durante la reparacion |
 | Publicacion | Video unido con audio y manifiesto | El worker deja el montaje listo tras QC basico de todas las tomas; el creador publica la serie despues de revisarla |
 
-Las series de Kineva se crean sin publicar y solo el dueno las ve en el catalogo por RLS. El bucket heredado `shorts-media` sigue siendo publico en el backend antiguo. La migracion `20260925145500_shorts_media_privacy.sql` crea el bucket en el proyecto nuevo como privado y restringe la firma de URLs al video actual de una serie publicada o a su dueno. Falta probar ambas cuentas despues del despliegue.
+Las series de Kineva se crean sin publicar y solo el dueno las ve en el catalogo por RLS. Lovable reporta `shorts-media` como bucket privado en el origen; la politica SQL de lectura se debe contrastar con el export real. La migracion `20260925145500_shorts_media_privacy.sql` configura el bucket privado en el destino y restringe la firma de URLs al video actual de una serie publicada o a su dueno. Falta probar ambas cuentas despues del despliegue.
 
 El texto hablado se fija despues del planificador y se compara con el plan del
 manifiesto antes de subir la toma. Esta comprobacion evita **perdidas de texto en
@@ -25,13 +25,16 @@ reconocimiento de voz y una revision humana deben comprobar la pista de audio.
 
 ## Puertas de aceptacion
 
-### 1. Conexion de Insomnia (pendiente de acceso al proyecto)
+### 1. Conexion de Insomnia (pendiente de migracion controlada)
 
 - Revisar historia de migraciones en el Supabase de Insomnia. Aplicar
   `20260924220000_kineva_render_jobs.sql`,
   `20260924221000_kineva_multishot.sql` y
   `20260925144000_kineva_job_renewal.sql` y
   `20260925145500_shorts_media_privacy.sql` en orden.
+- Auditar y adaptar las diez Edge Functions de Insomnia que llaman al gateway
+  de IA de Lovable; su clave no se traslada al Supabase propio. Completar
+  tambien el bucket `story-gallery` tras examinar el export de Storage.
 - Desplegar `generate-novel` y `kineva-video`; habilitar un UUID de creador
   mediante `KINEVA_ALLOWED_USER_IDS`.
 - Reiniciar el ComfyUI principal para cargar Plan Lock actualizado. Ejecutar
