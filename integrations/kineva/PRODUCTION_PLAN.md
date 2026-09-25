@@ -94,8 +94,11 @@ El 25 de septiembre la CLI inicio sesion, pero la cuenta autenticada no lista
 Supabase para Insomnia y Kineva: usar `kineva-staging`
 (`cexzmelshvbgabihtfvx`) como destino compartido. Una inspeccion de solo
 lectura encontro siete tablas Kineva con datos y ninguna migracion registrada;
-el dry-run propone las 16 de Insomnia. Faltan el respaldo de Kineva, la
-exportacion de Lovable, la conciliacion de esquemas y usuarios, y el recorrido
-conectado Studio -> Supabase -> worker -> Shorts. No se modifica
+el dry-run propone las 16 de Insomnia. El ZIP de Storage y su CSV se recibieron
+y verificaron el 25 de septiembre: 33 objetos en cuatro buckets, 49 033 175
+bytes sin comprimir, sin errores CRC, de ruta ni de tamano. Faltan la
+exportacion SQL de Lovable, el respaldo de Kineva, la conciliacion de esquemas
+y usuarios, y el recorrido conectado Studio -> Supabase -> worker -> Shorts.
+Los datos de media aun no se han importado. No se modifica
 `KINEVA_WORKFLOW_MASTER_QUALITY.json` hasta que el DEV supere las pruebas
 conectadas y la revision visual.

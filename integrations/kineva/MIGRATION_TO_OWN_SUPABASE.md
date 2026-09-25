@@ -29,12 +29,30 @@ propietario. No se ha cambiado el destino ni se ha escrito en Kineva Supabase.
 En Lovable: More -> Cloud -> Overview -> Advanced settings ->
 Export project data -> Database -> Export. El paquete incluye estructura,
 datos y usuarios con hashes de contrasena segun la documentacion oficial;
-verificar que el archivo real incluya Auth. Lovable reporta cuatro buckets
-con 33 objetos: `shorts-media` (8), `story-covers` (5),
-`story-gallery` (12) y `user-story-covers` (8). Solicitar ZIP de
-objetos conservando bucket/ruta y CSV de inventario, y descargarlos aparte
-de la base. Mantener respaldos fuera de git, Cursor chat y el frontend. No
-eliminar Lovable Cloud durante la transicion.
+verificar que el archivo real incluya Auth. **Esta exportacion SQL aun no esta
+en Descargas.** Mantener respaldos fuera de git, Cursor chat y el frontend.
+No eliminar Lovable Cloud durante la transicion.
+
+El 25 de septiembre se recibieron y verificaron por separado
+`insomnia-storage.zip` y `insomnia-storage-inventory.csv` en Descargas:
+
+| Bucket | Objetos | Bytes sin comprimir | MIME verificado |
+| --- | ---: | ---: | --- |
+| `shorts-media` | 8 | 23 072 515 | MP4 |
+| `story-covers` | 5 | 6 528 712 | PNG |
+| `story-gallery` | 12 | 2 317 158 | JPEG |
+| `user-story-covers` | 8 | 17 114 790 | MP4 |
+| **Total** | **33** | **49 033 175** | |
+
+Cada ruta `bucket/ruta` y tamano del CSV coincide con un archivo del ZIP;
+no hay archivos faltantes, extras ni duplicados. Los 33 pasan CRC y firma de
+tipo; no hay rutas de escape, entradas cifradas ni enlaces simbolicos. El
+archivo comprimido incluye 11 entradas de directorio. SHA-256 del ZIP:
+`c3764ba884ecf78fbe3cd27879d8b70bd11663d181f86b8f8b31fafcb43bc28c`;
+del CSV: `0e03f2d05f7684f6b9f20446c51e01f4d83c9df9a27d621ca24f3d65e165dbbb`.
+Conservar los originales; la validacion no los extrajo ni subio a Supabase.
+El ZIP y CSV no contienen una prueba suficiente del esquema, Auth, politicas de
+Storage o relaciones de la base: faltan el export SQL y su auditoria.
 
 El respaldo completo del origen contiene esquema, datos y Auth. **No restaurarlo
 sin filtrar sobre el Supabase de Kineva**: podria reemplazar sus siete tablas,
