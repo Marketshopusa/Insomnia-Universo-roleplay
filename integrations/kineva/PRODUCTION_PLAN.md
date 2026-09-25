@@ -16,7 +16,7 @@ referencias y resultados. La rama de trabajo es
 | Version | Nuevo intento de una sola toma | Se conserva el video anterior durante la reparacion |
 | Publicacion | Video unido con audio y manifiesto | El worker deja el montaje listo tras QC basico de todas las tomas; el creador publica la serie despues de revisarla |
 
-Las series de Kineva se crean sin publicar y solo el dueno las ve en el catalogo por RLS. Lovable reporta `shorts-media` como bucket privado en el origen; la politica SQL de lectura se debe contrastar con el export real. La migracion `20260925145500_shorts_media_privacy.sql` configura el bucket privado en el destino y restringe la firma de URLs al video actual de una serie publicada o a su dueno. Falta probar ambas cuentas despues del despliegue.
+Las series de Kineva se crean sin publicar y solo el dueno las ve en el catalogo por RLS. El backup confirma que `shorts-media` es privado en el origen, aunque su antigua politica SQL permite SELECT de todos los objetos. La migracion `20260925145500_shorts_media_privacy.sql` configura el bucket privado en el destino y restringe la lectura al video actual de una serie publicada o a su dueno. Las 8 rutas `video_url` originales coinciden con los 8 objetos del bucket. Falta probar ambas cuentas despues del despliegue.
 
 El texto hablado se fija despues del planificador y se compara con el plan del
 manifiesto antes de subir la toma. Esta comprobacion evita **perdidas de texto en
@@ -27,14 +27,19 @@ reconocimiento de voz y una revision humana deben comprobar la pista de audio.
 
 ### 1. Conexion de Insomnia (pendiente de migracion controlada)
 
-- Revisar historia de migraciones en el Supabase de Insomnia. Aplicar
+- Respaldar primero el Supabase compartido `kineva-staging` y auditar su
+  Auth, triggers, Storage y las 16 migraciones propuestas por el dry-run.
+  Preparar las tablas de Insomnia de forma selectiva; aplicar en orden
   `20260924220000_kineva_render_jobs.sql`,
-  `20260924221000_kineva_multishot.sql` y
+  `20260924221000_kineva_multishot.sql`,
   `20260925144000_kineva_job_renewal.sql` y
-  `20260925145500_shorts_media_privacy.sql` en orden.
+  `20260925145500_shorts_media_privacy.sql` solo tras validar el esquema
+  anterior y las politicas. No ejecutar `db push` completo en el destino
+  que ya tiene datos Kineva.
 - Auditar y adaptar las diez Edge Functions de Insomnia que llaman al gateway
-  de IA de Lovable; su clave no se traslada al Supabase propio. Completar
-  tambien el bucket `story-gallery` tras examinar el export de Storage.
+  de IA de Lovable; su clave no se traslada al Supabase propio. Crear el
+  bucket `story-gallery` privado y revisar su SELECT amplio del origen antes
+  de subir sus 12 archivos.
 - Desplegar `generate-novel` y `kineva-video`; habilitar un UUID de creador
   mediante `KINEVA_ALLOWED_USER_IDS`.
 - El ComfyUI principal en 8188 se reinicio el 25 de septiembre: Plan Lock
@@ -107,10 +112,13 @@ Supabase para Insomnia y Kineva: usar `kineva-staging`
 (`cexzmelshvbgabihtfvx`) como destino compartido. Una inspeccion de solo
 lectura encontro siete tablas Kineva con datos y ninguna migracion registrada;
 el dry-run propone las 16 de Insomnia. El ZIP de Storage y su CSV se recibieron
-y verificaron el 25 de septiembre: 33 objetos en cuatro buckets, 49 033 175
-bytes sin comprimir, sin errores CRC, de ruta ni de tamano. Faltan la
-exportacion SQL de Lovable, el respaldo de Kineva, la conciliacion de esquemas
-y usuarios, y el recorrido conectado Studio -> Supabase -> worker -> Shorts.
-Los datos de media aun no se han importado. No se modifica
+y verificaron: 33 objetos en cuatro buckets, 49 033 175 bytes. El backup
+PostgreSQL custom de Lovable tambien se recibio e inspecciono **sin restaurar**:
+contiene 12 tablas publicas, 2 usuarios Auth con identidades y perfiles, y las
+33 rutas de Storage correspondientes. El origen incluye sesiones y objetos
+internos que no se deben restaurar completos sobre Kineva. Faltan el respaldo
+y auditoria de Auth/esquema del destino, la migracion selectiva, la sustitucion
+del gateway de IA y el recorrido conectado Studio -> Supabase -> worker ->
+Shorts. Los medios aun no se han importado. No se modifica
 `KINEVA_WORKFLOW_MASTER_QUALITY.json` hasta que el DEV supere las pruebas
 conectadas y la revision visual.
