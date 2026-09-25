@@ -50,6 +50,13 @@ Conteos de filas publicas del respaldo (snapshot del 25 de septiembre):
 | `story_images` | 12 | `story_sessions` | 9 |
 | `user_stories` | 1 | `voice_settings` | 0 |
 
+La comparacion offline encontro las 12 tablas del origen en las migraciones:
+11 coinciden en nombres de columnas desde CREATE TABLE; las dos columnas
+adicionales de `user_stories` aparecen en una migracion ALTER TABLE. Los
+nombres de las 32 politicas publicas del backup tambien aparecen en las
+migraciones. Falta comparar definiciones completas, claves, RLS efectivo y
+el esquema **actual** del destino; estos conteos no autorizan un `db push`.
+
 El 25 de septiembre se recibieron y verificaron por separado
 `insomnia-storage.zip` y `insomnia-storage-inventory.csv` en Descargas:
 
