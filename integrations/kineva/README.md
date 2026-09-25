@@ -42,6 +42,12 @@ the private reference image; ComfyUI remains bound to localhost.
    the KinevaPlanLock custom node. The version used here is at
    integrations/kineva/comfy_nodes/KinevaPlanLock. The worker preflight confirms
    exact_dialogue, dialogue_language and project_id before it claims any job.
+   On this Windows workstation, start an idle ComfyUI session with
+   `powershell -ExecutionPolicy Bypass -File integrations/kineva/start-comfy.ps1`.
+   Run it first with `-CheckOnly` to verify paths. The launcher finds the
+   locally installed `llama-server.exe`, sets `MSB_LLAMA_SERVER` for the
+   planner process, and refuses to start while port 8188 is occupied. The
+   worker preflight alone does not exercise this planner executable.
 3. Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY only in the local worker's
    environment. Do not enter them into React, a browser, Cursor chat, or git.
    Ensure ComfyUI is running at http://127.0.0.1:8188 (or set KINEVA_COMFY_URL).
