@@ -119,6 +119,8 @@ contiene 12 tablas publicas, 2 usuarios Auth con identidades y perfiles, y las
 internos que no se deben restaurar completos sobre Kineva. Faltan el respaldo
 y auditoria de Auth/esquema del destino, la migracion selectiva, la sustitucion
 del gateway de IA y el recorrido conectado Studio -> Supabase -> worker ->
-Shorts. Los medios aun no se han importado. No se modifica
+Shorts. El script de copia logica de Kineva esta preparado y paso su
+prueba local de herramientas; espera host y contrasena en la propia PC.
+Los medios aun no se han importado. No se modifica
 `KINEVA_WORKFLOW_MASTER_QUALITY.json` hasta que el DEV supere las pruebas
 conectadas y la revision visual.

@@ -82,8 +82,11 @@ de `shorts-media`.
 para integrar en el unico Supabase compartido:
 
 1. Obtener respaldo verificable de `kineva-staging`, incluidos esquema, datos,
-   Auth y Storage. Inventariar sus UUID/correos de Auth, triggers, funciones,
-   politicas y buckets; comprobar colisiones con los 2 usuarios del origen.
+   Auth y Storage. El script [backup-kineva-staging.ps1](backup-kineva-staging.ps1)
+   crea una copia logica de la **base** con `pg_dump` y verifica su indice;
+   pide host y contrasena solo en la PC. Los bytes de Storage se respaldan
+   aparte. Inventariar UUID/correos de Auth, triggers, funciones, politicas y
+   buckets; comprobar colisiones con los 2 usuarios del origen.
 2. Comparar el esquema publico real del backup con las 16 migraciones del
    repositorio y el esquema actual de Kineva. Seleccionar solo los objetos
    propios de Insomnia; no importar esquemas administrados ni roles enteros.

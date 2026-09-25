@@ -80,9 +80,11 @@ Read-only inspection found seven existing Kineva tables with data and no
 recorded remote migrations; dry-run lists all 16 Insomnia migration files.
 This inventory does not prove that a full push or a database restore is safe.
 
-Follow [the migration runbook](MIGRATION_TO_OWN_SUPABASE.md) to export Lovable
-Cloud data and files, back up the existing Kineva database, then add Insomnia
-schema and data without replacing Kineva tables or users. After verifying
+The Lovable database backup and the 33 Storage files are downloaded and
+verified. Follow [the migration runbook](MIGRATION_TO_OWN_SUPABASE.md) and use
+[the local backup script](backup-kineva-staging.ps1) to back up the existing
+Kineva database before adding Insomnia schema and data. Storage file bytes
+require a separate backup. Keep Kineva tables and users intact. After verifying
 Auth, storage and Edge Functions, configure `KINEVA_ALLOWED_USER_IDS` with the
 creator's Auth UUID. The worker keeps its service-role key only in its local
 process. Run the private Studio-to-Shorts smoke and access-denial tests before
