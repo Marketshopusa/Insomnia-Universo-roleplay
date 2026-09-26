@@ -55,6 +55,8 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
    const deleteProject = useDeleteNovelProject();
  
   const [model, setModel] = useState("apprentice-6");
+  const [videoProvider, setVideoProvider] = useState<"gateway" | "kineva">("gateway");
+  const [referenceImage, setReferenceImage] = useState<File | null>(null);
   const [creativity, setCreativity] = useState("balanced");
   const [description, setDescription] = useState("");
   const [chapterCount, setChapterCount] = useState(7);
@@ -77,19 +79,42 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
   const createVideosForNovel = async (generated: any) => {
     const chapters = generated?.chapters ?? [];
     if (chapters.length === 0) throw new Error("La novela no contiene capítulos para convertir en videos");
+    if (videoProvider === "kineva") {
+      const oversized = chapters.find((chapter: { content?: string }) =>
+        ((chapter.content ?? "").trim().match(/\S+/gu) ?? []).length > 384);
+      if (oversized) throw new Error("Un capítulo supera las 384 palabras permitidas para esta vista previa de Kineva. Genera capítulos más breves antes de crear la serie.");
+    }
 
     setGeneratingVideos(true);
     setVideoProgress("Creando la serie de Shorts…");
 
+    let referencePath: string | null = null;
+    if (videoProvider === "kineva") {
+      if (!referenceImage || !user) throw new Error("Kineva necesita una imagen de referencia para mantener la identidad visual");
+      const ext = referenceImage.name.split(".").pop()?.toLowerCase();
+      if (!ext || !["png", "jpg", "jpeg", "webp"].includes(ext) || referenceImage.size > 10_000_000) {
+        throw new Error("Usa una imagen PNG, JPEG o WebP de hasta 10 MB");
+      }
+      referencePath = `${user.id}/${crypto.randomUUID()}.${ext}`;
+      const { error: uploadError } = await supabase.storage
+        .from("kineva-references").upload(referencePath, referenceImage, { upsert: false });
+      if (uploadError) throw uploadError;
+    }
+
     const { data: series, error: seriesError } = await supabase
       .from("shorts_series")
       .insert({
+        video_provider: videoProvider,
+        kineva_reference_image_path: referencePath,
+        kineva_bible: videoProvider === "kineva" ? {
+          characters: generated.characters ?? [], setting: generated.setting ?? {}, language,
+        } : {},
         title: generated.title || "Serie sin título",
         premise: generated.logline || description || null,
         category: "romance",
         is_adult: !isSafeForWork,
         created_by: user?.id,
-        is_published: true,
+        is_published: videoProvider !== "kineva",
       })
       .select()
       .single();
@@ -101,7 +126,7 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
       series_id: series.id,
       episode_number: chapter.number ?? index + 1,
       title: chapter.title || `Capítulo ${index + 1}`,
-      script: (chapter.content ?? "").slice(0, 2000),
+      script: chapter.content ?? "",
       video_prompt: `${chapter.video_prompt || chapter.content?.slice(0, 500) || ""}. Spoken dialogue and narration must be in ${language}. Tell the story through voices and actions only; never show captions, subtitles, narration, dialogue, or story text on screen.`,
       status: "pending",
     }));
@@ -115,10 +140,12 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
     }
 
     let started = 0;
-    for (let index = 0; index < episodes.length; index += 1) {
+    const episodesToStart = videoProvider === "kineva" ? episodes.slice(0, 1) : episodes;
+    for (let index = 0; index < episodesToStart.length; index += 1) {
       setVideoProgress(`Iniciando video ${index + 1} de ${episodes.length}…`);
-      const { data, error } = await supabase.functions.invoke("shorts-video", {
-        body: { action: "create", episodeId: episodes[index].id },
+      const functionName = videoProvider === "kineva" ? "kineva-video" : "shorts-video";
+      const { data, error } = await supabase.functions.invoke(functionName, {
+        body: { action: "create", episodeId: episodesToStart[index].id },
       });
       if (!error && !data?.error) started += 1;
     }
@@ -127,7 +154,9 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
 
     toast({
       title: "Proyecto y videos creados",
-      description: `${started} de ${episodes.length} videos están generándose en la pestaña Shorts.`,
+      description: videoProvider === "kineva"
+        ? "Primera entrega en cola; las demás quedan listas para iniciar en Shorts."
+        : `${started} de ${episodes.length} videos se están generando en la pestaña Shorts.`,
     });
   };
 
@@ -151,6 +180,7 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
           language,
           creativity,
           isSafeForWork,
+          videoProvider,
         },
       });
       if (error || data?.error) throw new Error(data?.error || error?.message);
@@ -310,6 +340,7 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
          <div className="container mx-auto px-4 py-16 text-center">
           <h1 className="text-3xl font-display mb-4">{t("studio.title")}</h1>
           <p className="text-muted-foreground mb-6">{t("studio.loginRequired")}</p>
+          {import.meta.env.DEV && <p className="mb-4"><Link to="/studio/kineva-local" className="underline">Crear video con Kineva en esta PC</Link></p>}
            <Link to="/login">
             <Button>{t("nav.login")}</Button>
            </Link>
@@ -322,8 +353,21 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
      <MainLayout>
        <div className="container mx-auto px-4 py-8 max-w-4xl">
         <h1 className="text-3xl font-display text-center mb-8">{t("studio.title")}</h1>
+        {import.meta.env.DEV && <p className="mb-6 text-center"><Link to="/studio/kineva-local" className="underline">Animar una foto o crear una miniserie con Kineva local</Link></p>}
  
          {/* AI Settings */}
+         <Card className="p-6 mb-6 space-y-2">
+           <Label>Motor de video</Label>
+           <Select value={videoProvider} onValueChange={(v) => setVideoProvider(v as "gateway" | "kineva")}>
+             <SelectTrigger><SelectValue /></SelectTrigger>
+             <SelectContent>
+               <SelectItem value="gateway">Generador actual</SelectItem>
+                {import.meta.env.VITE_KINEVA_ENABLED === "true" && (
+               <SelectItem value="kineva">Kineva local · miniseries</SelectItem>
+                )}
+             </SelectContent>
+           </Select>
+         </Card>
          <Card className="p-6 mb-6">
           <h2 className="text-lg font-medium text-center mb-6">{t("studio.aiSection")}</h2>
            
@@ -362,7 +406,19 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
            </div>
          </Card>
  
-         {/* Description */}
+         {videoProvider === "kineva" && (
+          <Card className="p-6 mb-6 space-y-3">
+            <Label htmlFor="kineva-reference">Referencia visual para toda la miniserie</Label>
+            <input id="kineva-reference" type="file" accept="image/png,image/jpeg,image/webp"
+              onChange={(event) => setReferenceImage(event.target.files?.[0] ?? null)}
+              className="block w-full text-sm" />
+            <p className="text-xs text-muted-foreground">
+              Elige una imagen con un protagonista claro, sin otras personas ni montajes, y describe un escenario coherente. El render requiere el trabajador local activo.
+            </p>
+          </Card>
+        )}
+
+        {/* Description */}
          <Card className="p-6 mb-6">
           <h2 className="text-lg font-medium text-center mb-4">{t("studio.description")}</h2>
            <Textarea

@@ -23,6 +23,10 @@ Deno.serve(async (req) => {
     const language: string = (body.language ?? "Spanish").toString();
     const creativity: string = (body.creativity ?? "balanced").toString();
     const sfw: boolean = !!body.isSafeForWork;
+    const kineva: boolean = body.videoProvider === "kineva";
+    const videoPromptSpec = kineva
+      ? "prompt tecnico EN INGLES para una secuencia 9:16 de tomas conectadas de aproximadamente 15 segundos cada una, con identidad, vestuario, escenario y voz persistentes; detalla acciones y transiciones visuales sin texto en pantalla"
+      : "prompt tecnico EN INGLES para un video 9:16 de 15 segundos con tres momentos [0-5s], [5-10s], [10-15s] y camara en movimiento; sin texto en pantalla";
 
     const tempMap: Record<string, number> = {
       conservative: 0.5,
@@ -42,20 +46,20 @@ Tu salida DEBE ser JSON valido, sin texto extra, con esta forma exacta:
   "setting": {"place":"...","time":"...","visual_style":"prompt en INGLES de estilo visual, paleta e iluminacion, consistente para toda la serie"},
   "outline": "resumen por capitulos en markdown",
   "chapters": [
-    {"number":1,"title":"...","summary":"...","characters_present":["..."],"content":"texto completo del capitulo","video_prompt":"prompt tecnico EN INGLES para un video 9:16 de 15 segundos que reutiliza literalmente las descripciones visuales de los personajes presentes y el visual_style; incluye tres momentos [0-5s], [5-10s], [10-15s], acciones visibles, desplazamiento, interaccion con el entorno y camara en movimiento; la narracion y el dialogo deben escucharse en ${language}; nunca deben aparecer escritos en pantalla"}
+    {"number":1,"title":"...","summary":"...","characters_present":["..."],"content":"texto completo del capitulo","video_prompt":"${videoPromptSpec}"}
   ]
 }
 REGLAS DE PERSISTENCIA (criticas):
 - Define los personajes UNA vez y no cambies jamas su apariencia, edad, nombre ni vestuario base.
 - Cada "video_prompt" debe repetir textualmente el "visual_prompt" de cada personaje que aparece, para que el generador de video no los altere.
 - Cada capitulo debe tener una puesta en escena distinta: alterna localizaciones, acciones, objetos, distancias de camara y movimientos. No repitas dos personajes quietos frente a frente hablando.
-- El video_prompt debe narrar una sola escena visual de 15 segundos con movimiento continuo y tres beats temporales; evita poses estaticas y fotografias animadas.
+- ${kineva ? "El video_prompt debe coordinar tomas visuales sucesivas de aproximadamente 15 segundos, sin condensar todo el capitulo en una sola toma." : "El video_prompt debe narrar una sola escena visual de 15 segundos con tres beats temporales."}
 - La historia del short se cuenta mediante voces y acciones. Prohibido mostrar dialogos, narracion, captions, subtitulos o bloques de texto sobre el video.
 - El titulo, logline, outline, titulos de capitulos, contenido, narracion y dialogos deben estar completamente en ${language}.
 - Aunque las instrucciones visuales tecnicas esten en ingles, toda voz, conversacion, subtitulo o texto perceptible del short debe estar en ${language}.
 - Todos los personajes son adultos de 25+ anios.
 ${sfw ? "- Contenido apto para el trabajo: sin sexo ni desnudez." : "- Tono sensual y adulto sugerente, sin describir actos sexuales explicitos ni desnudez."}
-- Cada capitulo: 4-6 parrafos con dialogo entre comillas.
+- ${kineva ? "Cada capitulo: 4-6 parrafos breves, entre 160 y 280 palabras (maximo 384), con dialogo entre comillas." : "Cada capitulo: 4-6 parrafos con dialogo entre comillas."}
 - Exactamente ${chapters} capitulos numerados y conectados.`;
 
     const aiRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
