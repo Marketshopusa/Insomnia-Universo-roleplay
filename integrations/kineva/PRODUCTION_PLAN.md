@@ -18,6 +18,16 @@ referencias y resultados. La rama de trabajo es
 
 Las series de Kineva se crean sin publicar y solo el dueno las ve en el catalogo por RLS. El backup confirma que `shorts-media` es privado en el origen, aunque su antigua politica SQL permite SELECT de todos los objetos. La migracion `20260925145500_shorts_media_privacy.sql` configura el bucket privado en el destino y restringe la lectura al video actual de una serie publicada o a su dueno. Las 8 rutas `video_url` originales coinciden con los 8 objetos del bucket. Falta probar ambas cuentas despues del despliegue.
 
+El ensayo controlado de una persona dio una pista de ritmo: cinco palabras
+en 5,875 s originaron voz ajena; trece palabras en 5,167 s produjeron el
+guion solicitado en dos ASR. Una muestra no fija un umbral universal.
+Antes de enviar los capitulos de hasta 32 palabras por toma al Director,
+validar que la duracion prevista permita decirlas con naturalidad;
+probar segmentos cortos, medios y largos y rechazar o replanificar
+las tomas cuyo audio final tenga palabras inventadas u omitidas.
+El maximo de 12 tomas/384 palabras es un limite de producto, no una
+prueba de viabilidad vocal para cada toma.
+
 El texto hablado se fija despues del planificador y se compara con el plan del
 manifiesto antes de subir la toma. Esta comprobacion evita **perdidas de texto en
 el plan**; no demuestra que cada palabra sea audible en el video final. El
@@ -49,11 +59,33 @@ composicion fija, no prueba identidad ni camara estable en todas las
 situaciones, y todavia no es puerta automatica. La transcripcion del
 preview Depth contiene una frase adicional poco clara que no figura en
 el plan. Escuchar y repetir con dialogo proporcional a la duracion.
-Una prueba con upscale a resolucion de entrega esta en curso. H3 redondea
-125 frames a 141 (reticula 17k+5); una toma de otra duracion necesita
-una guia repetida para sus propios frames. Solo habilitar esta rama de
-control en el DEV tras validar espacio, duracion, audio y montaje; no
-activar indiscriminadamente para tomas con movimiento deliberado.
+La toma con upscale a 768x1360 termino: 141 fotogramas, audio AAC,
+`qc.issues=[]`, sin saltos (maximo delta 0,008244), composicion
+estable en muestreo visual y deriva 0,022260. No supera audio: dos
+ASR locales reconocen una frase ajena entre "Hola" y "Hoy empieza
+nuestra historia". El texto del plan no garantiza sonido exacto.
+La nueva vista previa con 13 palabras y 124 frames mantuvo el encuadre
+(deriva0,032182) y una ASR local recupero exactamente el guion; la
+segunda recupero el contenido con una particula adicional. Solo fallo
+el ancho de preview 544x960.
+
+La version 768x1360 con refino paso QC tecnico y dos ASR reconocen
+el guion exacto, pero presenta manchas azul/violeta en el cabello
+entre0,8y4,2s: rechazada visualmente. Con el mismo seed, foto, texto
+y guia Depth 124, el upscale neuronal SIN refino produjo 124 fotogramas
+768x1360, `qc.issues=[]`, dos ASR con el texto pedido y ninguna mancha
+azul en los fotogramas revisados. Se ve mas suave que la alternativa
+FFmpeg Lanczos + unsharp sobre la vista previa limpia: 124 fotogramas
+768x1360, sin salto medido y con AAC bit a bit identico al original.
+Esta salida CPU es un diagnostico DEV; no tiene KinevaRunManifest
+oficial. En este ensayo el refino esta asociado al artefacto, sin prueba
+suficiente para afirmar la causa universal. Incorporar inspeccion de
+artefactos cromaticos, escucha humana y labios al criterio de revision.
+H3 redondea 125 frames a 141 (reticula 17k+5); `KinevaH3FrameCount`
+conectado a RepeatImageBatch dio 124 cuadros reales para plan de 124
+(prompt 72818cc0-8b2b-41b1-835b-957b07802cae). La rama Depth en
+el DEV esta desactivada de inicio; usar solo para toma estatica y
+validar duracion, audio y montaje antes de promoverla al worker.
 
 Una transcripcion local puede detectar dialogo omitido o instrucciones
 visuales habladas, como ocurrio en la primera toma. Guardar evidencia

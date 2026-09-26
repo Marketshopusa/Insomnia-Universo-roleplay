@@ -66,6 +66,21 @@ Insomnia aparecen en los SQL del repositorio; tambien existe un trigger
 nombres no compara definiciones completas, claves ni RLS efectivo y no
 autoriza un `db push` sobre el destino con datos.
 
+**Semillas historicas que interfieren con la importacion.** La primera
+migracion agrega 12 categorias y 12 historias de demostracion con UUID
+nuevos. La tercera borra esas categorias y carga 85 categorias; conserva
+las 12 historias de ejemplo. El backup incluye sus propios 85 registros
+de `categories` y 108 de `stories` con IDs que deben preservarse. Antes
+de cargar sus filas, el ensayo aislado debe comprobar que las tablas
+Insomnia recien creadas contienen solo las semillas esperadas
+(`categories=85`, `stories=12`, `story_categories=0`), y retirar las
+semillas de esas tres tablas en orden de dependencias. Con la app todavia
+sin apuntar al destino, verificar tambien que el resto de tablas Insomnia
+siguen vacias. Repetir conteos despues de importar: 85 categorias y 108
+historias, con las relaciones del origen intactas. No hacer este borrado
+en tablas con datos nuevos del usuario, no tocar las siete tablas Kineva
+y no asumir que `db push --dry-run` detectara este conflicto.
+
 El 25 de septiembre se recibieron y verificaron por separado
 `insomnia-storage.zip` y `insomnia-storage-inventory.csv` en Descargas:
 
@@ -107,9 +122,12 @@ para integrar en el unico Supabase compartido:
    repositorio y el esquema actual de Kineva. Seleccionar solo los objetos
    propios de Insomnia; no importar esquemas administrados ni roles enteros.
 3. Preparar tablas, indices, RLS y funciones de Insomnia sin borrar tablas ni
-   datos de Kineva. Conciliar `on_auth_user_created`, que inserta en
-   `public.profiles`, antes de cargar Auth. `profiles.id` y `profiles.user_id`
-   son UUID distintos; mantener las relaciones por `user_id`.
+   datos de Kineva. En el ensayo aislado comprobar y retirar las 85 categorias
+   y 12 historias sembradas por las migraciones antes de importar las filas
+   del respaldo; los UUID originales y referencias cruzadas deben sobrevivir.
+   Conciliar `on_auth_user_created`, que inserta en `public.profiles`, antes
+   de cargar Auth. `profiles.id` y `profiles.user_id` son UUID distintos;
+   mantener las relaciones por `user_id`.
 4. Tras comprobar conflictos de UUID y correo, insertar los 2 usuarios y sus
    identidades conservando hashes, con el trigger de perfiles controlado para
    evitar duplicados. Cargar los 2 perfiles y las filas publicas respetando

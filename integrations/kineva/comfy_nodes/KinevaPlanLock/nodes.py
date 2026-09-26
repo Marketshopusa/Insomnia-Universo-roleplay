@@ -223,9 +223,43 @@ class KinevaPlanLock(io.ComfyNode):
         )
 
 
+def _one_shot_h3_frames(story_plan):
+    shots = (story_plan or {}).get("shots") or []
+    if len(shots) != 1:
+        raise ValueError("Depth guide needs exactly one locked shot")
+    requested = shots[0].get("frames")
+    if isinstance(requested, bool) or not isinstance(requested, int):
+        raise ValueError("Depth guide needs an integer frame count")
+    if not 124 <= requested <= 362:
+        raise ValueError("Depth guide requires a trained H3 duration of 124-362 frames")
+    aligned = requested + (5 - requested) % 17
+    if aligned > 362:
+        raise ValueError("Depth guide exceeds the 362-frame H3 range")
+    return aligned
+
+
+class KinevaH3FrameCount(io.ComfyNode):
+    """Size a one-shot visual guide to H3's actual 17k+5 duration."""
+
+    @classmethod
+    def define_schema(cls):
+        return io.Schema(
+            node_id="KinevaH3FrameCount",
+            display_name="Kineva H3 Frame Count",
+            category=CATEGORY,
+            description="Round the locked one-shot plan to H3's 17k+5 frame grid.",
+            inputs=[StoryPlan.Input("story_plan")],
+            outputs=[io.Int.Output(display_name="aligned_frames")],
+        )
+
+    @classmethod
+    def execute(cls, story_plan):
+        return io.NodeOutput(_one_shot_h3_frames(story_plan))
+
+
 class KinevaPlanLockExtension(ComfyExtension):
     async def get_node_list(self):
-        return [KinevaPlanLock]
+        return [KinevaPlanLock, KinevaH3FrameCount]
 
 async def comfy_entrypoint():
     return KinevaPlanLockExtension()

@@ -41,7 +41,15 @@ the private reference image; ComfyUI remains bound to localhost.
    and Static Background Lock disabled. The UI workflow file
    KINEVA_MINISERIES_DEV.json is not an API prompt. Restart ComfyUI after updating
    the KinevaPlanLock custom node. The version used here is at
-   integrations/kineva/comfy_nodes/KinevaPlanLock. The worker preflight confirms
+   integrations/kineva/comfy_nodes/KinevaPlanLock. The DEV UI workflow
+   also contains an optional Depth guide from its reference image. `KinevaH3FrameCount` sizes the repeated Depth frames
+   to a single locked shot. It is disabled by default and is not part of the
+   production API template. The installed node was updated and ComfyUI
+   restarted; a live RepeatImageBatch/PreviewImage smoke returned 124 frames
+   from a 124-frame locked shot (prompt `72818cc0-8b2b-41b1-835b-957b07802cae`).
+   Keep the control branch for a fixed-camera shot; the separate candidate
+   API graph in DEV_TESTS is not used by the worker.
+   The worker preflight confirms
    exact_dialogue, dialogue_language and project_id before it claims any job.
    On this Windows workstation, start an idle ComfyUI session with
    `powershell -ExecutionPolicy Bypass -File integrations/kineva/start-comfy.ps1`.
@@ -70,7 +78,7 @@ the private reference image; ComfyUI remains bound to localhost.
 
 From the Insomnia repository run `py -3 -m unittest integrations.kineva.test_contract -v`
 to verify the exact MINISERIES and TALKING_PRESENTER script, camera/take settings,
-extra-shot rejection, unsafe project ID and worker lease behavior (7 tests).
+extra-shot rejection, unsafe project ID and worker lease behavior (8 tests).
 The worker `--preflight` checks ComfyUI without cloud access. The H3 test with
 a single-person reference produced a 15.08-second video with AAC audio, but QC
 flagged a seated-to-standing jump at frame 10. Its Plan Lock also spoke the
@@ -84,12 +92,28 @@ A Depth Anything v2 visual guide with H3 Fun ControlNet (strength 0.45)
 held the subject and background stable in a 544x960 preview: no temporal
 cuts, but the size issue is expected at preview resolution. Local ASR
 transcribed an extra, unclear phrase that is absent from the locked plan,
-so the shot has not passed audio review. A full-resolution render is in
-progress. The optional diagnostic `py -3 integrations/kineva/composition_probe.py
-<video.mp4>` samples grayscale frames: the two drifting previews scored
-0.271663 and 0.249837, while Depth scored 0.021717. These three samples
-only demonstrate a useful signal; the diagnostic does not accept/reject
-shots. Review the actual frames and spoken track before a connected test.
+so the shot has not passed audio review. The full-resolution 768x1360
+render held the same woman, wall and framing throughout, passed technical
+QC with `issues=[]`, and scored 0.022260 in the composition probe.
+Two independent local ASR models detected extra speech between the exact
+requested phrases. It is rejected for audio.
+A 13-word, 124-frame Depth preview held its composition (max grayscale
+drift 0.032182) and small Spanish ASR transcribed the script; tiny added
+an article. At 768x1360, a matched upscale plus refine passed technical QC
+and both local ASR models recovered the words, but a blue/purple hair artifact
+appears for several seconds: reject it visually. Keeping the same script,
+seed, photo and Depth guide, neural upscale with `refine_sigmas=(off)`
+passed technical QC, showed no blue hair in sampled frames and both ASR models
+recovered the words; it is softer than a CPU Lanczos upscale of the clean
+preview. That FFmpeg DEV comparison yields 768x1360, 124 frames, no sampled
+blue artifact, no measured cuts and a bitstream-identical AAC track. It is
+a diagnostic candidate, not a worker-approved master: listening, lip sync,
+multiple shots and the official manifest remain pending. The comparison
+implicates refinement in this particular artifact, without proving its cause.
+The optional `py -3 integrations/kineva/composition_probe.py <video.mp4>`
+samples grayscale frames; two drifting previews scored 0.271663 and
+0.249837, while a Depth preview scored 0.021717. This diagnostic has no
+calibrated acceptance threshold and cannot detect colored hair artifacts.
 
 ## Shared Supabase: Insomnia and Kineva
 
@@ -99,6 +123,10 @@ The current frontend still uses Lovable Cloud (`pbormuamewbajnylzfqs`).
 Read-only inspection found seven existing Kineva tables with data and no
 recorded remote migrations; the read-only dry-run lists all 17 migrations, without validating SQL compatibility.
 This inventory does not prove that a full push or a database restore is safe.
+Historical migrations insert 85 categories and leave 12 demo stories with
+new UUIDs. Before importing the backup's rows, an isolated rehearsal must
+verify and remove those seeds from newly created Insomnia tables; see the
+runbook for the exact counts and safeguards.
 
 The Lovable database backup and 33 Storage files are verified. The
 [local backup script](backup-kineva-staging.ps1) generated and verified the
@@ -118,8 +146,8 @@ changing the published app. The PR remains a draft; no cloud writes yet.
 | Gate | Evidence required |
 | --- | --- |
 | DEV nodes | /object_info has Plan Lock, Voice Router, Background Lock, QC, Master Export, project context and motion preprocessors. Confirmed 2026-09-24. |
-| DEV runtime | The first test failed QC at frame 14. A one-person test failed QC at frame 10 and spoke its visual instructions. Plan Lock was fixed; the next 5.875-second H.264/AAC render passed temporal QC and local transcription of the exact five words, but visually pans from legs to face. The lower-resolution framing preview starts on the face, then zooms out. A Depth ControlNet preview holds framing stable, but its ASR includes an unrequested phrase and its low resolution is intentional. Full-resolution and audio review are pending. |
-| Job contract | Five migrations, Edge Function, worker and synthetic two-shot FFmpeg assembly pass local checks; seven contract tests cover exact dialogue, presenter settings and lease renewal. Privacy policy and SQL still need connected verification. No cloud mutation yet. |
+| DEV runtime | The first test failed QC at frame 14. A one-person test failed QC at frame 10 and spoke its visual instructions. Plan Lock was fixed; the next 5.875-second H.264/AAC render passed temporal QC and local transcription of the exact five words, but visually pans from legs to face. The lower-resolution framing preview starts on the face, then zooms out. A Depth ControlNet preview and 768x1360 master hold framing stable, but both local ASR models detect unrequested speech in the master despite `qc.issues=[]`. The 13-word, 124-frame preview holds composition; its refined master has a visible blue hair artifact and is rejected. The controlled neural upscale without refine is clean in sampled frames and technically passes QC, but looks soft; a CPU Lanczos diagnostic is sharper, with the source AAC stream preserved byte for byte. Neither is accepted as a published master until human listening, lip sync, official QC/manifest and linked-shot tests; reject the five-word master for extra speech. |
+| Job contract | Five migrations, Edge Function, worker and synthetic two-shot FFmpeg assembly pass local checks; eight contract tests cover exact dialogue, presenter settings and lease renewal. Privacy policy and SQL still need connected verification. No cloud mutation yet. |
 | Connected smoke | Deploy migration/function, upload a neutral reference, queue one short episode, verify ownership rejection, output path, manifest and playback. Pending. |
 | Micro miniseries | Render 2â€“3 linked clips with the same reference, wardrobe, setting, voice and scene bible; compare identity and audio across cuts. Pending. |
 | Selective repair | Request a second take of one shot; verify other episodes and prior video remain intact and only the approved take replaces the published path. Pending. |

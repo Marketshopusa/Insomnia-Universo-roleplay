@@ -100,6 +100,16 @@ class DialogueContractTest(unittest.TestCase):
             lock.KinevaPlanLock.execute(
                 self.plan, profile="MINISERIES", exact_dialogue="A line.")
 
+    def test_depth_guide_covers_the_actual_h3_frames(self):
+        self.plan["shots"][0]["frames"] = 125
+        (frames,) = lock.KinevaH3FrameCount.execute(self.plan)
+        self.assertEqual(frames, 141)
+        self.plan["shots"][0]["frames"] = 124
+        self.assertEqual(lock.KinevaH3FrameCount.execute(self.plan), (124,))
+        self.plan["shots"] *= 2
+        with self.assertRaisesRegex(ValueError, "one locked shot"):
+            lock.KinevaH3FrameCount.execute(self.plan)
+
     def test_project_identity_rejects_path_input(self):
         with self.assertRaisesRegex(ValueError, "Unsafe"):
             lock.KinevaPlanLock.execute(
