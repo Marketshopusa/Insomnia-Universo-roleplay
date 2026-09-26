@@ -340,6 +340,7 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
          <div className="container mx-auto px-4 py-16 text-center">
           <h1 className="text-3xl font-display mb-4">{t("studio.title")}</h1>
           <p className="text-muted-foreground mb-6">{t("studio.loginRequired")}</p>
+          {import.meta.env.DEV && <p className="mb-4"><Link to="/studio/kineva-local" className="underline">Crear video con Kineva en esta PC</Link></p>}
            <Link to="/login">
             <Button>{t("nav.login")}</Button>
            </Link>
@@ -352,6 +353,7 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
      <MainLayout>
        <div className="container mx-auto px-4 py-8 max-w-4xl">
         <h1 className="text-3xl font-display text-center mb-8">{t("studio.title")}</h1>
+        {import.meta.env.DEV && <p className="mb-6 text-center"><Link to="/studio/kineva-local" className="underline">Animar una foto o crear una miniserie con Kineva local</Link></p>}
  
          {/* AI Settings */}
          <Card className="p-6 mb-6 space-y-2">

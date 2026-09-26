@@ -24,6 +24,31 @@ the private reference image; ComfyUI remains bound to localhost.
   after all montages are ready.
 - The stable KINEVA_WORKFLOW_MASTER_QUALITY.json is outside this integration.
 
+## Local Insomnia creator (no cloud credentials)
+
+On the ComfyUI Windows workstation, run
+integrations/kineva/start-local-studio.ps1. Open
+http://127.0.0.1:8080/studio/kineva-local in the same PC browser.
+This page is part of the Insomnia React app. It accepts a photo and an ordinary
+sentence, sends both to the loopback-only local_creator.py service, and lets the
+existing ComfyUI LLM expand the visual plan internally. It never asks a user
+to edit plan_json or load a DEV_TESTS/*_api.json graph into the UI. A short
+series of up to three clips is rendered sequentially; progress, playback and
+download are shown on the page.
+
+The server binds only to 127.0.0.1:8787 and accepts POST requests from the
+local Insomnia dev origin on port 8080 (or Vite ports 5173/5174). Rendered
+videos are served from the local ComfyUI output folder. Restarting the service
+clears in-memory job status, though rendered files remain in ComfyUI output.
+
+This local entry point is separate from the cloud Supabase queue. Cloud
+deployment, paid-user isolation, provider replacement for Lovable AI, and
+connected cloud smoke tests are still pending. Motion and identity fidelity
+require visual review for each new use case, particularly standing or dancing
+from a seated reference. The current installed ComfyUI image models do not
+provide general text-to-image generation; local video creation needs an input
+photo. The production KINEVA_WORKFLOW_MASTER_QUALITY.json is untouched.
+
 ## Runtime preparation
 
 1. Apply supabase/migrations/20260924220000_kineva_render_jobs.sql,

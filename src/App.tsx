@@ -11,6 +11,7 @@ import { AdultModeProvider } from "@/contexts/AdultModeContext";
  import Login from "./pages/Login";
  import Register from "./pages/Register";
  import Studio from "./pages/Studio";
+import KinevaLocal from "./pages/KinevaLocal";
  import MyStories from "./pages/MyStories";
  import Plans from "./pages/Plans";
  import StoryDetail from "./pages/StoryDetail";
@@ -33,6 +34,7 @@ import Shorts from "./pages/Shorts";
                <Route path="/login" element={<Login />} />
                <Route path="/register" element={<Register />} />
                <Route path="/studio" element={<Studio />} />
+                {import.meta.env.DEV && <Route path="/studio/kineva-local" element={<KinevaLocal />} />}
                <Route path="/my-stories" element={<MyStories />} />
                <Route path="/plans" element={<Plans />} />
                <Route path="/shorts" element={<Shorts />} />
