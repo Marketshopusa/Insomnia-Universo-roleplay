@@ -38,6 +38,23 @@ fondo, ropa y posicion permanezcan coherentes. Antes de automatizar esa
 puerta, medir similitud de composicion y presencia del personaje sobre
 tomas aprobadas y fallidas, con revision humana de los casos dudosos.
 
+Ensayo del 25/26 de septiembre: Depth Anything v2 vits sobre la
+referencia, repetido durante 141 fotogramas a 544x960, ControlNet H3 Fun
+DEPTH fuerza 0,45 durante toda la toma. La mujer y el muro permanecen en
+encuadre (maximo delta temporal 0,009831). El diagnostico
+`composition_probe.py` mide diferencias de luminancia del primer frame
+respecto al 25, 50 y 90 %: dos vistas previas que reencuadran dieron
+maximos 0,271663 y 0,249837; Depth dio 0,021717. Es un cribado de
+composicion fija, no prueba identidad ni camara estable en todas las
+situaciones, y todavia no es puerta automatica. La transcripcion del
+preview Depth contiene una frase adicional poco clara que no figura en
+el plan. Escuchar y repetir con dialogo proporcional a la duracion.
+Una prueba con upscale a resolucion de entrega esta en curso. H3 redondea
+125 frames a 141 (reticula 17k+5); una toma de otra duracion necesita
+una guia repetida para sus propios frames. Solo habilitar esta rama de
+control en el DEV tras validar espacio, duracion, audio y montaje; no
+activar indiscriminadamente para tomas con movimiento deliberado.
+
 Una transcripcion local puede detectar dialogo omitido o instrucciones
 visuales habladas, como ocurrio en la primera toma. Guardar evidencia
 de texto planeado, audio transcrito y escucha humana para confirmar
@@ -103,6 +120,21 @@ pronunciacion, dialogo completo, sincronizacion labial, volumen y cortes. El
 actual QC comprueba errores tecnicos y presencia de audio, pero aun no mide
 automaticamente identidad, labios o dialogo audible. Corregir una toma y
 comparar que el resto del episodio no cambie.
+
+Ensayo controlado de tres episodios con referencia ficticia propia y
+acceso restringido al creador:
+
+| Episodio | Toma(s) | Prueba de continuidad | Criterio de revision |
+| --- | --- | --- | --- |
+| E01 apertura | Dos tomas breves ante el muro | Rostro/torso desde el primer frame; mismo vestuario, fondo y timbre | Texto audible completo, labios razonables, sin frase extra, montaje H.264/AAC reproducible. |
+| E02 consecuencia | Dos tomas con la misma protagonista y biblia | Identidad, luz y voz coherentes con E01 | Cambiar solo la segunda toma tras un fallo; conservar la version anterior hasta aprobar el nuevo montaje. |
+| E03 cierre | Una o dos tomas con continuidad narrativa | Mantener rostro, ropa y voz; todo cambio de escena debe ser deliberado y registrado | Ver las tres entregas seguidas desde Shorts antes de publicar. |
+
+Registrar por toma el ID del prompt, seed, referencia, dialogo, plan,
+manifiesto, salida, muestreo de frames y transcripcion. Un error de
+identidad, audio hablado o encuadre bloquea esa toma; una correccion no
+debe alterar las tomas ya aceptadas. El creador decide la publicacion
+solo despues de reproducir los montajes completos.
 
 ### 3. Escenas y varios personajes (pendiente)
 

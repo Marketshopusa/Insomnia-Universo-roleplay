@@ -80,8 +80,16 @@ a short second render has correct transcribed dialogue and no temporal QC issues
 but pans from feet to face instead of opening on the reference composition.
 The low-resolution framing preview starts with the face but gradually zooms
 out; technical QC marks its deliberate 544x960 resolution as too small.
-A frame/pose anchor and composition checks are the next DEV tasks before
-a connected Studio-to-Shorts test.
+A Depth Anything v2 visual guide with H3 Fun ControlNet (strength 0.45)
+held the subject and background stable in a 544x960 preview: no temporal
+cuts, but the size issue is expected at preview resolution. Local ASR
+transcribed an extra, unclear phrase that is absent from the locked plan,
+so the shot has not passed audio review. A full-resolution render is in
+progress. The optional diagnostic `py -3 integrations/kineva/composition_probe.py
+<video.mp4>` samples grayscale frames: the two drifting previews scored
+0.271663 and 0.249837, while Depth scored 0.021717. These three samples
+only demonstrate a useful signal; the diagnostic does not accept/reject
+shots. Review the actual frames and spoken track before a connected test.
 
 ## Shared Supabase: Insomnia and Kineva
 
@@ -110,7 +118,7 @@ changing the published app. The PR remains a draft; no cloud writes yet.
 | Gate | Evidence required |
 | --- | --- |
 | DEV nodes | /object_info has Plan Lock, Voice Router, Background Lock, QC, Master Export, project context and motion preprocessors. Confirmed 2026-09-24. |
-| DEV runtime | The first test failed QC at frame 14. A one-person test failed QC at frame 10 and spoke its visual instructions. Plan Lock was fixed; the next 5.875-second H.264/AAC render passed temporal QC and local transcription of the exact five words, but visually pans from legs to face. The lower-resolution framing preview starts on the face, then zooms out. It fails the size check by design; first-frame and camera controls need engineering before the connected test. |
+| DEV runtime | The first test failed QC at frame 14. A one-person test failed QC at frame 10 and spoke its visual instructions. Plan Lock was fixed; the next 5.875-second H.264/AAC render passed temporal QC and local transcription of the exact five words, but visually pans from legs to face. The lower-resolution framing preview starts on the face, then zooms out. A Depth ControlNet preview holds framing stable, but its ASR includes an unrequested phrase and its low resolution is intentional. Full-resolution and audio review are pending. |
 | Job contract | Five migrations, Edge Function, worker and synthetic two-shot FFmpeg assembly pass local checks; seven contract tests cover exact dialogue, presenter settings and lease renewal. Privacy policy and SQL still need connected verification. No cloud mutation yet. |
 | Connected smoke | Deploy migration/function, upload a neutral reference, queue one short episode, verify ownership rejection, output path, manifest and playback. Pending. |
 | Micro miniseries | Render 2â€“3 linked clips with the same reference, wardrobe, setting, voice and scene bible; compare identity and audio across cuts. Pending. |
@@ -135,9 +143,11 @@ control, voice reference and seed explicit per shot.
    including access denial for another account and an overlong chapter.
 2. Add a scene/shot editor and persistent wardrobe/location assets instead of
    reusing one reference image for every chapter.
-3. Measure spoken audio against the locked text (speech recognition), face similarity,
-   background drift, lip sync,
-   frame breaks and loudness across 2â€“3 clips. Put thresholds into the QC manifest.
+3. Measure spoken audio against the locked text (speech recognition and listening),
+   face similarity, background drift, lip sync, frame breaks and loudness across
+   2â€“3 clips. Calibrate composition thresholds on approved and failed takes
+   before putting them into the QC manifest. For static shots, size the Depth
+   hint to H3's rounded `17k+5` frame count; do not hard-code 141 frames.
 4. Test lease renewal with an actual connected long render; add resumable video
    upload, automatic retry policy, private review before publishing, and a credit
    reservation before moving this choice beyond controlled creators.

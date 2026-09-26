@@ -56,8 +56,15 @@ La comparacion offline encontro las 12 tablas del origen en las migraciones:
 11 coinciden en nombres de columnas desde CREATE TABLE; las dos columnas
 adicionales de `user_stories` aparecen en una migracion ALTER TABLE. Los
 nombres de las 32 politicas publicas del backup tambien aparecen en las
-migraciones. Falta comparar definiciones completas, claves, RLS efectivo y
-el esquema **actual** del destino; estos conteos no autorizan un `db push`.
+migraciones. Una lectura adicional de ambos respaldos con `pg_restore
+--schema-only --no-owner --no-acl` confirma que los nombres de 12 tablas,
+3 funciones, 2 tipos, 9 triggers y 32 politicas del esquema `public` de
+Insomnia no colisionan con los de Kineva (7 tablas y sin funciones,
+tipos, triggers o politicas propios en `public`). Los nombres de esos objetos
+Insomnia aparecen en los SQL del repositorio; tambien existe un trigger
+`on_auth_user_created` sobre `auth.users` en el origen. Este cotejo de
+nombres no compara definiciones completas, claves ni RLS efectivo y no
+autoriza un `db push` sobre el destino con datos.
 
 El 25 de septiembre se recibieron y verificaron por separado
 `insomnia-storage.zip` y `insomnia-storage-inventory.csv` en Descargas:
@@ -239,6 +246,20 @@ y probar texto, imagen, video, chat, traduccion, voz y transcripcion.
 Los modelos y formatos de respuesta se revisan por funcion; migrar solamente
 la base dejaria funcionalidades sin IA. El usuario no debe pagar ni activar
 proveedores nuevos antes de aprobar la seleccion y sus costos.
+
+Inventario del codigo de la rama, para preparar credenciales sin exponerlas:
+
+| Capacidad | Funciones actuales | Credenciales en el destino |
+| --- | --- | --- |
+| Texto, chat, traduccion y guion | `generate-narrative`, `generate-novel`, `generate-shorts-series`, `story-chat`, `translate` | Clave de un proveedor de texto elegido y pruebas de formato/modelo; la de Lovable no migra. |
+| Imagen y galeria | `illustrate-scene`, `story-gallery` | `NOVITA_API_KEY` para imagenes y una clave de texto para prompts/analisis que hoy usan Lovable. |
+| Video legado de Shorts | `shorts-video` | Credencial de un proveedor de video alternativo si se mantiene ese modo; Kineva local usa otra ruta. |
+| Voz y transcripcion | `text-to-speech`, `speech-to-text` | Credenciales de servicios TTS/STT a elegir y probar; `ELEVENLABS_API_KEY` figura en Lovable, pero este codigo no la invoca. |
+| Motor Kineva | `kineva-video` + worker local | UUID autorizado en `KINEVA_ALLOWED_USER_IDS` y clave `SUPABASE_SERVICE_ROLE_KEY` solo en proceso local del worker. |
+
+Supabase genera `SUPABASE_URL`, clave publica para navegador y clave de
+servicio para las funciones/worker. Aun no se ha seleccionado proveedor
+sustituto para todos los modos de IA ni colocado claves en el destino.
 
 ## 5. Prueba privada antes del cambio de destino
 
