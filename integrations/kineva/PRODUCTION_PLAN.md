@@ -162,6 +162,23 @@ acceso restringido al creador:
 | E02 consecuencia | Dos tomas con la misma protagonista y biblia | Identidad, luz y voz coherentes con E01 | Cambiar solo la segunda toma tras un fallo; conservar la version anterior hasta aprobar el nuevo montaje. |
 | E03 cierre | Una o dos tomas con continuidad narrativa | Mantener rostro, ropa y voz; todo cambio de escena debe ser deliberado y registrado | Ver las tres entregas seguidas desde Shorts antes de publicar. |
 
+Ensayo E01 local del 26 de septiembre: SH001 y SH002 usan la misma foto,
+vestuario y muro. SH002 (perfil MINISERIES, prompt
+`f7255c14-5079-4628-98b7-a4af324b30fa`) produjo 124 frames/5,167 s
+a 544x960; el QC solo marca ese ancho de preview. Su copia CPU Lanczos
+a 768x1360 conserva la pista AAC bit a bit. `worker.assemble` unio
+ambas tomas con Storage simulado **solo en local**: 248 fotogramas de
+video/10,333 s a 24 fps, audio AAC y duracion de contenedor10,374 s
+por relleno AAC; 3 367 253 bytes. En la muestra del corte se ve
+la misma mujer, ropa y muro; delta de luminancia 0,018708, sin umbral
+de aceptacion calibrado. Dos ASR del montaje completo transcriben ambas
+frases completas; tiny aislado de SH002 confunde una palabra, que requiere
+escucha humana. Sonoridad: -11,5/-11,1 LUFS por toma, diferencia0,4 LU.
+El MP4 e informe estan en `ACTIVE/DEV_TESTS`. Es un ensayo DEV:
+las vistas previas son sub720 y las copias CPU aun no pasan el
+KinevaRunManifest oficial. Falta escucha, labios, aprobacion de E01 y
+E02/E03 en una sesion conectada.
+
 Registrar por toma el ID del prompt, seed, referencia, dialogo, plan,
 manifiesto, salida, muestreo de frames y transcripcion. Un error de
 identidad, audio hablado o encuadre bloquea esa toma; una correccion no

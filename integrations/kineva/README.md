@@ -115,6 +115,23 @@ samples grayscale frames; two drifting previews scored 0.271663 and
 0.249837, while a Depth preview scored 0.021717. This diagnostic has no
 calibrated acceptance threshold and cannot detect colored hair artifacts.
 
+A second 13-word shot was rendered locally with the same reference and wall,
+MINISERIES Plan Lock and the live `KinevaH3FrameCount` guide; its 124-frame
+544x960 preview has the expected size-only QC issue and no measured cuts.
+A separate CPU Lanczos DEV upscale produced 768x1360 while copying the AAC
+bitstream. The real worker `assemble` function joined both CPU clips through
+a local fake Storage adapter: 248 video frames at 24 fps (10.333 s), AAC
+audio and a 10.374 s container duration including audio padding. Sampled
+frames show the same woman, outfit and wall across the cut; the grayscale
+seam delta was 0.018708 at 96x168 pixels (a diagnostic, not a threshold).
+Both Spanish ASR models transcribed both complete lines in the assembly.
+Standalone tiny ASR misheard one word in the second shot, so listening is
+necessary. The loudness of the two tracks differed by 0.4 LU. The full
+report and MP4 are under `Kineva-Workflows/ACTIVE/DEV_TESTS/` on Windows.
+These CPU clips do not have official QC/RunManifest acceptance; no remote
+Storage or database was touched. Human review of lip sync, voice, appearance
+and the full episode remains a release gate.
+
 ## Shared Supabase: Insomnia and Kineva
 
 Insomnia remains the main app. The owner chose the existing `kineva-staging`
@@ -149,7 +166,7 @@ changing the published app. The PR remains a draft; no cloud writes yet.
 | DEV runtime | The first test failed QC at frame 14. A one-person test failed QC at frame 10 and spoke its visual instructions. Plan Lock was fixed; the next 5.875-second H.264/AAC render passed temporal QC and local transcription of the exact five words, but visually pans from legs to face. The lower-resolution framing preview starts on the face, then zooms out. A Depth ControlNet preview and 768x1360 master hold framing stable, but both local ASR models detect unrequested speech in the master despite `qc.issues=[]`. The 13-word, 124-frame preview holds composition; its refined master has a visible blue hair artifact and is rejected. The controlled neural upscale without refine is clean in sampled frames and technically passes QC, but looks soft; a CPU Lanczos diagnostic is sharper, with the source AAC stream preserved byte for byte. Neither is accepted as a published master until human listening, lip sync, official QC/manifest and linked-shot tests; reject the five-word master for extra speech. |
 | Job contract | Five migrations, Edge Function, worker and synthetic two-shot FFmpeg assembly pass local checks; eight contract tests cover exact dialogue, presenter settings and lease renewal. Privacy policy and SQL still need connected verification. No cloud mutation yet. |
 | Connected smoke | Deploy migration/function, upload a neutral reference, queue one short episode, verify ownership rejection, output path, manifest and playback. Pending. |
-| Micro miniseries | Render 2â€“3 linked clips with the same reference, wardrobe, setting, voice and scene bible; compare identity and audio across cuts. Pending. |
+| Micro miniseries | Two E01 clips rendered and joined locally with matching sampled identity, wardrobe, background, exact full-episode ASR and closely matched loudness. Human voice/lip review, official CPU QC, a second duration and E02/E03 continuity are pending. No cloud publish. |
 | Selective repair | Request a second take of one shot; verify other episodes and prior video remain intact and only the approved take replaces the published path. Pending. |
 | Release | Human review of visual identity, lip sync, timing, copyright/consent of references and credit accounting. Pending. |
 
