@@ -15,6 +15,17 @@ interface Turn {
   content: string;
 }
 
+interface BrowserRecognition {
+  lang: string;
+  continuous: boolean;
+  interimResults: boolean;
+  onresult: ((event: { results: ArrayLike<{ 0: { transcript: string }; isFinal: boolean }> }) => void) | null;
+  onerror: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+  abort: () => void;
+}
+
 interface CallDialogProps {
   story: any;
   language: string;
@@ -51,6 +62,8 @@ export const CallDialog = ({
   const historyRef = useRef<Turn[]>(history);
   const activeRef = useRef(false);
   const timersRef = useRef<number[]>([]);
+  const recognitionRef = useRef<BrowserRecognition | null>(null);
+  const transcriptRef = useRef("");
 
   useEffect(() => {
     historyRef.current = history;
@@ -80,6 +93,9 @@ export const CallDialog = ({
     stopSpeaking();
     recorderRef.current?.cancel();
     recorderRef.current = null;
+    recognitionRef.current?.abort();
+    recognitionRef.current = null;
+    transcriptRef.current = "";
     setState("idle");
   };
 
@@ -141,6 +157,15 @@ export const CallDialog = ({
         explicit: story?.story_type === "real_sex" || !!story?.has_explicit_images,
     });
     if (error || !data?.content) {
+      const status = (error as { context?: Response } | null)?.context?.status;
+      if (status === 402 || data?.error === "credits_exhausted") {
+        return {
+          content: "", error: "credits_exhausted",
+          message: es
+            ? "El proveedor de IA no tiene creditos para responder."
+            : "The AI provider has no credits to respond.",
+        };
+      }
       return { content: "", error: data?.error, message: data?.message };
     }
     return { content: data.content, error: undefined, message: undefined };
@@ -157,6 +182,28 @@ export const CallDialog = ({
         return;
       }
       recorderRef.current = recorder;
+      transcriptRef.current = "";
+      const browser = window as Window & {
+        SpeechRecognition?: new () => BrowserRecognition;
+        webkitSpeechRecognition?: new () => BrowserRecognition;
+      };
+      const Recognition = browser.SpeechRecognition || browser.webkitSpeechRecognition;
+      if (Recognition) {
+        try {
+          const recognition = new Recognition();
+          recognition.lang = es ? "es-ES" : "en-US";
+          recognition.continuous = true;
+          recognition.interimResults = true;
+          recognition.onresult = (event) => {
+            transcriptRef.current = Array.from(event.results)
+              .map((result) => result[0]?.transcript || "").join(" ").trim();
+          };
+          recognition.start();
+          recognitionRef.current = recognition;
+        } catch {
+          recognitionRef.current = null;
+        }
+      }
 
       let silentFor = 0;
       let heardVoice = false;
@@ -198,6 +245,7 @@ export const CallDialog = ({
     clearTimers();
     if (!recorder) return;
     setState("thinking");
+    recognitionRef.current?.stop();
     const blob = await recorder.stop();
     if (!activeRef.current) return;
 
@@ -206,12 +254,27 @@ export const CallDialog = ({
       return;
     }
 
-    const audio = await blobToBase64(blob);
-    const { data, error } = await supabase.functions.invoke("speech-to-text", {
-      body: { audio, mimeType: "audio/wav", language: es ? "es" : "en" },
-    });
-    const userText = ((data as any)?.text || "").trim();
-    if (error || !userText) {
+    let userText = transcriptRef.current.trim();
+    recognitionRef.current = null;
+    if (!userText) {
+      const audio = await blobToBase64(blob);
+      const { data, error } = await supabase.functions.invoke("speech-to-text", {
+        body: { audio, mimeType: "audio/wav", language: es ? "es" : "en" },
+      });
+      userText = ((data as any)?.text || "").trim();
+      if (error || (data as any)?.error) {
+        toast({
+          title: es ? "No se pudo transcribir la llamada" : "Could not transcribe the call",
+          description: es
+            ? "La voz en la nube no esta disponible. Puedes escribir tu mensaje en el chat."
+            : "Cloud transcription is unavailable. You can type your message in chat.",
+          variant: "destructive",
+        });
+        hangUp();
+        return;
+      }
+    }
+    if (!userText) {
       if (activeRef.current) void listen();
       return;
     }
@@ -223,15 +286,18 @@ export const CallDialog = ({
       historyRef.current = [...historyRef.current, { role: "user", content: userText }];
       onTurn(userText, null);
       toast({
-        title: replyResult.error === "content_blocked"
-          ? (es ? "Esta escena no puede continuar" : "This scene cannot continue")
-          : (es ? "El personaje no pudo responder" : "The character could not answer"),
+        title: replyResult.error === "credits_exhausted"
+          ? (es ? "Se agotaron los creditos de IA" : "AI credits are exhausted")
+          : replyResult.error === "content_blocked"
+            ? (es ? "Esta escena no puede continuar" : "This scene cannot continue")
+            : (es ? "El personaje no pudo responder" : "The character could not answer"),
         description: replyResult.message || (es
           ? "Guardamos lo que dijiste. La llamada continuará escuchando."
           : "What you said was saved. The call will keep listening."),
         variant: "destructive",
       });
-      void listen();
+      if (replyResult.error === "credits_exhausted") hangUp();
+      else void listen();
       return;
     }
 

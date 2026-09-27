@@ -69,7 +69,13 @@ ${numbered}`;
     if (!aiRes.ok) {
       const errText = await aiRes.text();
       console.error("AI gateway error", aiRes.status, errText);
-      return new Response(JSON.stringify({ translations: texts }), {
+      return new Response(JSON.stringify({
+        error: "translation_unavailable",
+        message: aiRes.status === 402
+          ? "No quedan creditos para la traduccion."
+          : "La traduccion no esta disponible ahora.",
+      }), {
+        status: aiRes.status,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }

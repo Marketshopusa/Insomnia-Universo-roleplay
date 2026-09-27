@@ -2,6 +2,11 @@ const FUNCTIONS_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/text-to
 const ANON_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string;
 const PCM_SAMPLE_RATE = 24_000;
 
+class SpeechHttpError extends Error {
+  constructor(public readonly status: number, message: string) { super(message); }
+}
+let paymentRequiredUntil = 0;
+
 export interface SpeechStream {
   /** Resolves only after the complete audio has finished playing. */
   done: Promise<void>;
@@ -15,24 +20,16 @@ const wait = (milliseconds: number) =>
   new Promise((resolve) => window.setTimeout(resolve, milliseconds));
 
 async function requestSpeech(text: string, voice: string, signal: AbortSignal) {
-  let response: Response | null = null;
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    response = await fetch(FUNCTIONS_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        apikey: ANON_KEY,
-        Authorization: `Bearer ${ANON_KEY}`,
-      },
-      body: JSON.stringify({ text, voice, stream: true }),
-      signal,
-    });
-    const retryable = response.status === 429 || response.status >= 500;
-    if (!retryable || attempt === 1) return response;
-    await response.body?.cancel();
-    await wait(800 + Math.floor(Math.random() * 300));
-  }
-  return response;
+  return fetch(FUNCTIONS_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      apikey: ANON_KEY,
+      Authorization: `Bearer ${ANON_KEY}`,
+    },
+    body: JSON.stringify({ text, voice, stream: true }),
+    signal,
+  });
 }
 
 function splitSpeechText(text: string, maximumLength = 70): string[] {
@@ -81,7 +78,8 @@ async function receivePcmOnce(text: string, voice: string, signal: AbortSignal) 
   if (!response) throw new Error("tts_no_response");
   if (!response.ok || !response.body) {
     const payload = await response.json().catch(() => null) as { message?: string; detail?: string } | null;
-    throw new Error(payload?.message || payload?.detail || `tts_failed_${response.status}`);
+    if (response.status === 402) paymentRequiredUntil = Date.now() + 60_000;
+    throw new SpeechHttpError(response.status, payload?.message || payload?.detail || `tts_failed_${response.status}`);
   }
 
   const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
@@ -130,14 +128,17 @@ async function receivePcmOnce(text: string, voice: string, signal: AbortSignal) 
 }
 
 async function receivePcm(text: string, voice: string, signal: AbortSignal) {
+  if (Date.now() < paymentRequiredUntil) {
+    throw new SpeechHttpError(402, "Voice provider has no credits");
+  }
   let lastError: unknown;
-  for (let attempt = 0; attempt < 3; attempt += 1) {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
       return await receivePcmOnce(text, voice, signal);
     } catch (error) {
-      if (signal.aborted) throw error;
+      if (signal.aborted || (error instanceof SpeechHttpError && error.status < 500 && error.status !== 429)) throw error;
       lastError = error;
-      if (attempt < 2) await wait(350 + attempt * 300);
+      if (attempt === 0) await wait(350);
     }
   }
   throw lastError instanceof Error ? lastError : new Error("tts_audio_incomplete");
@@ -176,85 +177,111 @@ function decodePcm(value: string, carry: Uint8Array): { bytes: Uint8Array; carry
 }
 
 /**
- * Receives and validates the complete PCM response before starting one native
- * AudioBufferSourceNode. Network stalls can therefore never insert silence or
- * make playback finish before the final phrase.
+ * Fetches independent, short utterances in parallel but starts playback as
+ * soon as the first validated utterance is ready. The browser schedules the
+ * remaining utterances on one AudioContext clock as they arrive.
  */
 export function streamSpeech(text: string, voice: string): SpeechStream {
   const controller = new AbortController();
   let context: AudioContext | null = null;
-  let source: AudioBufferSourceNode | null = null;
+  const sources = new Set<AudioBufferSourceNode>();
   let stopped = false;
+  let schedulingComplete = false;
   let finishPlayback: () => void = () => {};
+  let finishCancelled: () => void = () => {};
+  const cancelled = new Promise<null>((resolve) => { finishCancelled = () => resolve(null); });
 
   let markStarted: () => void = () => {};
-  const started = new Promise<void>((resolve) => {
-    markStarted = resolve;
-  });
+  const started = new Promise<void>((resolve) => { markStarted = resolve; });
 
   const stop = () => {
     if (stopped) return;
     stopped = true;
     controller.abort();
+    finishCancelled();
     finishPlayback();
-    source?.stop();
-    source?.disconnect();
-    source = null;
+    for (const source of sources) {
+      try { source.stop(); } catch { /* Already ended. */ }
+      source.disconnect();
+    }
+    sources.clear();
     void context?.close().catch(() => {});
     context = null;
   };
 
   const done = (async () => {
     try {
+      if (Date.now() < paymentRequiredUntil) {
+        throw new SpeechHttpError(402, "Voice provider has no credits");
+      }
       context = new AudioContext({ sampleRate: PCM_SAMPLE_RATE });
       if (context.state === "suspended") await context.resume();
       if (stopped || !context) return;
-
-      const playbackEnded = new Promise<void>((resolve) => {
-        finishPlayback = resolve;
-      });
-
+      const playbackEnded = new Promise<void>((resolve) => { finishPlayback = resolve; });
       const textChunks = splitSpeechText(text);
       if (textChunks.length === 0) return;
-      // Gemini can occasionally mark a long utterance complete after speaking
-      // only its opening. Short, sentence-safe requests make every part
-      // independently complete; they are then joined before playback so the
-      // browser still receives one continuous native audio track.
-      const responses = await Promise.all(
-        textChunks.map(async (chunk) => {
-          const pcm = await receivePcm(chunk, voice, controller.signal);
-          const joinedLength = pcm.reduce((sum, part) => sum + part.byteLength, 0);
-          const joined = new Uint8Array(joinedLength);
-          let offset = 0;
-          for (const part of pcm) {
-            joined.set(part, offset);
-            offset += part.byteLength;
+      // At most three upstream requests at once; long reading passages should
+      // not trigger a burst of rate limits before the first sentence is spoken.
+      type Result = { pcm: Uint8Array[] | null; error: Error | null };
+      const pending = textChunks.map(() => {
+        let resolve!: (value: Result) => void;
+        const promise = new Promise<Result>((done) => { resolve = done; });
+        return { promise, resolve };
+      });
+      let nextRequest = 0;
+      const worker = async () => {
+        while (nextRequest < textChunks.length && !controller.signal.aborted) {
+          const index = nextRequest++;
+          try {
+            const pcm = await receivePcm(textChunks[index], voice, controller.signal);
+            pending[index].resolve({ pcm, error: null });
+          } catch (error) {
+            pending[index].resolve({
+              pcm: null,
+              error: error instanceof Error ? error : new Error("tts_failed"),
+            });
           }
-          return [trimBoundarySilence(joined)];
-        }),
-      );
-      if (stopped) return;
-      const chunks = responses.flat();
-      const totalBytes = chunks.reduce((sum, chunk) => sum + chunk.byteLength, 0);
+        }
+      };
+      for (let i = 0; i < Math.min(3, textChunks.length); i += 1) void worker();
 
-      const samples = new Float32Array(totalBytes / 2);
-      let sampleOffset = 0;
-      for (const chunk of chunks) {
+      let scheduledAt = context.currentTime;
+      for (const request of pending) {
+        const result = await Promise.race([request.promise, cancelled]);
+        if (!result) return;
+        if (result.error) throw result.error;
+        if (stopped || !context || !result.pcm) return;
+        const length = result.pcm.reduce((sum, part) => sum + part.byteLength, 0);
+        const joined = new Uint8Array(length);
+        let offset = 0;
+        for (const part of result.pcm) {
+          joined.set(part, offset);
+          offset += part.byteLength;
+        }
+        const chunk = trimBoundarySilence(joined);
+        const samples = new Float32Array(chunk.byteLength / 2);
         const view = new DataView(chunk.buffer, chunk.byteOffset, chunk.byteLength);
         for (let index = 0; index < chunk.byteLength; index += 2) {
-          samples[sampleOffset] = view.getInt16(index, true) / 32768;
-          sampleOffset += 1;
+          samples[index / 2] = view.getInt16(index, true) / 32768;
         }
+        const buffer = context.createBuffer(1, samples.length, PCM_SAMPLE_RATE);
+        buffer.copyToChannel(samples, 0);
+        const source = context.createBufferSource();
+        source.buffer = buffer;
+        source.connect(context.destination);
+        sources.add(source);
+        source.onended = () => {
+          sources.delete(source);
+          source.disconnect();
+          if (schedulingComplete && sources.size === 0) finishPlayback();
+        };
+        const startAt = Math.max(scheduledAt, context.currentTime + 0.025);
+        source.start(startAt);
+        scheduledAt = startAt + buffer.duration;
+        if (sources.size === 1) markStarted();
       }
-      if (stopped || !context) return;
-      const buffer = context.createBuffer(1, samples.length, PCM_SAMPLE_RATE);
-      buffer.copyToChannel(samples, 0);
-      source = context.createBufferSource();
-      source.buffer = buffer;
-      source.connect(context.destination);
-      source.onended = finishPlayback;
-      markStarted();
-      source.start();
+      schedulingComplete = true;
+      if (sources.size === 0) finishPlayback();
       await playbackEnded;
       if (!stopped) stop();
     } catch (error) {

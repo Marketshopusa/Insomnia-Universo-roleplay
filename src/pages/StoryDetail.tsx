@@ -304,7 +304,8 @@ type Mode = "select" | "read" | "roleplay";
         explicit: story?.story_type === "real_sex" || !!story?.has_explicit_images,
     });
     if (error || !data?.content) {
-      const code = (data as any)?.error;
+      const status = (error as { context?: Response } | null)?.context?.status;
+      const code = status === 402 ? "credits_exhausted" : (data as any)?.error;
       if (code === "rate_limited") toast({ title: t("mode.rateLimited"), variant: "destructive" });
       else if (code === "credits_exhausted") toast({ title: t("mode.creditsExhausted"), variant: "destructive" });
       else if (code === "content_blocked") toast({
@@ -430,17 +431,9 @@ type Mode = "select" | "read" | "roleplay";
           window.speechSynthesis.speak(utter);
         };
 
-        // Voices may load asynchronously the first time
-        if (window.speechSynthesis.getVoices().length === 0) {
-          window.speechSynthesis.onvoiceschanged = () => {
-            window.speechSynthesis.onvoiceschanged = null;
-            speak();
-          };
-          // Trigger load
-          window.speechSynthesis.getVoices();
-        } else {
-          speak();
-        }
+        // The browser can speak with its default voice before getVoices()
+        // finishes loading. Waiting for voiceschanged can stall indefinitely.
+        speak();
       } catch (e) {
         console.error("speakWithBrowser error:", e);
         setPlayingId(null);

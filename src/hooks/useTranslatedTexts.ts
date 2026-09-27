@@ -4,21 +4,21 @@ import { useLanguage } from "@/contexts/LanguageContext";
 
 // In-memory cache shared across the app: key = `${lang}::${text}` -> translated
 const cache = new Map<string, string>();
-const inflight = new Map<string, Promise<string>>();
+const inflight = new Map<string, Promise<void>>();
 
 function isLikelySpanish(text: string): boolean {
   // Quick heuristic: skip translation if text already contains Spanish accents/words
   return /[áéíóúñ¿¡]/i.test(text) || /\b(el|la|los|las|de|que|para|con|una|por)\b/i.test(text);
 }
 
-async function translateBatch(texts: string[], targetLang: string): Promise<string[]> {
+async function translateBatch(texts: string[], targetLang: string): Promise<string[] | null> {
   if (texts.length === 0) return [];
   const { data, error } = await supabase.functions.invoke("translate", {
     body: { texts, targetLang },
   });
   if (error || !data?.translations) {
     console.warn("Translate failed", error);
-    return texts;
+    return null;
   }
   return data.translations as string[];
 }
@@ -69,16 +69,18 @@ export function useTranslatedTexts(texts: (string | null | undefined)[]): string
       const toFetch = uniqueTexts.filter((t) => !cache.has(`${language}::${t}`));
       const pending = uniqueTexts
         .map((t) => inflight.get(`${language}::${t}`))
-        .filter(Boolean) as Promise<string>[];
+        .filter(Boolean) as Promise<void>[];
 
       if (toFetch.length > 0) {
         const batch = translateBatch(toFetch, language).then((arr) => {
           toFetch.forEach((text, i) => {
-            cache.set(`${language}::${text}`, arr[i] ?? text);
+            if (arr && typeof arr[i] === "string") {
+              cache.set(`${language}::${text}`, arr[i]);
+            }
             inflight.delete(`${language}::${text}`);
           });
         });
-        toFetch.forEach((t) => inflight.set(`${language}::${t}`, batch as unknown as Promise<string>));
+        toFetch.forEach((t) => inflight.set(`${language}::${t}`, batch));
         await batch;
       }
       if (pending.length > 0) await Promise.all(pending);
