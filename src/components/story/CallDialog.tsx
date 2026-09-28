@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Phone, PhoneOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { supabase } from "@/integrations/supabase/client";
+
 import { toast } from "@/hooks/use-toast";
 import { startWavRecording, blobToBase64, type WavRecorder } from "@/lib/wavRecorder";
 import { voiceGender } from "@/lib/voices";
@@ -258,9 +258,7 @@ export const CallDialog = ({
     recognitionRef.current = null;
     if (!userText) {
       const audio = await blobToBase64(blob);
-      const { data, error } = await supabase.functions.invoke("speech-to-text", {
-        body: { audio, mimeType: "audio/wav", language: es ? "es" : "en" },
-      });
+      const { data, error } = await invokeFunctionWithRetry<{ text?: string; error?: string }>("speech-to-text", { audio, mimeType: "audio/wav", language: es ? "es" : "en" });
       userText = ((data as any)?.text || "").trim();
       if (error || (data as any)?.error) {
         toast({

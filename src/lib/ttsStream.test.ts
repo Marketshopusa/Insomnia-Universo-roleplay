@@ -1,7 +1,8 @@
+import { supabase } from "@/integrations/supabase/client";
 import { afterEach, expect, it, vi } from "vitest";
 import { streamSpeech } from "./ttsStream";
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 it("starts the first spoken sentence while the next network response is still pending", async () => {
   const bytes = new Uint8Array(24_000 * 2 * 2);
@@ -19,6 +20,7 @@ it("starts the first spoken sentence while the next network response is still pe
       ? Promise.resolve(new Response(body, { status: 200 }))
       : new Promise<Response>(() => {});
   });
+  vi.spyOn(supabase.auth, "getSession").mockResolvedValue({ data: { session: { access_token: "test" } }, error: null } as any);
   vi.stubGlobal("fetch", fetchMock);
 
   let starts = 0;
@@ -59,6 +61,7 @@ it("does not retry a payment failure before switching to device speech", async (
   const fetchMock = vi.fn(async () =>
     new Response('{"message":"Not enough credits"}', { status: 402 }),
   );
+  vi.spyOn(supabase.auth, "getSession").mockResolvedValue({ data: { session: { access_token: "test" } }, error: null } as any);
   vi.stubGlobal("fetch", fetchMock);
   vi.stubGlobal("AudioContext", class {
     state = "running";

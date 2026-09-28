@@ -1,3 +1,4 @@
+import { invokeFunctionWithRetry } from "@/lib/invokeFunction";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
@@ -15,7 +16,6 @@ import {
 } from "@/components/ui/dialog";
 import { Loader2, Plus, Sparkles } from "lucide-react";
 import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
 import { useAdultMode } from "@/contexts/AdultModeContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { useShorts } from "@/hooks/useShorts";
@@ -64,9 +64,7 @@ const Shorts = () => {
       return;
     }
     setCreating(true);
-    const { data, error } = await supabase.functions.invoke("generate-shorts-series", {
-      body: { premise, category, isAdult, episodes },
-    });
+    const { data, error } = await invokeFunctionWithRetry<{ error?: string }>("generate-shorts-series", { premise, category, isAdult, episodes });
     setCreating(false);
     if (error || data?.error) {
       toast.error("No se pudo generar la serie");

@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { invokeFunctionWithRetry } from "@/lib/invokeFunction";
 import { useLanguage } from "@/contexts/LanguageContext";
 
 // In-memory cache shared across the app: key = `${lang}::${text}` -> translated
@@ -13,9 +13,7 @@ function isLikelySpanish(text: string): boolean {
 
 async function translateBatch(texts: string[], targetLang: string): Promise<string[] | null> {
   if (texts.length === 0) return [];
-  const { data, error } = await supabase.functions.invoke("translate", {
-    body: { texts, targetLang },
-  });
+  const { data, error } = await invokeFunctionWithRetry<{ translations?: string[] }>("translate", { texts, targetLang });
   if (error || !data?.translations) {
     console.warn("Translate failed", error);
     return null;

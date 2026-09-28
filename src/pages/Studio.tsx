@@ -1,3 +1,4 @@
+import { invokeFunctionWithRetry } from "@/lib/invokeFunction";
 import { useState } from "react";
 import { Clapperboard, Loader2, Sparkles } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -31,7 +32,7 @@ import { useLanguage } from "@/contexts/LanguageContext";
    AlertDialogTitle,
    AlertDialogTrigger,
  } from "@/components/ui/alert-dialog";
- 
+
 const models = [
   { value: "apprentice-6", label: "Apprentice 6 (♦)" },
   { value: "master-pro", label: "Master Pro (♦♦)" },
@@ -44,7 +45,7 @@ const languages = [
 ];
 
 const chapterOptions = [3, 5, 7, 10, 15, 20];
- 
+
  const Studio = () => {
    const { user } = useAuth();
    const { toast } = useToast();
@@ -53,9 +54,9 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
    const createProject = useCreateNovelProject();
    const updateProject = useUpdateNovelProject();
    const deleteProject = useDeleteNovelProject();
- 
+
   const [model, setModel] = useState("apprentice-6");
-  const [videoProvider, setVideoProvider] = useState<"gateway" | "kineva">("gateway");
+  const [videoProvider, setVideoProvider] = useState<"gateway" | "kineva">("kineva");
   const [referenceImage, setReferenceImage] = useState<File | null>(null);
   const [creativity, setCreativity] = useState("balanced");
   const [description, setDescription] = useState("");
@@ -68,7 +69,7 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
   const [videoProgress, setVideoProgress] = useState("");
   const [novel, setNovel] = useState<any>(null);
 
- 
+
   const creativityLevels = [
     { value: "conservative", label: t("studio.creativity.conservative") },
     { value: "balanced", label: t("studio.creativity.balanced") },
@@ -173,15 +174,13 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
     setGenerating(true);
     setNovel(null);
     try {
-      const { data, error } = await supabase.functions.invoke("generate-novel", {
-        body: {
+      const { data, error } = await invokeFunctionWithRetry<any>("generate-novel", {
           description,
           chapterCount,
           language,
           creativity,
           isSafeForWork,
           videoProvider,
-        },
       });
       if (error || data?.error) throw new Error(data?.error || error?.message);
 
@@ -258,19 +257,19 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
    const handleWriteOutline = () => {
     toast({ title: t("studio.toast.outline"), description: t("studio.toast.outlineDesc") });
    };
- 
+
    const handleBlankNovel = () => {
      setDescription("");
      setCurrentProjectId(null);
     toast({ title: t("studio.toast.blank") });
    };
- 
+
    const handleSaveProject = async () => {
      if (!user) {
       toast({ title: t("studio.toast.loginToSave"), variant: "destructive" });
        return;
      }
- 
+
      try {
        if (currentProjectId) {
          await updateProject.mutateAsync({
@@ -300,7 +299,7 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
         toast({ title: t("studio.toast.saveError"), variant: "destructive" });
      }
    };
- 
+
    const handleLoadProject = (project: any) => {
      setCurrentProjectId(project.id);
      setDescription(project.description || "");
@@ -311,7 +310,7 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
      setIsSafeForWork(project.is_safe_for_work);
     toast({ title: t("studio.toast.loaded") });
    };
- 
+
    const handleDeleteProjects = async () => {
      if (projects) {
        for (const project of projects) {
@@ -322,7 +321,7 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
        setDescription("");
      }
    };
- 
+
    const handleReset = () => {
      setDescription("");
      setModel("apprentice-6");
@@ -333,7 +332,7 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
      setCurrentProjectId(null);
     toast({ title: t("studio.toast.reset") });
    };
- 
+
    if (!user) {
      return (
        <MainLayout>
@@ -348,20 +347,20 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
        </MainLayout>
      );
    }
- 
+
    return (
      <MainLayout>
        <div className="container mx-auto px-4 py-8 max-w-4xl">
         <h1 className="text-3xl font-display text-center mb-8">{t("studio.title")}</h1>
         {import.meta.env.DEV && <p className="mb-6 text-center"><Link to="/studio/kineva-local" className="underline">Animar una foto o crear una miniserie con Kineva local</Link></p>}
- 
+
          {/* AI Settings */}
          <Card className="p-6 mb-6 space-y-2">
            <Label>Motor de video</Label>
            <Select value={videoProvider} onValueChange={(v) => setVideoProvider(v as "gateway" | "kineva")}>
              <SelectTrigger><SelectValue /></SelectTrigger>
              <SelectContent>
-               <SelectItem value="gateway">Generador actual</SelectItem>
+
                 {import.meta.env.VITE_KINEVA_ENABLED === "true" && (
                <SelectItem value="kineva">Kineva local · miniseries</SelectItem>
                 )}
@@ -370,7 +369,7 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
          </Card>
          <Card className="p-6 mb-6">
           <h2 className="text-lg font-medium text-center mb-6">{t("studio.aiSection")}</h2>
-           
+
            <div className="grid grid-cols-2 gap-6">
              <div className="space-y-2">
               <Label>{t("studio.model")}:</Label>
@@ -387,7 +386,7 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
                  </SelectContent>
                </Select>
              </div>
- 
+
              <div className="space-y-2">
               <Label>{t("studio.creativity")}:</Label>
                <Select value={creativity} onValueChange={setCreativity}>
@@ -405,7 +404,7 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
              </div>
            </div>
          </Card>
- 
+
          {videoProvider === "kineva" && (
           <Card className="p-6 mb-6 space-y-3">
             <Label htmlFor="kineva-reference">Referencia visual para toda la miniserie</Label>
@@ -427,7 +426,7 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
              onChange={(e) => setDescription(e.target.value)}
              className="min-h-[200px] resize-none"
            />
- 
+
            <div className="flex flex-wrap items-center justify-between gap-4 mt-4">
              <div className="flex items-center gap-4">
                <div className="flex items-center gap-2">
@@ -445,13 +444,13 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
                    </SelectContent>
                  </Select>
                </div>
- 
+
                <div className="flex items-center gap-2">
                  <Switch checked={isSafeForWork} onCheckedChange={setIsSafeForWork} />
                 <Label>{t("studio.safeForWork")}</Label>
                </div>
              </div>
- 
+
              <div className="flex items-center gap-2">
               <Label>{t("studio.language")}:</Label>
                <Select value={language} onValueChange={setLanguage}>
@@ -469,7 +468,7 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
              </div>
            </div>
          </Card>
- 
+
         {/* Generar proyecto completo */}
         <Button
           size="lg"
@@ -580,7 +579,7 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
           <Button onClick={handleWriteOutline}>{t("studio.writeOutline")}</Button>
           <Button onClick={handleBlankNovel}>{t("studio.blankNovel")}</Button>
          </div>
- 
+
          {/* Project Management */}
          <div className="grid grid-cols-3 gap-4 mb-4">
            <Button variant="secondary" onClick={handleSaveProject}>
@@ -635,7 +634,7 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
              </AlertDialogContent>
            </AlertDialog>
          </div>
- 
+
          <div className="grid grid-cols-3 gap-4">
           <Button variant="outline">{t("studio.downloadProject")}</Button>
           <Button variant="outline">{t("studio.uploadProject")}</Button>
@@ -645,5 +644,5 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
      </MainLayout>
    );
  };
- 
+
  export default Studio;

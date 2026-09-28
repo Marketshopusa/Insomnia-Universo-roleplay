@@ -9,21 +9,42 @@ function responseContext(error: unknown) {
   return context instanceof Response ? context : null;
 }
 
-/** Retries only transient network, rate-limit, and server failures once. */
-export async function invokeFunctionWithRetry<T>(name: string, body: unknown) {
-  let result = await supabase.functions.invoke<T>(name, { body });
-  if (!result.error) return result;
+type FunctionResult<T> = { data: T | null; error: ({ message: string; context: Response } | null) };
+const ownAi = new Set(["story-chat", "translate", "speech-to-text", "generate-narrative", "generate-novel", "generate-shorts-series"]);
+async function callOwnAi<T>(name: string, body: unknown): Promise<FunctionResult<T>> {
+  const { data: { session } } = await supabase.auth.getSession();
+  const response = await fetch("/api/ai", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(session?.access_token ? { Authorization: "Bearer " + session.access_token } : {}),
+    },
+    body: JSON.stringify({ action: name, body }),
+  });
+  const data = await response.json();
+  return response.ok
+    ? { data: data as T, error: null }
+    : { data: data as T, error: { message: data.message || data.error || "La funciÃ³n no estÃ¡ disponible.", context: response } };
+}
 
+/** Retries only transient network, rate-limit, and server failures once. */
+export async function invokeFunctionWithRetry<T>(name: string, body: unknown): Promise<FunctionResult<T>> {
+  if (ownAi.has(name)) {
+    let result = await callOwnAi<T>(name, body);
+    if (!result.error) return result;
+    const status = result.error.context.status;
+    if (status !== 429 && status < 500) return result;
+    await wait(900);
+    result = await callOwnAi<T>(name, body);
+    return result;
+  }
+  let result = await supabase.functions.invoke<T>(name, { body });
+  if (!result.error) return result as FunctionResult<T>;
   const context = responseContext(result.error);
   const status = context?.status ?? null;
-  const retryable = status === null || status === 429 || status >= 500;
-  if (!retryable) return result;
-
+  if (status !== null && status !== 429 && status < 500) return result as FunctionResult<T>;
   const retryAfter = Number(context?.headers.get("retry-after"));
-  const delay = Number.isFinite(retryAfter)
-    ? Math.min(retryAfter * 1000, 5000)
-    : 900 + Math.floor(Math.random() * 300);
-  await wait(delay);
+  await wait(Number.isFinite(retryAfter) ? Math.min(retryAfter * 1000, 5000) : 900);
   result = await supabase.functions.invoke<T>(name, { body });
-  return result;
+  return result as FunctionResult<T>;
 }

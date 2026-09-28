@@ -558,8 +558,7 @@ type Mode = "select" | "read" | "roleplay";
      setNarrativeLoading(true);
      setNarrative("");
      try {
-       const { data, error } = await supabase.functions.invoke("generate-narrative", {
-         body: {
+       const { data, error } = await invokeFunctionWithRetry<any>("generate-narrative", {
            story: {
              title: story.title,
              description: story.description,
@@ -570,7 +569,6 @@ type Mode = "select" | "read" | "roleplay";
            language,
            explicit: story.story_type === "real_sex" || !!story.has_explicit_images,
            chapters: 5,
-         },
        });
        if (error || !(data as any)?.content) {
          const code = (data as any)?.error;

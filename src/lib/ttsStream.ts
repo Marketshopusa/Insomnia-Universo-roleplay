@@ -1,5 +1,5 @@
-const FUNCTIONS_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/text-to-speech`;
-const ANON_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string;
+import { supabase } from "@/integrations/supabase/client";
+const FUNCTIONS_URL = "/api/speech";
 const PCM_SAMPLE_RATE = 24_000;
 
 class SpeechHttpError extends Error {
@@ -20,12 +20,12 @@ const wait = (milliseconds: number) =>
   new Promise((resolve) => window.setTimeout(resolve, milliseconds));
 
 async function requestSpeech(text: string, voice: string, signal: AbortSignal) {
+  const { data: { session } } = await supabase.auth.getSession();
   return fetch(FUNCTIONS_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      apikey: ANON_KEY,
-      Authorization: `Bearer ${ANON_KEY}`,
+      ...(session?.access_token ? { Authorization: "Bearer " + session.access_token } : {}),
     },
     body: JSON.stringify({ text, voice, stream: true }),
     signal,
