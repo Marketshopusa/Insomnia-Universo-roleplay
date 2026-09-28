@@ -2,7 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 import { supabaseUrl, publishableKey } from "./config.mjs";
 
 const voices = { "scarlett-hd": "Aoede", "luna-sweet": "Leda", "aria-calm": "Kore", "max-deep": "Charon", "leo-warm": "Puck" };
-const models = ["gemini-3.8-flash-tts", "gemini-3.8-flash-lite-tts"];
+const models = ["gemini-3.1-flash-tts-preview", "gemini-3.8-flash-tts", "gemini-3.8-flash-lite-tts"];
 
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "method_not_allowed" });
@@ -23,20 +23,41 @@ export default async function handler(req, res) {
   let quotaExceeded = false;
   for (const model of models) {
     try {
-      const upstream = await fetch("https://generativelanguage.googleapis.com/v1beta/interactions", {
-        method: "POST",
-        headers: { "x-goog-api-key": key, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model,
-          input: [{ type: "user_input", content: [{
-            type: "text", text, annotations: [{ type: "speech_metadata", style: "Voz natural, cÃ¡lida y clara; ritmo conversacional" }],
-          }] }],
-          response_format: { type: "audio", mime_type: "audio/l16", sample_rate: 24000 },
-          generation_config: { speech_config: [{ voice }] },
-          stream: false,
-        }),
-        signal: AbortSignal.timeout(35000),
-      });
+      const legacy = model === "gemini-3.1-flash-tts-preview";
+      const speechText = legacy
+        ? [
+            "Lee en voz alta el texto completo, palabra por palabra, con voz cÃ¡lida y natural.",
+            "Pronuncia tanto la narraciÃ³n como el diÃ¡logo; no omitas ninguna parte.",
+            "TEXTO COMPLETO:\n" + text,
+          ].join(" ")
+        : text;
+      const upstream = await fetch(
+        legacy
+          ? "https://generativelanguage.googleapis.com/v1beta/models/" + model + ":generateContent"
+          : "https://generativelanguage.googleapis.com/v1beta/interactions",
+        {
+          method: "POST",
+          headers: { "x-goog-api-key": key, "Content-Type": "application/json" },
+          body: JSON.stringify(legacy
+            ? {
+                contents: [{ role: "user", parts: [{ text: speechText }] }],
+                generationConfig: {
+                  responseModalities: ["AUDIO"],
+                  speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } },
+                },
+              }
+            : {
+                model,
+                input: [{ type: "user_input", content: [{
+                  type: "text", text, annotations: [{ type: "speech_metadata", style: "Voz natural, cÃ¡lida y clara; ritmo conversacional" }],
+                }] }],
+                response_format: { type: "audio", mime_type: "audio/l16", sample_rate: 24000 },
+                generation_config: { speech_config: [{ voice }] },
+                stream: false,
+              }),
+          signal: AbortSignal.timeout(35000),
+        },
+      );
       if (!upstream.ok) {
         lastStatus = upstream.status;
         quotaExceeded ||= upstream.status === 429;
@@ -45,10 +66,14 @@ export default async function handler(req, res) {
         break;
       }
       const result = await upstream.json();
-      const audio = (result.steps || [])
-        .flatMap((step) => step.content || [])
-        .filter((part) => part.type === "audio" && part.data)
-        .at(-1);
+      const audio = legacy
+        ? (result.candidates?.[0]?.content?.parts || [])
+            .map((part) => part.inlineData)
+            .find((part) => part?.data && part.mimeType?.startsWith("audio/l16"))
+        : (result.steps || [])
+            .flatMap((step) => step.content || [])
+            .filter((part) => part.type === "audio" && part.data && part.mime_type === "audio/l16")
+            .at(-1);
       if (!audio?.data) {
         console.warn("Insomnia speech provider returned no audio", model);
         lastStatus = 502;
