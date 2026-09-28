@@ -10,18 +10,27 @@ async function authenticated(req) {
 }
 async function generate(model, parts, settings = {}) {
   const key = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
-  if (!key || key === "[SENSITIVE]") throw Object.assign(new Error("Gemini no estÃ¡ configurado en Insomnia (Vercel)."), { status: 503 });
-  const response = await fetch("https://generativelanguage.googleapis.com/v1beta/models/" + model + ":generateContent", {
-    method: "POST",
-    headers: { "x-goog-api-key": key, "Content-Type": "application/json" },
-    body: JSON.stringify({ contents: [{ role: "user", parts }], generationConfig: settings }),
-    signal: AbortSignal.timeout(55000),
-  });
-  const data = await response.json();
-  if (!response.ok) throw Object.assign(new Error(data?.error?.message || "Gemini no respondiÃ³."), { status: response.status });
-  const content = (data.candidates?.[0]?.content?.parts || []).map(p => p.text || "").join("").trim();
-  if (!content) throw Object.assign(new Error("Gemini no devolviÃ³ texto."), { status: 502 });
-  return content;
+  if (!key || key === "[SENSITIVE]") throw Object.assign(new Error("Gemini no estÃ¡ configurado en Insomnia (Vercel)."), { status: 503, code: "gemini_not_configured" });
+  const choices = model === "gemini-3.5-transcribe" ? [model] : [...new Set([model, "gemini-3.6-flash", "gemini-3.8-flash"])];
+  let lastError;
+  for (const candidate of choices) {
+    const response = await fetch("https://generativelanguage.googleapis.com/v1beta/models/" + candidate + ":generateContent", {
+      method: "POST",
+      headers: { "x-goog-api-key": key, "Content-Type": "application/json" },
+      body: JSON.stringify({ contents: [{ role: "user", parts }], generationConfig: settings }),
+      signal: AbortSignal.timeout(40000),
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      lastError = Object.assign(new Error(data?.error?.message || "Gemini no respondiÃ³."), { status: response.status });
+      if (response.status === 429 || response.status === 503) continue;
+      throw lastError;
+    }
+    const content = (data.candidates?.[0]?.content?.parts || []).map(p => p.text || "").join("").trim();
+    if (!content) throw Object.assign(new Error("Gemini no devolviÃ³ texto."), { status: 502 });
+    return content;
+  }
+  throw lastError;
 }
 export default async function handler(req, res) {
   if (req.method !== "POST") return send(res, 405, { error: "method_not_allowed" });
@@ -99,6 +108,6 @@ export default async function handler(req, res) {
   } catch (error) {
     const status = Number(error.status) || 500;
     console.error("Insomnia AI", action, status, error.message);
-    return send(res, status, { error: status === 503 ? "gemini_not_configured" : "ai_error", message: error.message });
+    return send(res, status, { error: error.code || "ai_error", message: error.message });
   }
 }
