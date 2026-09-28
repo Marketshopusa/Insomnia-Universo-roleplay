@@ -32,7 +32,7 @@ async function requestSpeech(text: string, voice: string, signal: AbortSignal) {
   });
 }
 
-function splitSpeechText(text: string, maximumLength = 70): string[] {
+function splitSpeechText(text: string, maximumLength = 700): string[] {
   const clean = text.replace(/[*_#`]/g, "").replace(/\s+/g, " ").trim();
   if (!clean) return [];
   const sentences = clean.match(/[^.!?…]+(?:\.{3}|[.!?…]+)|[^.!?…]+$/g) ?? [clean];
@@ -136,7 +136,7 @@ async function receivePcm(text: string, voice: string, signal: AbortSignal) {
     try {
       return await receivePcmOnce(text, voice, signal);
     } catch (error) {
-      if (signal.aborted || (error instanceof SpeechHttpError && error.status < 500 && error.status !== 429)) throw error;
+      if (signal.aborted || (error instanceof SpeechHttpError && error.status < 500)) throw error;
       lastError = error;
       if (attempt === 0) await wait(350);
     }
@@ -243,7 +243,7 @@ export function streamSpeech(text: string, voice: string): SpeechStream {
           }
         }
       };
-      for (let i = 0; i < Math.min(3, textChunks.length); i += 1) void worker();
+      for (let i = 0; i < Math.min(1, textChunks.length); i += 1) void worker();
 
       let scheduledAt = context.currentTime;
       for (const request of pending) {

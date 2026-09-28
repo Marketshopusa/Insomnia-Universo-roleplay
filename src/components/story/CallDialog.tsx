@@ -4,7 +4,6 @@ import { Button } from "@/components/ui/button";
 
 import { toast } from "@/hooks/use-toast";
 import { startWavRecording, blobToBase64, type WavRecorder } from "@/lib/wavRecorder";
-import { voiceGender } from "@/lib/voices";
 import { streamSpeech, type SpeechStream } from "@/lib/ttsStream";
 import { invokeFunctionWithRetry } from "@/lib/invokeFunction";
 
@@ -101,44 +100,24 @@ export const CallDialog = ({
 
   useEffect(() => hangUp, []);
 
-  const speakWithDevice = (text: string) =>
-    new Promise<void>((resolve) => {
-      if (!("speechSynthesis" in window)) {
-        resolve();
-        return;
-      }
-      window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(text.replace(/[*_#`\"]/g, ""));
-      utterance.lang = es ? "es-ES" : "en-US";
-      utterance.rate = 0.98;
-      utterance.pitch = 1.1;
-      const wantMale = voiceGender(voice) === "male";
-      utterance.pitch = wantMale ? 0.9 : 1.1;
-      const hints = wantMale
-        ? ["male", "hombre", "diego", "jorge", "carlos", "pablo", "enrique", "george", "daniel", "fred"]
-        : ["female", "mujer", "femenina", "monica", "mónica", "paulina", "lucia", "helena", "samantha", "sabina", "elvira", "zira"];
-      const voices = window.speechSynthesis.getVoices();
-      const pool = voices.filter((item) => item.lang.toLowerCase().startsWith(es ? "es" : "en"));
-      const candidates = pool.length ? pool : voices;
-      const matchingVoice =
-        candidates.find((item) => hints.some((hint) => item.name.toLowerCase().includes(hint))) ||
-        candidates[0];
-      if (matchingVoice) utterance.voice = matchingVoice;
-      utterance.onend = () => resolve();
-      utterance.onerror = () => resolve();
-      window.speechSynthesis.speak(utterance);
-    });
-
   const speak = async (text: string) => {
     try {
       const speech = streamSpeech(text, voice);
       streamRef.current = speech;
       await speech.done;
       streamRef.current = null;
-    } catch {
+    } catch (error) {
       streamRef.current?.stop();
       streamRef.current = null;
-      await speakWithDevice(text);
+      const status = (error as { status?: number })?.status;
+      toast({
+        title: es ? "La voz Gemini no estÃ¡ disponible" : "Gemini voice is unavailable",
+        description: status === 429
+          ? (es ? "Se alcanzÃ³ la cuota de voces. Puedes seguir por texto." : "The voice quota has been reached. You can continue by text.")
+          : (es ? "No se pudo reproducir la voz seleccionada." : "The selected voice could not play."),
+        variant: "destructive",
+      });
+      hangUp();
     }
   };
 

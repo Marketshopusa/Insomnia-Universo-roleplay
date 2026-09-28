@@ -8,7 +8,7 @@
  import { Skeleton } from "@/components/ui/skeleton";
 import { ArrowLeft, Send, Play, Image as ImageIcon, Volume2, VolumeX, BookOpen, MessageSquare, Loader2, RotateCw, Sparkles, ChevronDown, ChevronUp } from "lucide-react";
 import { CallDialog } from "@/components/story/CallDialog";
-import { STORY_VOICES, getStoryVoice, setStoryVoice, voiceGender } from "@/lib/voices";
+import { STORY_VOICES, getStoryVoice, setStoryVoice } from "@/lib/voices";
 import { streamSpeech, type SpeechStream } from "@/lib/ttsStream";
 import { invokeFunctionWithRetry } from "@/lib/invokeFunction";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -382,68 +382,19 @@ type Mode = "select" | "read" | "roleplay";
          setPlayingId(null);
        }
      } catch (e) {
-       console.error("playAudio error:", e);
-        streamRef.current = null;
-        speakWithBrowser(text, id);
+       console.error("Gemini voice playback failed:", e);
+       streamRef.current = null;
+       setPlayingId(null);
+       const status = (e as { status?: number })?.status;
+       toast({
+         title: language === "es" ? "La voz Gemini no estÃ¡ disponible" : "Gemini voice is unavailable",
+         description: status === 429
+           ? (language === "es" ? "Se alcanzÃ³ la cuota de voces. El texto sigue disponible." : "The voice quota has been reached. The text remains available.")
+           : (language === "es" ? "No se pudo reproducir la voz seleccionada. IntÃ©ntalo de nuevo." : "The selected voice could not play. Please try again."),
+         variant: "destructive",
+       });
      }
    };
-
-    const femaleHints = [
-      "female", "mujer", "femenina",
-      "mónica", "monica", "paulina", "lucia", "luciana", "helena",
-      "google español", "google us english", "samantha", "victoria",
-      "sara", "sabina", "elvira", "zira", "tessa", "karen", "fiona",
-    ];
-    const maleHints = ["male", "hombre", "diego", "jorge", "carlos", "pablo", "enrique", "george", "daniel", "fred"];
-
-    // Device fallback keeps the gender of the voice chosen for this story
-    const pickDeviceVoice = (langCode: string): SpeechSynthesisVoice | null => {
-      const voices = window.speechSynthesis.getVoices();
-      if (!voices.length) return null;
-      const base = langCode.split("-")[0];
-      const inLang = voices.filter((v) => v.lang?.toLowerCase().startsWith(base));
-      const pool = inLang.length ? inLang : voices;
-      const wantMale = voiceGender(voiceRef.current) === "male";
-      const wanted = wantMale ? maleHints : femaleHints;
-      const other = wantMale ? femaleHints : maleHints;
-      const byHint = pool.find((v) => wanted.some((h) => v.name.toLowerCase().includes(h)));
-      const notOther = pool.find((v) => !other.some((h) => v.name.toLowerCase().includes(h)));
-      return byHint || notOther || pool[0] || null;
-    };
-
-    const speakWithBrowser = (text: string, id: string) => {
-      try {
-        if (typeof window === "undefined" || !("speechSynthesis" in window)) {
-          setPlayingId(null);
-          return;
-        }
-        // Strip markdown markers for cleaner narration
-        const clean = text.replace(/[*_#`"]/g, "").trim();
-        const langCode = language === "es" ? "es-ES" : "en-US";
-
-        const speak = () => {
-          window.speechSynthesis.cancel();
-          const utter = new SpeechSynthesisUtterance(clean);
-          utter.lang = langCode;
-          const deviceVoice = pickDeviceVoice(langCode);
-          if (deviceVoice) utter.voice = deviceVoice;
-          // Warm, calm narration; pitch follows the chosen voice gender
-          utter.rate = 0.95;
-          utter.pitch = voiceGender(voiceRef.current) === "male" ? 0.9 : 1.15;
-          utter.onend = () => setPlayingId(null);
-          utter.onerror = () => setPlayingId(null);
-          setPlayingId(id);
-          window.speechSynthesis.speak(utter);
-        };
-
-        // The browser can speak with its default voice before getVoices()
-        // finishes loading. Waiting for voiceschanged can stall indefinitely.
-        speak();
-      } catch (e) {
-        console.error("speakWithBrowser error:", e);
-        setPlayingId(null);
-      }
-    };
 
    const stopAudio = () => {
      streamRef.current?.stop();
