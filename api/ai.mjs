@@ -13,11 +13,7 @@ async function generate(model, parts, settings = {}, options = {}) {
   if (!key || key === "[SENSITIVE]") throw Object.assign(new Error("Gemini no estÃ¡ configurado en Insomnia (Vercel)."), { status: 503, code: "gemini_not_configured" });
   const choices = model === "gemini-3.5-transcribe"
     ? [model]
-    : [...new Set([
-        model,
-        "gemini-3.1-flash-lite-preview",
-        "gemini-3.1-flash-lite",
-      ])];
+    : [...new Set([model, ...(options.fallbackModels || ["gemini-3.1-flash-lite-preview", "gemini-3.1-flash-lite"])])];
   let lastError;
   for (const candidate of choices) {
     try {
@@ -96,10 +92,10 @@ export default async function handler(req, res) {
       if (contents.at(-1)?.role === "user") contents.at(-1).parts[0].text += "\n" + latest;
       else contents.push({ role: "user", parts: [{ text: latest }] });
       const content = await generate(
-        "gemini-3.1-flash-lite-preview",
+        "gemini-3.8-flash",
         [],
         { maxOutputTokens: 220, temperature: 0.65 },
-        { contents, systemInstruction, validate: (reply) => !isOffRole(reply) },
+        { contents, systemInstruction, fallbackModels: ["gemini-3.1-flash-lite"], validate: (reply) => !isOffRole(reply) },
       );
       return send(res, 200, { content });
     }
