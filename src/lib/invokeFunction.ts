@@ -30,13 +30,9 @@ async function callOwnAi<T>(name: string, body: unknown): Promise<FunctionResult
 /** Retries only transient network, rate-limit, and server failures once. */
 export async function invokeFunctionWithRetry<T>(name: string, body: unknown): Promise<FunctionResult<T>> {
   if (ownAi.has(name)) {
-    let result = await callOwnAi<T>(name, body);
-    if (!result.error) return result;
-    const status = result.error.context.status;
-    if (status !== 429 && status < 500) return result;
-    await wait(900);
-    result = await callOwnAi<T>(name, body);
-    return result;
+    // The server already tries a second Gemini model on overload or timeout.
+    // Retrying the whole request doubles chat latency and translation traffic.
+    return callOwnAi<T>(name, body);
   }
   let result = await supabase.functions.invoke<T>(name, { body });
   if (!result.error) return result as FunctionResult<T>;

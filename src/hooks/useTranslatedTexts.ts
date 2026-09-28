@@ -11,14 +11,70 @@ function isLikelySpanish(text: string): boolean {
   return /[áéíóúñ¿¡]/i.test(text) || /\b(el|la|los|las|de|que|para|con|una|por)\b/i.test(text);
 }
 
-async function translateBatch(texts: string[], targetLang: string): Promise<string[] | null> {
-  if (texts.length === 0) return [];
-  const { data, error } = await invokeFunctionWithRetry<{ translations?: string[] }>("translate", { texts, targetLang });
-  if (error || !data?.translations) {
-    console.warn("Translate failed", error);
-    return null;
+type TranslationJob = {
+  texts: string[];
+  targetLang: string;
+  resolve: (translations: string[] | null) => void;
+};
+const translationJobs: TranslationJob[] = [];
+let translationTimer: ReturnType<typeof setTimeout> | null = null;
+let translationActive = false;
+
+function scheduleTranslations() {
+  if (translationTimer || translationActive) return;
+  translationTimer = setTimeout(() => {
+    translationTimer = null;
+    void flushTranslations();
+  }, 35);
+}
+
+async function flushTranslations() {
+  if (translationActive || !translationJobs.length) return;
+  translationActive = true;
+  const first = translationJobs.shift()!;
+  const jobs = [first];
+  let size = first.texts.length;
+  for (let i = 0; i < translationJobs.length && size < 50;) {
+    const job = translationJobs[i];
+    if (job.targetLang === first.targetLang && size + job.texts.length <= 50) {
+      jobs.push(...translationJobs.splice(i, 1));
+      size += job.texts.length;
+    } else {
+      i++;
+    }
   }
-  return data.translations as string[];
+  const texts = jobs.flatMap((job) => job.texts);
+  let translations: string[] | null = null;
+  try {
+    const { data, error } = await invokeFunctionWithRetry<{ translations?: string[] }>("translate", {
+      texts, targetLang: first.targetLang,
+    });
+    if (!error && data?.translations?.length === texts.length) translations = data.translations;
+  } catch (error) {
+    console.warn("Translate failed", error);
+  } finally {
+    let offset = 0;
+    for (const job of jobs) {
+      job.resolve(translations?.slice(offset, offset + job.texts.length) ?? null);
+      offset += job.texts.length;
+    }
+    translationActive = false;
+    scheduleTranslations();
+  }
+}
+
+function translateBatch(texts: string[], targetLang: string): Promise<string[] | null> {
+  if (!texts.length) return Promise.resolve([]);
+  if (texts.length > 50) {
+    const chunks = Array.from({ length: Math.ceil(texts.length / 50) }, (_, i) =>
+      translateBatch(texts.slice(i * 50, (i + 1) * 50), targetLang)
+    );
+    return Promise.all(chunks).then((parts) => parts.every(Boolean) ? parts.flat() as string[] : null);
+  }
+  return new Promise((resolve) => {
+    translationJobs.push({ texts, targetLang, resolve });
+    scheduleTranslations();
+  });
 }
 
 /**
