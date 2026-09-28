@@ -313,6 +313,11 @@ type Mode = "select" | "read" | "roleplay";
         description: data?.message,
         variant: "destructive",
       });
+      else if (code === "ai_timeout" || code === "ai_unavailable" || status === 503 || status === 504) toast({
+        title: language === "es" ? "Gemini estÃ¡ ocupado; prueba de nuevo" : "Gemini is busy; try again",
+        description: language === "es" ? "Tu mensaje sigue en el cuadro para reenviarlo." : "Your message remains in the box for another attempt.",
+        variant: "destructive",
+      });
       else toast({ title: t("mode.aiError"), variant: "destructive" });
       return null;
     }

@@ -13,7 +13,12 @@ async function generate(model, parts, settings = {}) {
   if (!key || key === "[SENSITIVE]") throw Object.assign(new Error("Gemini no estÃ¡ configurado en Insomnia (Vercel)."), { status: 503, code: "gemini_not_configured" });
   const choices = model === "gemini-3.5-transcribe"
     ? [model]
-    : [...new Set([model, "gemini-3.1-flash-lite-preview", "gemini-3.1-flash-lite"])];
+    : [...new Set([
+        model,
+        ...(settings.maxOutputTokens <= 200 && !settings.responseMimeType ? ["gemma-4-26b-a4b-it"] : []),
+        "gemini-3.1-flash-lite-preview",
+        "gemini-3.1-flash-lite",
+      ])];
   let lastError;
   for (const candidate of choices) {
     try {
