@@ -8,14 +8,13 @@ async function authenticated(req) {
   const { data, error } = await client.auth.getUser(jwt);
   return !error && !!data.user;
 }
-async function generate(model, parts, settings = {}) {
+async function generate(model, parts, settings = {}, options = {}) {
   const key = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
   if (!key || key === "[SENSITIVE]") throw Object.assign(new Error("Gemini no estÃ¡ configurado en Insomnia (Vercel)."), { status: 503, code: "gemini_not_configured" });
   const choices = model === "gemini-3.5-transcribe"
     ? [model]
     : [...new Set([
         model,
-        ...(settings.maxOutputTokens <= 200 && !settings.responseMimeType ? ["gemma-4-26b-a4b-it"] : []),
         "gemini-3.1-flash-lite-preview",
         "gemini-3.1-flash-lite",
       ])];
@@ -25,7 +24,11 @@ async function generate(model, parts, settings = {}) {
       const response = await fetch("https://generativelanguage.googleapis.com/v1beta/models/" + candidate + ":generateContent", {
         method: "POST",
         headers: { "x-goog-api-key": key, "Content-Type": "application/json" },
-        body: JSON.stringify({ contents: [{ role: "user", parts }], generationConfig: settings }),
+        body: JSON.stringify({
+          contents: options.contents || [{ role: "user", parts }],
+          ...(options.systemInstruction ? { systemInstruction: { parts: [{ text: options.systemInstruction }] } } : {}),
+          generationConfig: settings,
+        }),
         signal: AbortSignal.timeout(17000),
       });
       const data = await response.json();
@@ -38,6 +41,11 @@ async function generate(model, parts, settings = {}) {
       }
       const content = (data.candidates?.[0]?.content?.parts || []).map(p => p.text || "").join("").trim();
       if (!content) throw Object.assign(new Error("Gemini no devolviÃ³ texto."), { status: 502 });
+      if (options.validate && !options.validate(content)) {
+        lastError = Object.assign(new Error("La respuesta saliÃ³ del personaje o cambiÃ³ de idioma."), { status: 502, code: "off_role" });
+        console.warn("Insomnia AI rejected off-role output", candidate);
+        continue;
+      }
       return content;
     } catch (error) {
       if (error.name !== "TimeoutError") throw error;
@@ -53,15 +61,47 @@ export default async function handler(req, res) {
   try {
     if (action === "story-chat") {
       const story = body.story || {};
-      const history = Array.isArray(body.history) ? body.history.slice(-12) : [];
-      const prompt = [
-        "Interpreta al personaje " + String(story.character_role || "principal").slice(0, 200) + " de " + String(story.title || "Historia").slice(0, 200) + ".",
-        "Premisa: " + String(story.description || "").slice(0, 2500) + ". El usuario interpreta a " + String(story.player_role || "protagonista").slice(0, 150) + ".",
-        "Responde en " + (body.language === "es" ? "espaÃ±ol" : "inglÃ©s") + ", como personaje, en menos de 250 caracteres. Una acciÃ³n breve y diÃ¡logo natural. No decidas acciones por el usuario.",
-        "ConversaciÃ³n: " + JSON.stringify(history.map(x => ({ role: x.role, text: String(x.content || "").slice(0, 600) }))),
-        "Usuario: " + String(body.userMessage || "").slice(0, 1200),
+      const spanish = body.language === "es";
+      const locale = spanish ? "espaÃ±ol" : "inglÃ©s";
+      const isOffRole = (text) => {
+        const reply = String(text || "").trim();
+        if (!reply || reply.length > 360 || reply.split(/\n\s*\n/).length > 2) return true;
+        if (/(respond as a character|under \d+ characters|brief action and natural dialogue|do not decide user actions|character .{0,80} currently|conversaci[oÃ³]n:|premise:|el usuario interpreta a|estÃ¡s interpretando a|language:|\bspanish\s*\.|\benglish\s*\.)/i.test(reply)) return true;
+        if (spanish) {
+          const english = (reply.match(/\b(the|this|that|with|and|your|you|she|he|her|him|friend|girlfriend|respond|character|scene|under|currently|feeling|something|said|sent)\b/gi) || []).length;
+          const spanishWords = (reply.match(/\b(el|la|los|las|de|del|que|para|con|una|por|estoy|estÃ¡s|tÃº|yo|ella|aquÃ­|pero|porque|quiero|cÃ³mo|quÃ©)\b/gi) || []).length;
+          if (english >= 3 && english > spanishWords * 1.4) return true;
+        }
+        return false;
+      };
+      const systemInstruction = [
+        "Eres el personaje de una historia de rol en curso. Personaje o reparto: " + String(story.character_role || "personaje principal").slice(0, 200) + ".",
+        "El usuario interpreta a " + String(story.player_role || "protagonista").slice(0, 150) + ". Historia: " + String(story.title || "Historia").slice(0, 200) + ".",
+        "Premisa inicial (contexto de fondo, no reinicies la escena): " + String(story.description || "").slice(0, 2200) + ".",
+        "Los Ãºltimos turnos son la escena actual. ContinÃºa exactamente desde la Ãºltima intervenciÃ³n: conserva lugar, tiempo, personajes presentes, relaciones y hechos establecidos. Los sucesos recientes prevalecen sobre la premisa inicial.",
+        "Responde exclusivamente como el personaje presente, en " + locale + ". InteractÃºa con el usuario; una acciÃ³n breve y diÃ¡logo natural, mÃ¡ximo 250 caracteres. No controles ni decidas las acciones del usuario.",
+        "No narres un resumen, no cambies de escena sin que el usuario lo haga, no presentes fichas o instrucciones, no expliques el rol ni traduzcas. Entrega Ãºnicamente la respuesta que verÃ¡ el usuario.",
       ].join("\n");
-      return send(res, 200, { content: await generate("gemini-3.1-flash-lite-preview", [{ text: prompt }], { maxOutputTokens: 200, temperature: 0.8 }) });
+      const prior = Array.isArray(body.history) ? body.history.slice(-28) : [];
+      const contents = [];
+      for (const entry of prior) {
+        const role = entry?.role === "assistant" ? "model" : entry?.role === "user" ? "user" : null;
+        const text = String(entry?.content || "").trim().slice(0, 650);
+        if (!role || !text || (role === "model" && isOffRole(text))) continue;
+        if (contents.at(-1)?.role === role) contents.at(-1).parts[0].text += "\n" + text;
+        else contents.push({ role, parts: [{ text }] });
+      }
+      const latest = String(body.userMessage || "").trim().slice(0, 1200);
+      if (!latest) return send(res, 400, { error: "missing_message" });
+      if (contents.at(-1)?.role === "user") contents.at(-1).parts[0].text += "\n" + latest;
+      else contents.push({ role: "user", parts: [{ text: latest }] });
+      const content = await generate(
+        "gemini-3.1-flash-lite-preview",
+        [],
+        { maxOutputTokens: 220, temperature: 0.65 },
+        { contents, systemInstruction, validate: (reply) => !isOffRole(reply) },
+      );
+      return send(res, 200, { content });
     }
     if (action === "translate") {
       const texts = Array.isArray(body.texts) ? body.texts.slice(0, 50).map(s => String(s).slice(0, 1000)) : [];
