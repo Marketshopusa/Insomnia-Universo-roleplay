@@ -34,11 +34,15 @@ async function generate(model, parts, settings = {}, options = {}) {
         lastError = Object.assign(new Error(data?.error?.message || "Gemini no respondiÃ³."), {
           status: response.status, code: response.status === 429 ? "rate_limited" : "ai_unavailable",
         });
-        if (response.status === 429 || response.status === 503) continue;
+        if ([429, 500, 502, 503, 504].includes(response.status)) continue;
         throw lastError;
       }
       const content = (data.candidates?.[0]?.content?.parts || []).map(p => p.text || "").join("").trim();
-      if (!content) throw Object.assign(new Error("Gemini no devolviÃ³ texto."), { status: 502 });
+      if (!content) {
+        console.warn("Insomnia AI empty output", candidate, data.candidates?.[0]?.finishReason, data.usageMetadata?.thoughtsTokenCount);
+        lastError = Object.assign(new Error("Gemini no devolviÃ³ texto."), { status: 502, code: "ai_unavailable" });
+        continue;
+      }
       if (options.validate && !options.validate(content)) {
         lastError = Object.assign(new Error("La respuesta saliÃ³ del personaje o cambiÃ³ de idioma."), { status: 502, code: "off_role" });
         console.warn("Insomnia AI rejected off-role output", candidate);
@@ -96,7 +100,7 @@ export default async function handler(req, res) {
       const content = await generate(
         "gemini-3.8-flash",
         [],
-        { maxOutputTokens: 220, temperature: 0.65 },
+        { maxOutputTokens: 1024, temperature: 0.65 },
         { contents, systemInstruction, fallbackModels: ["gemini-3.1-flash-lite"], fastReply: true, validate: (reply) => !isOffRole(reply) },
       );
       return send(res, 200, { content });

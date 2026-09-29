@@ -450,71 +450,42 @@ type Mode = "select" | "read" | "roleplay";
 
    // Generate a vivid illustration of a scene; the cover is only a loose identity reference
    const illustrateScene = async (text: string, key: string) => {
-     if (!story || illustratingId) return;
-     setIllustratingId(key);
-     try {
-       const { data, error } = await supabase.functions.invoke("illustrate-scene", {
-         body: {
-            sceneText: buildIllustrationContext(text, key),
-            focusText: text,
-           coverImageUrl: story.cover_image && !isVideoCover ? story.cover_image : undefined,
-           characterRole: story.character_role,
-            playerRole: story.player_role,
-            storyTitle: story.title,
-            storyDescription: story.description,
-           explicit: story.story_type === "real_sex" || !!story.has_explicit_images,
-           language,
-         },
-       });
-        if (error || !(data as any)?.taskId) {
-         toast({
-           title: language === "es" ? "No se pudo ilustrar la escena" : "Could not illustrate the scene",
-            description: (data as any)?.detail || error?.message,
-           variant: "destructive",
-         });
-         return;
-       }
-        const taskId = (data as any).taskId as string;
-        let completedImageUrl: string | undefined;
-        for (let attempt = 0; attempt < 40; attempt += 1) {
-          await new Promise((resolve) => window.setTimeout(resolve, 3000));
-          const { data: statusData, error: statusError } = await supabase.functions.invoke("illustrate-scene", {
-            body: {
-              action: "status",
-              taskId,
-              prompt: (data as any).prompt,
-              blueprint: (data as any).blueprint,
-              focusText: text,
-            },
-          });
-          if (statusError || (statusData as any)?.error) {
-            toast({
-              title: language === "es" ? "No se pudo ilustrar la escena" : "Could not illustrate the scene",
-              description: (statusData as any)?.detail || statusError?.message,
-              variant: "destructive",
-            });
-            return;
-          }
-          if ((statusData as any)?.status === "complete" && (statusData as any)?.imageUrl) {
-            completedImageUrl = (statusData as any).imageUrl;
-            break;
-          }
-        }
-        if (!completedImageUrl) {
+      if (!story || illustratingId) return;
+      setIllustratingId(key);
+      try {
+        const { data, error } = await invokeFunctionWithRetry<{ imageUrl?: string; error?: string; message?: string }>("illustrate-scene", {
+          sceneText: buildIllustrationContext(text, key),
+          focusText: text,
+          coverImageUrl: story.cover_image && !isVideoCover ? story.cover_image : undefined,
+          characterRole: story.character_role,
+          playerRole: story.player_role,
+          storyTitle: story.title,
+          storyDescription: story.description,
+          language,
+        });
+        if (error || !data?.imageUrl) {
           toast({
-            title: language === "es" ? "La ilustración está tardando demasiado" : "The illustration is taking too long",
-            description: language === "es" ? "Inténtalo nuevamente en unos minutos." : "Please try again in a few minutes.",
+            title: language === "es" ? "No se pudo ilustrar la escena" : "Could not illustrate the scene",
+            description: data?.error === "rate_limited"
+              ? (language === "es" ? "Se alcanzÃ³ la cuota de imÃ¡genes. IntÃ©ntalo mÃ¡s tarde." : "The image quota has been reached. Try later.")
+              : data?.message || error?.message,
             variant: "destructive",
           });
           return;
         }
-        setSceneImages((prev) => ({ ...prev, [key]: completedImageUrl }));
-     } finally {
-       setIllustratingId(null);
-     }
-   };
+        setSceneImages((previous) => ({ ...previous, [key]: data.imageUrl! }));
+      } catch (failure) {
+        toast({
+          title: language === "es" ? "No se pudo ilustrar la escena" : "Could not illustrate the scene",
+          description: failure instanceof Error ? failure.message : undefined,
+          variant: "destructive",
+        });
+      } finally {
+        setIllustratingId(null);
+      }
+    };
 
-   const generateNarrative = async () => {
+    const generateNarrative = async () => {
      if (!story) return;
      setNarrativeLoading(true);
      setNarrative("");

@@ -10,10 +10,10 @@ function responseContext(error: unknown) {
 }
 
 type FunctionResult<T> = { data: T | null; error: ({ message: string; context: Response } | null) };
-const ownAi = new Set(["story-chat", "translate", "speech-to-text", "generate-narrative", "generate-novel", "generate-shorts-series"]);
+const ownAi = new Set(["story-chat", "translate", "speech-to-text", "generate-narrative", "generate-novel", "generate-shorts-series", "illustrate-scene"]);
 async function callOwnAi<T>(name: string, body: unknown): Promise<FunctionResult<T>> {
   const { data: { session } } = await supabase.auth.getSession();
-  const response = await fetch("/api/ai", {
+  const response = await fetch(name === "illustrate-scene" ? "/api/illustrate" : "/api/ai", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

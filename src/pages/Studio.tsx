@@ -68,6 +68,8 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
   const [generatingVideos, setGeneratingVideos] = useState(false);
   const [videoProgress, setVideoProgress] = useState("");
   const [novel, setNovel] = useState<any>(null);
+   const [chapterImages, setChapterImages] = useState<Record<number, string>>({});
+   const [illustratingChapter, setIllustratingChapter] = useState<number | null>(null);
 
 
   const creativityLevels = [
@@ -262,6 +264,29 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
      setDescription("");
      setCurrentProjectId(null);
     toast({ title: t("studio.toast.blank") });
+   };
+
+   const illustrateChapter = async (chapter: any, index: number) => {
+     if (!novel || illustratingChapter !== null) return;
+     setIllustratingChapter(index);
+     try {
+       const { data, error } = await invokeFunctionWithRetry<{ imageUrl?: string; error?: string; message?: string }>("illustrate-scene", {
+         focusText: String(chapter.content || chapter.summary || chapter.video_prompt || "").slice(0, 1800),
+         sceneText: (novel.chapters || []).slice(Math.max(0, index - 2), index + 1)
+           .map((item: any) => String(item.summary || item.content || "").slice(0, 600)).join("\n"),
+         storyTitle: novel.title,
+         storyDescription: novel.logline || description,
+         characterRole: JSON.stringify(novel.characters || []).slice(0, 1200),
+         playerRole: "",
+         language,
+       });
+       if (error || !data?.imageUrl) throw new Error(data?.message || error?.message || "No se pudo generar la imagen.");
+       setChapterImages((previous) => ({ ...previous, [index]: data.imageUrl! }));
+     } catch (failure) {
+       toast({ title: "No se pudo ilustrar el capÃ­tulo", description: failure instanceof Error ? failure.message : undefined, variant: "destructive" });
+     } finally {
+       setIllustratingChapter(null);
+     }
    };
 
    const handleSaveProject = async () => {
@@ -540,6 +565,14 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
                     {ch.number}. {ch.title}
                   </p>
                   <p className="text-sm whitespace-pre-wrap leading-relaxed">{ch.content}</p>
+                  <Button variant="secondary" size="sm" disabled={illustratingChapter !== null}
+                    onClick={() => illustrateChapter(ch, i)}>
+                    {illustratingChapter === i ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Sparkles className="w-4 h-4 mr-2" />}
+                    {chapterImages[i] ? "Recrear imagen" : "Ilustrar capÃ­tulo"}
+                  </Button>
+                  {chapterImages[i] && <img src={chapterImages[i]} alt={"Escena del capÃ­tulo " + (i + 1)}
+                    className="w-full max-w-md rounded-md" />}
+
                   {ch.video_prompt && (
                     <p className="text-xs font-mono text-muted-foreground break-words border-t border-border pt-2">
                       Video prompt: {ch.video_prompt}
