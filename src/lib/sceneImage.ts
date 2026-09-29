@@ -5,6 +5,7 @@ const wait = (ms: number) => new Promise((resolve) => window.setTimeout(resolve,
 
 export async function generateSceneImage(body: Record<string, unknown>): Promise<string> {
   const created = await invokeFunctionWithRetry<Reply>("illustrate-scene", body);
+  if (created.data?.status === "ready" && created.data.imageUrl) return created.data.imageUrl;
   if (created.error || !created.data?.jobId) {
     throw new Error(created.data?.message || created.error?.message || "No se pudo iniciar la imagen.");
   }

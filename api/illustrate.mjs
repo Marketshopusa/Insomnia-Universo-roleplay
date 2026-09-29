@@ -37,6 +37,20 @@ export default async function handler(req, res) {
 
     const focus = String(body.focusText || "").trim().slice(0, 1800);
     if (focus.length < 8) return send(res, 400, { error: "scene_too_short" });
+    const source = body.source === "novel" ? "novel" : "story";
+    const sceneKey = String(body.sceneKey || crypto.randomUUID()).slice(0, 120);
+    const { data: prior, error: priorError } = await client.from("kineva_scene_jobs")
+      .select("id,status,output_path").eq("owner_id", user.id).eq("source", source)
+      .eq("scene_key", sceneKey).order("created_at", { ascending: false }).limit(1).maybeSingle();
+    if (priorError) throw priorError;
+    if (prior?.status === "ready" && prior.output_path) {
+      const { data: signed, error: signedError } = await client.storage.from(bucket)
+        .createSignedUrl(prior.output_path, 3600);
+      if (signedError) throw signedError;
+      return send(res, 200, { status: "ready", imageUrl: signed.signedUrl });
+    }
+    if (prior && ["queued", "running"].includes(prior.status))
+      return send(res, 202, { jobId: prior.id, status: prior.status });
     const { count, error: countError } = await client.from("kineva_scene_jobs")
       .select("id", { count: "exact", head: true }).eq("owner_id", user.id).in("status", ["queued", "running"]);
     if (countError) throw countError;
@@ -57,9 +71,8 @@ export default async function handler(req, res) {
       const url = new URL(body.coverImageUrl);
       if (url.origin === supabaseUrl && coverPrefix.test(url.pathname)) referenceUrl = url.toString();
     } catch { /* No public reference cover. */ }
-    const source = body.source === "novel" ? "novel" : "story";
     const { data: job, error } = await client.from("kineva_scene_jobs").insert({
-      owner_id: user.id, source, scene_key: String(body.sceneKey || crypto.randomUUID()).slice(0, 120),
+      owner_id: user.id, source, scene_key: sceneKey,
       prompt, reference_url: referenceUrl,
     }).select("id,status").single();
     if (error) throw error;

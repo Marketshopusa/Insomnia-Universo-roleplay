@@ -113,8 +113,19 @@ def main():
         print("Kineva still-image preflight OK", flush=True)
         return
     cloud = Api(os.environ["SUPABASE_URL"], os.environ["SUPABASE_SERVICE_ROLE_KEY"])
+    failures = 0
     while True:
-        worked = process_one(cloud, comfy, args.output_dir)
+        try:
+            worked = process_one(cloud, comfy, args.output_dir)
+            failures = 0
+        except Exception as error:
+            failures += 1
+            print("Image worker connection error:", ascii(error)[:350],
+                  file=sys.stderr, flush=True)
+            if args.once:
+                raise
+            time.sleep(min(60, 3 * 2 ** min(failures, 4)))
+            continue
         if args.once:
             break
         if not worked:
