@@ -73,9 +73,8 @@ function splitSpeechText(text: string, maximumLength = 700): string[] {
   return chunks;
 }
 
-async function receivePcmOnce(text: string, voice: string, signal: AbortSignal) {
+async function receivePcmOnce(text: string, voice: string, signal: AbortSignal, onChunk: (bytes: Uint8Array) => void) {
   const response = await requestSpeech(text, voice, signal);
-  if (!response) throw new Error("tts_no_response");
   if (!response.ok || !response.body) {
     const payload = await response.json().catch(() => null) as { message?: string; detail?: string } | null;
     if (response.status === 402) paymentRequiredUntil = Date.now() + 60_000;
@@ -86,18 +85,14 @@ async function receivePcmOnce(text: string, voice: string, signal: AbortSignal) 
   let pendingText = "";
   let byteCarry: Uint8Array<ArrayBufferLike> = new Uint8Array(0);
   let receivedDone = false;
-  const chunks: Uint8Array[] = [];
-
+  let totalBytes = 0;
   const processLine = (line: string) => {
     if (!line.startsWith("data:")) return;
     const raw = line.slice(5).trim();
     if (!raw || raw === "[DONE]") return;
-    let event: { type?: string; audio?: string };
-    try {
-      event = JSON.parse(raw);
-    } catch {
-      return;
-    }
+    let event: { type?: string; audio?: string; message?: string };
+    try { event = JSON.parse(raw); } catch { return; }
+    if (event.type === "speech.error") throw new Error(event.message || "tts_stream_failed");
     if (event.type === "speech.audio.done") {
       receivedDone = true;
       return;
@@ -105,63 +100,49 @@ async function receivePcmOnce(text: string, voice: string, signal: AbortSignal) 
     if (event.type !== "speech.audio.delta" || !event.audio) return;
     const decoded = decodePcm(event.audio, byteCarry);
     byteCarry = decoded.carry;
-    if (decoded.bytes.length > 0) chunks.push(decoded.bytes);
+    if (decoded.bytes.length > 0) {
+      totalBytes += decoded.bytes.length;
+      onChunk(decoded.bytes);
+    }
   };
 
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    pendingText += value;
-    const lines = pendingText.split(/\r?\n/);
-    pendingText = lines.pop() ?? "";
-    lines.forEach(processLine);
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      pendingText += value;
+      const lines = pendingText.split(/\r?\n/);
+      pendingText = lines.pop() ?? "";
+      lines.forEach(processLine);
+    }
+    if (pendingText.trim()) processLine(pendingText);
+  } finally {
+    reader.releaseLock();
   }
-  if (pendingText.trim()) processLine(pendingText);
-  if (!receivedDone) throw new Error("tts_stream_incomplete");
-  if (byteCarry.length > 0 || chunks.length === 0) throw new Error("tts_audio_incomplete");
-  const totalBytes = chunks.reduce((sum, chunk) => sum + chunk.byteLength, 0);
+  if (!receivedDone || byteCarry.length > 0 || totalBytes === 0) throw new Error("tts_stream_incomplete");
   const audioSeconds = totalBytes / 2 / PCM_SAMPLE_RATE;
   const spokenWords = text.match(/[\p{L}\p{N}]+/gu)?.length ?? 0;
-  const minimumSeconds = Math.max(0.8, spokenWords * 0.19);
-  if (audioSeconds < minimumSeconds) throw new Error("tts_audio_too_short");
-  return chunks;
+  if (audioSeconds < Math.max(0.8, spokenWords * 0.19)) throw new Error("tts_audio_too_short");
 }
 
-async function receivePcm(text: string, voice: string, signal: AbortSignal) {
-  if (Date.now() < paymentRequiredUntil) {
-    throw new SpeechHttpError(402, "Voice provider has no credits");
-  }
+async function receivePcm(text: string, voice: string, signal: AbortSignal, onChunk: (bytes: Uint8Array) => void) {
+  if (Date.now() < paymentRequiredUntil) throw new SpeechHttpError(402, "Voice provider has no credits");
   let lastError: unknown;
   for (let attempt = 0; attempt < 2; attempt += 1) {
+    let audioStarted = false;
     try {
-      return await receivePcmOnce(text, voice, signal);
+      return await receivePcmOnce(text, voice, signal, (bytes) => {
+        audioStarted = true;
+        onChunk(bytes);
+      });
     } catch (error) {
-      if (signal.aborted || (error instanceof SpeechHttpError && error.status < 500)) throw error;
+      // Once any PCM is audible, retrying would repeat the start of the phrase.
+      if (signal.aborted || audioStarted || (error instanceof SpeechHttpError && error.status < 500)) throw error;
       lastError = error;
       if (attempt === 0) await wait(350);
     }
   }
   throw lastError instanceof Error ? lastError : new Error("tts_audio_incomplete");
-}
-
-function trimBoundarySilence(bytes: Uint8Array, retainMilliseconds = 70) {
-  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  const sampleCount = Math.floor(bytes.byteLength / 2);
-  const threshold = 180;
-  const retainSamples = Math.floor((PCM_SAMPLE_RATE * retainMilliseconds) / 1000);
-  let firstAudible = 0;
-  let lastAudible = sampleCount - 1;
-
-  while (firstAudible < sampleCount && Math.abs(view.getInt16(firstAudible * 2, true)) < threshold) {
-    firstAudible += 1;
-  }
-  while (lastAudible > firstAudible && Math.abs(view.getInt16(lastAudible * 2, true)) < threshold) {
-    lastAudible -= 1;
-  }
-
-  const start = Math.max(0, firstAudible - retainSamples);
-  const end = Math.min(sampleCount, lastAudible + retainSamples + 1);
-  return bytes.slice(start * 2, end * 2);
 }
 
 function decodePcm(value: string, carry: Uint8Array): { bytes: Uint8Array; carry: Uint8Array } {
@@ -177,9 +158,8 @@ function decodePcm(value: string, carry: Uint8Array): { bytes: Uint8Array; carry
 }
 
 /**
- * Fetches independent, short utterances in parallel but starts playback as
- * soon as the first validated utterance is ready. The browser schedules the
- * remaining utterances on one AudioContext clock as they arrive.
+ * Plays PCM as the provider sends it. All pieces share one AudioContext clock,
+ * so they remain in order without waiting for the full phrase to download.
  */
 export function streamSpeech(text: string, voice: string): SpeechStream {
   const controller = new AbortController();
@@ -188,9 +168,6 @@ export function streamSpeech(text: string, voice: string): SpeechStream {
   let stopped = false;
   let schedulingComplete = false;
   let finishPlayback: () => void = () => {};
-  let finishCancelled: () => void = () => {};
-  const cancelled = new Promise<null>((resolve) => { finishCancelled = () => resolve(null); });
-
   let markStarted: () => void = () => {};
   const started = new Promise<void>((resolve) => { markStarted = resolve; });
 
@@ -198,7 +175,6 @@ export function streamSpeech(text: string, voice: string): SpeechStream {
     if (stopped) return;
     stopped = true;
     controller.abort();
-    finishCancelled();
     finishPlayback();
     for (const source of sources) {
       try { source.stop(); } catch { /* Already ended. */ }
@@ -211,59 +187,19 @@ export function streamSpeech(text: string, voice: string): SpeechStream {
 
   const done = (async () => {
     try {
-      if (Date.now() < paymentRequiredUntil) {
-        throw new SpeechHttpError(402, "Voice provider has no credits");
-      }
       context = new AudioContext({ sampleRate: PCM_SAMPLE_RATE });
       if (context.state === "suspended") await context.resume();
       if (stopped || !context) return;
       const playbackEnded = new Promise<void>((resolve) => { finishPlayback = resolve; });
       const textChunks = splitSpeechText(text);
-      if (textChunks.length === 0) return;
-      // At most three upstream requests at once; long reading passages should
-      // not trigger a burst of rate limits before the first sentence is spoken.
-      type Result = { pcm: Uint8Array[] | null; error: Error | null };
-      const pending = textChunks.map(() => {
-        let resolve!: (value: Result) => void;
-        const promise = new Promise<Result>((done) => { resolve = done; });
-        return { promise, resolve };
-      });
-      let nextRequest = 0;
-      const worker = async () => {
-        while (nextRequest < textChunks.length && !controller.signal.aborted) {
-          const index = nextRequest++;
-          try {
-            const pcm = await receivePcm(textChunks[index], voice, controller.signal);
-            pending[index].resolve({ pcm, error: null });
-          } catch (error) {
-            pending[index].resolve({
-              pcm: null,
-              error: error instanceof Error ? error : new Error("tts_failed"),
-            });
-          }
-        }
-      };
-      for (let i = 0; i < Math.min(1, textChunks.length); i += 1) void worker();
-
+      if (textChunks.length === 0) { stop(); return; }
       let scheduledAt = context.currentTime;
-      for (const request of pending) {
-        const result = await Promise.race([request.promise, cancelled]);
-        if (!result) return;
-        if (result.error) throw result.error;
-        if (stopped || !context || !result.pcm) return;
-        const length = result.pcm.reduce((sum, part) => sum + part.byteLength, 0);
-        const joined = new Uint8Array(length);
-        let offset = 0;
-        for (const part of result.pcm) {
-          joined.set(part, offset);
-          offset += part.byteLength;
-        }
-        const chunk = trimBoundarySilence(joined);
-        const samples = new Float32Array(chunk.byteLength / 2);
-        const view = new DataView(chunk.buffer, chunk.byteOffset, chunk.byteLength);
-        for (let index = 0; index < chunk.byteLength; index += 2) {
-          samples[index / 2] = view.getInt16(index, true) / 32768;
-        }
+
+      const schedule = (bytes: Uint8Array) => {
+        if (stopped || !context) return;
+        const samples = new Float32Array(bytes.byteLength / 2);
+        const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+        for (let i = 0; i < bytes.byteLength; i += 2) samples[i / 2] = view.getInt16(i, true) / 32768;
         const buffer = context.createBuffer(1, samples.length, PCM_SAMPLE_RATE);
         buffer.copyToChannel(samples, 0);
         const source = context.createBufferSource();
@@ -275,10 +211,14 @@ export function streamSpeech(text: string, voice: string): SpeechStream {
           source.disconnect();
           if (schedulingComplete && sources.size === 0) finishPlayback();
         };
-        const startAt = Math.max(scheduledAt, context.currentTime + 0.025);
+        const startAt = Math.max(scheduledAt, context.currentTime + (scheduledAt === 0 ? 0.08 : 0.025));
         source.start(startAt);
         scheduledAt = startAt + buffer.duration;
         if (sources.size === 1) markStarted();
+      };
+      for (const chunk of textChunks) {
+        if (stopped) return;
+        await receivePcm(chunk, voice, controller.signal, schedule);
       }
       schedulingComplete = true;
       if (sources.size === 0) finishPlayback();

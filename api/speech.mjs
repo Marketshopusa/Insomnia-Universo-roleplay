@@ -4,6 +4,62 @@ import { supabaseUrl, publishableKey } from "./config.mjs";
 const voices = { "scarlett-hd": "Aoede", "luna-sweet": "Leda", "aria-calm": "Kore", "max-deep": "Charon", "leo-warm": "Puck" };
 const models = ["gemini-3.1-flash-tts-preview", "gemini-3.8-flash-tts", "gemini-3.8-flash-lite-tts"];
 
+function sendEvent(res, event) {
+  res.write("data: " + JSON.stringify(event) + "\n\n");
+}
+
+async function relaySse(upstream, res, legacy) {
+  const reader = upstream.body.pipeThrough(new TextDecoderStream()).getReader();
+  let pending = "";
+  let audioStarted = false;
+  const onLine = (line) => {
+    if (!line.startsWith("data:")) return;
+    const value = line.slice(5).trim();
+    if (!value || value === "[DONE]") return;
+    let message;
+    try { message = JSON.parse(value); } catch { return; }
+    const parts = legacy
+      ? (message.candidates?.[0]?.content?.parts || []).map((part) => part.inlineData)
+      : message.delta?.type === "audio" ? [message.delta] : [];
+    for (const part of parts) {
+      if (!part?.data || !(part.mimeType || part.mime_type || "").startsWith("audio/l16")) continue;
+      if (!audioStarted) {
+        res.setHeader("Content-Type", "text/event-stream");
+        res.setHeader("Cache-Control", "no-cache, no-transform");
+        res.setHeader("X-Accel-Buffering", "no");
+        res.flushHeaders();
+        audioStarted = true;
+      }
+      sendEvent(res, { type: "speech.audio.delta", audio: part.data });
+    }
+  };
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      pending += value;
+      const lines = pending.split(/\r?\n/);
+      pending = lines.pop() || "";
+      for (const line of lines) onLine(line);
+    }
+    if (pending.trim()) onLine(pending);
+    if (audioStarted) {
+      sendEvent(res, { type: "speech.audio.done" });
+      res.end();
+    }
+    return audioStarted;
+  } catch (error) {
+    if (audioStarted) {
+      sendEvent(res, { type: "speech.error", message: "La voz se interrumpiÃ³." });
+      res.end();
+      return true;
+    }
+    throw error;
+  } finally {
+    reader.releaseLock();
+  }
+}
+
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "method_not_allowed" });
   const jwt = String(req.headers.authorization || "").replace(/^Bearer\s+/i, "");
@@ -25,15 +81,11 @@ export default async function handler(req, res) {
     try {
       const legacy = model === "gemini-3.1-flash-tts-preview";
       const speechText = legacy
-        ? [
-            "Lee en voz alta el texto completo, palabra por palabra, con voz cÃ¡lida y natural.",
-            "Pronuncia tanto la narraciÃ³n como el diÃ¡logo; no omitas ninguna parte.",
-            "TEXTO COMPLETO:\n" + text,
-          ].join(" ")
+        ? "Lee en voz alta el texto completo, palabra por palabra, con voz cÃ¡lida y natural. Pronuncia tanto la narraciÃ³n como el diÃ¡logo; no omitas ninguna parte. TEXTO COMPLETO:\n" + text
         : text;
       const upstream = await fetch(
         legacy
-          ? "https://generativelanguage.googleapis.com/v1beta/models/" + model + ":generateContent"
+          ? "https://generativelanguage.googleapis.com/v1beta/models/" + model + ":streamGenerateContent?alt=sse"
           : "https://generativelanguage.googleapis.com/v1beta/interactions",
         {
           method: "POST",
@@ -53,7 +105,7 @@ export default async function handler(req, res) {
                 }] }],
                 response_format: { type: "audio", mime_type: "audio/l16", sample_rate: 24000 },
                 generation_config: { speech_config: [{ voice }] },
-                stream: false,
+                stream: true,
               }),
           signal: AbortSignal.timeout(35000),
         },
@@ -65,31 +117,15 @@ export default async function handler(req, res) {
         if ([429, 500, 502, 503, 504].includes(upstream.status)) continue;
         break;
       }
-      const result = await upstream.json();
-      const audio = legacy
-        ? (result.candidates?.[0]?.content?.parts || [])
-            .map((part) => part.inlineData)
-            .find((part) => part?.data && part.mimeType?.startsWith("audio/l16"))
-        : (result.steps || [])
-            .flatMap((step) => step.content || [])
-            .filter((part) => part.type === "audio" && part.data && part.mime_type === "audio/l16")
-            .at(-1);
-      if (!audio?.data) {
-        console.warn("Insomnia speech provider returned no audio", model);
-        lastStatus = 502;
-        continue;
-      }
-      res.setHeader("Content-Type", "text/event-stream");
-      res.setHeader("Cache-Control", "no-cache, no-transform");
-      res.write("data: " + JSON.stringify({ type: "speech.audio.delta", audio: audio.data }) + "\n\n");
-      res.write("data: " + JSON.stringify({ type: "speech.audio.done" }) + "\n\n");
-      return res.end();
+      if (await relaySse(upstream, res, legacy)) return;
+      console.warn("Insomnia speech provider returned no audio", model);
+      lastStatus = 502;
     } catch (failure) {
+      if (res.headersSent) return;
       lastStatus = 504;
       console.warn("Insomnia speech provider timeout", model, failure.name);
     }
   }
-
   return res.status(quotaExceeded ? 429 : lastStatus).json({
     error: quotaExceeded ? "tts_quota_exhausted" : "tts_unavailable",
     message: quotaExceeded

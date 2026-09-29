@@ -23,7 +23,9 @@ async function generate(model, parts, settings = {}, options = {}) {
         body: JSON.stringify({
           contents: options.contents || [{ role: "user", parts }],
           ...(options.systemInstruction ? { systemInstruction: { parts: [{ text: options.systemInstruction }] } } : {}),
-          generationConfig: settings,
+          generationConfig: candidate === "gemini-3.8-flash" && options.fastReply
+            ? { ...settings, thinkingConfig: { thinkingLevel: "low" } }
+            : settings,
         }),
         signal: AbortSignal.timeout(17000),
       });
@@ -95,7 +97,7 @@ export default async function handler(req, res) {
         "gemini-3.8-flash",
         [],
         { maxOutputTokens: 220, temperature: 0.65 },
-        { contents, systemInstruction, fallbackModels: ["gemini-3.1-flash-lite"], validate: (reply) => !isOffRole(reply) },
+        { contents, systemInstruction, fallbackModels: ["gemini-3.1-flash-lite"], fastReply: true, validate: (reply) => !isOffRole(reply) },
       );
       return send(res, 200, { content });
     }
