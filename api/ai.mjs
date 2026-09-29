@@ -144,10 +144,17 @@ export default async function handler(req, res) {
       const token = String(req.headers.authorization).replace(/^Bearer\s+/i, "");
       const userClient = createClient(BASE, KEY, { auth: { persistSession: false }, global: { headers: { Authorization: "Bearer " + token } } });
       const { data: { user } } = await userClient.auth.getUser(token);
+      const referencePath = String(body.referencePath || "");
+      if (!new RegExp("^" + user.id + "/[0-9a-f-]{36}\\.(png|jpg|jpeg|webp)$", "i").test(referencePath)) {
+        return send(res, 400, { error: "reference_image_required" });
+      }
+      const { data: imageBlob, error: imageError } = await userClient.storage.from("kineva-references").download(referencePath);
+      if (imageError || !imageBlob || imageBlob.size === 0) return send(res, 400, { error: "reference_image_unavailable" });
       const { data: series, error: seriesError } = await userClient.from("shorts_series").insert({
         title: String(parsed.title).slice(0, 120), premise: String(parsed.logline || idea).slice(0, 500),
         category: String(body.category || "romance").slice(0, 40), is_adult: !!body.isAdult, created_by: user.id,
         video_provider: "kineva", is_published: false,
+        kineva_reference_image_path: referencePath, kineva_bible: { language: "Spanish" },
       }).select().single();
       if (seriesError) throw Object.assign(new Error(seriesError.message), { status: 500 });
       const rows = parsed.episodes.map((ep, i) => ({

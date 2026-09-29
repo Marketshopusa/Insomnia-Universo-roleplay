@@ -58,11 +58,6 @@ Deno.serve(async (req) => {
     if (!series || series.created_by !== auth.user.id || series.video_provider !== "kineva") {
       return reply({ error: "forbidden" }, 403);
     }
-    const allowed = (Deno.env.get("KINEVA_ALLOWED_USER_IDS") ?? "").split(",")
-      .map((id) => id.trim()).filter(Boolean);
-    if (action !== "status" && !allowed.includes(auth.user.id)) {
-      return reply({ error: "creator_not_enabled" }, 403);
-    }
     const service = createClient(url, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
     const { data: jobs, error: jobsError } = await service
       .from("kineva_render_jobs")
