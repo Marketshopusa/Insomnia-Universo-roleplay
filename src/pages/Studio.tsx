@@ -1,4 +1,5 @@
 import { invokeFunctionWithRetry } from "@/lib/invokeFunction";
+import { generateSceneImage } from "@/lib/sceneImage";
 import { useState } from "react";
 import { Clapperboard, Loader2, Sparkles } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -270,7 +271,9 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
      if (!novel || illustratingChapter !== null) return;
      setIllustratingChapter(index);
      try {
-       const { data, error } = await invokeFunctionWithRetry<{ imageUrl?: string; error?: string; message?: string }>("illustrate-scene", {
+       const imageUrl = await generateSceneImage({
+         source: "novel",
+         sceneKey: String(chapter.number || index + 1),
          focusText: String(chapter.content || chapter.summary || chapter.video_prompt || "").slice(0, 1800),
          sceneText: (novel.chapters || []).slice(Math.max(0, index - 2), index + 1)
            .map((item: any) => String(item.summary || item.content || "").slice(0, 600)).join("\n"),
@@ -280,8 +283,7 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
          playerRole: "",
          language,
        });
-       if (error || !data?.imageUrl) throw new Error(data?.message || error?.message || "No se pudo generar la imagen.");
-       setChapterImages((previous) => ({ ...previous, [index]: data.imageUrl! }));
+       setChapterImages((previous) => ({ ...previous, [index]: imageUrl }));
      } catch (failure) {
        toast({ title: "No se pudo ilustrar el capÃ­tulo", description: failure instanceof Error ? failure.message : undefined, variant: "destructive" });
      } finally {

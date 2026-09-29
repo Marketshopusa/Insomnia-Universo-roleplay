@@ -1,89 +1,71 @@
 import { createClient } from "@supabase/supabase-js";
 import { supabaseUrl, publishableKey } from "./config.mjs";
 
-export const maxDuration = 120;
-const allowedCoverPrefix = /^\/storage\/v1\/object\/public\/(story-covers|user-story-covers)\//;
-
-async function coverPart(value) {
-  if (!value) return null;
-  let url;
-  try { url = new URL(value); } catch { return null; }
-  if (url.origin !== supabaseUrl || !allowedCoverPrefix.test(url.pathname)) return null;
-  const response = await fetch(url, { signal: AbortSignal.timeout(9000) });
-  const mimeType = response.headers.get("content-type")?.split(";")[0] || "";
-  if (!response.ok || !["image/png", "image/jpeg", "image/webp"].includes(mimeType)) return null;
-  const length = Number(response.headers.get("content-length"));
-  if (length > 3_000_000) return null;
-  const bytes = Buffer.from(await response.arrayBuffer());
-  if (bytes.length > 3_000_000) return null;
-  return { inlineData: { mimeType, data: bytes.toString("base64") } };
-}
+const bucket = "kineva-scene-images";
+const coverPrefix = /^\/storage\/v1\/object\/public\/(story-covers|user-story-covers)\//;
+const send = (res, status, data) => res.status(status).json(data);
 
 export default async function handler(req, res) {
-  if (req.method !== "POST") return res.status(405).json({ error: "method_not_allowed" });
+  if (req.method !== "POST") return send(res, 405, { error: "method_not_allowed" });
   const jwt = String(req.headers.authorization || "").replace(/^Bearer\s+/i, "");
-  const { data, error } = jwt
-    ? await createClient(supabaseUrl, publishableKey, { auth: { persistSession: false } }).auth.getUser(jwt)
-    : { data: null, error: true };
-  if (error || !data?.user) return res.status(401).json({ error: "login_required" });
-  const key = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
-  if (!key || key === "[SENSITIVE]") return res.status(503).json({ error: "image_not_configured" });
+  if (!jwt) return send(res, 401, { error: "login_required" });
+  const client = createClient(supabaseUrl, publishableKey, {
+    auth: { persistSession: false },
+    global: { headers: { Authorization: "Bearer " + jwt } },
+  });
+  const { data: { user }, error: authError } = await client.auth.getUser(jwt);
+  if (authError || !user) return send(res, 401, { error: "login_required" });
+  res.setHeader("Cache-Control", "private, no-store");
   const body = req.body?.body || {};
-  const focus = String(body.focusText || "").trim().slice(0, 1800);
-  if (focus.length < 8) return res.status(400).json({ error: "scene_too_short" });
-  const prompt = [
-    "Create one vertical 3:4 cinematic photorealistic still image illustrating the CURRENT moment of this fictional story.",
-    "Keep the characters' identities, clothing, relationships, location, and chronology consistent with the context.",
-    "Show the action and arrangement from the latest moment. Do not restart the story or copy the cover's pose.",
-    "Do not include text, speech bubbles, captions, watermarks, or a collage.",
-    "Title: " + String(body.storyTitle || "").slice(0, 160),
-    "Characters: " + String(body.characterRole || "").slice(0, 450),
-    "Player role: " + String(body.playerRole || "").slice(0, 450),
-    "Premise: " + String(body.storyDescription || "").slice(0, 900),
-    "Recent scene context: " + String(body.sceneText || "").slice(-2400),
-    "LATEST MOMENT TO ILLUSTRATE: " + focus,
-  ].join("\n");
   try {
-    const reference = await coverPart(body.coverImageUrl).catch(() => null);
-    const parts = [{ text: prompt }];
-    if (reference) parts.push({ text: "Use this cover only to keep the character's visible appearance consistent. The pose and setting must follow the latest scene." }, reference);
-    let image;
-    let lastStatus = 502;
-    for (const model of ["gemini-3.1-flash-image", "gemini-3.1-flash-lite-image"]) {
-      const upstream = await fetch("https://generativelanguage.googleapis.com/v1/models/" + model + ":generateContent", {
-        method: "POST",
-        headers: { "x-goog-api-key": key, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ role: "user", parts }],
-          generationConfig: { responseModalities: ["IMAGE"] },
-        }),
-        signal: AbortSignal.timeout(105000),
-      });
-      const result = await upstream.json();
-      if (!upstream.ok) {
-        lastStatus = upstream.status;
-        console.warn("Insomnia image provider", model, upstream.status, result.error?.status, String(result.error?.message || "").slice(0, 280));
-        if ([429, 500, 502, 503].includes(upstream.status)) continue;
-        break;
+    if (body.action === "status") {
+      const id = String(body.jobId || "");
+      if (!/^[0-9a-f-]{36}$/i.test(id)) return send(res, 400, { error: "invalid_job" });
+      const { data: job, error } = await client.from("kineva_scene_jobs")
+        .select("status,output_path,error_message").eq("id", id).eq("owner_id", user.id).maybeSingle();
+      if (error) throw error;
+      if (!job) return send(res, 404, { error: "job_not_found" });
+      if (job.status === "ready") {
+        const { data: signed, error: signedError } = await client.storage.from(bucket)
+          .createSignedUrl(job.output_path, 3600);
+        if (signedError) throw signedError;
+        return send(res, 200, { status: "ready", imageUrl: signed.signedUrl });
       }
-      image = (result.candidates?.[0]?.content?.parts || []).map((part) => part.inlineData).find((part) => part?.data && part.mimeType?.startsWith("image/"));
-      if (image) break;
-      console.warn("Insomnia image empty", model, result.candidates?.[0]?.finishReason);
-      lastStatus = 422;
-      break;
+      return send(res, 200, { status: job.status,
+        ...(job.status === "failed" ? { error: "render_failed", message: job.error_message || "La imagen no se pudo crear." } : {}) });
     }
-    if (!image) {
-      return res.status(lastStatus === 429 ? 429 : lastStatus === 422 ? 422 : 502).json({
-        error: lastStatus === 429 ? "rate_limited" : lastStatus === 422 ? "content_blocked" : "image_unavailable",
-        message: lastStatus === 429 ? "Se alcanzÃ³ la cuota de imÃ¡genes Gemini." :
-          lastStatus === 422 ? "No se pudo generar una imagen de esta escena." : "La generaciÃ³n de imÃ¡genes no estÃ¡ disponible.",
-      });
-    }
-    if (image.data.length > 3_800_000) return res.status(502).json({ error: "image_too_large" });
-    res.setHeader("Cache-Control", "private, no-store");
-    return res.status(200).json({ imageUrl: "data:" + image.mimeType + ";base64," + image.data });
+
+    const focus = String(body.focusText || "").trim().slice(0, 1800);
+    if (focus.length < 8) return send(res, 400, { error: "scene_too_short" });
+    const { count, error: countError } = await client.from("kineva_scene_jobs")
+      .select("id", { count: "exact", head: true }).eq("owner_id", user.id).in("status", ["queued", "running"]);
+    if (countError) throw countError;
+    if ((count || 0) >= 3) return send(res, 429, { error: "queue_full", message: "Ya tienes tres imÃ¡genes en proceso." });
+    const prompt = [
+      "Create one vertical cinematic photorealistic still frame. Natural anatomy and lighting.",
+      "The CURRENT action is the subject; preserve the established characters, wardrobe, location and chronology.",
+      "No captions, speech bubbles, logos or collage.",
+      "Story: " + String(body.storyTitle || "").slice(0, 160),
+      "Character identity: " + String(body.characterRole || "").slice(0, 900),
+      "Player role: " + String(body.playerRole || "").slice(0, 250),
+      "Premise: " + String(body.storyDescription || "").slice(0, 650),
+      "Recent context: " + String(body.sceneText || "").slice(-1900),
+      "LATEST MOMENT: " + focus,
+    ].join("\n");
+    let referenceUrl = null;
+    try {
+      const url = new URL(body.coverImageUrl);
+      if (url.origin === supabaseUrl && coverPrefix.test(url.pathname)) referenceUrl = url.toString();
+    } catch { /* No public reference cover. */ }
+    const source = body.source === "novel" ? "novel" : "story";
+    const { data: job, error } = await client.from("kineva_scene_jobs").insert({
+      owner_id: user.id, source, scene_key: String(body.sceneKey || crypto.randomUUID()).slice(0, 120),
+      prompt, reference_url: referenceUrl,
+    }).select("id,status").single();
+    if (error) throw error;
+    return send(res, 202, { jobId: job.id, status: job.status });
   } catch (failure) {
-    console.warn("Insomnia image failure", failure.name);
-    return res.status(504).json({ error: "image_timeout", message: "La imagen tardÃ³ demasiado en generarse." });
+    console.error("Kineva scene queue", failure.message);
+    return send(res, 500, { error: "scene_queue_unavailable", message: "No se pudo iniciar la ilustraciÃ³n." });
   }
 }

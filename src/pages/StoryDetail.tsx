@@ -11,6 +11,7 @@ import { CallDialog } from "@/components/story/CallDialog";
 import { STORY_VOICES, getStoryVoice, setStoryVoice } from "@/lib/voices";
 import { streamSpeech, type SpeechStream } from "@/lib/ttsStream";
 import { invokeFunctionWithRetry } from "@/lib/invokeFunction";
+import { generateSceneImage } from "@/lib/sceneImage";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
  import { useStory } from "@/hooks/useStories";
  import { useLanguage } from "@/contexts/LanguageContext";
@@ -453,7 +454,9 @@ type Mode = "select" | "read" | "roleplay";
       if (!story || illustratingId) return;
       setIllustratingId(key);
       try {
-        const { data, error } = await invokeFunctionWithRetry<{ imageUrl?: string; error?: string; message?: string }>("illustrate-scene", {
+        const imageUrl = await generateSceneImage({
+          source: "story",
+          sceneKey: key,
           sceneText: buildIllustrationContext(text, key),
           focusText: text,
           coverImageUrl: story.cover_image && !isVideoCover ? story.cover_image : undefined,
@@ -463,17 +466,7 @@ type Mode = "select" | "read" | "roleplay";
           storyDescription: story.description,
           language,
         });
-        if (error || !data?.imageUrl) {
-          toast({
-            title: language === "es" ? "No se pudo ilustrar la escena" : "Could not illustrate the scene",
-            description: data?.error === "rate_limited"
-              ? (language === "es" ? "Se alcanzÃ³ la cuota de imÃ¡genes. IntÃ©ntalo mÃ¡s tarde." : "The image quota has been reached. Try later.")
-              : data?.message || error?.message,
-            variant: "destructive",
-          });
-          return;
-        }
-        setSceneImages((previous) => ({ ...previous, [key]: data.imageUrl! }));
+        setSceneImages((previous) => ({ ...previous, [key]: imageUrl }));
       } catch (failure) {
         toast({
           title: language === "es" ? "No se pudo ilustrar la escena" : "Could not illustrate the scene",
