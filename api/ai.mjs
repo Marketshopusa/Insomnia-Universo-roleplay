@@ -38,6 +38,13 @@ async function generate(model, parts, settings = {}, options = {}) {
         if ([429, 500, 502, 503, 504].includes(response.status)) continue;
         throw lastError;
       }
+      const blockReason = data.promptFeedback?.blockReason || (["SAFETY", "PROHIBITED_CONTENT", "BLOCKLIST"].includes(data.candidates?.[0]?.finishReason) ? data.candidates[0].finishReason : null);
+      if (blockReason) {
+        console.warn("Insomnia AI content blocked", candidate, blockReason);
+        throw Object.assign(new Error("Gemini bloque\u00f3 esta escena por sus reglas de contenido. Puedes editar tu mensaje y volver a intentar."), {
+          status: 422, code: "content_blocked",
+        });
+      }
       const content = (data.candidates?.[0]?.content?.parts || []).map(p => p.text || "").join("").trim();
       if (!content) {
         console.warn("Insomnia AI empty output", candidate, "keys", Object.keys(data || {}), "feedback", data.promptFeedback?.blockReason, "candidateCount", data.candidates?.length, "finish", data.candidates?.[0]?.finishReason, "thoughts", data.usageMetadata?.thoughtsTokenCount);
