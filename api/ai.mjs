@@ -39,7 +39,7 @@ async function generate(model, parts, settings = {}, options = {}) {
       }
       const content = (data.candidates?.[0]?.content?.parts || []).map(p => p.text || "").join("").trim();
       if (!content) {
-        console.warn("Insomnia AI empty output", candidate, data.candidates?.[0]?.finishReason, data.usageMetadata?.thoughtsTokenCount);
+        console.warn("Insomnia AI empty output", candidate, "keys", Object.keys(data || {}), "feedback", data.promptFeedback?.blockReason, "candidateCount", data.candidates?.length, "finish", data.candidates?.[0]?.finishReason, "thoughts", data.usageMetadata?.thoughtsTokenCount);
         lastError = Object.assign(new Error("Gemini no devolviÃ³ texto."), { status: 502, code: "ai_unavailable" });
         continue;
       }
@@ -98,10 +98,10 @@ export default async function handler(req, res) {
       if (contents.at(-1)?.role === "user") contents.at(-1).parts[0].text += "\n" + latest;
       else contents.push({ role: "user", parts: [{ text: latest }] });
       const content = await generate(
-        "gemini-3.8-flash",
+        "gemini-3.1-flash-lite",
         [],
-        { maxOutputTokens: 1024, temperature: 0.65 },
-        { contents, systemInstruction, fallbackModels: ["gemini-3.1-flash-lite"], fastReply: true, validate: (reply) => !isOffRole(reply) },
+        { maxOutputTokens: 2048, temperature: 0.65 },
+        { contents, systemInstruction, fallbackModels: ["gemini-3.8-flash"], fastReply: true, validate: (reply) => !isOffRole(reply) },
       );
       return send(res, 200, { content });
     }
