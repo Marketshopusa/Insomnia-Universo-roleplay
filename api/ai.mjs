@@ -31,6 +31,7 @@ async function generate(model, parts, settings = {}, options = {}) {
       });
       const data = await response.json();
       if (!response.ok) {
+        console.warn("Insomnia AI upstream", candidate, response.status, data?.error?.status);
         lastError = Object.assign(new Error(data?.error?.message || "Gemini no respondiÃ³."), {
           status: response.status, code: response.status === 429 ? "rate_limited" : "ai_unavailable",
         });
@@ -98,10 +99,10 @@ export default async function handler(req, res) {
       if (contents.at(-1)?.role === "user") contents.at(-1).parts[0].text += "\n" + latest;
       else contents.push({ role: "user", parts: [{ text: latest }] });
       const content = await generate(
-        "gemini-3.1-flash-lite",
+        "gemini-3.5-flash-lite",
         [],
         { maxOutputTokens: 2048, temperature: 0.65 },
-        { contents, systemInstruction, fallbackModels: ["gemini-3.8-flash"], fastReply: true, validate: (reply) => !isOffRole(reply) },
+        { contents, systemInstruction, fallbackModels: ["gemini-3.1-flash-lite", "gemini-3.8-flash"], fastReply: true, validate: (reply) => !isOffRole(reply) },
       );
       return send(res, 200, { content });
     }
