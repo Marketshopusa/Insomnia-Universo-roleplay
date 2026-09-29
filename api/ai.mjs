@@ -35,7 +35,7 @@ async function generate(model, parts, settings = {}, options = {}) {
         lastError = Object.assign(new Error(data?.error?.message || "Gemini no respondiÃ³."), {
           status: response.status, code: response.status === 429 ? "rate_limited" : "ai_unavailable",
         });
-        if ([429, 500, 502, 503, 504].includes(response.status)) continue;
+        if ([404, 429, 500, 502, 503, 504].includes(response.status)) continue;
         throw lastError;
       }
       const blockReason = data.promptFeedback?.blockReason || (["SAFETY", "PROHIBITED_CONTENT", "BLOCKLIST"].includes(data.candidates?.[0]?.finishReason) ? data.candidates[0].finishReason : null);
@@ -106,10 +106,10 @@ export default async function handler(req, res) {
       if (contents.at(-1)?.role === "user") contents.at(-1).parts[0].text += "\n" + latest;
       else contents.push({ role: "user", parts: [{ text: latest }] });
       const content = await generate(
-        "gemini-3.5-flash-lite",
+        "gemini-2.5-flash",
         [],
         { maxOutputTokens: 2048, temperature: 0.65 },
-        { contents, systemInstruction, fallbackModels: ["gemini-3.1-flash-lite", "gemini-3.8-flash"], fastReply: true, validate: (reply) => !isOffRole(reply) },
+        { contents, systemInstruction, fallbackModels: ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite"], fastReply: true, validate: (reply) => !isOffRole(reply) },
       );
       return send(res, 200, { content });
     }
