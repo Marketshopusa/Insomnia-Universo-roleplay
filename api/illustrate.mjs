@@ -32,7 +32,7 @@ export default async function handler(req, res) {
   const focus = String(body.focusText || "").trim().slice(0, 1800);
   if (focus.length < 8) return res.status(400).json({ error: "scene_too_short" });
   const prompt = [
-    "Create one cinematic photorealistic still image illustrating the CURRENT moment of this fictional story.",
+    "Create one vertical 3:4 cinematic photorealistic still image illustrating the CURRENT moment of this fictional story.",
     "Keep the characters' identities, clothing, relationships, location, and chronology consistent with the context.",
     "Show the action and arrangement from the latest moment. Do not restart the story or copy the cover's pose.",
     "Do not include text, speech bubbles, captions, watermarks, or a collage.",
@@ -47,30 +47,37 @@ export default async function handler(req, res) {
     const reference = await coverPart(body.coverImageUrl).catch(() => null);
     const parts = [{ text: prompt }];
     if (reference) parts.push({ text: "Use this cover only to keep the character's visible appearance consistent. The pose and setting must follow the latest scene." }, reference);
-    const upstream = await fetch("https://generativelanguage.googleapis.com/v1/models/gemini-3.1-flash-image:generateContent", {
-      method: "POST",
-      headers: { "x-goog-api-key": key, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ role: "user", parts }],
-        generationConfig: {
-          responseModalities: ["IMAGE"],
-          responseFormat: { image: { aspectRatio: "3:4", imageSize: "1K" } },
-        },
-      }),
-      signal: AbortSignal.timeout(105000),
-    });
-    const result = await upstream.json();
-    if (!upstream.ok) {
-      console.warn("Insomnia image provider", upstream.status, result.error?.status);
-      return res.status([429, 500, 503].includes(upstream.status) ? upstream.status : 502).json({
-        error: upstream.status === 429 ? "rate_limited" : "image_unavailable",
-        message: upstream.status === 429 ? "Se alcanzÃ³ la cuota de imÃ¡genes Gemini." : "La generaciÃ³n de imÃ¡genes no estÃ¡ disponible.",
+    let image;
+    let lastStatus = 502;
+    for (const model of ["gemini-3.1-flash-image", "gemini-3.1-flash-lite-image"]) {
+      const upstream = await fetch("https://generativelanguage.googleapis.com/v1/models/" + model + ":generateContent", {
+        method: "POST",
+        headers: { "x-goog-api-key": key, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ role: "user", parts }],
+          generationConfig: { responseModalities: ["IMAGE"] },
+        }),
+        signal: AbortSignal.timeout(105000),
       });
+      const result = await upstream.json();
+      if (!upstream.ok) {
+        lastStatus = upstream.status;
+        console.warn("Insomnia image provider", model, upstream.status, result.error?.status, String(result.error?.message || "").slice(0, 280));
+        if ([429, 500, 502, 503].includes(upstream.status)) continue;
+        break;
+      }
+      image = (result.candidates?.[0]?.content?.parts || []).map((part) => part.inlineData).find((part) => part?.data && part.mimeType?.startsWith("image/"));
+      if (image) break;
+      console.warn("Insomnia image empty", model, result.candidates?.[0]?.finishReason);
+      lastStatus = 422;
+      break;
     }
-    const image = (result.candidates?.[0]?.content?.parts || []).map((part) => part.inlineData).find((part) => part?.data && part.mimeType?.startsWith("image/"));
     if (!image) {
-      console.warn("Insomnia image empty", result.candidates?.[0]?.finishReason);
-      return res.status(422).json({ error: "content_blocked", message: "No se pudo generar una imagen de esta escena." });
+      return res.status(lastStatus === 429 ? 429 : lastStatus === 422 ? 422 : 502).json({
+        error: lastStatus === 429 ? "rate_limited" : lastStatus === 422 ? "content_blocked" : "image_unavailable",
+        message: lastStatus === 429 ? "Se alcanzÃ³ la cuota de imÃ¡genes Gemini." :
+          lastStatus === 422 ? "No se pudo generar una imagen de esta escena." : "La generaciÃ³n de imÃ¡genes no estÃ¡ disponible.",
+      });
     }
     if (image.data.length > 3_800_000) return res.status(502).json({ error: "image_too_large" });
     res.setHeader("Cache-Control", "private, no-store");
