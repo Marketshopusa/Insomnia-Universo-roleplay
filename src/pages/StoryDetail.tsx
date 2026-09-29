@@ -320,8 +320,8 @@ type Mode = "select" | "read" | "roleplay";
         variant: "destructive",
       });
       else if (code === "ai_timeout" || code === "ai_unavailable" || status === 503 || status === 504) toast({
-        title: language === "es" ? "Gemini estÃ¡ ocupado; prueba de nuevo" : "Gemini is busy; try again",
-        description: language === "es" ? "Tu mensaje sigue en el cuadro para reenviarlo." : "Your message remains in the box for another attempt.",
+        title: language === "es" ? (status === 503 ? "Gemini est\u00e1 temporalmente saturado" : "La IA no pudo responder") : (status === 503 ? "Gemini is temporarily busy" : "AI could not respond"),
+        description: data?.message || (language === "es" ? "Tu mensaje sigue en el cuadro para reenviarlo." : "Your message remains in the box for another attempt."),
         variant: "destructive",
       });
       else toast({ title: t("mode.aiError"), variant: "destructive" });
