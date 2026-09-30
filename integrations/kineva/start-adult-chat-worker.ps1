@@ -8,7 +8,7 @@ $bunx = Join-Path $env:USERPROFILE '.bun\bin\bunx.exe'
 $python = Join-Path $env:WINDIR 'py.exe'
 $worker = Join-Path $PSScriptRoot 'adult_chat_worker.py'
 $exe = Join-Path $env:LOCALAPPDATA 'Microsoft\WinGet\Packages\ggml.llamacpp_Microsoft.Winget.Source_8wekyb3d8bbwe\llama-server.exe'
-$model = Join-Path $env:LOCALAPPDATA 'Comfy-Desktop\ComfyUI-Shared\models\LLM\Qwen3-8B-GGUF\Qwen3-8B-Q4_K_M.gguf'
+$model = Join-Path $env:LOCALAPPDATA 'Comfy-Desktop\ComfyUI-Shared\models\LLM\magnum-v4-12b\magnum-v4-12b-Q4_K_M.gguf'
 $env:SUPABASE_URL = 'https://cexzmelshvbgabihtfvx.supabase.co'
 Set-Location $repo
 while ($true) {

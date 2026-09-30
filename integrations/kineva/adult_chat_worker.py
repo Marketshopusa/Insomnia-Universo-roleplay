@@ -31,108 +31,140 @@ def repeated_reply(content, history):
             return True
     return False
 
+def model_chat(messages, temperature, max_tokens, json_mode=False):
+    payload = {"model": "magnum-v4-12b", "messages": messages, "max_tokens": max_tokens,
+               "temperature": temperature, "chat_template_kwargs": {"enable_thinking": False}}
+    if json_mode:
+        payload["response_format"] = {"type": "json_object"}
+    request = Request(os.environ.get("KINEVA_CHAT_MODEL_URL", "http://127.0.0.1:8788/v1/chat/completions"),
+                      data=json.dumps(payload).encode("utf-8"),
+                      headers={"Content-Type": "application/json"}, method="POST")
+    with urlopen(request, timeout=90) as response:
+        result = json.loads(response.read())
+    content = str(result["choices"][0]["message"].get("content") or "").strip()
+    return re.sub(r"(?s)<think>.*?</think>", "", content).strip()
+
 def reply_for(job):
+    from difflib import SequenceMatcher
     story = job.get("story") or {}
     spanish = job.get("language") == "es"
     character = str(story.get("character_role") or "personaje presente")[:160]
     player = str(story.get("player_role") or "protagonista")[:160]
-    background = "Historia: " + str(story.get("title") or "")[:160] + ". " + str(story.get("description") or "")[:900]
-    instruction = (
-        "Eres " + character + " en una historia de rol para adultos. El usuario interpreta a " +
-        player + ". Todos los personajes son adultos que consienten. " + background +
-        " Conserva el lugar, las relaciones y los hechos ya establecidos en el dialogo. " +
-        "Los hechos explicitos del ultimo turno prevalecen sobre conjeturas anteriores. " +
-        "Las acciones que el usuario relata en primera persona pertenecen a " + player +
-        "; nunca las atribuyas a " + character + " ni las cuentes como tuyas. " +
-        "No atribuyas al usuario ni al personaje acciones que no han ocurrido; si el usuario aclara " +
-        "quien hizo algo, acepta esa aclaracion. Lee el ultimo mensaje del usuario como una nueva " +
-        "accion o intervencion: responde especificamente a lo que acaba de ocurrir y avanza un paso " +
-        "la escena con una reaccion, decision o dato nuevo " +
-        "coherente con tu personaje. No reinicies una escena anterior, no repitas respuestas previas, " +
-        "no parafrasees al usuario y no decidas sus acciones. No narres toda la historia. " +
-        ("Responde solo en espanol con 2 a 4 frases de accion y dialogo natural, hasta 600 caracteres. "
-         if spanish else "Reply only in English with 2 to 4 sentences of action and dialogue, up to 600 characters. ") +
-        "No incluyas instrucciones ni etiquetas. /no_think"
-    )
-    raw_history = (job.get("history") or [])[-40:]
-    history = []
-    seen_user = []
-    for turn in raw_history:
-        content = str(turn.get("content") or "").strip()
-        normalized = normalize_reply(content)
-        if not normalized:
-            continue
-        if turn.get("role") == "assistant":
-            if repeated_reply(content, history[-12:]):
-                continue
-        elif normalized in seen_user:
-            continue
-        else:
-            seen_user.append(normalized)
-        history.append(turn)
-    # If the user retries an earlier turn after a bad reply, do not feed that
-    # reply back as a fact. Preserve the distinct turns before the retry.
-    latest_normalized = normalize_reply(str(job["userMessage"]))
-    retry_position = next(
-        (i for i, turn in enumerate(history) if turn.get("role") == "user"
-         and normalize_reply(str(turn.get("content") or "")) == latest_normalized),
-        None,
-    )
-    if retry_position is not None:
-        history = history[:retry_position] + [
-            turn for turn in history[retry_position + 1:]
-            if turn.get("role") == "user"
-        ]
-    history = history[-12:]
-    messages = [{"role": "system", "content": instruction}]
-    for turn in history:
-        role = "assistant" if turn.get("role") == "assistant" else "user"
-        content = str(turn.get("content") or "").strip()[:650]
-        if content:
-            messages.append({"role": role, "content": content})
     latest = str(job["userMessage"])[:1500]
-    prior_user = [normalize_reply(str(t.get("content") or "")) for t in history if t.get("role") == "user"]
-    duplicate_user = normalize_reply(latest) in prior_user[-4:]
-    if messages[-1]["role"] == "user" and messages[-1]["content"] == latest:
-        messages.pop()
-    if duplicate_user:
-        messages[0]["content"] += (
-            " El usuario ha repetido una intervencion ya tratada porque quiere una nueva reaccion. "
-            "Tu personaje ya reacciono una vez: reconoce lo ocurrido y avanza desde su estado actual, "
-            "sin volver a la sorpresa inicial ni repetir su respuesta."
-        )
-    messages.append({"role": "user", "content": latest})
+    premise = str(story.get("description") or "")[:500]
+    raw = (job.get("history") or [])[-40:]
+    user_turns = []
+    assistant_turns = []
+    duplicate_latest = False
+    for turn in raw:
+        content = str(turn.get("content") or "").strip()[:650]
+        if not content:
+            continue
+        normalized = normalize_reply(content)
+        if turn.get("role") == "user":
+            if SequenceMatcher(None, normalized, normalize_reply(latest)).ratio() >= 0.88:
+                duplicate_latest = True
+                continue
+            if any(SequenceMatcher(None, normalized, normalize_reply(old)).ratio() >= 0.88
+                   for old in user_turns[-5:]):
+                continue
+            user_turns.append(content)
+        elif turn.get("role") == "assistant":
+            assistant_turns.append(content)
+    repetitive_context = duplicate_latest or any(
+        SequenceMatcher(None, normalize_reply(a), normalize_reply(b)).ratio() >= 0.78
+        for a, b in zip(assistant_turns[-5:-1], assistant_turns[-4:])
+    )
+    fact_prompt = (
+        "Analiza DOS mensajes consecutivos del usuario " + player + " en una historia. " +
+        character + " es otro personaje. El mensaje ANTERIOR aporta el evento mas reciente; " +
+        "el mensaje ACTUAL puede ser una pregunta corta que continua ese evento. " +
+        "Devuelve SOLO JSON breve con claves acciones_usuario, acciones_personaje, " +
+        "hecho_actual, estado_vigente, que_ya_ocurrio, que_debe_responder_personaje. " +
+        "En 'estado_vigente' explica quien hizo, envio y recibio el objeto reciente. " +
+        "Distingue ANTERIOR de ACTUAL; si hay dos objetos parecidos no los mezcles. " +
+        "No uses ninguna premisa inicial, no inventes y no escribas la respuesta del personaje."
+    )
+    started = time.monotonic()
+    fact_context = user_turns[-1][:650] if user_turns else ""
+    fact_input = ("MENSAJE ANTERIOR de " + player + ": " + fact_context + "\n\n"
+                  if fact_context else "") + "MENSAJE ACTUAL de " + player + ": " + latest
+    facts_text = model_chat([{"role": "system", "content": fact_prompt},
+                             {"role": "user", "content": fact_input}], 0.1, 260, json_mode=True)
+    fact_seconds = time.monotonic() - started
+    try:
+        facts = json.loads(facts_text)
+        if not isinstance(facts, dict):
+            raise ValueError("facts must be an object")
+        facts = {key: str(facts.get(key) or "")[:260] for key in (
+            "acciones_usuario", "acciones_personaje", "hecho_actual", "estado_vigente",
+            "que_ya_ocurrio", "que_debe_responder_personaje")}
+    except (ValueError, TypeError):
+        facts = {"hecho_actual": latest[:400]}
+    instruction = (
+        "Interpreta SOLO a " + character + " en un chat de rol adulto con " + player + ". " +
+        "La premisa inicial: " + premise + ". Los eventos nuevos pueden incluir objetos distintos. " +
+        "Hechos del turno actual, con actores comprobados: " +
+        json.dumps(facts, ensure_ascii=False) +
+        ". Lo que hizo " + player + " no lo hiciste tu. El hecho actual ya ocurrio: " +
+        "reacciona ahora sin retroceder ni repetir las frases anteriores. " +
+        "Conserva las relaciones y el tono de la escena; evita sermones genericos. " +
+        "No inventes confesiones, sentimientos ni acciones previas que el historial no confirme. " +
+        "En 'dialogo' habla DIRECTAMENTE a " + player + " usando 'tu', nunca te refieras " +
+        "a el como si fuera una tercera persona. No decidas acciones de " + player +
+        ". Devuelve SOLO JSON con 'gesto' y 'dialogo'. " +
+        "'gesto': accion propia en primera persona, maximo 80 caracteres. " +
+        "'dialogo': lo que le dices directamente a " + player +
+        ", una o dos frases, maximo 260 caracteres. " +
+        ("Todo en espanol." if spanish else "Everything in English.")
+    )
+    messages = [{"role": "system", "content": instruction}]
+    previous = "\n".join("Antes " + player + " dijo: " + old[:250] for old in user_turns[-2:])
+    recent_assistant = assistant_turns[-1] if assistant_turns else ""
+    recent_valid = bool(recent_assistant.startswith("*")) and not repeated_reply(
+        recent_assistant, [{"role": "assistant", "content": old} for old in assistant_turns[-6:-1]])
+    if (not repetitive_context or (not duplicate_latest and recent_valid)) and recent_assistant and previous:
+        messages.extend([{"role": "user", "content": previous},
+                         {"role": "assistant", "content": assistant_turns[-1][:300]},
+                         {"role": "user", "content": latest + "\n\nResponde ahora como " + character + " en primera persona."}])
+    else:
+        messages.append({"role": "user", "content":
+            (previous + "\n\n" if previous else "") + "Mensaje actual de " + player + ": " +
+            latest + "\n\nResponde ahora como " + character + " en primera persona."})
     for attempt in range(2):
-        prompt_messages = messages
-        if attempt:
-            # A repeated answer is a failure of the old context. Keep the story and
-            # the current action, but remove the dialogue that pulled the model back.
-            retry_instruction = instruction + (
-                " El dialogo anterior produjo una respuesta repetida. Tu personaje ya sabe "
-                "lo que sucedio. Reacciona al ultimo hecho con un gesto o decision nueva y "
-                "concreta. No repitas frases de rechazo ni vuelvas a preguntar lo ya explicado."
-            )
-            prompt_messages = (
-                [{"role": "system", "content": retry_instruction}] +
-                [m for m in messages[1:-1] if m["role"] == "user" and normalize_reply(m["content"]) != normalize_reply(latest)][-3:] +
-                [{"role": "user", "content": latest}]
-            )
-        payload = {"model": "qwen3-8b", "messages": prompt_messages, "max_tokens": 170,
-                   "temperature": 0.82 + attempt * 0.12,
-                   "chat_template_kwargs": {"enable_thinking": False}}
-        request = Request("http://127.0.0.1:8788/v1/chat/completions",
-                          data=json.dumps(payload).encode("utf-8"),
-                          headers={"Content-Type": "application/json"}, method="POST")
-        with urlopen(request, timeout=60) as response:
-            result = json.loads(response.read())
-        content = str(result["choices"][0]["message"].get("content") or "").strip()
-        content = re.sub(r"(?s)<think>.*?</think>", "", content).strip()
-        invalid = (not content or len(content) > 850 or
+        raw_reply = model_chat(messages, 0.65 + attempt * 0.1, 220, json_mode=True)
+        try:
+            parsed = json.loads(raw_reply)
+            gesture = str(parsed.get("gesto") or "").strip().strip("*")
+            dialogue = str(parsed.get("dialogo") or "").strip()
+            if len(gesture) > 100:
+                cuts = [m.end() for m in re.finditer(r"[,.;](?=\s|$)", gesture[:100])
+                        if m.end() >= 35]
+                gesture = (gesture[:cuts[0]].rstrip(" ,.;") if cuts else
+                           gesture[:100].rsplit(" ", 1)[0])
+            if len(dialogue) > 350:
+                boundaries = [match.end() for match in re.finditer(
+                    r"[.!?](?=\s|$)", dialogue[:350]) if match.end() >= 90]
+                if boundaries:
+                    dialogue = dialogue[:boundaries[-1]].strip()
+            if not gesture or not dialogue or len(gesture) > 100 or len(dialogue) > 350:
+                raise ValueError("Incomplete or overlong gesture/dialogue")
+            content = "*" + gesture + "* " + dialogue
+        except (ValueError, TypeError, AttributeError):
+            content = ""
+        invalid = (not content or len(content) > 520 or
                    normalize_reply(content) == normalize_reply(latest) or
-                   repeated_reply(content, history[-8:]))
+                   repeated_reply(content, raw[-12:]))
         if not invalid:
+            print("Chat generation timing", job.get("jobId", "local"),
+                  "facts", round(fact_seconds, 2), "total", round(time.monotonic() - started, 2),
+                  "retry", attempt, flush=True)
             return content
-    raise RuntimeError("Local response repeated a previous turn after compact retry")
+        messages = [messages[0], messages[-1]]
+        messages[0] = {"role": "system", "content":
+            instruction + " La primera respuesta reciclo una escena vieja. Cambia la reaccion " +
+            "sin alterar los actores ni los hechos actuales."}
+    raise RuntimeError("Local response repeated an earlier turn after grounding")
 
 def handle(cloud, owner, name):
     job_id = name.removesuffix(".json")
