@@ -2,7 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 import { supabaseUrl, publishableKey } from "./config.mjs";
 
 const voices = { "scarlett-hd": "Aoede", "luna-sweet": "Leda", "aria-calm": "Kore", "max-deep": "Charon", "leo-warm": "Puck" };
-const models = ["gemini-3.1-flash-tts-preview", "gemini-3.8-flash-tts", "gemini-3.8-flash-lite-tts"];
+const models = ["gemini-3.8-flash-lite-tts", "gemini-3.8-flash-tts", "gemini-3.1-flash-tts-preview"];
 
 function sendEvent(res, event) {
   res.write("data: " + JSON.stringify(event) + "\n\n");

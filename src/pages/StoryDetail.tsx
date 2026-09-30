@@ -365,14 +365,11 @@ type Mode = "select" | "read" | "roleplay";
        timestamp: new Date(),
      };
  
-     setMessages((prev) => [...prev, assistantMessage]);
+     const nextMessages = [...messages, userMessage, assistantMessage];
+     setMessages(nextMessages);
      setIsTyping(false);
-      if (!isMuted) playAudio(responseContent, assistantMessage.id);
-       // Persist the updated conversation
-       setMessages((prev) => {
-         saveSession(prev, narrative || null, mode);
-         return prev;
-       });
+     void saveSession(nextMessages, narrative || null, mode);
+     if (!isMuted) void playAudio(responseContent, assistantMessage.id);
    };
 
   const playAudio = async (text: string, id: string) => {
