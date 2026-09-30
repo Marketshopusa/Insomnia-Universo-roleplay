@@ -41,15 +41,24 @@ def reply_for(job):
         "Eres " + character + " en una historia de rol para adultos. El usuario interpreta a " +
         player + ". Todos los personajes son adultos que consienten. " + background +
         " Conserva el lugar, las relaciones y los hechos ya establecidos en el dialogo. " +
-        "Lee el ultimo mensaje del usuario como una nueva accion o intervencion: responde especificamente " +
-        "a lo que acaba de ocurrir y avanza un paso la escena con una reaccion, decision o dato nuevo " +
+        "Los hechos explicitos del ultimo turno prevalecen sobre conjeturas anteriores. " +
+        "No atribuyas al usuario ni al personaje acciones que no han ocurrido; si el usuario aclara " +
+        "quien hizo algo, acepta esa aclaracion. Lee el ultimo mensaje del usuario como una nueva " +
+        "accion o intervencion: responde especificamente a lo que acaba de ocurrir y avanza un paso " +
+        "la escena con una reaccion, decision o dato nuevo " +
         "coherente con tu personaje. No reinicies una escena anterior, no repitas respuestas previas, " +
         "no parafrasees al usuario y no decidas sus acciones. No narres toda la historia. " +
         ("Responde solo en espanol con 2 a 4 frases de accion y dialogo natural, hasta 600 caracteres. "
          if spanish else "Reply only in English with 2 to 4 sentences of action and dialogue, up to 600 characters. ") +
         "No incluyas instrucciones ni etiquetas. /no_think"
     )
-    history = (job.get("history") or [])[-12:]
+    raw_history = (job.get("history") or [])[-16:]
+    history = []
+    for turn in raw_history:
+        if turn.get("role") == "assistant" and repeated_reply(str(turn.get("content") or ""), history[-8:]):
+            continue
+        history.append(turn)
+    history = history[-12:]
     messages = [{"role": "system", "content": instruction}]
     for turn in history:
         role = "assistant" if turn.get("role") == "assistant" else "user"
