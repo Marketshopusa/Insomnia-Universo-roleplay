@@ -27,8 +27,8 @@ def reply_for(job):
         player + ". Todos los personajes son adultos que consienten. Conserva lugar, relaciones " +
         "y hechos de los ultimos turnos. Continua como tu personaje; no repitas ni parafrasees el " +
         "texto del usuario, no narres toda la historia y no decidas sus acciones. " +
-        ("Responde solo en espanol con una accion breve y dialogo natural, menos de 280 caracteres. "
-         if spanish else "Reply only in English with a brief action and natural dialogue, under 280 characters. ") +
+        ("Responde solo en espanol con 2 a 4 frases de accion y dialogo natural, hasta 600 caracteres. "
+         if spanish else "Reply only in English with 2 to 4 sentences of action and dialogue, up to 600 characters. ") +
         "No incluyas instrucciones ni etiquetas. /no_think"
     )
     background = "Historia: " + str(story.get("title") or "")[:160] + ". " + str(story.get("description") or "")[:900]
@@ -40,7 +40,7 @@ def reply_for(job):
         if content:
             messages.append({"role": role, "content": content})
     messages.append({"role": "user", "content": str(job["userMessage"])[:1500]})
-    payload = {"model": "qwen3-8b", "messages": messages, "max_tokens": 150,
+    payload = {"model": "qwen3-8b", "messages": messages, "max_tokens": 240,
                "temperature": 0.72, "chat_template_kwargs": {"enable_thinking": False}}
     request = Request("http://127.0.0.1:8788/v1/chat/completions",
                       data=json.dumps(payload).encode("utf-8"),
@@ -49,7 +49,7 @@ def reply_for(job):
         result = json.loads(response.read())
     content = str(result["choices"][0]["message"].get("content") or "").strip()
     content = re.sub(r"(?s)<think>.*?</think>", "", content).strip()
-    if not content or len(content) > 500 or content[:100].lower() in str(job["userMessage"]).lower():
+    if not content or len(content) > 850 or content[:100].lower() in str(job["userMessage"]).lower():
         raise RuntimeError("Local response repeated the user's scene or was too long")
     return content
 
