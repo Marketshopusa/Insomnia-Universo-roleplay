@@ -30,6 +30,7 @@ export const ShortEpisodeCard = ({
   const [generating, setGenerating] = useState(["generating", "assembling"].includes(episode.status));
   const [shotNumber, setShotNumber] = useState(1);
   const [progress, setProgress] = useState("");
+  const [reviewWarning, setReviewWarning] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const canPublish = kineva && !series.is_published &&
     series.episodes.length > 0 && series.episodes.every((item) =>
@@ -69,6 +70,7 @@ export const ShortEpisodeCard = ({
         body: { action: "status", episodeId: episode.id },
       });
       if (error) return;
+      if (Array.isArray(data?.warnings)) setReviewWarning(data.warnings.length > 0);
       if (typeof data?.total === "number" && data.total > 0) {
         setProgress(`${data.ready ?? 0}/${data.total} tomas listas`);
       }
@@ -101,6 +103,7 @@ export const ShortEpisodeCard = ({
       return;
     }
     if (data?.status === "completed") {
+      setReviewWarning(Array.isArray(data?.warnings) && data.warnings.length > 0);
       setGenerating(false);
       setVideoUrl(await getSignedVideoUrl(data.path));
       onUpdated();
@@ -133,6 +136,11 @@ export const ShortEpisodeCard = ({
 
   useEffect(() => {
     if (["generating", "assembling"].includes(episode.status)) poll();
+    else if (kineva && episode.status === "ready") {
+      supabase.functions.invoke("kineva-video", {
+        body: { action: "status", episodeId: episode.id },
+      }).then(({ data }) => setReviewWarning(Array.isArray(data?.warnings) && data.warnings.length > 0));
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -167,6 +175,11 @@ export const ShortEpisodeCard = ({
                 </Button>
               )}
             </div>
+          )}
+          {reviewWarning && kineva && (
+            <p className="text-xs text-amber-400 mt-2">
+              Revisa la continuidad visual: Kineva detectÃ³ un salto entre cuadros en esta toma.
+            </p>
           )}
           {generating && kineva && (
             <p className="text-xs text-accent mt-2">{progress || "Kineva preparando tomas…"}</p>

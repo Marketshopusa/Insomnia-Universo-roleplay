@@ -61,11 +61,15 @@ Deno.serve(async (req) => {
     const service = createClient(url, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
     const { data: jobs, error: jobsError } = await service
       .from("kineva_render_jobs")
-      .select("id,shot,take,status,prompt,spoken_script,output_path,error_message,created_at")
+      .select("id,shot,take,status,prompt,spoken_script,output_path,error_message,manifest,created_at")
       .eq("episode_id", episodeId).order("created_at", { ascending: true });
     if (jobsError) throw jobsError;
     const current = latestTakes(jobs ?? []);
     const ready = current.filter((job) => job.status === "ready").length;
+    const warnings = current.flatMap((job) => {
+      const manifest = job.manifest as { qc?: { warnings?: string[] } } | null;
+      return Array.isArray(manifest?.qc?.warnings) ? manifest.qc.warnings : [];
+    });
     if (action === "status") {
       if (!current.length) return reply({ status: "pending", ready: 0, total: 0 });
       const total = episode.kineva_shot_count ?? current.length;
@@ -79,7 +83,7 @@ Deno.serve(async (req) => {
           error: episode.error_message ?? "assembly_failed" });
       }
       if (ready === total && episode.status === "ready") {
-        return reply({ status: "completed", path: episode.video_url, ready, total });
+        return reply({ status: "completed", path: episode.video_url, ready, total, warnings });
       }
       if (episode.status === "assembling" || ready === total) {
         return reply({ status: "assembling", ready, total });

@@ -19,7 +19,7 @@ import { toast } from "sonner";
 import { useAdultMode } from "@/contexts/AdultModeContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { useShorts } from "@/hooks/useShorts";
-import { supabase } from "@/integrations/supabase/client";
+import { uploadKinevaReference } from "@/lib/kinevaReference";
 import { ShortEpisodeCard } from "@/components/shorts/ShortEpisodeCard";
 
 const Shorts = () => {
@@ -65,21 +65,9 @@ const Shorts = () => {
       toast.error("Describe la premisa con un poco más de detalle");
       return;
     }
-    if (!referenceImage) {
-      toast.error("Selecciona una imagen de referencia para la serie");
-      return;
-    }
-    const ext = referenceImage.name.split(".").pop()?.toLowerCase();
-    if (!ext || !["png", "jpg", "jpeg", "webp"].includes(ext) || referenceImage.size > 10_000_000) {
-      toast.error("Usa una imagen PNG, JPEG o WebP de hasta 10 MB");
-      return;
-    }
     setCreating(true);
     try {
-      const referencePath = `${user.id}/${crypto.randomUUID()}.${ext}`;
-      const { error: uploadError } = await supabase.storage.from("kineva-references")
-        .upload(referencePath, referenceImage, { upsert: false });
-      if (uploadError) throw uploadError;
+      const referencePath = await uploadKinevaReference(user.id, premise, referenceImage);
       const { data, error } = await invokeFunctionWithRetry<{ error?: string }>(
         "generate-shorts-series", { premise, category, isAdult, episodes, referencePath });
       if (error || data?.error) throw new Error(data?.error || error?.message || "No se pudo generar la serie");
@@ -133,11 +121,11 @@ const Shorts = () => {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="shorts-reference">Imagen de referencia</Label>
+                  <Label htmlFor="shorts-reference">Imagen de referencia (opcional)</Label>
                   <Input id="shorts-reference" type="file" accept="image/png,image/jpeg,image/webp"
                     onChange={(event) => setReferenceImage(event.target.files?.[0] ?? null)}
                     className="rounded-none" />
-                  <p className="text-xs text-muted-foreground">Kineva conservarÃ¡ la identidad visual de esta imagen en la serie.</p>
+                  <p className="text-xs text-muted-foreground">Si no subes una foto, Kineva crearÃ¡ la primera imagen a partir de tu idea.</p>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-2">

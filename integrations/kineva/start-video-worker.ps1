@@ -20,7 +20,13 @@ while ($true) {
     if (-not $key) { throw 'Supabase service role key unavailable' }
     $env:SUPABASE_SERVICE_ROLE_KEY = $key
     Remove-Variable key, keys, keysText -ErrorAction SilentlyContinue
+    # PowerShell 5.1 turns native stderr into a terminating error under Stop.
+    # Let the Python worker handle failures and finish its Supabase lease.
+    $ErrorActionPreference = 'Continue'
     & $python -3 -u $worker --workflow-api $workflow --input-dir (Join-Path $shared 'input') --output-dir (Join-Path $shared 'output') *>> $log
+    $workerExit = $LASTEXITCODE
+    $ErrorActionPreference = 'Stop'
+    if ($workerExit -ne 0) { throw ('Video worker exited with code ' + $workerExit) }
   } catch {
     $detail = $_.Exception.Message
     if ($env:SUPABASE_SERVICE_ROLE_KEY) { $detail = $detail.Replace($env:SUPABASE_SERVICE_ROLE_KEY, '[redacted]') }

@@ -1,5 +1,6 @@
 import { invokeFunctionWithRetry } from "@/lib/invokeFunction";
 import { generateSceneImage } from "@/lib/sceneImage";
+import { uploadKinevaReference } from "@/lib/kinevaReference";
 import { useState } from "react";
 import { Clapperboard, Loader2, Sparkles } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -94,15 +95,10 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
 
     let referencePath: string | null = null;
     if (videoProvider === "kineva") {
-      if (!referenceImage || !user) throw new Error("Kineva necesita una imagen de referencia para mantener la identidad visual");
-      const ext = referenceImage.name.split(".").pop()?.toLowerCase();
-      if (!ext || !["png", "jpg", "jpeg", "webp"].includes(ext) || referenceImage.size > 10_000_000) {
-        throw new Error("Usa una imagen PNG, JPEG o WebP de hasta 10 MB");
-      }
-      referencePath = `${user.id}/${crypto.randomUUID()}.${ext}`;
-      const { error: uploadError } = await supabase.storage
-        .from("kineva-references").upload(referencePath, referenceImage, { upsert: false });
-      if (uploadError) throw uploadError;
+      if (!user) throw new Error("Inicia sesiÃ³n para crear la serie");
+      setVideoProgress("Preparando la imagen inicial con Kinevaâ€¦");
+      referencePath = await uploadKinevaReference(user.id,
+        generated?.logline || description, referenceImage, "novel");
     }
 
     const { data: series, error: seriesError } = await supabase
@@ -434,12 +430,12 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
 
          {videoProvider === "kineva" && (
           <Card className="p-6 mb-6 space-y-3">
-            <Label htmlFor="kineva-reference">Referencia visual para toda la miniserie</Label>
+            <Label htmlFor="kineva-reference">Imagen inicial (opcional)</Label>
             <input id="kineva-reference" type="file" accept="image/png,image/jpeg,image/webp"
               onChange={(event) => setReferenceImage(event.target.files?.[0] ?? null)}
               className="block w-full text-sm" />
             <p className="text-xs text-muted-foreground">
-              Elige una imagen con un protagonista claro, sin otras personas ni montajes, y describe un escenario coherente. El render requiere el trabajador local activo.
+              Sube una foto para conservar su identidad o deja este campo vacío y Kineva creará una imagen desde tu idea.
             </p>
           </Card>
         )}
