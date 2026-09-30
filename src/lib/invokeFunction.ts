@@ -29,8 +29,8 @@ async function callOwnAi<T>(name: string, body: unknown): Promise<FunctionResult
 
 type ChatReply = { status?: string; jobId?: string; content?: string; error?: string; message?: string };
 async function callAdultStoryChat<T>(body: unknown): Promise<FunctionResult<T>> {
-  const fail = (message: string, status: number): FunctionResult<T> => ({
-    data: { error: "local_chat_unavailable", message } as T,
+  const fail = (message: string, status: number, code = "local_chat_unavailable"): FunctionResult<T> => ({
+    data: { error: code, message } as T,
     error: { message, context: new Response(null, { status }) },
   });
   try {
@@ -48,7 +48,7 @@ async function callAdultStoryChat<T>(body: unknown): Promise<FunctionResult<T>> 
       if (result.data?.status === "completed" && result.data.content)
         return { data: { content: result.data.content } as T, error: null };
       if (result.data?.status === "failed")
-        return fail(result.data.message || "Kineva local no pudo responder. Reintenta el turno.", 503);
+        return fail(result.data.message || "La respuesta repitio la escena. Reintenta el turno.", 502, result.data.error || "local_chat_failed");
     }
     return fail("Kineva local tardÃ³ demasiado. Tu mensaje sigue disponible para reenviar.", 504);
   } catch {

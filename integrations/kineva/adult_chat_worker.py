@@ -66,31 +66,48 @@ def reply_for(job):
         if content:
             messages.append({"role": role, "content": content})
     latest = str(job["userMessage"])[:1500]
+    prior_user = [normalize_reply(str(t.get("content") or "")) for t in history if t.get("role") == "user"]
+    duplicate_user = normalize_reply(latest) in prior_user[-4:]
     if messages[-1]["role"] == "user" and messages[-1]["content"] == latest:
         messages.pop()
+    if duplicate_user:
+        messages[0]["content"] += (
+            " El usuario ha repetido una intervencion ya tratada porque quiere una nueva reaccion. "
+            "Tu personaje ya reacciono una vez: reconoce lo ocurrido y avanza desde su estado actual, "
+            "sin volver a la sorpresa inicial ni repetir su respuesta."
+        )
     messages.append({"role": "user", "content": latest})
-    for attempt in range(3):
-        payload = {"model": "qwen3-8b", "messages": messages, "max_tokens": 260,
-                   "temperature": 0.78 + attempt * 0.08,
+    for attempt in range(2):
+        prompt_messages = messages
+        if attempt:
+            # A repeated answer is a failure of the old context. Keep the story and
+            # the current action, but remove the dialogue that pulled the model back.
+            retry_instruction = instruction + (
+                " El dialogo anterior produjo una respuesta repetida. Tu personaje ya sabe "
+                "lo que sucedio. Reacciona al ultimo hecho con un gesto o decision nueva y "
+                "concreta. No repitas frases de rechazo ni vuelvas a preguntar lo ya explicado."
+            )
+            prompt_messages = (
+                [{"role": "system", "content": retry_instruction}] +
+                [m for m in messages[1:-1] if m["role"] == "user" and normalize_reply(m["content"]) != normalize_reply(latest)][-3:] +
+                [{"role": "user", "content": latest}]
+            )
+        payload = {"model": "qwen3-8b", "messages": prompt_messages, "max_tokens": 170,
+                   "temperature": 0.82 + attempt * 0.12,
                    "chat_template_kwargs": {"enable_thinking": False}}
         request = Request("http://127.0.0.1:8788/v1/chat/completions",
                           data=json.dumps(payload).encode("utf-8"),
                           headers={"Content-Type": "application/json"}, method="POST")
-        with urlopen(request, timeout=120) as response:
+        with urlopen(request, timeout=60) as response:
             result = json.loads(response.read())
         content = str(result["choices"][0]["message"].get("content") or "").strip()
         content = re.sub(r"(?s)<think>.*?</think>", "", content).strip()
         invalid = (not content or len(content) > 850 or
                    normalize_reply(content) == normalize_reply(latest) or
-                   repeated_reply(content, history[-6:]))
+                   repeated_reply(content, history[-8:]))
         if not invalid:
             return content
-        if attempt < 2:
-            messages.insert(-1, {"role": "system", "content":
-                ("La respuesta anterior repitio un turno viejo. Ignorala. Responde solo al ULTIMO " +
-                 "mensaje del usuario con una reaccion nueva y un avance concreto de la escena. " +
-                 "No reutilices dialogos ni acciones anteriores.")})
-    raise RuntimeError("Local response repeated a previous turn after retries")
+    raise RuntimeError("Local response repeated a previous turn after compact retry")
 
 def handle(cloud, owner, name):
     job_id = name.removesuffix(".json")

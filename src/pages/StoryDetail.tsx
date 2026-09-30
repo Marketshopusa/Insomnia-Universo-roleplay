@@ -314,6 +314,11 @@ type Mode = "select" | "read" | "roleplay";
         description: data?.message,
         variant: "destructive",
       });
+      else if (code === "local_chat_failed") toast({
+        title: language === "es" ? "La respuesta repitiÃ³ la escena" : "The reply repeated the scene",
+        description: language === "es" ? "Tu mensaje sigue listo para reenviar. El motor local estÃ¡ conectado." : "Your message is ready to resend. The local engine is connected.",
+        variant: "destructive",
+      });
       else if (code === "content_blocked") toast({
         title: language === "es" ? "Esta escena no puede continuar" : "This scene cannot continue",
         description: data?.message,
