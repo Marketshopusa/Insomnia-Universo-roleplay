@@ -44,6 +44,26 @@ def model_chat(messages, temperature, max_tokens, json_mode=False):
     content = str(result["choices"][0]["message"].get("content") or "").strip()
     return re.sub(r"(?s)<think>.*?</think>", "", content).strip()
 
+def parse_role_reply(raw_reply):
+    parsed = json.loads(raw_reply)
+    gesture = str(parsed.get("gesto") or "").strip().strip("*")
+    if not gesture:
+        gesture = "Respiro hondo"
+    dialogue = str(parsed.get("dialogo") or "").strip()
+    if len(gesture) > 100:
+        cuts = [m.end() for m in re.finditer(r"[,.;](?=\s|$)", gesture[:100])
+                if m.end() >= 35]
+        gesture = (gesture[:cuts[0]].rstrip(" ,.;") if cuts else
+                   gesture[:100].rsplit(" ", 1)[0])
+    if len(dialogue) > 350:
+        boundaries = [match.end() for match in re.finditer(
+            r"[.!?](?=\s|$)", dialogue[:350]) if match.end() >= 90]
+        if boundaries:
+            dialogue = dialogue[:boundaries[-1]].strip()
+    if not gesture or not dialogue or len(gesture) > 100 or len(dialogue) > 350:
+        raise ValueError("Incomplete or overlong gesture/dialogue")
+    return "*" + gesture + "* " + dialogue
+
 def reply_for(job):
     from difflib import SequenceMatcher
     story = job.get("story") or {}
@@ -75,6 +95,28 @@ def reply_for(job):
         SequenceMatcher(None, normalize_reply(a), normalize_reply(b)).ratio() >= 0.78
         for a, b in zip(assistant_turns[-5:-1], assistant_turns[-4:])
     )
+    recent_assistant = assistant_turns[-1] if assistant_turns else ""
+    recent_valid = bool(recent_assistant.startswith("*")) and not repeated_reply(
+        recent_assistant, [{"role": "assistant", "content": old} for old in assistant_turns[-6:-1]])
+    if len(latest) < 150 and recent_valid and not duplicate_latest:
+        focus = (
+            "Interpreta a " + character + " hablando directamente con " + player + ". " +
+            "Tu ultima respuesta fue: " + recent_assistant[:450] +
+            ". Ahora " + player + " dijo: " + latest +
+            ". Responde a ESTE mensaje, sin repetir la reaccion anterior. Si hay pregunta, " +
+            "contesta lo que pregunta en la primera frase del dialogo. No inventes hechos. " +
+            "Devuelve SOLO JSON con 'gesto' (breve, en primera persona) y 'dialogo' " +
+            "(una o dos frases en primera persona, hablando directamente a " + player + ")."
+        )
+        try:
+            fast = parse_role_reply(model_chat(
+                [{"role": "system", "content": focus},
+                 {"role": "user", "content": latest}], 0.55, 190, json_mode=True))
+            if not repeated_reply(fast, raw[-12:]):
+                print("Chat follow-up timing", job.get("jobId", "local"), flush=True)
+                return fast
+        except (ValueError, TypeError, AttributeError):
+            pass
     fact_prompt = (
         "Analiza DOS mensajes consecutivos del usuario " + player + " en una historia. " +
         character + " es otro personaje. El mensaje ANTERIOR aporta el evento mas reciente; " +
@@ -86,7 +128,7 @@ def reply_for(job):
         "No uses ninguna premisa inicial, no inventes y no escribas la respuesta del personaje."
     )
     started = time.monotonic()
-    fact_context = user_turns[-1][:650] if user_turns else ""
+    fact_context = user_turns[-1][:650] if user_turns and len(latest) < 150 else ""
     fact_input = ("MENSAJE ANTERIOR de " + player + ": " + fact_context + "\n\n"
                   if fact_context else "") + "MENSAJE ACTUAL de " + player + ": " + latest
     facts_text = model_chat([{"role": "system", "content": fact_prompt},
@@ -101,9 +143,12 @@ def reply_for(job):
             "que_ya_ocurrio", "que_debe_responder_personaje")}
     except (ValueError, TypeError):
         facts = {"hecho_actual": latest[:400]}
+    premise_clause = ("Premisa inicial: " + premise + ". " if len(raw) < 2 else "")
     instruction = (
         "Interpreta SOLO a " + character + " en un chat de rol adulto con " + player + ". " +
-        "La premisa inicial: " + premise + ". Los eventos nuevos pueden incluir objetos distintos. " +
+        premise_clause +
+        "Los hechos recientes tienen prioridad absoluta sobre la premisa inicial. " +
+        "No vuelvas a un evento anterior si ya hay uno nuevo. " +
         "Hechos del turno actual, con actores comprobados: " +
         json.dumps(facts, ensure_ascii=False) +
         ". Lo que hizo " + player + " no lo hiciste tu. El hecho actual ya ocurrio: " +
@@ -119,10 +164,8 @@ def reply_for(job):
         ("Todo en espanol." if spanish else "Everything in English.")
     )
     messages = [{"role": "system", "content": instruction}]
-    previous = "\n".join("Antes " + player + " dijo: " + old[:250] for old in user_turns[-2:])
-    recent_assistant = assistant_turns[-1] if assistant_turns else ""
-    recent_valid = bool(recent_assistant.startswith("*")) and not repeated_reply(
-        recent_assistant, [{"role": "assistant", "content": old} for old in assistant_turns[-6:-1]])
+    previous = ("\n".join("Antes " + player + " dijo: " + old[:300]
+                           for old in user_turns[-1:]) if len(latest) < 150 else "")
     if (not repetitive_context or (not duplicate_latest and recent_valid)) and recent_assistant and previous:
         messages.extend([{"role": "user", "content": previous},
                          {"role": "assistant", "content": assistant_turns[-1][:300]},
@@ -134,22 +177,7 @@ def reply_for(job):
     for attempt in range(2):
         raw_reply = model_chat(messages, 0.65 + attempt * 0.1, 220, json_mode=True)
         try:
-            parsed = json.loads(raw_reply)
-            gesture = str(parsed.get("gesto") or "").strip().strip("*")
-            dialogue = str(parsed.get("dialogo") or "").strip()
-            if len(gesture) > 100:
-                cuts = [m.end() for m in re.finditer(r"[,.;](?=\s|$)", gesture[:100])
-                        if m.end() >= 35]
-                gesture = (gesture[:cuts[0]].rstrip(" ,.;") if cuts else
-                           gesture[:100].rsplit(" ", 1)[0])
-            if len(dialogue) > 350:
-                boundaries = [match.end() for match in re.finditer(
-                    r"[.!?](?=\s|$)", dialogue[:350]) if match.end() >= 90]
-                if boundaries:
-                    dialogue = dialogue[:boundaries[-1]].strip()
-            if not gesture or not dialogue or len(gesture) > 100 or len(dialogue) > 350:
-                raise ValueError("Incomplete or overlong gesture/dialogue")
-            content = "*" + gesture + "* " + dialogue
+            content = parse_role_reply(raw_reply)
         except (ValueError, TypeError, AttributeError):
             content = ""
         invalid = (not content or len(content) > 520 or
