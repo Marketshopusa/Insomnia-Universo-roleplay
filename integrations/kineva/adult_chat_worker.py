@@ -42,6 +42,8 @@ def reply_for(job):
         player + ". Todos los personajes son adultos que consienten. " + background +
         " Conserva el lugar, las relaciones y los hechos ya establecidos en el dialogo. " +
         "Los hechos explicitos del ultimo turno prevalecen sobre conjeturas anteriores. " +
+        "Las acciones que el usuario relata en primera persona pertenecen a " + player +
+        "; nunca las atribuyas a " + character + " ni las cuentes como tuyas. " +
         "No atribuyas al usuario ni al personaje acciones que no han ocurrido; si el usuario aclara " +
         "quien hizo algo, acepta esa aclaracion. Lee el ultimo mensaje del usuario como una nueva " +
         "accion o intervencion: responde especificamente a lo que acaba de ocurrir y avanza un paso " +
@@ -52,12 +54,35 @@ def reply_for(job):
          if spanish else "Reply only in English with 2 to 4 sentences of action and dialogue, up to 600 characters. ") +
         "No incluyas instrucciones ni etiquetas. /no_think"
     )
-    raw_history = (job.get("history") or [])[-16:]
+    raw_history = (job.get("history") or [])[-40:]
     history = []
+    seen_user = []
     for turn in raw_history:
-        if turn.get("role") == "assistant" and repeated_reply(str(turn.get("content") or ""), history[-8:]):
+        content = str(turn.get("content") or "").strip()
+        normalized = normalize_reply(content)
+        if not normalized:
             continue
+        if turn.get("role") == "assistant":
+            if repeated_reply(content, history[-12:]):
+                continue
+        elif normalized in seen_user:
+            continue
+        else:
+            seen_user.append(normalized)
         history.append(turn)
+    # If the user retries an earlier turn after a bad reply, do not feed that
+    # reply back as a fact. Preserve the distinct turns before the retry.
+    latest_normalized = normalize_reply(str(job["userMessage"]))
+    retry_position = next(
+        (i for i, turn in enumerate(history) if turn.get("role") == "user"
+         and normalize_reply(str(turn.get("content") or "")) == latest_normalized),
+        None,
+    )
+    if retry_position is not None:
+        history = history[:retry_position] + [
+            turn for turn in history[retry_position + 1:]
+            if turn.get("role") == "user"
+        ]
     history = history[-12:]
     messages = [{"role": "system", "content": instruction}]
     for turn in history:

@@ -28,31 +28,68 @@ async function callOwnAi<T>(name: string, body: unknown): Promise<FunctionResult
 }
 
 type ChatReply = { status?: string; jobId?: string; content?: string; error?: string; message?: string };
+type PendingChat = { jobId: string; signature: string; createdAt: number };
+
+async function chatSignature(body: unknown): Promise<string> {
+  const input = body as { story?: { title?: string }; userMessage?: string };
+  const data = new TextEncoder().encode(JSON.stringify([input.story?.title, input.userMessage]));
+  const digest = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
 async function callAdultStoryChat<T>(body: unknown): Promise<FunctionResult<T>> {
   const fail = (message: string, status: number, code = "local_chat_unavailable"): FunctionResult<T> => ({
     data: { error: code, message } as T,
     error: { message, context: new Response(null, { status }) },
   });
+  const { data: { session } } = await supabase.auth.getSession();
+  const key = session?.user?.id ? "kineva-adult-pending:" + session.user.id : null;
   try {
-    const created = await supabase.functions.invoke<ChatReply>("adult-story-chat", {
-      body: { action: "create", adultMode: true, ...(body as object) },
-    });
-    if (created.error || !created.data?.jobId)
-      return fail("Kineva local no pudo iniciar el chat. Comprueba que la PC estÃ© encendida.", 503);
-    for (let attempt = 0; attempt < 45; attempt += 1) {
-      await wait(2000);
-      const result = await supabase.functions.invoke<ChatReply>("adult-story-chat", {
-        body: { action: "status", jobId: created.data.jobId },
+    const signature = await chatSignature(body);
+    let saved: PendingChat | null = null;
+    try {
+      saved = key ? JSON.parse(localStorage.getItem(key) || "null") as PendingChat | null : null;
+    } catch { /* Browser storage may be unavailable. */ }
+    let jobId = saved?.signature === signature && Date.now() - saved.createdAt < 24 * 60 * 60 * 1000
+      ? saved.jobId : undefined;
+    if (!jobId) {
+      const created = await supabase.functions.invoke<ChatReply>("adult-story-chat", {
+        body: { action: "create", adultMode: true, ...(body as object) },
       });
-      if (result.error) return fail("No se pudo consultar la respuesta de Kineva.", 503);
-      if (result.data?.status === "completed" && result.data.content)
-        return { data: { content: result.data.content } as T, error: null };
-      if (result.data?.status === "failed")
-        return fail(result.data.message || "La respuesta repitio la escena. Reintenta el turno.", 502, result.data.error || "local_chat_failed");
+      if (created.error || !created.data?.jobId)
+        return fail("No se pudo enviar el turno a Kineva. Conservamos tu mensaje.", 503);
+      jobId = created.data.jobId;
+      try { if (key) localStorage.setItem(key, JSON.stringify({ jobId, signature, createdAt: Date.now() })); } catch {}
     }
-    return fail("Kineva local tardÃ³ demasiado. Tu mensaje sigue disponible para reenviar.", 504);
+    let consecutiveErrors = 0;
+    for (let attempt = 0; attempt < 75; attempt += 1) {
+      await wait(consecutiveErrors ? 700 : 1500);
+      const result = await supabase.functions.invoke<ChatReply>("adult-story-chat", {
+        body: { action: "status", jobId },
+      });
+      if (result.error) {
+        consecutiveErrors += 1;
+        if (consecutiveErrors >= 12)
+          return fail("La respuesta sigue en proceso, pero perdimos temporalmente la conexiÃ³n. ReenvÃ­a el mismo mensaje para recuperarla.", 503, "chat_status_unavailable");
+        continue;
+      }
+      consecutiveErrors = 0;
+      if (result.data?.status === "completed" && result.data.content) {
+        try { if (key) localStorage.removeItem(key); } catch {}
+        return { data: { content: result.data.content } as T, error: null };
+      }
+      if (result.data?.status === "failed") {
+        try { if (key) localStorage.removeItem(key); } catch {}
+        return fail(result.data.message || "La respuesta repitiÃ³ la escena. Reintenta el turno.", 502, result.data.error || "local_chat_failed");
+      }
+      if (result.data?.error === "job_not_found") {
+        try { if (key) localStorage.removeItem(key); } catch {}
+        return fail("Ese turno ya no estÃ¡ en la cola. ReenvÃ­a tu mensaje.", 404, "chat_job_expired");
+      }
+    }
+    return fail("La respuesta sigue procesÃ¡ndose. ReenvÃ­a el mismo mensaje para recuperarla.", 504, "chat_status_unavailable");
   } catch {
-    return fail("Kineva local no estÃ¡ disponible. Tu mensaje sigue disponible para reenviar.", 503);
+    return fail("No se pudo contactar con Kineva. Tu mensaje sigue disponible para reenviar.", 503);
   }
 }
 

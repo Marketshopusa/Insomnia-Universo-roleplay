@@ -319,6 +319,11 @@ type Mode = "select" | "read" | "roleplay";
         description: language === "es" ? "Tu mensaje sigue listo para reenviar. El motor local estÃ¡ conectado." : "Your message is ready to resend. The local engine is connected.",
         variant: "destructive",
       });
+      else if (code === "chat_status_unavailable" || code === "chat_job_expired") toast({
+        title: language === "es" ? "No pudimos recuperar la respuesta" : "Could not retrieve the reply",
+        description: data?.message,
+        variant: "destructive",
+      });
       else if (code === "content_blocked") toast({
         title: language === "es" ? "Esta escena no puede continuar" : "This scene cannot continue",
         description: data?.message,

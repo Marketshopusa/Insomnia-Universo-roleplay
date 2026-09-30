@@ -42,7 +42,7 @@ Deno.serve(async (req) => {
     const latest = String(body.userMessage ?? "").trim().slice(0, 1500);
     if (latest.length < 2) return reply({ error: "missing_message" }, 400);
     const story = body.story ?? {};
-    const history = (Array.isArray(body.history) ? body.history.slice(-12) : [])
+    const history = (Array.isArray(body.history) ? body.history.slice(-40) : [])
       .filter((item: unknown) => typeof item === "object" && item !== null)
       .map((item: { role?: string; content?: string }) => ({
         role: item.role === "assistant" ? "assistant" : "user",
