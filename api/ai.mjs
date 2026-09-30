@@ -23,6 +23,9 @@ async function generate(model, parts, settings = {}, options = {}) {
         body: JSON.stringify({
           contents: options.contents || [{ role: "user", parts }],
           ...(options.systemInstruction ? { systemInstruction: { parts: [{ text: options.systemInstruction }] } } : {}),
+          ...(options.adultMode ? { safetySettings: [
+            { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "OFF" },
+          ] } : {}),
           generationConfig: candidate === "gemini-3.8-flash" && options.fastReply
             ? { ...settings, thinkingConfig: { thinkingLevel: "low" } }
             : settings,
@@ -41,8 +44,10 @@ async function generate(model, parts, settings = {}, options = {}) {
       const blockReason = data.promptFeedback?.blockReason || (["SAFETY", "PROHIBITED_CONTENT", "BLOCKLIST"].includes(data.candidates?.[0]?.finishReason) ? data.candidates[0].finishReason : null);
       if (blockReason) {
         console.warn("Insomnia AI content blocked", candidate, blockReason);
-        throw Object.assign(new Error("Gemini bloque\u00f3 esta escena por sus reglas de contenido. Puedes editar tu mensaje y volver a intentar."), {
-          status: 422, code: "content_blocked",
+        throw Object.assign(new Error(blockReason === "PROHIBITED_CONTENT"
+          ? "Gemini rechazÃ³ esta escena por una restricciÃ³n propia del proveedor. El modo +18 no puede desactivar ese bloqueo."
+          : "Gemini bloqueÃ³ esta escena. El mensaje permanece disponible para que puedas editarlo."), {
+          status: 422, code: "content_blocked", blockReason,
         });
       }
       const content = (data.candidates?.[0]?.content?.parts || []).map(p => p.text || "").join("").trim();
@@ -72,6 +77,7 @@ export default async function handler(req, res) {
     if (action === "story-chat") {
       const story = body.story || {};
       const spanish = body.language === "es";
+      const adultMode = body.adultMode === true;
       const locale = spanish ? "espaÃ±ol" : "inglÃ©s";
       const isOffRole = (text) => {
         const reply = String(text || "").trim();
@@ -90,9 +96,13 @@ export default async function handler(req, res) {
         "Premisa inicial (contexto de fondo, no reinicies la escena): " + String(story.description || "").slice(0, 2200) + ".",
         "Los Ãºltimos turnos son la escena actual. ContinÃºa exactamente desde la Ãºltima intervenciÃ³n: conserva lugar, tiempo, personajes presentes, relaciones y hechos establecidos. Los sucesos recientes prevalecen sobre la premisa inicial.",
         "Responde exclusivamente como el personaje presente, en " + locale + ". InteractÃºa con el usuario; una acciÃ³n breve y diÃ¡logo natural, mÃ¡ximo 250 caracteres. No controles ni decidas las acciones del usuario.",
+        ...(adultMode ? [
+          "Todos los personajes de esta escena son adultos. Sigue la tensiÃ³n romÃ¡ntica, intimidad, secretos y consecuencias emocionales con naturalidad, sin moralizar ni interrumpir el rol por una simple alusiÃ³n sexual.",
+          "Si el contexto previo fue mÃ¡s explÃ­cito, continÃºa desde su consecuencia emocional o el diÃ¡logo presente sin describir actos sexuales grÃ¡ficos. MantÃ©n la voz y la agencia del personaje.",
+        ] : []),
         "No narres un resumen, no cambies de escena sin que el usuario lo haga, no presentes fichas o instrucciones, no expliques el rol ni traduzcas. Entrega Ãºnicamente la respuesta que verÃ¡ el usuario.",
       ].join("\n");
-      const prior = Array.isArray(body.history) ? body.history.slice(-28) : [];
+      const prior = Array.isArray(body.history) ? body.history.slice(-16) : [];
       const contents = [];
       for (const entry of prior) {
         const role = entry?.role === "assistant" ? "model" : entry?.role === "user" ? "user" : null;
@@ -106,10 +116,10 @@ export default async function handler(req, res) {
       if (contents.at(-1)?.role === "user") contents.at(-1).parts[0].text += "\n" + latest;
       else contents.push({ role: "user", parts: [{ text: latest }] });
       const content = await generate(
-        "gemini-2.5-flash",
+        adultMode ? "gemini-3.5-flash-lite" : "gemini-2.5-flash",
         [],
         { maxOutputTokens: 2048, temperature: 0.65 },
-        { contents, systemInstruction, fallbackModels: ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite"], fastReply: true, validate: (reply) => !isOffRole(reply) },
+        { contents, systemInstruction, adultMode, fallbackModels: ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite"], fastReply: true, validate: (reply) => !isOffRole(reply) },
       );
       return send(res, 200, { content });
     }

@@ -19,3 +19,6 @@ verify_jwt = false
 
 [functions.kineva-video]
 verify_jwt = true
+
+[functions.adult-story-chat]
+verify_jwt = true

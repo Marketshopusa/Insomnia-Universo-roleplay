@@ -29,6 +29,7 @@ interface CallDialogProps {
   story: any;
   language: string;
   voice: string;
+  adultMode: boolean;
   history: Turn[];
   onTurn: (userText: string, assistantText: string | null) => void;
 }
@@ -49,6 +50,7 @@ export const CallDialog = ({
   story,
   language,
   voice,
+  adultMode,
   history,
   onTurn,
 }: CallDialogProps) => {
@@ -133,7 +135,7 @@ export const CallDialog = ({
         language,
         history: historyRef.current.slice(-12),
         userMessage: userText,
-        explicit: story?.story_type === "real_sex" || !!story?.has_explicit_images,
+        adultMode,
     });
     if (error || !data?.content) {
       const status = (error as { context?: Response } | null)?.context?.status;

@@ -302,13 +302,18 @@ type Mode = "select" | "read" | "roleplay";
           .filter((m) => m.id !== "intro")
           .map((m) => ({ role: m.role, content: m.content })),
         userMessage,
-        explicit: story?.story_type === "real_sex" || !!story?.has_explicit_images,
+        adultMode: adultEnabled && consentGiven,
     });
     if (error || !data?.content) {
       const status = (error as { context?: Response } | null)?.context?.status;
       const code = status === 402 ? "credits_exhausted" : (data as any)?.error;
       if (code === "rate_limited") toast({ title: t("mode.rateLimited"), variant: "destructive" });
       else if (code === "credits_exhausted") toast({ title: t("mode.creditsExhausted"), variant: "destructive" });
+      else if (code === "local_chat_unavailable") toast({
+        title: language === "es" ? "Kineva local no estÃ¡ disponible" : "Local Kineva is unavailable",
+        description: data?.message,
+        variant: "destructive",
+      });
       else if (code === "content_blocked") toast({
         title: language === "es" ? "Esta escena no puede continuar" : "This scene cannot continue",
         description: data?.message,
@@ -925,6 +930,7 @@ type Mode = "select" | "read" | "roleplay";
                       story={story}
                       language={language}
                       voice={voice}
+                      adultMode={adultEnabled && consentGiven}
                       history={messages
                         .filter((message) => message.id !== "intro")
                         .map((message) => ({ role: message.role, content: message.content }))}
