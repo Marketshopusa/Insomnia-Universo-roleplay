@@ -394,10 +394,10 @@ type Mode = "select" | "read" | "roleplay";
        const activeVoice = voiceRef.current;
        const speech = streamSpeech(text, activeVoice, language, () => {
           toast({
-            title: language === "es" ? "Voz de respaldo activada" : "Device voice activated",
+            title: language === "es" ? "Voz neural alternativa activada" : "Neural backup activated",
             description: language === "es"
-              ? "Gemini llegó a su límite. Esta voz procede de tu dispositivo y puede sonar diferente."
-              : "Gemini reached its limit. This voice comes from your device and may sound different.",
+              ? "Chirp 3 HD está leyendo con una voz neural asignada al personaje."
+              : "Chirp 3 HD is speaking with the character's assigned neural voice.",
           });
         });
        streamRef.current = speech;
@@ -413,11 +413,9 @@ type Mode = "select" | "read" | "roleplay";
        const status = (e as { status?: number })?.status;
        toast({
          title: language === "es" ? "La voz Gemini no está disponible" : "Gemini voice is unavailable",
-         description: (e as Error)?.message === "device_voice_failed"
-           ? (language === "es" ? "Gemini no tiene cuota y la voz de respaldo de este navegador tampoco pudo iniciar." : "Gemini has no voice quota, and this browser could not start its backup voice.")
-           : status === 429
-             ? (language === "es" ? "Se alcanzó la cuota de voces. El texto sigue disponible." : "The voice quota has been reached. The text remains available.")
-             : (language === "es" ? "No se pudo reproducir la voz seleccionada. Inténtalo de nuevo." : "The selected voice could not play. Please try again."),
+         description: status === 429
+           ? (language === "es" ? "Se alcanzó la cuota de voces. El texto sigue disponible." : "The voice quota has been reached. The text remains available.")
+           : (language === "es" ? "No se pudo reproducir la voz seleccionada. Inténtalo de nuevo." : "The selected voice could not play. Please try again."),
          variant: "destructive",
        });
      }

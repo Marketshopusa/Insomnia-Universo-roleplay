@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { supabaseUrl, publishableKey } from "./config.mjs";
+import { isChirpConfigured, synthesizeChirp } from "./chirpTts.mjs";
 
 const voices = { "scarlett-hd": "Aoede", "luna-sweet": "Leda", "aria-calm": "Kore", "max-deep": "Charon", "leo-warm": "Puck" };
 const models = ["gemini-3.8-flash-lite-tts", "gemini-3.8-flash-tts", "gemini-3.1-flash-tts-preview"];
@@ -54,7 +55,7 @@ async function relaySse(upstream, res, legacy, onFirstAudio) {
     return audioStarted;
   } catch (error) {
     if (audioStarted) {
-      sendEvent(res, { type: "speech.error", message: "La voz se interrumpiÃ³." });
+      sendEvent(res, { type: "speech.error", message: "La voz se interrumpió." });
       res.end();
       return true;
     }
@@ -90,7 +91,8 @@ export default async function handler(req, res) {
   }
 
   const key = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
-  if (!key || key === "[SENSITIVE]") return res.status(503).json({ error: "gemini_not_configured", message: "Gemini no estÃ¡ configurado en Insomnia." });
+  const geminiAvailable = Boolean(key && key !== "[SENSITIVE]");
+  if (!geminiAvailable && !isChirpConfigured()) return res.status(503).json({ error: "neural_voice_not_configured" });
   const raw = typeof req.body?.text === "string" ? req.body.text : "";
   const text = raw.replace(/[*_#]/g, "").replace(/\s+/g, " ").trim().slice(0, 900);
   if (!text) return res.status(400).json({ error: "missing_text" });
@@ -100,23 +102,14 @@ export default async function handler(req, res) {
   let quotaExceeded = false;
   const now = Date.now();
   const eligible = models.filter((model) => (quotaCooldownUntil.get(model) || 0) <= now);
-  if (eligible.length === 0) {
-    const retryAfterSeconds = Math.max(1, Math.ceil(
-      (Math.min(...models.map((model) => quotaCooldownUntil.get(model))) - now) / 1000
-    ));
-    res.setHeader("Retry-After", String(retryAfterSeconds));
-    return res.status(429).json({
-      error: "tts_quota_exhausted",
-      message: "Gemini limito temporalmente todas las voces. El texto sigue disponible.",
-      retryAfterSeconds,
-    });
-  }
-  for (const model of eligible) {
+  // A cooled-down Gemini model must not block the independent Cloud TTS provider.
+  if (eligible.length === 0) quotaExceeded = true;
+  for (const model of geminiAvailable ? eligible : []) {
     const modelStartedAt = Date.now();
     try {
       const legacy = model === "gemini-3.1-flash-tts-preview";
       const speechText = legacy
-        ? "Lee en voz alta el texto completo, palabra por palabra, con voz cÃ¡lida y natural. Pronuncia tanto la narraciÃ³n como el diÃ¡logo; no omitas ninguna parte. TEXTO COMPLETO:\n" + text
+        ? "Lee en voz alta el texto completo, palabra por palabra, con voz cálida y natural. Pronuncia tanto la narración como el diálogo; no omitas ninguna parte. TEXTO COMPLETO:\n" + text
         : text;
       const upstream = await fetch(
         legacy
@@ -136,7 +129,7 @@ export default async function handler(req, res) {
             : {
                 model,
                 input: [{ type: "user_input", content: [{
-                  type: "text", text, annotations: [{ type: "speech_metadata", style: "Voz natural, cÃ¡lida y clara; ritmo conversacional" }],
+                  type: "text", text, annotations: [{ type: "speech_metadata", style: "Voz natural, cálida y clara; ritmo conversacional" }],
                 }] }],
                 response_format: { type: "audio", mime_type: "audio/l16", sample_rate: 24000 },
                 generation_config: { speech_config: [{ voice }] },
@@ -171,10 +164,39 @@ export default async function handler(req, res) {
       console.warn("Insomnia speech provider timeout", model, failure.name);
     }
   }
+  if (isChirpConfigured()) {
+    const chirpStarted = Date.now();
+    try {
+      const result = await synthesizeChirp(text, req.body.voice, req.body.language);
+      if (result.status === 200) {
+        res.setHeader("Content-Type", "text/event-stream");
+        res.setHeader("Cache-Control", "no-cache, no-transform");
+        res.setHeader("X-Accel-Buffering", "no");
+        res.flushHeaders();
+        sendEvent(res, { type: "speech.provider", provider: "chirp3-hd" });
+        console.info("Insomnia speech first_audio chirp3-hd total_ms", Date.now() - startedAt);
+        for (let offset = 0; offset < result.pcm.length; offset += 32_768) {
+          sendEvent(res, { type: "speech.audio.delta", audio: result.pcm.subarray(offset, offset + 32_768).toString("base64") });
+        }
+        sendEvent(res, { type: "speech.audio.done" });
+        res.end();
+        console.info("Insomnia speech complete chirp3-hd total_ms", Date.now() - startedAt);
+        return;
+      }
+      lastStatus = result.status;
+      quotaExceeded ||= result.status === 429;
+      console.warn("Insomnia speech provider chirp3-hd", result.status, "after_ms", Date.now() - chirpStarted);
+    } catch (failure) {
+      lastStatus = 502;
+      console.warn("Insomnia speech provider chirp3-hd failed", failure?.name || "Error", "after_ms", Date.now() - chirpStarted);
+    }
+  }
   return res.status(quotaExceeded ? 429 : lastStatus).json({
     error: quotaExceeded ? "tts_quota_exhausted" : "tts_unavailable",
     message: quotaExceeded
-      ? "Se alcanzÃ³ el lÃ­mite de voces Gemini de este proyecto. Prueba mÃ¡s tarde o habilita mÃ¡s cuota en Google AI."
-      : "La voz Gemini no estÃ¡ disponible en este momento.",
+      ? (isChirpConfigured()
+        ? "Los proveedores de voz neural no tienen cuota disponible en este momento."
+        : "Gemini agotó su cuota y Chirp 3 HD aún no tiene credenciales de Google Cloud.")
+      : "La voz neural no está disponible en este momento.",
   });
 }

@@ -57,62 +57,18 @@ it("starts playback as soon as a PCM chunk arrives, before the stream closes", a
   speech.stop();
   await speech.done;
 });
-it("uses the device voice when Gemini has exhausted its voice quota", async () => {
-  const speechRequests: unknown[] = [];
+it("does not play a mismatched device voice when neural TTS has no quota", async () => {
+  const fetchMock = vi.fn(async () => new Response('{"message":"Neural voice quota exhausted"}', { status: 429 }));
   vi.spyOn(supabase.auth, "getSession").mockResolvedValue({ data: { session: { access_token: "test" } }, error: null } as any);
-  vi.stubGlobal("fetch", vi.fn(async (_url: string, init?: RequestInit) => {
-    const payload = JSON.parse(String(init?.body || "{}"));
-    if (payload.metric) return new Response(null, { status: 204 });
-    speechRequests.push(payload);
-    return new Response('{"message":"Quota exhausted"}', { status: 429 });
-  }));
+  vi.stubGlobal("fetch", fetchMock);
   vi.stubGlobal("AudioContext", class {
     state = "running";
     close() { return Promise.resolve(); }
   });
-
-  const spoken: string[] = [];
-  const synthesizer = {
-    getVoices: () => [{ lang: "es-MX", name: "Voz natural", default: true }],
-    cancel: vi.fn(),
-    speak: vi.fn((utterance: SpeechSynthesisUtterance) => {
-      spoken.push(utterance.text);
-      queueMicrotask(() => {
-        utterance.onstart?.({} as SpeechSynthesisEvent);
-        utterance.onend?.({} as SpeechSynthesisEvent);
-      });
-    }),
-  };
-  vi.stubGlobal("speechSynthesis", synthesizer);
-  vi.stubGlobal("SpeechSynthesisUtterance", class {
-    text: string;
-    lang = "";
-    voice: SpeechSynthesisVoice | null = null;
-    rate = 1;
-    onstart: ((event: SpeechSynthesisEvent) => void) | null = null;
-    onend: ((event: SpeechSynthesisEvent) => void) | null = null;
-    onerror: ((event: SpeechSynthesisErrorEvent) => void) | null = null;
-    constructor(text: string) { this.text = text; }
-  });
-
-  const fallback = vi.fn();
-  const speech = streamSpeech("Hola, quÃ© tal.", "scarlett-hd", "es", fallback);
-  await speech.started;
-  await speech.done;
-  expect(speechRequests).toHaveLength(1);
-  expect(spoken).toEqual(["Hola, quÃ© tal."]);
-  expect(fallback).toHaveBeenCalledTimes(1);
-});
-
-it("reports a failed backup when the browser has no speech synthesis", async () => {
-  vi.spyOn(supabase.auth, "getSession").mockResolvedValue({ data: { session: { access_token: "test" } }, error: null } as any);
-  vi.stubGlobal("fetch", vi.fn(async () => new Response(null, { status: 204 })));
-  vi.stubGlobal("AudioContext", class {
-    state = "running";
-    close() { return Promise.resolve(); }
-  });
-  vi.stubGlobal("speechSynthesis", undefined);
-  vi.stubGlobal("SpeechSynthesisUtterance", undefined);
-  const speech = streamSpeech("Una prueba.", "scarlett-hd", "es");
-  await expect(speech.done).rejects.toThrow("device_voice_failed");
+  const deviceSpeak = vi.fn();
+  vi.stubGlobal("speechSynthesis", { speak: deviceSpeak, cancel: vi.fn() });
+  const speech = streamSpeech("Hola, que tal.", "scarlett-hd", "es");
+  await expect(speech.done).rejects.toThrow("Neural voice quota exhausted");
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+  expect(deviceSpeak).not.toHaveBeenCalled();
 });

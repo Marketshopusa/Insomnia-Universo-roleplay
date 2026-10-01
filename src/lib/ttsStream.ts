@@ -1,13 +1,10 @@
 import { supabase } from "@/integrations/supabase/client";
-import { speakWithDeviceVoice } from "@/lib/browserSpeechFallback";
 const FUNCTIONS_URL = "/api/speech";
 const PCM_SAMPLE_RATE = 24_000;
 
 class SpeechHttpError extends Error {
   constructor(public readonly status: number, message: string) { super(message); }
 }
-let paymentRequiredUntil = 0;
-let providerQuotaUntil = 0;
 
 export interface SpeechStream {
   /** Resolves only after the complete audio has finished playing. */
@@ -21,7 +18,7 @@ export interface SpeechStream {
 const wait = (milliseconds: number) =>
   new Promise((resolve) => window.setTimeout(resolve, milliseconds));
 
-async function requestSpeech(text: string, voice: string, signal: AbortSignal) {
+async function requestSpeech(text: string, voice: string, language: string, signal: AbortSignal) {
   const { data: { session } } = await supabase.auth.getSession();
   return fetch(FUNCTIONS_URL, {
     method: "POST",
@@ -29,7 +26,7 @@ async function requestSpeech(text: string, voice: string, signal: AbortSignal) {
       "Content-Type": "application/json",
       ...(session?.access_token ? { Authorization: "Bearer " + session.access_token } : {}),
     },
-    body: JSON.stringify({ text, voice, stream: true }),
+    body: JSON.stringify({ text, voice, language, stream: true }),
     signal,
   });
 }
@@ -75,12 +72,10 @@ function splitSpeechText(text: string, maximumLength = 700): string[] {
   return chunks;
 }
 
-async function receivePcmOnce(text: string, voice: string, signal: AbortSignal, onChunk: (bytes: Uint8Array) => void) {
-  const response = await requestSpeech(text, voice, signal);
+async function receivePcmOnce(text: string, voice: string, language: string, signal: AbortSignal, onChunk: (bytes: Uint8Array) => void, onProvider: () => void) {
+  const response = await requestSpeech(text, voice, language, signal);
   if (!response.ok || !response.body) {
     const payload = await response.json().catch(() => null) as { message?: string; detail?: string } | null;
-    if (response.status === 402) paymentRequiredUntil = Date.now() + 60_000;
-    if (response.status === 429) providerQuotaUntil = Date.now() + 45_000;
     throw new SpeechHttpError(response.status, payload?.message || payload?.detail || `tts_failed_${response.status}`);
   }
 
@@ -93,9 +88,10 @@ async function receivePcmOnce(text: string, voice: string, signal: AbortSignal, 
     if (!line.startsWith("data:")) return;
     const raw = line.slice(5).trim();
     if (!raw || raw === "[DONE]") return;
-    let event: { type?: string; audio?: string; message?: string };
+    let event: { type?: string; audio?: string; message?: string; provider?: string };
     try { event = JSON.parse(raw); } catch { return; }
     if (event.type === "speech.error") throw new Error(event.message || "tts_stream_failed");
+    if (event.type === "speech.provider" && event.provider === "chirp3-hd") { onProvider(); return; }
     if (event.type === "speech.audio.done") {
       receivedDone = true;
       return;
@@ -128,17 +124,15 @@ async function receivePcmOnce(text: string, voice: string, signal: AbortSignal, 
   if (audioSeconds < Math.max(0.8, spokenWords * 0.19)) throw new Error("tts_audio_too_short");
 }
 
-async function receivePcm(text: string, voice: string, signal: AbortSignal, onChunk: (bytes: Uint8Array) => void) {
-  if (Date.now() < paymentRequiredUntil) throw new SpeechHttpError(402, "Voice provider has no credits");
-  if (Date.now() < providerQuotaUntil) throw new SpeechHttpError(429, "Gemini voice quota temporarily exhausted");
+async function receivePcm(text: string, voice: string, language: string, signal: AbortSignal, onChunk: (bytes: Uint8Array) => void, onProvider: () => void) {
   let lastError: unknown;
   for (let attempt = 0; attempt < 2; attempt += 1) {
     let audioStarted = false;
     try {
-      return await receivePcmOnce(text, voice, signal, (bytes) => {
+      return await receivePcmOnce(text, voice, language, signal, (bytes) => {
         audioStarted = true;
         onChunk(bytes);
-      });
+      }, onProvider);
     } catch (error) {
       // Once any PCM is audible, retrying would repeat the start of the phrase.
       if (signal.aborted || audioStarted || (error instanceof SpeechHttpError && error.status < 500)) throw error;
@@ -170,27 +164,13 @@ export function streamSpeech(text: string, voice: string, language = "es", onFal
   let context: AudioContext | null = null;
   const sources = new Set<AudioBufferSourceNode>();
   let stopped = false;
-  let browserSpeaking = false;
+  let providerNoticeSent = false;
   let schedulingComplete = false;
   let finishPlayback: () => void = () => {};
   let markStarted: () => void = () => {};
   const started = new Promise<void>((resolve) => { markStarted = resolve; });
   const requestedAt = performance.now();
   let playbackReported = false;
-  const reportDeviceVoice = (state: "attempt" | "started" | "failed", reason = "unknown") => {
-    void supabase.auth.getSession().then(({ data }) => {
-      if (!data.session?.access_token) return;
-      return fetch(FUNCTIONS_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: "Bearer " + data.session.access_token,
-        },
-        body: JSON.stringify({ metric: "device_voice", state, reason }),
-        keepalive: true,
-      });
-    }).catch(() => {});
-  };
   const reportFirstPlayback = () => {
     if (playbackReported) return;
     playbackReported = true;
@@ -215,7 +195,6 @@ export function streamSpeech(text: string, voice: string, language = "es", onFal
     if (stopped) return;
     stopped = true;
     controller.abort();
-    if (browserSpeaking) window.speechSynthesis?.cancel();
     finishPlayback();
     for (const source of sources) {
       try { source.stop(); } catch { /* Already ended. */ }
@@ -234,6 +213,10 @@ export function streamSpeech(text: string, voice: string, language = "es", onFal
       const playbackEnded = new Promise<void>((resolve) => { finishPlayback = resolve; });
       const textChunks = splitSpeechText(text);
       if (textChunks.length === 0) { stop(); return; }
+      if (textChunks[0].length > 220) {
+        const firstParts = splitSpeechText(textChunks[0], 180);
+        if (firstParts.length > 1) textChunks.splice(0, 1, firstParts[0], firstParts.slice(1).join(" "));
+      }
       let scheduledAt = context.currentTime;
 
       const schedule = (bytes: Uint8Array) => {
@@ -259,7 +242,11 @@ export function streamSpeech(text: string, voice: string, language = "es", onFal
       };
       for (const chunk of textChunks) {
         if (stopped) return;
-        await receivePcm(chunk, voice, controller.signal, schedule);
+        await receivePcm(chunk, voice, language, controller.signal, schedule, () => {
+          if (providerNoticeSent) return;
+          providerNoticeSent = true;
+          onFallback?.();
+        });
       }
       schedulingComplete = true;
       if (sources.size === 0) finishPlayback();
@@ -267,33 +254,6 @@ export function streamSpeech(text: string, voice: string, language = "es", onFal
       if (!stopped) stop();
     } catch (error) {
       if (stopped || (error instanceof DOMException && error.name === "AbortError")) return;
-      const status = error instanceof SpeechHttpError ? error.status : 0;
-      const canUseBackup = !playbackReported && (status === 402 || status === 429 || status >= 500 || error instanceof TypeError);
-      if (canUseBackup) {
-        try {
-          await context?.close();
-          context = null;
-          browserSpeaking = true;
-          reportDeviceVoice("attempt");
-          await speakWithDeviceVoice(text, language, controller.signal, () => {
-            reportFirstPlayback();
-            reportDeviceVoice("started");
-            onFallback?.();
-          });
-          browserSpeaking = false;
-          if (!stopped) stop();
-          return;
-        } catch (backupError) {
-          browserSpeaking = false;
-          const reason = backupError instanceof Error ? backupError.message : "";
-          reportDeviceVoice("failed", reason === "device_voice_unavailable" ? "unavailable"
-            : reason === "device_voice_start_timeout" ? "start_timeout"
-            : reason === "device_voice_failed" ? "playback_failed" : "unknown");
-          console.warn("Device voice backup failed:", backupError);
-          stop();
-          throw new SpeechHttpError(status || 503, "device_voice_failed");
-        }
-      }
       stop();
       throw error;
     }
