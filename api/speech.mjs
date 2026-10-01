@@ -1,11 +1,18 @@
 import { createClient } from "@supabase/supabase-js";
 import { supabaseUrl, publishableKey } from "./config.mjs";
-import { isChirpConfigured, synthesizeChirp } from "./chirpTts.mjs";
+import { isChirpConfigured, synthesizeChirp, synthesizeCloudGemini, removePerformanceCues } from "./chirpTts.mjs";
 
 const voices = { "scarlett-hd": "Aoede", "luna-sweet": "Leda", "aria-calm": "Kore", "max-deep": "Charon", "leo-warm": "Puck" };
-const models = ["gemini-3.8-flash-lite-tts", "gemini-3.8-flash-tts", "gemini-3.1-flash-tts-preview"];
+const models = ["gemini-3.1-flash-tts-preview", "gemini-2.5-flash-preview-tts"];
 // Reused serverless instances skip a model briefly after a quota response.
 const quotaCooldownUntil = new Map();
+let cloudGeminiCooldownUntil = 0;
+// Cloud Gemini is opt-in and automatically stops before the trial end date.
+function cloudGeminiTrialEnabled() {
+  const endsAt = Date.parse(process.env.GCP_GEMINI_TTS_TRIAL_END || "");
+  return process.env.GCP_GEMINI_TTS_TRIAL_ENABLED === "true"
+    && Number.isFinite(endsAt) && Date.now() < endsAt;
+}
 
 
 function sendEvent(res, event) {
@@ -90,13 +97,22 @@ export default async function handler(req, res) {
     return res.status(204).end();
   }
 
-  const key = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+const key = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
   const geminiAvailable = Boolean(key && key !== "[SENSITIVE]");
   if (!geminiAvailable && !isChirpConfigured()) return res.status(503).json({ error: "neural_voice_not_configured" });
   const raw = typeof req.body?.text === "string" ? req.body.text : "";
   const text = raw.replace(/[*_#]/g, "").replace(/\s+/g, " ").trim().slice(0, 900);
-  if (!text) return res.status(400).json({ error: "missing_text" });
+  const plainText = removePerformanceCues(text);
+  if (!plainText) return res.status(400).json({ error: "missing_text" });
   const voice = voices[req.body.voice] || "Kore";
+  const performance = ["neutral", "amused", "sad", "pain", "soft"].includes(req.body.performance)
+    ? req.body.performance : "neutral";
+  const mood = {
+    amused: "Reacciona con una risa breve y divertida.",
+    sad: "Habla con tristeza contenida y respiración natural, sin leer acotaciones.",
+    pain: "Reacciona al dolor con voz y respiración naturales, sin leer acotaciones.",
+    soft: "Habla suavemente con pausas naturales.",
+  }[performance] || "Habla de forma conversacional y natural.";
 
   let lastStatus = 502;
   let quotaExceeded = false;
@@ -104,12 +120,68 @@ export default async function handler(req, res) {
   const eligible = models.filter((model) => (quotaCooldownUntil.get(model) || 0) <= now);
   // A cooled-down Gemini model must not block the independent Cloud TTS provider.
   if (eligible.length === 0) quotaExceeded = true;
+  if (cloudGeminiTrialEnabled() && isChirpConfigured() && Date.now() >= cloudGeminiCooldownUntil) {
+    const cloudStarted = Date.now();
+    try {
+      const result = await synthesizeCloudGemini(text, req.body.voice, req.body.language, { performance });
+      if (result.status === 200) {
+        res.setHeader("Content-Type", "text/event-stream");
+        res.setHeader("Cache-Control", "no-cache, no-transform");
+        res.setHeader("X-Accel-Buffering", "no");
+        res.flushHeaders();
+        sendEvent(res, { type: "speech.provider", provider: "gemini-cloud" });
+        console.info("Insomnia speech first_audio gemini-cloud total_ms", Date.now() - startedAt);
+        for (let offset = 0; offset < result.pcm.length; offset += 32_768) {
+          sendEvent(res, { type: "speech.audio.delta", audio: result.pcm.subarray(offset, offset + 32_768).toString("base64") });
+        }
+        sendEvent(res, { type: "speech.audio.done" });
+        res.end();
+        console.info("Insomnia speech complete gemini-cloud total_ms", Date.now() - startedAt);
+        return;
+      }
+      if ([400, 403, 404].includes(result.status)) cloudGeminiCooldownUntil = Date.now() + 15 * 60_000;
+      else if (result.status === 429) cloudGeminiCooldownUntil = Date.now() + 60_000;
+      console.warn("Insomnia speech provider gemini-cloud", result.status, "after_ms", Date.now() - cloudStarted);
+    } catch (failure) {
+      cloudGeminiCooldownUntil = Date.now() + 60_000;
+      console.warn("Insomnia speech provider gemini-cloud failed", failure?.name || "Error", "after_ms", Date.now() - cloudStarted);
+    }
+  }
+  // Prefer the verified Google Cloud Chirp path. It uses Vercel OIDC and avoids
+  // waiting on Gemini preview quota before the character can speak.
+  if (isChirpConfigured()) {
+    const chirpStarted = Date.now();
+    try {
+      const result = await synthesizeChirp(plainText, req.body.voice, req.body.language);
+      if (result.status === 200) {
+        res.setHeader("Content-Type", "text/event-stream");
+        res.setHeader("Cache-Control", "no-cache, no-transform");
+        res.setHeader("X-Accel-Buffering", "no");
+        res.flushHeaders();
+        sendEvent(res, { type: "speech.provider", provider: "chirp3-hd" });
+        console.info("Insomnia speech first_audio chirp3-hd total_ms", Date.now() - startedAt);
+        for (let offset = 0; offset < result.pcm.length; offset += 32_768) {
+          sendEvent(res, { type: "speech.audio.delta", audio: result.pcm.subarray(offset, offset + 32_768).toString("base64") });
+        }
+        sendEvent(res, { type: "speech.audio.done" });
+        res.end();
+        console.info("Insomnia speech complete chirp3-hd total_ms", Date.now() - startedAt);
+        return;
+      }
+      lastStatus = result.status;
+      quotaExceeded ||= result.status === 429;
+      console.warn("Insomnia speech primary chirp3-hd", result.status, "after_ms", Date.now() - chirpStarted);
+    } catch (failure) {
+      lastStatus = 502;
+      console.warn("Insomnia speech primary chirp3-hd failed", failure?.name || "Error", "after_ms", Date.now() - chirpStarted);
+    }
+  }
   for (const model of geminiAvailable ? eligible : []) {
     const modelStartedAt = Date.now();
     try {
-      const legacy = model === "gemini-3.1-flash-tts-preview";
+      const legacy = model === "gemini-3.1-flash-tts-preview" || model === "gemini-2.5-flash-preview-tts";
       const speechText = legacy
-        ? "Lee en voz alta el texto completo, palabra por palabra, con voz cálida y natural. Pronuncia tanto la narración como el diálogo; no omitas ninguna parte. TEXTO COMPLETO:\n" + text
+        ? `Interpreta solo el diálogo. ${mood} [laughing] y [sigh] indican sonidos; no leas las etiquetas ni agregues palabras. DIÁLOGO:\n` + text
         : text;
       const upstream = await fetch(
         legacy
@@ -129,7 +201,7 @@ export default async function handler(req, res) {
             : {
                 model,
                 input: [{ type: "user_input", content: [{
-                  type: "text", text, annotations: [{ type: "speech_metadata", style: "Voz natural, cálida y clara; ritmo conversacional" }],
+                  type: "text", text, annotations: [{ type: "speech_metadata", style: `Interpretación expresiva y conversacional. ${mood} [laughing] y [sigh] son sonidos, no palabras.` }],
                 }] }],
                 response_format: { type: "audio", mime_type: "audio/l16", sample_rate: 24000 },
                 generation_config: { speech_config: [{ voice }] },
@@ -167,7 +239,7 @@ export default async function handler(req, res) {
   if (isChirpConfigured()) {
     const chirpStarted = Date.now();
     try {
-      const result = await synthesizeChirp(text, req.body.voice, req.body.language);
+      const result = await synthesizeChirp(plainText, req.body.voice, req.body.language);
       if (result.status === 200) {
         res.setHeader("Content-Type", "text/event-stream");
         res.setHeader("Cache-Control", "no-cache, no-transform");

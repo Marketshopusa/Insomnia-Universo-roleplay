@@ -104,7 +104,7 @@ export const CallDialog = ({
 
   const speak = async (text: string) => {
     try {
-      const speech = streamSpeech(text, voice, language);
+      const speech = streamSpeech(text, voice, language, undefined, true);
       streamRef.current = speech;
       await speech.done;
       streamRef.current = null;

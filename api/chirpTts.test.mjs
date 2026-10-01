@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { cloudVoiceFor, decodeWavPcm, synthesizeChirp } from "./chirpTts.mjs";
+import { cloudVoiceFor, cloudGeminiVoiceFor, decodeWavPcm, removePerformanceCues, synthesizeChirp, synthesizeCloudGemini } from "./chirpTts.mjs";
 
 function sampleWav() {
   const pcm = Buffer.alloc(48_000, 1);
@@ -49,4 +49,25 @@ test("cloud synthesis uses OAuth, returns headerless 24 kHz mono PCM", async () 
   assert.equal(result.status, 200);
   assert.deepEqual(result.pcm, pcm);
   assert.throws(() => decodeWavPcm(Buffer.from("not audio").toString("base64")), /invalid_wav/);
+});
+
+test("Cloud Gemini uses the character's expressive voice and PCM response", async () => {
+  const { pcm, wav } = sampleWav();
+  const result = await synthesizeCloudGemini("Ay, me duele.", "scarlett-hd", "es", {
+    performance: "pain",
+    tokenProvider: async () => "test-oauth-token",
+    fetchImpl: async (_url, init) => {
+      const body = JSON.parse(init.body);
+      assert.equal(body.voice.model_name, "gemini-2.5-flash-tts");
+      assert.equal(body.voice.name, "Aoede");
+      assert.equal(body.input.text, "Ay, me duele.");
+      assert.match(body.input.prompt, /sonidos, no palabras/);
+      assert.match(body.input.prompt, /Reacciona al dolor/);
+      return new Response(JSON.stringify({ audioContent: wav.toString("base64") }), { status: 200 });
+    },
+  });
+  assert.equal(result.status, 200);
+  assert.deepEqual(result.pcm, pcm);
+  assert.equal(cloudGeminiVoiceFor("luna-sweet", "es").name, "Leda");
+  assert.equal(removePerformanceCues("[sigh] Me duele."), "Me duele.");
 });

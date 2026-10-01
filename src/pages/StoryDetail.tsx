@@ -392,7 +392,7 @@ type Mode = "select" | "read" | "roleplay";
        streamRef.current = null;
        setPlayingId(id);
        const activeVoice = voiceRef.current;
-       const speech = streamSpeech(text, activeVoice, language);
+       const speech = streamSpeech(text, activeVoice, language, undefined, id !== "narrative" && id !== "intro");
        streamRef.current = speech;
        await speech.done;
        if (streamRef.current === speech) {

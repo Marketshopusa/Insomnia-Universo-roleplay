@@ -18,7 +18,9 @@ export interface SpeechStream {
 const wait = (milliseconds: number) =>
   new Promise((resolve) => window.setTimeout(resolve, milliseconds));
 
-async function requestSpeech(text: string, voice: string, language: string, signal: AbortSignal) {
+type Performance = "neutral" | "amused" | "sad" | "pain" | "soft";
+
+async function requestSpeech(text: string, voice: string, language: string, performance: Performance, signal: AbortSignal) {
   const { data: { session } } = await supabase.auth.getSession();
   return fetch(FUNCTIONS_URL, {
     method: "POST",
@@ -26,7 +28,7 @@ async function requestSpeech(text: string, voice: string, language: string, sign
       "Content-Type": "application/json",
       ...(session?.access_token ? { Authorization: "Bearer " + session.access_token } : {}),
     },
-    body: JSON.stringify({ text, voice, language, stream: true }),
+    body: JSON.stringify({ text, voice, language, performance, stream: true }),
     signal,
   });
 }
@@ -72,8 +74,29 @@ function splitSpeechText(text: string, maximumLength = 700): string[] {
   return chunks;
 }
 
-async function receivePcmOnce(text: string, voice: string, language: string, signal: AbortSignal, onChunk: (bytes: Uint8Array) => void, onProvider: () => void) {
-  const response = await requestSpeech(text, voice, language, signal);
+export function roleplaySpeechText(text: string): string {
+  const directions = [...text.matchAll(/\*([^*]+)\*/g)].map((match) => match[1]).join(" ");
+  let dialogue = text.replace(/\*[^*]+\*/g, " ").replace(/\s+/g, " ").trim();
+  // Stage directions describe actions on screen; the character speaks only dialogue.
+  if (!dialogue) return "";
+  dialogue = dialogue.replace(/\ba+h{2,}\b/gi, "Ay").replace(/\bm{3,}\b/gi, "Mmm");
+  // Only use documented nonverbal tags; unrecognized tags can be spoken aloud.
+  const cue = /(?:\br[ií]o\b|\brisas?\b|carcajad|laugh)/i.test(directions) ? "[laughing]"
+    : /(?:suspiro|exhalo|sigh)/i.test(directions) ? "[sigh]" : "";
+  return [dialogue.startsWith(cue) ? "" : cue, dialogue].filter(Boolean).join(" ");
+}
+
+export function roleplayPerformance(text: string): Performance {
+  const directions = [...text.matchAll(/\*([^*]+)\*/g)].map((match) => match[1]).join(" ");
+  if (/(?:gim|gemid|jade|quejid|grito de dolor|me dol[ií]|pain)/i.test(directions)) return "pain";
+  if (/(?:solloz|llor|l[aá]grima|cry|sob)/i.test(directions)) return "sad";
+  if (/(?:\br[ií]o\b|\brisas?\b|carcajad|laugh)/i.test(directions)) return "amused";
+  if (/(?:suspiro|exhalo|susurr|whisper|sigh)/i.test(directions)) return "soft";
+  return "neutral";
+}
+
+async function receivePcmOnce(text: string, voice: string, language: string, performance: Performance, signal: AbortSignal, onChunk: (bytes: Uint8Array) => void, onProvider: () => void) {
+  const response = await requestSpeech(text, voice, language, performance, signal);
   if (!response.ok || !response.body) {
     const payload = await response.json().catch(() => null) as { message?: string; detail?: string } | null;
     throw new SpeechHttpError(response.status, payload?.message || payload?.detail || `tts_failed_${response.status}`);
@@ -124,12 +147,12 @@ async function receivePcmOnce(text: string, voice: string, language: string, sig
   if (audioSeconds < Math.max(0.8, spokenWords * 0.19)) throw new Error("tts_audio_too_short");
 }
 
-async function receivePcm(text: string, voice: string, language: string, signal: AbortSignal, onChunk: (bytes: Uint8Array) => void, onProvider: () => void) {
+async function receivePcm(text: string, voice: string, language: string, performance: Performance, signal: AbortSignal, onChunk: (bytes: Uint8Array) => void, onProvider: () => void) {
   let lastError: unknown;
   for (let attempt = 0; attempt < 2; attempt += 1) {
     let audioStarted = false;
     try {
-      return await receivePcmOnce(text, voice, language, signal, (bytes) => {
+      return await receivePcmOnce(text, voice, language, performance, signal, (bytes) => {
         audioStarted = true;
         onChunk(bytes);
       }, onProvider);
@@ -159,7 +182,7 @@ function decodePcm(value: string, carry: Uint8Array): { bytes: Uint8Array; carry
  * Plays PCM as the provider sends it. All pieces share one AudioContext clock,
  * so they remain in order without waiting for the full phrase to download.
  */
-export function streamSpeech(text: string, voice: string, language = "es", onFallback?: () => void): SpeechStream {
+export function streamSpeech(text: string, voice: string, language = "es", onFallback?: () => void, roleplay = false): SpeechStream {
   const controller = new AbortController();
   let context: AudioContext | null = null;
   const sources = new Set<AudioBufferSourceNode>();
@@ -211,7 +234,8 @@ export function streamSpeech(text: string, voice: string, language = "es", onFal
       if (context.state === "suspended") await context.resume();
       if (stopped || !context) return;
       const playbackEnded = new Promise<void>((resolve) => { finishPlayback = resolve; });
-      const textChunks = splitSpeechText(text);
+      const textChunks = splitSpeechText(roleplay ? roleplaySpeechText(text) : text);
+      const performance = roleplay ? roleplayPerformance(text) : "neutral";
       if (textChunks.length === 0) { stop(); return; }
       if (textChunks[0].length > 220) {
         const firstParts = splitSpeechText(textChunks[0], 180);
@@ -242,7 +266,7 @@ export function streamSpeech(text: string, voice: string, language = "es", onFal
       };
       for (const chunk of textChunks) {
         if (stopped) return;
-        await receivePcm(chunk, voice, language, controller.signal, schedule, () => {
+        await receivePcm(chunk, voice, language, performance, controller.signal, schedule, () => {
           if (providerNoticeSent) return;
           providerNoticeSent = true;
           onFallback?.();

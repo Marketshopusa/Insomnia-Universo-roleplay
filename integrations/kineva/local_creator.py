@@ -52,17 +52,26 @@ def public_job(job_id):
 
 def build_graph(template, image_name, manifest_path, idea, job_id, episode, total, previous):
     graph = copy.deepcopy(template)
-    story = (
-        "Produce one continuous cinematic video shot from the uploaded photo. "
-        "The first frame must preserve the people, faces, clothes, pose, composition, "
-        "objects, colors and background in the reference photo. Animate the same "
-        "people naturally from that first frame; do not invent replacements or "
-        "change their identity. Interpret this simple user idea as the action: "
-        + idea
-        + ". Keep actions temporally continuous. Do not invent spoken dialogue "
-        "unless the idea explicitly requests someone to speak. No captions, "
-        "logos or text overlays."
-    )
+    if image_name:
+        story = (
+            "Produce one continuous cinematic video shot from the uploaded photo. "
+            "The first frame must preserve the people, faces, clothes, pose, composition, "
+            "objects, colors and background in the reference photo. Animate the same "
+            "people naturally from that first frame; do not invent replacements or "
+            "change their identity. Interpret this simple user idea as the action: "
+            + idea
+            + ". Keep actions temporally continuous. Do not invent spoken dialogue "
+            "unless the idea explicitly requests someone to speak. No captions, "
+            "logos or text overlays."
+        )
+    else:
+        story = (
+            "Produce one continuous cinematic video shot from this user idea: "
+            + idea
+            + ". Create the scene directly from text. Keep actions temporally continuous. "
+            "Do not invent spoken dialogue unless the idea explicitly requests someone "
+            "to speak. No captions, logos or text overlays."
+        )
     if total > 1:
         story += f" This is episode {episode} of {total} in a connected miniseries."
         if previous:
@@ -70,17 +79,32 @@ def build_graph(template, image_name, manifest_path, idea, job_id, episode, tota
     one(graph, "MinimaxStoryPlanner")[1]["inputs"].update({
         "story": story, "clip_count": 1, "dialogue": total > 1 or bool(re.search(r"\b(habla|dice|di[aÃ¡]logo|speak|says|voice)\b", idea, re.I)),
     })
-    one(graph, "LoadImage")[1]["inputs"]["image"] = image_name
-    one(graph, "KinevaStoryCastFromManifest")[1]["inputs"]["manifest_path"] = str(manifest_path)
+    cast_inputs = one(graph, "KinevaStoryCastFromManifest")[1]["inputs"]
+    cast_inputs["manifest_path"] = str(manifest_path)
+    if image_name:
+        one(graph, "LoadImage")[1]["inputs"]["image"] = image_name
+        cast_inputs["use_reference_image"] = True
+        cast_inputs["use_reference_as_location"] = True
+    else:
+        cast_inputs["use_reference_image"] = False
+        cast_inputs["use_reference_as_location"] = False
+        cast_inputs.pop("reference_image", None)
+        graph = {key: node for key, node in graph.items()
+                 if node["class_type"] != "LoadImage"}
     one(graph, "KinevaPlanLock")[1]["inputs"].update({
         "profile": "MINISERIES", "preserve_dialogue": False,
         "exact_dialogue": "", "force_single_take": False,
         "presenter_visible": False, "lock_camera": False,
         "project_id": "local_" + job_id,
     })
-    one(graph, "KinevaStaticBackgroundLock")[1]["inputs"]["enabled"] = False
+    director_id = one(graph, "MinimaxStoryDirector")[0]
+    one(graph, "KinevaVideoQC")[1]["inputs"]["video"] = [director_id, 0]
     graph = {key: node for key, node in graph.items()
-             if node["class_type"] not in ("RemoveBackground", "LoadBackgroundRemovalModel")}
+             if node["class_type"] not in (
+                 "KinevaStaticBackgroundLock",
+                 "RemoveBackground",
+                 "LoadBackgroundRemovalModel",
+             )}
     one(graph, "KinevaPromptTrace")[1]["inputs"]["original_prompt"] = idea
     one(graph, "KinevaProjectContext")[1]["inputs"].update({
         "project_name": "kineva_local_" + job_id, "episode": episode,
@@ -99,11 +123,13 @@ def run_job(job_id, image, idea, count):
                 raise RuntimeError("Faltan nodos ComfyUI: " + ", ".join(sorted(missing)))
             if not INPUT.is_dir() or not OUTPUT.is_dir():
                 raise RuntimeError("No encuentro las carpetas input/output de ComfyUI.")
-            extension = image_extension(image)
-            image_name = "kineva_local/" + job_id + extension
-            image_path = INPUT / image_name
-            image_path.parent.mkdir(parents=True, exist_ok=True)
-            image_path.write_bytes(image)
+            image_name = None
+            if image:
+                extension = image_extension(image)
+                image_name = "kineva_local/" + job_id + extension
+                image_path = INPUT / image_name
+                image_path.parent.mkdir(parents=True, exist_ok=True)
+                image_path.write_bytes(image)
             manifest_path = INPUT / "kineva_local" / (job_id + "_cast.json")
             manifest_path.write_text(
                 '{"version":1,"characters":{},"locations":{}}', encoding="utf-8")
@@ -240,7 +266,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._reply(403, {"error": "Abre Insomnia en esta PC."})
         length = int(self.headers.get("Content-Length", "0"))
         if length < 1 or length > 14_000_000:
-            return self._reply(413, {"error": "La foto supera el lÃ­mite de 10 MB."})
+            return self._reply(413, {"error": "La solicitud supera el limite permitido."})
         try:
             body = json.loads(self.rfile.read(length))
             idea = str(body.get("idea") or "").strip()
@@ -250,12 +276,14 @@ class Handler(BaseHTTPRequestHandler):
             if count < 1 or count > 3:
                 raise ValueError("Elige entre 1 y 3 episodios.")
             encoded = body.get("image")
-            if not isinstance(encoded, str):
-                raise ValueError("Sube una foto para animar.")
-            image = base64.b64decode(encoded, validate=True)
-            if not image or len(image) > MAX_IMAGE:
-                raise ValueError("La foto debe pesar hasta 10 MB.")
-            image_extension(image)
+            image = b""
+            if encoded not in (None, ""):
+                if not isinstance(encoded, str):
+                    raise ValueError("La imagen opcional debe enviarse en formato valido.")
+                image = base64.b64decode(encoded, validate=True)
+                if not image or len(image) > MAX_IMAGE:
+                    raise ValueError("La foto debe pesar hasta 10 MB.")
+                image_extension(image)
         except (ValueError, TypeError, binascii.Error, json.JSONDecodeError) as exc:
             return self._reply(400, {"error": str(exc)})
         job_id = str(uuid.uuid4())

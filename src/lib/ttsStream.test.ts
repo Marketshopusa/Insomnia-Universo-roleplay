@@ -1,6 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
 import { afterEach, expect, it, vi } from "vitest";
-import { streamSpeech } from "./ttsStream";
+import { roleplayPerformance, roleplaySpeechText, streamSpeech } from "./ttsStream";
 
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
@@ -71,4 +71,14 @@ it("does not play a mismatched device voice when neural TTS has no quota", async
   await expect(speech.done).rejects.toThrow("Neural voice quota exhausted");
   expect(fetchMock).toHaveBeenCalledTimes(1);
   expect(deviceSpeak).not.toHaveBeenCalled();
+});
+
+it("speaks dialogue without narrating roleplay actions or spelling vocalizations", () => {
+  expect(roleplaySpeechText("*Me acerco a Daniel* ¿Trajiste la carta?")).toBe("¿Trajiste la carta?");
+  expect(roleplaySpeechText("*Sollozo* No puedo seguir.")).toBe("No puedo seguir.");
+  expect(roleplayPerformance("*Sollozo* No puedo seguir.")).toBe("sad");
+  expect(roleplaySpeechText("*Gimo de dolor* Ahhh, me duele.")).toBe("Ay, me duele.");
+  expect(roleplayPerformance("*Gimo de dolor* Ahhh, me duele.")).toBe("pain");
+  expect(roleplaySpeechText("*Río* No me lo esperaba.")).toBe("[laughing] No me lo esperaba.");
+  expect(roleplaySpeechText("*Suspiro* Tenemos que hablar.")).toBe("[sigh] Tenemos que hablar.");
 });

@@ -43,17 +43,17 @@ export default function KinevaLocal() {
     return () => window.clearInterval(timer);
   }, [job?.id, job?.state]);
   async function create() {
-    if (!image || idea.trim().length < 5) {
-      setError("Sube una foto y describe lo que quieres que pase."); return;
+    if (idea.trim().length < 5) {
+      setError("Describe lo que quieres crear."); return;
     }
-    if (image.size > 10_000_000 || !["image/png", "image/jpeg", "image/webp"].includes(image.type)) {
+    if (image && (image.size > 10_000_000 || !["image/png", "image/jpeg", "image/webp"].includes(image.type))) {
       setError("Usa una foto PNG, JPEG o WebP de hasta 10 MB."); return;
     }
     setBusy(true); setError("");
     try {
       const r = await fetch(API + "/jobs", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ idea: idea.trim(), image: await encodeImage(image), episodes }),
+        body: JSON.stringify({ idea: idea.trim(), image: image ? await encodeImage(image) : null, episodes }),
       });
       const data = await r.json();
       if (!r.ok) throw new Error(data.error || "No se pudo comenzar el video.");
@@ -66,10 +66,10 @@ export default function KinevaLocal() {
     <Link to="/studio" className="text-sm underline">Estudio Insomnia</Link>
     <header><h1 className="text-3xl font-semibold">Crear con Kineva</h1>
       <p className="mt-2 text-muted-foreground">
-        Sube una foto y escribe tu idea. La IA prepara el plan visual y genera el video en esta PC.
+        Escribe tu idea y genera el video directamente. Si quieres usar una imagen de referencia, súbela de forma opcional.
       </p></header>
     <Card className="space-y-5 p-6">
-      <div className="space-y-2"><Label htmlFor="k-photo">Foto inicial</Label>
+      <div className="space-y-2"><Label htmlFor="k-photo">Foto de referencia (opcional)</Label>
         <input id="k-photo" type="file" accept="image/png,image/jpeg,image/webp"
           onChange={(e) => setImage(e.target.files?.[0] ?? null)} className="block w-full text-sm" />
       </div>
