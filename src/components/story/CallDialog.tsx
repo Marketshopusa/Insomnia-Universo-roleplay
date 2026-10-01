@@ -108,7 +108,7 @@ export const CallDialog = ({
         toast({
           title: es ? "Voz de respaldo activada" : "Device voice activated",
           description: es
-            ? "Gemini llegÃ³ a su lÃ­mite. Esta voz procede de tu dispositivo y puede sonar diferente."
+            ? "Gemini llegó a su límite. Esta voz procede de tu dispositivo y puede sonar diferente."
             : "Gemini reached its limit. This voice comes from your device and may sound different.",
         });
       });
@@ -120,9 +120,9 @@ export const CallDialog = ({
       streamRef.current = null;
       const status = (error as { status?: number })?.status;
       toast({
-        title: es ? "La voz Gemini no estÃ¡ disponible" : "Gemini voice is unavailable",
+        title: es ? "La voz Gemini no está disponible" : "Gemini voice is unavailable",
         description: status === 429
-          ? (es ? "Se alcanzÃ³ la cuota de voces. Puedes seguir por texto." : "The voice quota has been reached. You can continue by text.")
+          ? (es ? "Se alcanzó la cuota de voces. Puedes seguir por texto." : "The voice quota has been reached. You can continue by text.")
           : (es ? "No se pudo reproducir la voz seleccionada." : "The selected voice could not play."),
         variant: "destructive",
       });

@@ -310,13 +310,13 @@ type Mode = "select" | "read" | "roleplay";
       if (code === "rate_limited") toast({ title: t("mode.rateLimited"), variant: "destructive" });
       else if (code === "credits_exhausted") toast({ title: t("mode.creditsExhausted"), variant: "destructive" });
       else if (code === "local_chat_unavailable") toast({
-        title: language === "es" ? "Kineva local no estÃ¡ disponible" : "Local Kineva is unavailable",
+        title: language === "es" ? "Kineva local no está disponible" : "Local Kineva is unavailable",
         description: data?.message,
         variant: "destructive",
       });
       else if (code === "local_chat_failed") toast({
-        title: language === "es" ? "La respuesta repitiÃ³ la escena" : "The reply repeated the scene",
-        description: language === "es" ? "Tu mensaje sigue listo para reenviar. El motor local estÃ¡ conectado." : "Your message is ready to resend. The local engine is connected.",
+        title: language === "es" ? "La respuesta repitió la escena" : "The reply repeated the scene",
+        description: language === "es" ? "Tu mensaje sigue listo para reenviar. El motor local está conectado." : "Your message is ready to resend. The local engine is connected.",
         variant: "destructive",
       });
       else if (code === "chat_status_unavailable" || code === "chat_job_expired") toast({
@@ -330,8 +330,8 @@ type Mode = "select" | "read" | "roleplay";
         variant: "destructive",
       });
       else if (code === "off_role") toast({
-        title: language === "es" ? "La respuesta saliÃ³ de la escena; intÃ©ntalo de nuevo" : "The reply left the scene; try again",
-        description: language === "es" ? "ConservÃ© tu mensaje para reenviarlo." : "Your message is ready to resend.",
+        title: language === "es" ? "La respuesta salió de la escena; inténtalo de nuevo" : "The reply left the scene; try again",
+        description: language === "es" ? "Conservé tu mensaje para reenviarlo." : "Your message is ready to resend.",
         variant: "destructive",
       });
       else if (code === "ai_timeout" || code === "ai_unavailable" || status === 503 || status === 504) toast({
@@ -396,7 +396,7 @@ type Mode = "select" | "read" | "roleplay";
           toast({
             title: language === "es" ? "Voz de respaldo activada" : "Device voice activated",
             description: language === "es"
-              ? "Gemini llegÃ³ a su lÃ­mite. Esta voz procede de tu dispositivo y puede sonar diferente."
+              ? "Gemini llegó a su límite. Esta voz procede de tu dispositivo y puede sonar diferente."
               : "Gemini reached its limit. This voice comes from your device and may sound different.",
           });
         });
@@ -412,10 +412,10 @@ type Mode = "select" | "read" | "roleplay";
        setPlayingId(null);
        const status = (e as { status?: number })?.status;
        toast({
-         title: language === "es" ? "La voz Gemini no estÃ¡ disponible" : "Gemini voice is unavailable",
+         title: language === "es" ? "La voz Gemini no está disponible" : "Gemini voice is unavailable",
          description: status === 429
-           ? (language === "es" ? "Se alcanzÃ³ la cuota de voces. El texto sigue disponible." : "The voice quota has been reached. The text remains available.")
-           : (language === "es" ? "No se pudo reproducir la voz seleccionada. IntÃ©ntalo de nuevo." : "The selected voice could not play. Please try again."),
+           ? (language === "es" ? "Se alcanzó la cuota de voces. El texto sigue disponible." : "The voice quota has been reached. The text remains available.")
+           : (language === "es" ? "No se pudo reproducir la voz seleccionada. Inténtalo de nuevo." : "The selected voice could not play. Please try again."),
          variant: "destructive",
        });
      }
