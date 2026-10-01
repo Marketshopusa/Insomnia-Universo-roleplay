@@ -8,9 +8,13 @@ it("builds a same-PC video url and keeps episode counts between 1 and 3", () => 
 });
 
 it("reads worker health as ready, missing ComfyUI, or missing worker", async () => {
-  const ready = await probeLocalKineva(vi.fn(async () => new Response(JSON.stringify({
+  const fetchImpl = vi.fn(async () => new Response(JSON.stringify({
     ready: true, template: true, comfy: true,
-  }), { status: 200 })) as unknown as typeof fetch);
+  }), { status: 200 }));
+  const ready = await probeLocalKineva(fetchImpl as unknown as typeof fetch);
+  expect(fetchImpl).toHaveBeenCalledWith("http://127.0.0.1:8787/health", expect.objectContaining({
+    targetAddressSpace: "loopback",
+  }));
   expect(ready.status).toBe("ready");
 
   const comfyDown = await probeLocalKineva(vi.fn(async () => new Response(JSON.stringify({
@@ -32,5 +36,8 @@ it("enqueues a local job on 127.0.0.1:8787 and never calls a cloud video functio
   });
   const job = await createLocalJob({ idea: "Me levanto y bailo", episodes: 2 }, fetchImpl as unknown as typeof fetch);
   expect(job.id).toBe("job-1");
-  expect(fetchImpl).toHaveBeenCalledWith("http://127.0.0.1:8787/jobs", expect.objectContaining({ method: "POST" }));
+  expect(fetchImpl).toHaveBeenCalledWith("http://127.0.0.1:8787/jobs", expect.objectContaining({
+    method: "POST",
+    targetAddressSpace: "loopback",
+  }));
 });
