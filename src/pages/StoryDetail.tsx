@@ -424,14 +424,14 @@ type Mode = "select" | "read" | "roleplay";
          setPlayingId(null);
        }
      } catch (e) {
-       console.error("Gemini voice playback failed:", e);
+       console.error("Cloud voice playback failed:", e);
        streamRef.current = null;
        setPlayingId(null);
        const status = (e as { status?: number })?.status;
        toast({
-         title: language === "es" ? "La voz Gemini no está disponible" : "Gemini voice is unavailable",
+         title: language === "es" ? "La voz de Google Cloud no está disponible" : "Google Cloud voice is unavailable",
          description: status === 429
-           ? (language === "es" ? "Se alcanzó la cuota de voces. El texto sigue disponible." : "The voice quota has been reached. The text remains available.")
+           ? (language === "es" ? "Se alcanzó la cuota de Google Cloud. El texto sigue disponible." : "The Google Cloud voice quota has been reached. The text remains available.")
            : (language === "es" ? "No se pudo reproducir la voz seleccionada. Inténtalo de nuevo." : "The selected voice could not play. Please try again."),
          variant: "destructive",
        });

@@ -116,9 +116,9 @@ export const CallDialog = ({
       streamRef.current = null;
       const status = (error as { status?: number })?.status;
       toast({
-        title: es ? "La voz Gemini no está disponible" : "Gemini voice is unavailable",
+        title: es ? "La voz de Google Cloud no está disponible" : "Google Cloud voice is unavailable",
         description: status === 429
-          ? (es ? "Se alcanzó la cuota de voces. Puedes seguir por texto." : "The voice quota has been reached. You can continue by text.")
+          ? (es ? "Se alcanzó la cuota de Google Cloud. Puedes seguir por texto." : "The Google Cloud voice quota has been reached. You can continue by text.")
           : (es ? "No se pudo reproducir la voz seleccionada." : "The selected voice could not play."),
         variant: "destructive",
       });
