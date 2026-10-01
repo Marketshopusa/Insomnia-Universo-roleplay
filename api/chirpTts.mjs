@@ -1,4 +1,5 @@
-import { GoogleAuth } from "google-auth-library";
+import { ExternalAccountClient, GoogleAuth } from "google-auth-library";
+import { getVercelOidcToken } from "@vercel/oidc";
 
 const aliases = {
   "scarlett-hd": "Aoede",
@@ -8,6 +9,15 @@ const aliases = {
   "leo-warm": "Puck",
 };
 let cachedAuth;
+let cachedFederatedAuth;
+
+function federationConfig() {
+  const { GCP_PROJECT_NUMBER: projectNumber, GCP_SERVICE_ACCOUNT_EMAIL: serviceAccount,
+    GCP_WORKLOAD_IDENTITY_POOL_ID: poolId, GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID: providerId } = process.env;
+  if (![projectNumber, serviceAccount, poolId, providerId].every(Boolean)) return null;
+  const resource = `projects/${projectNumber}/locations/global/workloadIdentityPools/${poolId}/providers/${providerId}`;
+  return { serviceAccount, resource };
+}
 
 export function cloudVoiceFor(preset, language) {
   const locale = language === "en" ? "en-US" : "es-US";
@@ -39,21 +49,39 @@ export function decodeWavPcm(base64) {
 }
 
 export function isChirpConfigured() {
-  return Boolean(process.env.GOOGLE_CLOUD_TTS_SERVICE_ACCOUNT_JSON);
+  return Boolean(process.env.GOOGLE_CLOUD_TTS_SERVICE_ACCOUNT_JSON || federationConfig());
 }
 
 async function getCredentials() {
-  if (!cachedAuth) {
-    const credentials = JSON.parse(process.env.GOOGLE_CLOUD_TTS_SERVICE_ACCOUNT_JSON || "{}");
-    if (credentials.type !== "service_account" || !credentials.client_email || !credentials.private_key) {
-      throw new Error("chirp_credentials_invalid");
+  let client;
+  if (process.env.GOOGLE_CLOUD_TTS_SERVICE_ACCOUNT_JSON) {
+    if (!cachedAuth) {
+      const credentials = JSON.parse(process.env.GOOGLE_CLOUD_TTS_SERVICE_ACCOUNT_JSON);
+      if (credentials.type !== "service_account" || !credentials.client_email || !credentials.private_key) {
+        throw new Error("chirp_credentials_invalid");
+      }
+      cachedAuth = new GoogleAuth({ credentials, scopes: ["https://www.googleapis.com/auth/cloud-platform"] });
     }
-    cachedAuth = new GoogleAuth({
-      credentials,
-      scopes: ["https://www.googleapis.com/auth/cloud-platform"],
-    });
+    client = await cachedAuth.getClient();
+  } else {
+    const config = federationConfig();
+    if (!config) throw new Error("chirp_credentials_missing");
+    if (!cachedFederatedAuth) {
+      cachedFederatedAuth = ExternalAccountClient.fromJSON({
+        type: "external_account",
+        audience: `//iam.googleapis.com/${config.resource}`,
+        subject_token_type: "urn:ietf:params:oauth:token-type:jwt",
+        token_url: "https://sts.googleapis.com/v1/token",
+        service_account_impersonation_url: `https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/${config.serviceAccount}:generateAccessToken`,
+        subject_token_supplier: {
+          getSubjectToken: () => getVercelOidcToken({ audience: `https://iam.googleapis.com/${config.resource}` }),
+        },
+      });
+      if (!cachedFederatedAuth) throw new Error("chirp_federation_invalid");
+      cachedFederatedAuth.scopes = ["https://www.googleapis.com/auth/cloud-platform"];
+    }
+    client = cachedFederatedAuth;
   }
-  const client = await cachedAuth.getClient();
   const access = await client.getAccessToken();
   if (!access?.token) throw new Error("chirp_auth_failed");
   return access.token;
