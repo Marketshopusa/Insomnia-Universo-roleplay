@@ -1,4 +1,15 @@
 $ErrorActionPreference = 'Stop'
+$script:chatMutex = New-Object System.Threading.Mutex($false, 'Local\InsomniaAdultChatWorker')
+$chatOwned = $false
+try {
+  $chatOwned = $script:chatMutex.WaitOne(0)
+} catch [System.Threading.AbandonedMutexException] {
+  $chatOwned = $true
+}
+if (-not $chatOwned) {
+  Write-Host 'El chat ya está abierto en otra ventana. Cierra esta y deja solo la primera.'
+  return
+}
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $logDir = Join-Path $env:LOCALAPPDATA 'Kineva'
 New-Item -ItemType Directory -Path $logDir -Force | Out-Null
@@ -39,7 +50,9 @@ while ($true) {
   } catch {
     $detail = $_.Exception.Message
     if ($env:SUPABASE_SERVICE_ROLE_KEY) { $detail = $detail.Replace($env:SUPABASE_SERVICE_ROLE_KEY, '[redacted]') }
-    Add-Content -Path $log -Value ('[' + (Get-Date).ToString('s') + '] launcher error: ' + $detail.Substring(0, [Math]::Min(180, $detail.Length)))
+    $line = '[' + (Get-Date).ToString('s') + '] launcher error: ' + $detail.Substring(0, [Math]::Min(180, $detail.Length))
+    Write-Host $line
+    try { Add-Content -Path $log -Value $line -ErrorAction Stop } catch { }
   } finally {
     Remove-Item Env:\SUPABASE_SERVICE_ROLE_KEY -ErrorAction SilentlyContinue
   }
