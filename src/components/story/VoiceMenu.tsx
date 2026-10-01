@@ -30,6 +30,7 @@ export const VoiceMenu = ({ value, language, onChange }: VoiceMenuProps) => {
           title={current.label}
         >
           <Volume2 className="h-4 w-4" />
+          <span className="max-w-[5.5rem] truncate text-xs">{current.label}</span>
           <ChevronDown className="h-3 w-3" />
         </Button>
       </DropdownMenuTrigger>

@@ -928,9 +928,9 @@ type Mode = "select" | "read" | "roleplay";
             {mode === "roleplay" && (
              <Card className="h-[600px] flex flex-col bg-card border-border">
                {/* Chat Header */}
-               <div className="p-4 border-b border-border flex items-center justify-between">
+               <div className="p-4 border-b border-border flex flex-wrap items-center justify-between gap-2">
                   <h2 className="font-display text-lg">{tTitle || story.title}</h2>
-                 <div className="flex items-center gap-1">
+                 <div className="flex flex-wrap items-center gap-1">
                     <VoiceMenu value={voice} language={language} onChange={changeVoice} />
                     <RegionMenu value={region} language={language} onChange={changeRegion} />
                     <CallDialog

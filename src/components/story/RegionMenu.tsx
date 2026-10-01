@@ -30,6 +30,7 @@ export const RegionMenu = ({ value, language, onChange }: RegionMenuProps) => {
           title={current.label}
         >
           <Globe2 className="h-4 w-4" />
+          <span className="max-w-[5.5rem] truncate text-xs">{current.label}</span>
           <ChevronDown className="h-3 w-3" />
         </Button>
       </DropdownMenuTrigger>
