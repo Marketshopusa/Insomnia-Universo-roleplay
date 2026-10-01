@@ -1,0 +1,55 @@
+import unittest
+
+from adult_chat_worker import conversation_messages
+
+
+def job(history, user_message):
+    return {
+        "language": "es",
+        "region": "ve",
+        "userMessage": user_message,
+        "story": {
+            "character_role": "Andrea",
+            "player_role": "William",
+            "description": "Andrea es la novia de Daniel y William es su amigo.",
+        },
+        "history": history,
+    }
+
+
+class StoryMemoryTest(unittest.TestCase):
+    def test_long_user_line_keeps_the_scene_just_played(self):
+        history = [
+            {"role": "assistant", "content": "*Se sube a la camioneta* Me siento al lado de Daniel y el viaje se pone intenso."},
+            {"role": "user", "content": "Andrea, Daniel y tú van juntos."},
+            {"role": "assistant", "content": "*Sonrío* Ay William, no seas tan gruñón. Vámonos ya."},
+        ]
+        latest = (
+            "Bueno si quieres coquetear con tu guapo novio ahí está Daniel y está Andrea "
+            "en la cabaña, mejor nos calmamos porque anoche todavía se sentía todo."
+        )
+        packed = "\n".join(item["content"] for item in conversation_messages(job(history, latest)))
+        self.assertIn("camioneta", packed)
+        self.assertIn("Daniel", packed)
+        self.assertIn("gruñón", packed)
+        self.assertIn("cabaña", packed)
+        self.assertNotIn("No vuelvas a un evento anterior", packed)
+
+    def test_opening_fact_survives_a_long_story(self):
+        history = [
+            {"role": "assistant", "content": "*Llego a la cabaña del lago* Daniel dejó la llave bajo la maceta."},
+            {"role": "user", "content": "Entremos antes de que oscurezca."},
+        ]
+        for index in range(16):
+            history.append({"role": "user", "content": f"Seguimos hablando del tema {index} junto al fogón."})
+            history.append({"role": "assistant", "content": f"*Atiendo el fogón* Sigo aquí contigo, turno {index}."})
+        packed = "\n".join(item["content"] for item in conversation_messages(
+            job(history, "¿Te acuerdas de lo que pasó al llegar, antes del fogón?")))
+        self.assertIn("cabaña", packed)
+        self.assertIn("maceta", packed)
+        self.assertIn("fogón", packed)
+        self.assertLess(len(packed), 9000)
+
+
+if __name__ == "__main__":
+    unittest.main()

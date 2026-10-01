@@ -81,11 +81,12 @@ REGLAS DE ESCRITURA:
 - Avanza la trama con un detalle concreto y deja siempre una invitación abierta (pregunta, gesto, tensión) para que el usuario responda.
 - NUNCA superes los 250 caracteres. Si te acercas al límite, corta antes. Prefiere intensidad a longitud.
 - NUNCA hables como el usuario ni decidas sus acciones.
+- La conversación ya empezó. Continúa el mismo lugar, las mismas relaciones y los mismos hechos. No reinicies la historia ni cambies de tema.
 - ${explicitGuard}`;
 
     const messages = [
       { role: "system", content: systemPrompt },
-      ...body.history.slice(-12),
+      ...body.history.slice(-24),
       { role: "user", content: body.userMessage },
     ];
 

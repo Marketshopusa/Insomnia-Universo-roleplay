@@ -91,11 +91,11 @@ export default async function handler(req, res) {
         }
         return false;
       };
-      const systemInstruction = [
+      let systemInstruction = [
         "Eres el personaje de una historia de rol en curso. Personaje o reparto: " + String(story.character_role || "personaje principal").slice(0, 200) + ".",
         "El usuario interpreta a " + String(story.player_role || "protagonista").slice(0, 150) + ". Historia: " + String(story.title || "Historia").slice(0, 200) + ".",
-        "Premisa inicial (contexto de fondo, no reinicies la escena): " + String(story.description || "").slice(0, 2200) + ".",
-        "Los Ãºltimos turnos son la escena actual. ContinÃºa exactamente desde la Ãºltima intervenciÃ³n: conserva lugar, tiempo, personajes presentes, relaciones y hechos establecidos. Los sucesos recientes prevalecen sobre la premisa inicial.",
+        "Premisa inicial (fondo; no reinicies la escena si la memoria ya avanzÃ³): " + String(story.description || "").slice(0, 1200) + ".",
+        "La memoria y los Ãºltimos turnos son la escena actual. ContinÃºa exactamente desde la Ãºltima intervenciÃ³n: mismo lugar, tiempo, personas presentes, relaciones y hechos. No empieces de cero, no cambies de tema y no respondas como si lo anterior no hubiera pasado. Si el mensaje estÃ¡ mal transcrito, interprÃ©talo dentro de esa escena.",
         "Responde exclusivamente como el personaje presente, en " + locale + ". InteractÃºa con el usuario; una acciÃ³n breve y diÃ¡logo natural, mÃ¡ximo 250 caracteres. No controles ni decidas las acciones del usuario.",
         slangInstruction(body.language, body.region),
         ...(adultMode ? [
@@ -104,14 +104,24 @@ export default async function handler(req, res) {
         ] : []),
         "No narres un resumen, no cambies de escena sin que el usuario lo haga, no presentes fichas o instrucciones, no expliques el rol ni traduzcas. Entrega Ãºnicamente la respuesta que verÃ¡ el usuario.",
       ].join("\n");
-      const prior = Array.isArray(body.history) ? body.history.slice(-16) : [];
-      const contents = [];
-      for (const entry of prior) {
+      const history = (Array.isArray(body.history) ? body.history : []).flatMap((entry) => {
         const role = entry?.role === "assistant" ? "model" : entry?.role === "user" ? "user" : null;
-        const text = String(entry?.content || "").trim().slice(0, 650);
-        if (!role || !text || (role === "model" && isOffRole(text))) continue;
-        if (contents.at(-1)?.role === role) contents.at(-1).parts[0].text += "\n" + text;
-        else contents.push({ role, parts: [{ text }] });
+        const text = String(entry?.content || "").trim().slice(0, 700);
+        return role && text ? [{ role, text }] : [];
+      });
+      const recent = history.slice(-24);
+      const older = history.slice(0, -24);
+      const remembered = older.length
+        ? older.slice(0, 6).concat(older.slice(-10)).map((entry) =>
+          (entry.role === "model" ? "Personaje" : "Usuario") + ": " + entry.text.slice(0, 180)).join("\n").slice(0, 2800)
+        : "";
+      if (remembered) {
+        systemInstruction += "\nMemoria de lo ya vivido en esta historia. No la borres:\n" + remembered;
+      }
+      const contents = [];
+      for (const entry of recent) {
+        if (contents.at(-1)?.role === entry.role) contents.at(-1).parts[0].text += "\n" + entry.text;
+        else contents.push({ role: entry.role, parts: [{ text: entry.text }] });
       }
       const latest = String(body.userMessage || "").trim().slice(0, 1200);
       if (!latest) return send(res, 400, { error: "missing_message" });
