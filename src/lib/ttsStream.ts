@@ -98,7 +98,8 @@ export function roleplayPerformance(text: string): Performance {
   if (/(?:placer|pleasure|gemido de placer|gimo de placer|(?:^|\s)gim[oe]\b)/i.test(directions)
     && !/dolor|pain/i.test(directions)) return "pleasure";
   if (/(?:dolor|pain|quejid|me dol[ií]|grito de dolor)/i.test(directions)) return "pain";
-  if (/(?:grito|chill|scream)/i.test(directions)) return "scream";
+  if (/(?:grito|chill|scream|miedo|sust[oa]|aterr|tembl|p[aá]nic|rabia|furia|enoj)/i.test(`${directions} ${spoken}`)) return "scream";
+  if (/(?:angust|nervios|avergonz)/i.test(directions)) return "sad";
   if (/(?:solloz|llor|l[aá]grima|\bcry\b|\bsob\b)/i.test(directions)) return "sad";
   if (/(?:\br[ií][eo]\b|\brisas?\b|carcajad|sonr[ií]|laugh)/i.test(directions)) return "amused";
   if (/(?:suspiro|exhalo|susurr|whisper|sigh)/i.test(directions)) return "soft";

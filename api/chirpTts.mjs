@@ -1,6 +1,6 @@
 import { ExternalAccountClient, GoogleAuth } from "google-auth-library";
 import { getVercelOidcToken } from "@vercel/oidc";
-import { chirpLocale } from "./regions.mjs";
+import { accentHint, chirpLocale, normalizeRegion } from "./regions.mjs";
 
 const FEMININE = [
   "Aoede", "Zephyr", "Leda", "Kore", "Achernar", "Autonoe", "Callirrhoe",
@@ -35,10 +35,12 @@ export function cloudVoiceFor(preset, language, region) {
   return { languageCode: locale, name: `${locale}-Chirp3-HD-${name}` };
 }
 
-export function cloudGeminiVoiceFor(preset, language) {
+export function cloudGeminiVoiceFor(preset, language, region) {
+  const id = normalizeRegion(region);
+  const locale = language === "en" ? "en-US" : id === "es" ? "es-ES" : id === "mx" ? "es-MX" : "es-419";
   return {
-    languageCode: language === "en" ? "en-US" : "es-US",
-    name: aliases[preset] || "Kore",
+    languageCode: locale,
+    name: previewVoice(preset),
     model_name: "gemini-2.5-flash-tts",
   };
 }
@@ -145,19 +147,31 @@ export async function synthesizeChirp(text, preset, language, { region, tokenPro
   }, tokenProvider, fetchImpl);
 }
 
-export async function synthesizeCloudGemini(text, preset, language, { performance = "neutral", tokenProvider = getCredentials, fetchImpl = fetch } = {}) {
+export async function synthesizeCloudGemini(text, preset, language, { performance = "neutral", region = "mx", tokenProvider = getCredentials, fetchImpl = fetch } = {}) {
   const token = await tokenProvider();
   const projectId = quotaProjectId();
-  const mood = {
-    amused: language === "en" ? "React with a brief, amused laugh; sound genuinely delighted." : "Reacciona con una risa breve y divertida; transmite alegría real.",
-    sad: language === "en" ? "Speak with restrained sadness, a trembling voice and natural breaths; do not say the words for crying." : "Habla con tristeza contenida, voz ligeramente quebrada y respiración natural; no digas la palabra llanto.",
-    pain: language === "en" ? "React to discomfort with a natural voice and breath, then say the dialogue clearly." : "Reacciona al dolor con voz y respiración naturales; después di el diálogo claramente.",
-    soft: language === "en" ? "Speak softly, with an intimate and natural cadence." : "Habla suavemente, con ritmo íntimo y natural.",
-  }[performance] || "";
+  const mood = (language === "en" ? {
+    amused: "Let out a real short laugh. [laughing] is that sound, not a word.",
+    sad: "The voice breaks and crying is audible. [crying] is that sound, not a word.",
+    pain: "Pain is audible in the breath before the dialogue. Do not say the word pain.",
+    pleasure: "A brief sound of pleasure comes before the dialogue. Do not say the word moan.",
+    scream: "There is a jolt of fear or anger. [gasps] and [shouting] are sounds, not words.",
+    soft: "Speak quietly, almost in a sigh. [sigh] is that sound, not a word.",
+  } : {
+    amused: "Suelta una risa breve de verdad. [laughing] es ese sonido, no una palabra.",
+    sad: "La voz se quiebra y se oye el llanto. [crying] es ese sonido, no una palabra.",
+    pain: "Se oye el dolor en la respiración antes del diálogo. No digas la palabra dolor.",
+    pleasure: "Se oye un gemido breve de placer antes del diálogo. No digas la palabra gemido.",
+    scream: "Hay un sobresalto de miedo o rabia. [gasps] y [shouting] son sonidos, no palabras.",
+    soft: "Habla bajo, casi en un suspiro. [sigh] es ese sonido, no una palabra.",
+  })[performance] || (language === "en"
+    ? "Speak like a person inside the scene, with natural emotion."
+    : "Habla como una persona en la escena, con emoción natural.");
+  const accent = accentHint(language, region);
   const prompt = language === "en"
-    ? `Perform only the character's dialogue with natural timing. [laughing] and [sigh] are sounds, not words. Do not narrate stage directions or add words. ${mood}`
-    : `Interpreta solo el diálogo del personaje con ritmo natural. [laughing] y [sigh] son sonidos, no palabras. No narres acotaciones ni agregues palabras. ${mood}`;
-  const response = await fetchImpl("https://texttospeech.googleapis.com/v1/text:synthesize", {
+    ? `Read the narration and the dialogue aloud. [laughing], [crying], [gasps], [sigh] and [shouting] are sounds, not words. ${mood}`
+    : `${accent} Lee en voz alta la narración y el diálogo, sin omitir la narración. ${mood}`;
+  const request = (voice) => fetchImpl("https://texttospeech.googleapis.com/v1/text:synthesize", {
     method: "POST",
     headers: {
       Authorization: "Bearer " + token,
@@ -166,11 +180,16 @@ export async function synthesizeCloudGemini(text, preset, language, { performanc
     },
     body: JSON.stringify({
       input: { text, prompt },
-      voice: cloudGeminiVoiceFor(preset, language),
+      voice,
       audioConfig: { audioEncoding: "LINEAR16", sampleRateHertz: 24000 },
     }),
-    signal: AbortSignal.timeout(7000),
+    signal: AbortSignal.timeout(20000),
   });
+  const voice = cloudGeminiVoiceFor(preset, language, region);
+  let response = await request(voice);
+  if (!response.ok && [400, 404].includes(response.status) && voice.languageCode !== "es-US" && language !== "en") {
+    response = await request({ ...voice, languageCode: "es-US" });
+  }
   if (!response.ok) return { status: response.status };
   const payload = await response.json();
   if (typeof payload.audioContent !== "string") throw new Error("cloud_gemini_no_audio");

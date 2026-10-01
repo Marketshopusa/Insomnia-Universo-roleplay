@@ -1,6 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { supabaseUrl, publishableKey } from "./config.mjs";
-import { isChirpConfigured, synthesizeChirp, removePerformanceCues } from "./chirpTts.mjs";
+import { isChirpConfigured, synthesizeChirp, synthesizeCloudGemini, removePerformanceCues } from "./chirpTts.mjs";
 
 
 function sendEvent(res, event) {
@@ -58,6 +58,24 @@ export default async function handler(req, res) {
   const plainText = removePerformanceCues(text);
   if (!plainText) return res.status(400).json({ error: "missing_text" });
   const region = typeof req.body.region === "string" ? req.body.region : "mx";
+  const performance = ["neutral", "amused", "sad", "pain", "pleasure", "scream", "soft"].includes(req.body.performance)
+    ? req.body.performance : "neutral";
+  try {
+    const expressive = await synthesizeCloudGemini(text, req.body.voice, req.body.language, { performance, region });
+    if (expressive.status === 200) {
+      writePcm(res, expressive.pcm, "google-cloud-tts", startedAt);
+      return;
+    }
+    console.warn("Insomnia speech cloud-tts", expressive.status, "after_ms", Date.now() - startedAt);
+    if (expressive.status === 429) {
+      return res.status(429).json({
+        error: "tts_quota_exhausted",
+        message: "Google Cloud no tiene cuota de voz en este momento. El texto sigue disponible.",
+      });
+    }
+  } catch (failure) {
+    console.warn("Insomnia speech cloud-tts failed", failure?.name || "Error", "after_ms", Date.now() - startedAt);
+  }
   try {
     const result = await synthesizeChirp(plainText, req.body.voice, req.body.language, { region });
     if (result.status === 200) {

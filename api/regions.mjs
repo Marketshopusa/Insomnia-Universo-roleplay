@@ -23,8 +23,17 @@ export function slangInstruction(language, region) {
   return `${item.slang} Mantén esta misma región en cada turno. No vuelvas al español neutro ni cambies de país.`;
 }
 
+const ACCENT = {
+  ar: "acento rioplatense de Buenos Aires, con vos y la entonación de Argentina",
+  ve: "acento venezolano de Caracas, con la cadencia de Venezuela",
+  co: "acento colombiano de Bogotá",
+  mx: "acento mexicano del centro de México",
+  es: "acento castellano de España",
+  cl: "acento chileno de Santiago",
+};
+
 export function accentHint(language, region) {
   if (language === "en") return "Speak American English. Keep this same voice on every line.";
-  const item = REGIONS[normalizeRegion(region)];
-  return `Habla en español con acento de ${item.label}. Mantén exactamente ese acento y la misma voz en cada frase. No cambies a español neutro ni a otro país.`;
+  const id = normalizeRegion(region);
+  return `Habla en español con ${ACCENT[id]}. Mantén exactamente ese acento en toda la frase. No uses español neutro de Estados Unidos ni cambies de país.`;
 }
