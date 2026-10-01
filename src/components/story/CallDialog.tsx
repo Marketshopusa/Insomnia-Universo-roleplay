@@ -136,7 +136,7 @@ export const CallDialog = ({
           story_type: story?.story_type,
         },
         language,
-        history: historyRef.current.slice(-12),
+        history: historyRef.current.slice(-48),
         userMessage: userText,
         adultMode,
         region,

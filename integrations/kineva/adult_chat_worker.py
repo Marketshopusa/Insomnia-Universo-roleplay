@@ -79,106 +79,101 @@ def slang_clause(job):
     region = str(job.get("region") or "mx")
     return " " + REGION_SLANG.get(region, REGION_SLANG["mx"]) + " Mantén esta misma región en cada turno. No vuelvas al español neutro ni cambies de país."
 
-def reply_for(job):
-    from difflib import SequenceMatcher
+def clip_text(text, limit):
+    text = " ".join(str(text).split())
+    if len(text) <= limit:
+        return text
+    cut = text[:limit].rsplit(" ", 1)[0]
+    return (cut or text[:limit]).rstrip(" ,.;") + "…"
+
+def clean_turns(raw, latest):
+    """Drop only an exact echo of the message being answered. Keep the scene."""
+    latest_norm = normalize_reply(latest)
+    turns = []
+    for turn in raw or []:
+        content = str(turn.get("content") or "").strip()
+        if not content:
+            continue
+        role = "assistant" if turn.get("role") == "assistant" else "user"
+        if role == "user" and normalize_reply(content) == latest_norm:
+            continue
+        if turns and turns[-1]["role"] == role and turns[-1]["content"] == content:
+            continue
+        turns.append({"role": role, "content": content})
+    return turns[-48:]
+
+def memory_transcript(turns, player, character):
+    """Opening facts plus the latest beats. The local model only has 4096 tokens."""
+    recent_count = min(8, len(turns))
+    older, recent = turns[:-recent_count], turns[-recent_count:]
+    if not older:
+        return "", recent
+
+    def line(turn, limit):
+        who = character if turn["role"] == "assistant" else player
+        return who + ": " + clip_text(turn["content"], limit)
+
+    opening = [line(turn, 220) for turn in older[:4]]
+    budget = 2200 - sum(len(item) + 1 for item in opening)
+    tail = []
+    for turn in reversed(older[4:]):
+        item = line(turn, 140)
+        if budget < len(item) + 1:
+            break
+        budget -= len(item) + 1
+        tail.append(item)
+    return "\n".join(opening + list(reversed(tail))), recent
+
+def conversation_messages(job):
+    """Every turn carries the story so far. A long user line must not wipe it."""
     story = job.get("story") or {}
     spanish = job.get("language") == "es"
     character = str(story.get("character_role") or "personaje presente")[:160]
     player = str(story.get("player_role") or "protagonista")[:160]
-    latest = str(job["userMessage"])[:1500]
-    premise = str(story.get("description") or "")[:500]
-    raw = (job.get("history") or [])[-40:]
-    user_turns = []
-    assistant_turns = []
-    duplicate_latest = False
-    for turn in raw:
-        content = str(turn.get("content") or "").strip()[:650]
-        if not content:
-            continue
-        normalized = normalize_reply(content)
-        if turn.get("role") == "user":
-            if SequenceMatcher(None, normalized, normalize_reply(latest)).ratio() >= 0.88:
-                duplicate_latest = True
-                continue
-            if any(SequenceMatcher(None, normalized, normalize_reply(old)).ratio() >= 0.88
-                   for old in user_turns[-5:]):
-                continue
-            user_turns.append(content)
-        elif turn.get("role") == "assistant":
-            assistant_turns.append(content)
-    repetitive_context = duplicate_latest or any(
-        SequenceMatcher(None, normalize_reply(a), normalize_reply(b)).ratio() >= 0.78
-        for a, b in zip(assistant_turns[-5:-1], assistant_turns[-4:])
+    latest = str(job.get("userMessage") or "")[:1500]
+    premise = clip_text(story.get("description") or "", 360)
+    turns = clean_turns((job.get("history") or [])[-48:], latest)
+    chronicle, recent = memory_transcript(turns, player, character)
+    memory = (
+        "Memoria vigente, en orden. Esto ya ocurrió y sigue siendo cierto:\n" + chronicle
+        if chronicle else
+        "Conserva lugar, personas, relaciones y hechos de los turnos recientes. No empieces de cero."
     )
-    recent_assistant = assistant_turns[-1] if assistant_turns else ""
-    recent_valid = bool(recent_assistant.startswith("*")) and not repeated_reply(
-        recent_assistant, [{"role": "assistant", "content": old} for old in assistant_turns[-6:-1]])
-    if len(latest) < 150 and recent_valid and not duplicate_latest:
-        focus = (
-            "Interpreta a " + character + " hablando directamente con " + player + ". " +
-            "Tu ultima respuesta fue: " + recent_assistant[:450] +
-            ". Ahora " + player + " dijo: " + latest +
-            ". Responde a ESTE mensaje, sin repetir la reaccion anterior. Si hay pregunta, " +
-            "contesta lo que pregunta en la primera frase del dialogo. No inventes hechos. " +
-            "Devuelve SOLO JSON con 'gesto' (breve, en primera persona) y 'dialogo' " +
-            "(una o dos frases en primera persona, hablando directamente a " + player + ")." +
-            slang_clause(job)
-        )
-        try:
-            fast = parse_role_reply(model_chat(
-                [{"role": "system", "content": focus},
-                 {"role": "user", "content": latest}], 0.55, 190, json_mode=True))
-            if not repeated_reply(fast, raw[-12:]):
-                print("Chat follow-up timing", job.get("jobId", "local"), flush=True)
-                return fast
-        except (ValueError, TypeError, AttributeError):
-            pass
-    # Ground the reply in the user's actual turn in one model pass. A separate
-    # fact-extraction request doubled latency and sometimes distorted actors.
-    started = time.monotonic()
-    facts = {"mensaje_actual": latest[:1200]}
-    if user_turns and len(latest) < 150:
-        facts["mensaje_anterior"] = user_turns[-1][:300]
-    premise_clause = ("Premisa inicial: " + premise + ". " if len(raw) < 2 else "")
     instruction = (
-        "Interpreta SOLO a " + character + " en un chat de rol adulto con " + player + ". " +
-        premise_clause +
-        "Los hechos recientes tienen prioridad absoluta sobre la premisa inicial. " +
-        "No vuelvas a un evento anterior si ya hay uno nuevo. " +
-        "Mensaje actual literal: " + json.dumps(facts, ensure_ascii=False) +
-        ". Determina quien hizo cada accion y a quien pertenece cada objeto ANTES de responder. " +
-        "Lo que hizo " + player + " no lo hiciste tu. Reacciona al hecho actual " +
-        "sin retroceder ni repetir las frases anteriores. " +
-        "Conserva las relaciones y el tono de la escena; evita sermones genericos. " +
-        "No inventes confesiones, sentimientos ni acciones previas que el historial no confirme. " +
-        "Si te preguntan algo, responde claramente en la primera frase; si no sabes, dilo. " +
-        "Si una foto o un objeto no tiene contenido descrito, no inventes su aspecto ni su significado. " +
-        "No afirmes reconocer un lugar, objeto o simbolo sin que el historial lo confirme. " +
-        "En 'dialogo' habla DIRECTAMENTE a " + player + " usando 'tu', nunca te refieras " +
-        "a el como si fuera una tercera persona. No decidas acciones de " + player +
-        ". Devuelve SOLO JSON con 'gesto' y 'dialogo'. " +
-        "'gesto': accion propia en primera persona, maximo 80 caracteres. " +
-        "'dialogo': lo que le dices directamente a " + player +
-        ", una o dos frases, maximo 260 caracteres. " +
-        ("Gesto y dialogo SOLO en espanol, sin palabras inglesas." if spanish else "Everything in English.") +
-        slang_clause(job)
+        "Interpreta SOLO a " + character + " en un chat de rol con " + player + ". "
+        "Premisa de fondo, solo si no contradice la memoria: " + premise + ". "
+        + memory + " "
+        "El mensaje nuevo continúa esta misma escena. No reinicies la historia, no cambies de tema "
+        "y no respondas como si lo anterior no hubiera pasado. "
+        "Si el mensaje está mal transcrito, interprétalo dentro de la escena en curso. "
+        "Lo que hizo " + player + " no lo hiciste tú. No decidas las acciones de " + player + ". "
+        "No des un sermón ni saltes a otra trama. Si preguntan algo, contesta en la primera frase. "
+        "En 'dialogo' habla DIRECTAMENTE a " + player + " usando 'tú'. "
+        "Devuelve SOLO JSON con 'gesto' y 'dialogo'. "
+        "'gesto': acción propia en primera persona, máximo 80 caracteres. "
+        "'dialogo': una o dos frases, máximo 260 caracteres. "
+        + ("Gesto y diálogo SOLO en español, sin palabras inglesas." if spanish else "Everything in English.")
+        + slang_clause(job)
     )
     messages = [{"role": "system", "content": instruction}]
-    previous = ("\n".join("Antes " + player + " dijo: " + old[:300]
-                           for old in user_turns[-1:]) if len(latest) < 150 else "")
-    if (not repetitive_context or (not duplicate_latest and recent_valid)) and recent_assistant and previous:
-        messages.extend([{"role": "user", "content": previous},
-                         {"role": "assistant", "content": assistant_turns[-1][:300]},
-                         {"role": "user", "content": latest + "\n\nResponde ahora como " + character + " en primera persona."}])
-    else:
-        messages.append({"role": "user", "content":
-            (previous + "\n\n" if previous else "") + "Mensaje actual de " + player + ": " +
-            latest + "\n\nResponde ahora como " + character + " en primera persona."})
+    for turn in recent:
+        who = character if turn["role"] == "assistant" else player
+        messages.append({"role": turn["role"], "content": who + ": " + clip_text(turn["content"], 320)})
+    closing = latest + "\n\nSigue ahora esta misma historia, como " + character + ", sin borrar lo que ya pasó."
+    messages.append({"role": "user", "content": closing})
+    return messages
+
+def reply_for(job):
+    started = time.monotonic()
+    raw = (job.get("history") or [])[-48:]
+    latest = str(job.get("userMessage") or "")
+    messages = conversation_messages(job)
+    instruction = messages[0]["content"]
     for attempt in range(2):
-        raw_reply = model_chat(messages, 0.65 + attempt * 0.1, 220, json_mode=True)
+        raw_reply = model_chat(messages, 0.62 + attempt * 0.08, 220, json_mode=True)
         try:
             content = parse_role_reply(raw_reply)
-        except (ValueError, TypeError, AttributeError):
+        except (ValueError, TypeError, AttributeError, json.JSONDecodeError):
             content = ""
         invalid = (not content or len(content) > 520 or
                    normalize_reply(content) == normalize_reply(latest) or
@@ -188,11 +183,10 @@ def reply_for(job):
                   "total", round(time.monotonic() - started, 2),
                   "retry", attempt, flush=True)
             return content
-        messages = [messages[0], messages[-1]]
-        messages[0] = {"role": "system", "content":
-            instruction + " La primera respuesta reciclo una escena vieja. Cambia la reaccion " +
-            "sin alterar los actores ni los hechos actuales."}
-    raise RuntimeError("Local response repeated an earlier turn after grounding")
+        messages = [{"role": "system", "content": instruction +
+                     " La respuesta anterior se salió de la historia. Mantén los mismos hechos, el mismo lugar y las mismas relaciones."},
+                    *messages[1:]]
+    raise RuntimeError("Local response left the ongoing story")
 
 def handle(cloud, owner, name):
     job_id = name.removesuffix(".json")

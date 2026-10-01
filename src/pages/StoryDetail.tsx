@@ -44,6 +44,8 @@ type Mode = "select" | "read" | "roleplay";
    const { data: story, isLoading } = useStory(storyId || "");
    
    const [messages, setMessages] = useState<Message[]>([]);
+  const messagesRef = useRef<Message[]>([]);
+  messagesRef.current = messages;
   const [inputMessage, setInputMessage] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
    const [isTyping, setIsTyping] = useState(false);
@@ -316,7 +318,7 @@ type Mode = "select" | "read" | "roleplay";
           story_type: story?.story_type,
         },
         language,
-        history: messages
+        history: messagesRef.current
           .filter((m) => m.id !== "intro")
           .map((m) => ({ role: m.role, content: m.content })),
         userMessage,
@@ -394,11 +396,14 @@ type Mode = "select" | "read" | "roleplay";
        timestamp: new Date(),
      };
  
-     const nextMessages = [...messages, userMessage, assistantMessage];
-     setMessages(nextMessages);
+     setMessages((current) => {
+       const base = current.some((item) => item.id === userMessage.id) ? current : [...current, userMessage];
+       const next = base.some((item) => item.id === assistantMessage.id) ? base : [...base, assistantMessage];
+       void saveSession(next, narrative || null, mode);
+       return next;
+     });
      setIsTyping(false);
      if (!isMuted) void playAudio(responseContent, assistantMessage.id);
-     void saveSession(nextMessages, narrative || null, mode);
    };
 
   const playAudio = async (text: string, id: string) => {
