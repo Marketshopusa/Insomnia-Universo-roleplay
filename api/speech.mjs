@@ -90,8 +90,20 @@ export default async function handler(req, res) {
 
   let lastStatus = 502;
   let quotaExceeded = false;
-  const eligible = models.filter((model) => (quotaCooldownUntil.get(model) || 0) <= Date.now());
-  for (const model of eligible.length ? eligible : models) {
+  const now = Date.now();
+  const eligible = models.filter((model) => (quotaCooldownUntil.get(model) || 0) <= now);
+  if (eligible.length === 0) {
+    const retryAfterSeconds = Math.max(1, Math.ceil(
+      (Math.min(...models.map((model) => quotaCooldownUntil.get(model))) - now) / 1000
+    ));
+    res.setHeader("Retry-After", String(retryAfterSeconds));
+    return res.status(429).json({
+      error: "tts_quota_exhausted",
+      message: "Gemini limito temporalmente todas las voces. El texto sigue disponible.",
+      retryAfterSeconds,
+    });
+  }
+  for (const model of eligible) {
     const modelStartedAt = Date.now();
     try {
       const legacy = model === "gemini-3.1-flash-tts-preview";
