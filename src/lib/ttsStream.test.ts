@@ -87,4 +87,6 @@ it("speaks dialogue without narrating roleplay actions or spelling vocalizations
   expect(roleplayPerformance("*Sonrío* Hola.")).toBe("amused");
   expect(roleplaySpeechText("*Río* No me lo esperaba.")).toBe("[laughing] No me lo esperaba.");
   expect(roleplaySpeechText("*Suspiro* Tenemos que hablar.")).toBe("[sigh] Tenemos que hablar.");
+  expect(roleplayPerformance("Jajaja, no puede ser.")).toBe("amused");
+  expect(roleplaySpeechText("Jajaja, no puede ser.")).toBe("[laughing] Jajaja, no puede ser.");
 });

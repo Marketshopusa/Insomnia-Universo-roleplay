@@ -140,8 +140,8 @@ const key = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
   // A cooled-down Gemini model must not block the independent Cloud TTS provider.
   if (eligible.length === 0) quotaExceeded = true;
 
-  const tryPreview = async () => {
-    for (const model of geminiAvailable ? eligible : []) {
+  const tryPreview = async (queue) => {
+    for (const model of geminiAvailable ? queue : []) {
       const modelStartedAt = Date.now();
       try {
         const legacy = model === "gemini-3.1-flash-tts-preview" || model === "gemini-2.5-flash-preview-tts";
@@ -204,9 +204,13 @@ const key = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
     return false;
   };
 
-  // Emotional turns use the expressive Gemini preview (Scarlett/Aoede) before flat Chirp.
+  // Roleplay and Spanish stay on the same Gemini preview voice and accent.
+  // Chirp is only the fallback: it drops laughs and, without es-VE/es-AR/etc., sounds like neutral es-US.
   // Cloud texttospeech Gemini (Agent Platform) stays behind GCP_GEMINI_TTS_TRIAL_ENABLED.
-  if (emotional && await tryPreview()) return;
+  const keepVoice = req.body.roleplay === true || emotional || req.body.language !== "en";
+  const cooled = models.filter((model) => !eligible.includes(model));
+  if (keepVoice && await tryPreview(eligible)) return;
+  if (keepVoice && await tryPreview(cooled)) return;
 
   if (isChirpConfigured()) {
     const chirpStarted = Date.now();
@@ -224,7 +228,7 @@ const key = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
       console.warn("Insomnia speech primary chirp3-hd failed", failure?.name || "Error", "after_ms", Date.now() - chirpStarted);
     }
   }
-  if (!emotional && await tryPreview()) return;
+  if (!keepVoice && await tryPreview(eligible)) return;
   if (cloudGeminiTrialEnabled() && isChirpConfigured() && Date.now() >= cloudGeminiCooldownUntil) {
     const cloudStarted = Date.now();
     try {
