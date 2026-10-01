@@ -3,12 +3,15 @@ import { supabaseUrl, publishableKey } from "./config.mjs";
 
 const voices = { "scarlett-hd": "Aoede", "luna-sweet": "Leda", "aria-calm": "Kore", "max-deep": "Charon", "leo-warm": "Puck" };
 const models = ["gemini-3.8-flash-lite-tts", "gemini-3.8-flash-tts", "gemini-3.1-flash-tts-preview"];
+// Reused serverless instances skip a model briefly after a quota response.
+const quotaCooldownUntil = new Map();
+
 
 function sendEvent(res, event) {
   res.write("data: " + JSON.stringify(event) + "\n\n");
 }
 
-async function relaySse(upstream, res, legacy) {
+async function relaySse(upstream, res, legacy, onFirstAudio) {
   const reader = upstream.body.pipeThrough(new TextDecoderStream()).getReader();
   let pending = "";
   let audioStarted = false;
@@ -29,6 +32,7 @@ async function relaySse(upstream, res, legacy) {
         res.setHeader("X-Accel-Buffering", "no");
         res.flushHeaders();
         audioStarted = true;
+        onFirstAudio();
       }
       sendEvent(res, { type: "speech.audio.delta", audio: part.data });
     }
@@ -62,6 +66,7 @@ async function relaySse(upstream, res, legacy) {
 
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "method_not_allowed" });
+  const startedAt = Date.now();
   const jwt = String(req.headers.authorization || "").replace(/^Bearer\s+/i, "");
   const { data, error } = jwt
     ? await createClient(supabaseUrl, publishableKey, { auth: { persistSession: false } }).auth.getUser(jwt)
@@ -77,7 +82,9 @@ export default async function handler(req, res) {
 
   let lastStatus = 502;
   let quotaExceeded = false;
-  for (const model of models) {
+  const eligible = models.filter((model) => (quotaCooldownUntil.get(model) || 0) <= Date.now());
+  for (const model of eligible.length ? eligible : models) {
+    const modelStartedAt = Date.now();
     try {
       const legacy = model === "gemini-3.1-flash-tts-preview";
       const speechText = legacy
@@ -113,11 +120,21 @@ export default async function handler(req, res) {
       if (!upstream.ok) {
         lastStatus = upstream.status;
         quotaExceeded ||= upstream.status === 429;
-        console.warn("Insomnia speech provider", model, upstream.status);
+        if (upstream.status === 429) {
+          const retrySeconds = Number(upstream.headers.get("retry-after"));
+          quotaCooldownUntil.set(model, Date.now() + (Number.isFinite(retrySeconds) && retrySeconds > 0
+            ? Math.min(retrySeconds * 1000, 120_000) : 45_000));
+        }
+        console.warn("Insomnia speech provider", model, upstream.status, "after_ms", Date.now() - modelStartedAt);
         if ([429, 500, 502, 503, 504].includes(upstream.status)) continue;
         break;
       }
-      if (await relaySse(upstream, res, legacy)) return;
+      if (await relaySse(upstream, res, legacy, () =>
+        console.info("Insomnia speech first_audio", model, "total_ms", Date.now() - startedAt)
+      )) {
+        console.info("Insomnia speech complete", model, "total_ms", Date.now() - startedAt);
+        return;
+      }
       console.warn("Insomnia speech provider returned no audio", model);
       lastStatus = 502;
     } catch (failure) {
