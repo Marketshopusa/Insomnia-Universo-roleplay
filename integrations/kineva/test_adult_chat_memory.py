@@ -1,6 +1,6 @@
 import unittest
 
-from adult_chat_worker import conversation_messages
+from adult_chat_worker import conversation_messages, too_similar
 
 
 def job(history, user_message):
@@ -48,7 +48,21 @@ class StoryMemoryTest(unittest.TestCase):
         self.assertIn("cabaña", packed)
         self.assertIn("maceta", packed)
         self.assertIn("fogón", packed)
+        self.assertIn("Prohibido repetir el gesto", packed)
         self.assertLess(len(packed), 4200)
+
+    def test_a_copied_apology_is_rejected(self):
+        previous = (
+            "*Se cubre el rostro con las manos, angustiada.* Willian, por favor, no me digas eso. "
+            "Tú no entiendes lo mucho que me arrepiento. No debí enviar nunca esa grabación."
+        )
+        copied = (
+            "*Se cubre el rostro con las manos, angustiada.* Willian, por favor, no me digas eso. "
+            "Tú no entiendes lo mucho que me arrepiento. No debí enviar nunca esa grabación..."
+        )
+        fresh = "*Bajo las manos y te miro* Si Daniel no se entera, entonces dejemos de hablar de eso."
+        self.assertTrue(too_similar(copied, previous))
+        self.assertFalse(too_similar(fresh, previous))
 
 
 if __name__ == "__main__":

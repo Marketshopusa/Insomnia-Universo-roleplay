@@ -33,7 +33,9 @@ def repeated_reply(content, history):
 
 def model_chat(messages, temperature, max_tokens, json_mode=False):
     payload = {"model": "magnum-v4-12b", "messages": messages, "max_tokens": max_tokens,
-               "temperature": temperature, "chat_template_kwargs": {"enable_thinking": False}}
+               "temperature": temperature, "repeat_penalty": 1.18,
+               "presence_penalty": 0.6, "frequency_penalty": 0.4,
+               "chat_template_kwargs": {"enable_thinking": False}}
     if json_mode:
         payload["response_format"] = {"type": "json_object"}
     request = Request(os.environ.get("KINEVA_CHAT_MODEL_URL", "http://127.0.0.1:8788/v1/chat/completions"),
@@ -143,15 +145,19 @@ def conversation_messages(job):
         "Interpreta SOLO a " + character + " en un chat de rol con " + player + ". "
         "Premisa de fondo, solo si no contradice la memoria: " + premise + ". "
         + memory + " "
-        "El mensaje nuevo continúa esta misma escena. No reinicies la historia, no cambies de tema "
-        "y no respondas como si lo anterior no hubiera pasado. "
+        "El mensaje nuevo continúa esta misma escena, pero es una réplica nueva. "
+        "No reinicies la historia y no respondas como si lo anterior no hubiera pasado. "
+        "Habla como una persona en un chat, no como un guion ni un discurso. "
+        "Prohibido repetir el gesto, la disculpa o las frases del turno anterior. "
+        "No recicles metida de pata, no sé cómo explicarlo, ni el mismo labio o las mismas manos. "
+        "La primera frase del dialogo contesta lo que " + player + " acaba de decir. "
         "Si el mensaje está mal transcrito, interprétalo dentro de la escena en curso. "
         "Lo que hizo " + player + " no lo hiciste tú. No decidas las acciones de " + player + ". "
-        "No des un sermón ni saltes a otra trama. Si preguntan algo, contesta en la primera frase. "
+        "No des un sermón ni saltes a otra trama. "
         "En 'dialogo' habla DIRECTAMENTE a " + player + " usando 'tú'. "
         "Devuelve SOLO JSON con 'gesto' y 'dialogo'. "
-        "'gesto': acción propia en primera persona, máximo 80 caracteres. "
-        "'dialogo': una o dos frases, máximo 260 caracteres. "
+        "'gesto': una acción física nueva, en primera persona, máximo 70 caracteres. "
+        "'dialogo': una o dos frases cortas, máximo 180 caracteres. "
         + ("Gesto y diálogo SOLO en español, sin palabras inglesas." if spanish else "Everything in English.")
         + slang_clause(job)
     )
@@ -159,7 +165,13 @@ def conversation_messages(job):
     for turn in recent:
         who = character if turn["role"] == "assistant" else player
         messages.append({"role": turn["role"], "content": who + ": " + clip_text(turn["content"], 180)})
-    closing = latest + "\n\nSigue ahora esta misma historia, como " + character + ", sin borrar lo que ya pasó."
+    prior = next((turn["content"] for turn in reversed(turns) if turn["role"] == "assistant"), "")
+    banned = gesture_of(prior)
+    closing = (
+        latest + "\n\nContesta esa frase, como " + character + ". "
+        "No la resumas y no te disculpes otra vez si ya lo hiciste."
+        + (" Gesto prohibido, no lo repitas: " + banned + "." if banned else "")
+    )
     messages.append({"role": "user", "content": closing})
     return trim_messages(messages)
 
@@ -177,6 +189,28 @@ def exact_copy(content, previous):
     prior = normalize_reply(previous)
     return bool(current and prior and current == prior)
 
+def gesture_of(text):
+    match = re.search(r"\*([^*]{1,120})\*", text or "")
+    return normalize_reply(match.group(1) if match else "")
+
+def too_similar(content, previous):
+    from difflib import SequenceMatcher
+    if exact_copy(content, previous):
+        return True
+    current = normalize_reply(content)
+    prior = normalize_reply(previous)
+    if not current or not prior:
+        return False
+    if SequenceMatcher(None, current, prior).ratio() >= 0.62:
+        return True
+    left, right = gesture_of(content), gesture_of(previous)
+    if left and right and (left == right or SequenceMatcher(None, left, right).ratio() >= 0.75):
+        return True
+    prior_words = prior.split()
+    current_words = current.split()
+    seen = {" ".join(prior_words[index:index + 5]) for index in range(max(0, len(prior_words) - 4))}
+    return any(" ".join(current_words[index:index + 5]) in seen for index in range(max(0, len(current_words) - 4)))
+
 def reply_for(job):
     started = time.monotonic()
     raw = (job.get("history") or [])[-48:]
@@ -185,23 +219,24 @@ def reply_for(job):
                      if turn.get("role") == "assistant"), "")
     messages = conversation_messages(job)
     parsed = ""
-    for attempt in range(2):
+    for attempt in range(3):
         try:
-            raw_reply = model_chat(messages, 0.7 + attempt * 0.1, 220, json_mode=True)
+            raw_reply = model_chat(messages, 0.75 + attempt * 0.1, 220, json_mode=True)
             parsed = parse_role_reply(raw_reply)
         except Exception as error:
             print("Chat attempt failed", job.get("jobId", "local"), attempt, repr(error)[:180], flush=True)
             parsed = ""
-        if parsed and not exact_copy(parsed, previous) and normalize_reply(parsed) != normalize_reply(latest):
+        if parsed and not too_similar(parsed, previous) and normalize_reply(parsed) != normalize_reply(latest):
             print("Chat generation timing", job.get("jobId", "local"),
                   "total", round(time.monotonic() - started, 2),
                   "retry", attempt, flush=True)
             return parsed
-        messages = trim_messages(messages, 2600)
-        messages[0]["content"] += " Responde al mensaje nuevo. No copies la frase anterior."
-    if parsed:
-        return parsed
-    raise RuntimeError("Local response left the ongoing story")
+        messages = trim_messages([messages[0], messages[-1]], 2600)
+        messages[0]["content"] += (
+            " Tu intento anterior repitió el turno previo. Gesto distinto y frases nuevas. "
+            "Responde solo a esto: " + clip_text(latest, 240)
+        )
+    raise RuntimeError("Local response repeated the previous turn")
 
 def handle(cloud, owner, name):
     job_id = name.removesuffix(".json")

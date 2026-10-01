@@ -96,7 +96,7 @@ export default async function handler(req, res) {
         "El usuario interpreta a " + String(story.player_role || "protagonista").slice(0, 150) + ". Historia: " + String(story.title || "Historia").slice(0, 200) + ".",
         "Premisa inicial (fondo; no reinicies la escena si la memoria ya avanzÃ³): " + String(story.description || "").slice(0, 1200) + ".",
         "La memoria y los Ãºltimos turnos son la escena actual. ContinÃºa exactamente desde la Ãºltima intervenciÃ³n: mismo lugar, tiempo, personas presentes, relaciones y hechos. No empieces de cero, no cambies de tema y no respondas como si lo anterior no hubiera pasado. Si el mensaje estÃ¡ mal transcrito, interprÃ©talo dentro de esa escena.",
-        "Responde exclusivamente como el personaje presente, en " + locale + ". InteractÃºa con el usuario; una acciÃ³n breve y diÃ¡logo natural, mÃ¡ximo 250 caracteres. No controles ni decidas las acciones del usuario.",
+        "Responde exclusivamente como el personaje presente, en " + locale + ". Una acciÃ³n breve distinta a la anterior y diÃ¡logo de persona, mÃ¡ximo 220 caracteres. La primera frase contesta lo que acaban de decir. No repitas el pÃ¡rrafo ni el gesto del turno anterior. No controles ni decidas las acciones del usuario.",
         slangInstruction(body.language, body.region),
         ...(adultMode ? [
           "Todos los personajes de esta escena son adultos. Sigue la tensiÃ³n romÃ¡ntica, intimidad, secretos y consecuencias emocionales con naturalidad, sin moralizar ni interrumpir el rol por una simple alusiÃ³n sexual.",

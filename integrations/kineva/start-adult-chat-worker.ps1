@@ -7,7 +7,15 @@ try {
   $chatOwned = $true
 }
 if (-not $chatOwned) {
-  Write-Host 'El chat ya está abierto en otra ventana. Cierra esta y deja solo la primera.'
+  Write-Host 'El chat seguia abierto con el codigo viejo. Cierro ese proceso para que cargue este.'
+  Get-CimInstance Win32_Process | Where-Object {
+    $_.CommandLine -and $_.CommandLine -match 'adult_chat_worker\.py'
+  } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+  Start-Sleep -Seconds 2
+  try { $chatOwned = $script:chatMutex.WaitOne(4000) } catch [System.Threading.AbandonedMutexException] { $chatOwned = $true }
+}
+if (-not $chatOwned) {
+  Write-Host 'La ventana anterior sigue abierta y va a reabrir el chat con el codigo de esta carpeta. Espera 20 segundos. No abras otra ventana.'
   return
 }
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path

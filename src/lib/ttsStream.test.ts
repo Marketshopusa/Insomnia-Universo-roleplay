@@ -81,6 +81,8 @@ it("speaks the gray narration and the dialogue, without spelling vocalizations",
   expect(roleplayPerformance("*Gimo de dolor* Ahhh, me duele.")).toBe("pain");
   expect(roleplaySpeechText("*Gimo de placer* Sí, así.")).toBe("Gimo de placer. Sí, así.");
   expect(roleplayPerformance("*Gimo de placer* Sí, así.")).toBe("pleasure");
+  expect(roleplayPerformance("*Se queda quieta, con miedo* No entres.")).toBe("scream");
+  expect(roleplayPerformance("*Se cubre el rostro, angustiada* Perdón.")).toBe("sad");
   expect(roleplaySpeechText("*Grito* ¡Basta!")).toBe("[gasps] Grito. ¡Basta!");
   expect(roleplayPerformance("*Grito* ¡Basta!")).toBe("scream");
   expect(roleplaySpeechText("*Sonrío* Hola.")).toBe("[laughing] Sonrío. Hola.");
