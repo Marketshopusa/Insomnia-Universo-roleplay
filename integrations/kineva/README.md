@@ -28,16 +28,19 @@ the private reference image; ComfyUI remains bound to localhost.
 
 On the ComfyUI Windows workstation, run
 integrations/kineva/start-local-studio.ps1. Open
-http://127.0.0.1:8080/studio/kineva-local in the same PC browser.
-This page is part of the Insomnia React app. It accepts a photo and an ordinary
+http://127.0.0.1:8080/studio in the same PC browser. Production uses
+https://insomnia-universo-roleplay.vercel.app/studio with ComfyUI already running
+on that PC; the browser talks to 127.0.0.1:8787. This page is the Insomnia Studio.
+It accepts an optional photo and an ordinary
 sentence, sends both to the loopback-only local_creator.py service, and lets the
 existing ComfyUI LLM expand the visual plan internally. It never asks a user
 to edit plan_json or load a DEV_TESTS/*_api.json graph into the UI. A short
 series of up to three clips is rendered sequentially; progress, playback and
 download are shown on the page.
 
-The server binds only to 127.0.0.1:8787 and accepts POST requests from the
-local Insomnia dev origin on port 8080 (or Vite ports 5173/5174). Rendered
+The server binds only to 127.0.0.1:8787 and accepts the production origin
+https://insomnia-universo-roleplay.vercel.app, Vercel preview hosts for this
+project, and the local Insomnia dev origin on port 8080 (or Vite ports 5173/5174). Rendered
 videos are served from the local ComfyUI output folder. Restarting the service
 clears in-memory job status, though rendered files remain in ComfyUI output.
 

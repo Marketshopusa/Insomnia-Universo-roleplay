@@ -17,7 +17,20 @@ interface Body {
   language: "en" | "es";
   explicit?: boolean;
   chapters?: number;
+  region?: string;
 }
+
+const slangFor = (region?: string) => {
+  const lines: Record<string, string> = {
+    ar: "Escribe con jerga de Argentina: vos, tenés, che y dale.",
+    ve: "Escribe con jerga de Venezuela: chamo y vale.",
+    co: "Escribe con jerga de Colombia: parce, bacano y qué más.",
+    mx: "Escribe con jerga de México: órale, ahorita y chido.",
+    es: "Escribe con jerga de España: vale, tío y mola.",
+    cl: "Escribe con jerga de Chile: po, cachai y al tiro.",
+  };
+  return lines[region || ""] || lines.mx;
+};
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -29,7 +42,7 @@ serve(async (req) => {
 
     const lang =
       body.language === "es"
-        ? "Escribe TODO en español neutro, natural y literario."
+        ? `Escribe TODO en español natural y literario. ${slangFor(body.region)}`
         : "Write everything in natural, literary English.";
 
     const explicit = body.explicit

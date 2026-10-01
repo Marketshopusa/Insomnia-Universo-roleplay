@@ -27,7 +27,12 @@ COMFY = Api(os.environ.get("KINEVA_COMFY_URL", "http://127.0.0.1:8188"))
 JOBS = {}
 JOBS_LOCK = threading.Lock()
 GPU_LOCK = threading.Lock()
-ALLOWED_ORIGINS = re.compile(r"^http://(localhost|127\.0\.0\.1):(?:8080|5173|5174)$")
+# The browser on the Vercel Studio calls this loopback worker. Vercel itself never reaches the GPU.
+ALLOWED_ORIGINS = re.compile(
+    r"^(?:http://(?:localhost|127\.0\.0\.1):(?:8080|5173|5174)"
+    r"|https://insomnia-universo-roleplay(?:-[a-z0-9-]+)?\.vercel\.app)$",
+    re.IGNORECASE,
+)
 MAX_IMAGE = 10_000_000
 
 def image_extension(data):
@@ -195,6 +200,7 @@ class Handler(BaseHTTPRequestHandler):
         origin = self._origin()
         if origin:
             self.send_header("Access-Control-Allow-Origin", origin)
+            self.send_header("Access-Control-Allow-Private-Network", "true")
             self.send_header("Vary", "Origin")
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(data)))
@@ -206,6 +212,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._reply(403, {"error": "Origen no permitido."})
         self.send_response(204)
         self.send_header("Access-Control-Allow-Origin", self._origin())
+        self.send_header("Access-Control-Allow-Private-Network", "true")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
         self.end_headers()
@@ -213,12 +220,16 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         parts = urlsplit(self.path).path.strip("/").split("/")
         if parts == ["health"]:
+            template = TEMPLATE_PATH.is_file()
             try:
                 COMFY.call("GET", "/system_stats")
-                return self._reply(200, {"ready": TEMPLATE_PATH.is_file(),
-                                         "comfy": True})
+                comfy = True
             except Exception:
-                return self._reply(503, {"ready": False, "comfy": False})
+                comfy = False
+            ready = template and comfy
+            return self._reply(200 if ready else 503, {
+                "ready": ready, "template": template, "comfy": comfy,
+            })
         if len(parts) == 2 and parts[0] == "jobs":
             job = public_job(parts[1])
             return self._reply(200, job) if job else self._reply(404, {"error": "No existe."})
@@ -241,6 +252,7 @@ class Handler(BaseHTTPRequestHandler):
             origin = self._origin()
             if origin:
                 self.send_header("Access-Control-Allow-Origin", origin)
+                self.send_header("Access-Control-Allow-Private-Network", "true")
             self.send_header("Content-Type", "video/mp4")
             self.send_header("Accept-Ranges", "bytes")
             if selected:

@@ -21,12 +21,15 @@ function sampleWav() {
   return { pcm, wav };
 }
 
-test("the Spanish Scarlett backup selects a female Chirp voice", () => {
+test("the Spanish Scarlett backup selects Aoede and the story accent", () => {
   assert.deepEqual(cloudVoiceFor("scarlett-hd", "es"), {
-    languageCode: "es-US", name: "es-US-Chirp3-HD-Aoede",
+    languageCode: "es-MX", name: "es-MX-Chirp3-HD-Aoede",
   });
-  assert.equal(cloudVoiceFor("luna-sweet", "es").name, "es-US-Chirp3-HD-Leda");
-  assert.equal(cloudVoiceFor("aria-calm", "es").name, "es-US-Chirp3-HD-Kore");
+  assert.equal(cloudVoiceFor("scarlett-hd", "es", "es").name, "es-ES-Chirp3-HD-Aoede");
+  assert.equal(cloudVoiceFor("Zephyr", "es", "ar").name, "es-AR-Chirp3-HD-Zephyr");
+  assert.equal(cloudVoiceFor("Leda", "es", "cl").name, "es-CL-Chirp3-HD-Leda");
+  assert.equal(cloudVoiceFor("luna-sweet", "es", "co").name, "es-CO-Chirp3-HD-Leda");
+  assert.equal(cloudVoiceFor("aria-calm", "es", "ve").name, "es-VE-Chirp3-HD-Kore");
 });
 
 test("cloud synthesis uses OAuth, returns headerless 24 kHz mono PCM", async () => {
@@ -39,7 +42,7 @@ test("cloud synthesis uses OAuth, returns headerless 24 kHz mono PCM", async () 
       assert.equal(url, "https://texttospeech.googleapis.com/v1/text:synthesize");
       assert.equal(init.headers.Authorization, "Bearer test-oauth-token");
       const body = JSON.parse(init.body);
-      assert.equal(body.voice.name, "es-US-Chirp3-HD-Aoede");
+      assert.equal(body.voice.name, "es-MX-Chirp3-HD-Aoede");
       assert.equal(body.audioConfig.audioEncoding, "LINEAR16");
       assert.equal(body.audioConfig.sampleRateHertz, 24000);
       return new Response(JSON.stringify({ audioContent: wav.toString("base64") }), { status: 200 });
@@ -49,6 +52,23 @@ test("cloud synthesis uses OAuth, returns headerless 24 kHz mono PCM", async () 
   assert.equal(result.status, 200);
   assert.deepEqual(result.pcm, pcm);
   assert.throws(() => decodeWavPcm(Buffer.from("not audio").toString("base64")), /invalid_wav/);
+});
+
+test("a missing regional Chirp voice falls back to es-US", async () => {
+  const { wav } = sampleWav();
+  const names = [];
+  const result = await synthesizeChirp("Che, mirá.", "Aoede", "es", {
+    region: "ar",
+    tokenProvider: async () => "test-oauth-token",
+    fetchImpl: async (_url, init) => {
+      const body = JSON.parse(init.body);
+      names.push(body.voice.name);
+      if (body.voice.languageCode === "es-AR") return new Response("{}", { status: 404 });
+      return new Response(JSON.stringify({ audioContent: wav.toString("base64") }), { status: 200 });
+    },
+  });
+  assert.deepEqual(names, ["es-AR-Chirp3-HD-Aoede", "es-US-Chirp3-HD-Aoede"]);
+  assert.equal(result.status, 200);
 });
 
 test("Cloud Gemini uses the character's expressive voice and PCM response", async () => {

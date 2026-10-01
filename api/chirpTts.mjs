@@ -1,6 +1,11 @@
 import { ExternalAccountClient, GoogleAuth } from "google-auth-library";
 import { getVercelOidcToken } from "@vercel/oidc";
+import { chirpLocale } from "./regions.mjs";
 
+const FEMININE = [
+  "Aoede", "Zephyr", "Leda", "Kore", "Achernar", "Autonoe", "Callirrhoe",
+  "Despina", "Erinome", "Gacrux", "Laomedeia", "Pulcherrima", "Sulafat", "Vindemiatrix",
+];
 const aliases = {
   "scarlett-hd": "Aoede",
   "luna-sweet": "Leda",
@@ -8,6 +13,7 @@ const aliases = {
   "max-deep": "Charon",
   "leo-warm": "Puck",
 };
+for (const name of FEMININE) aliases[name] = name;
 let cachedAuth;
 let cachedFederatedAuth;
 
@@ -19,9 +25,14 @@ function federationConfig() {
   return { serviceAccount, resource };
 }
 
-export function cloudVoiceFor(preset, language) {
-  const locale = language === "en" ? "en-US" : "es-US";
-  return { languageCode: locale, name: `${locale}-Chirp3-HD-${aliases[preset] || "Kore"}` };
+export function previewVoice(preset) {
+  return aliases[preset] || "Aoede";
+}
+
+export function cloudVoiceFor(preset, language, region) {
+  const locale = chirpLocale(language, region);
+  const name = previewVoice(preset);
+  return { languageCode: locale, name: `${locale}-Chirp3-HD-${name}` };
 }
 
 export function cloudGeminiVoiceFor(preset, language) {
@@ -104,14 +115,14 @@ async function getCredentials() {
   return access.token;
 }
 
-export async function synthesizeChirp(text, preset, language, { tokenProvider = getCredentials, fetchImpl = fetch } = {}) {
+async function requestChirp(text, voice, tokenProvider, fetchImpl) {
   const token = await tokenProvider();
   const response = await fetchImpl("https://texttospeech.googleapis.com/v1/text:synthesize", {
     method: "POST",
     headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
     body: JSON.stringify({
       input: { text },
-      voice: cloudVoiceFor(preset, language),
+      voice,
       audioConfig: { audioEncoding: "LINEAR16", sampleRateHertz: 24000 },
     }),
     signal: AbortSignal.timeout(18000),
@@ -120,6 +131,18 @@ export async function synthesizeChirp(text, preset, language, { tokenProvider = 
   const payload = await response.json();
   if (typeof payload.audioContent !== "string") throw new Error("chirp_no_audio");
   return { status: 200, pcm: decodeWavPcm(payload.audioContent) };
+}
+
+export async function synthesizeChirp(text, preset, language, { region, tokenProvider = getCredentials, fetchImpl = fetch } = {}) {
+  const voice = cloudVoiceFor(preset, language, region);
+  const first = await requestChirp(text, voice, tokenProvider, fetchImpl);
+  if (first.status === 200 || language === "en" || voice.languageCode === "es-US") return first;
+  if (![400, 404].includes(first.status)) return first;
+  const fallbackName = voice.name.slice(voice.name.lastIndexOf("-") + 1);
+  return requestChirp(text, {
+    languageCode: "es-US",
+    name: `es-US-Chirp3-HD-${fallbackName}`,
+  }, tokenProvider, fetchImpl);
 }
 
 export async function synthesizeCloudGemini(text, preset, language, { performance = "neutral", tokenProvider = getCredentials, fetchImpl = fetch } = {}) {

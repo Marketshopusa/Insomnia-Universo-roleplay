@@ -18,7 +18,20 @@ interface ChatBody {
   history: { role: "user" | "assistant"; content: string }[];
   userMessage: string;
   explicit?: boolean;
+  region?: string;
 }
+
+const slangFor = (region?: string) => {
+  const lines: Record<string, string> = {
+    ar: "Escribe con jerga de Argentina: vos, tenés, che y dale.",
+    ve: "Escribe con jerga de Venezuela: chamo y vale.",
+    co: "Escribe con jerga de Colombia: parce, bacano y qué más.",
+    mx: "Escribe con jerga de México: órale, ahorita y chido.",
+    es: "Escribe con jerga de España: vale, tío y mola.",
+    cl: "Escribe con jerga de Chile: po, cachai y al tiro.",
+  };
+  return lines[region || ""] || lines.mx;
+};
 
 const sleep = (milliseconds: number) =>
   new Promise((resolve) => setTimeout(resolve, milliseconds));
@@ -42,7 +55,7 @@ serve(async (req) => {
 
     const langInstruction =
       body.language === "es"
-        ? "Responde SIEMPRE en español neutro, natural y fluido."
+        ? `Responde SIEMPRE en español natural y fluido. ${slangFor(body.region)}`
         : "Always respond in natural, fluent English.";
 
     const explicitGuard = body.explicit

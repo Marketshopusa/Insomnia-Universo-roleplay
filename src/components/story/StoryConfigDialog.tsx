@@ -22,7 +22,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { toast } from "@/hooks/use-toast";
-import { STORY_VOICES, getStoryVoice, setStoryVoice } from "@/lib/voices";
+import { STORY_VOICES, getStoryVoice, normalizeStoryVoice, setStoryVoice } from "@/lib/voices";
 
 export interface ConfigurableStory {
   id: string;
@@ -90,7 +90,7 @@ export const StoryConfigDialog = ({ story, open, onOpenChange, onSaved }: StoryC
           .maybeSingle();
         if (cancelled) return;
         if (data?.cover_media_url) url = data.cover_media_url;
-        if (data?.voice) setVoice(data.voice);
+        if (data?.voice) setVoice(normalizeStoryVoice(data.voice));
       }
       if (cancelled) return;
       setCoverUrl(url);

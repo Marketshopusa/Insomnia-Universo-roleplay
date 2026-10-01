@@ -9,6 +9,7 @@
  import { Label } from "@/components/ui/label";
  import { Volume2 } from "lucide-react";
   import { useLanguage } from "@/contexts/LanguageContext";
+  import { STORY_VOICES, normalizeStoryVoice } from "@/lib/voices";
  
  interface AudioSettingsProps {
    voiceName: string;
@@ -23,27 +24,6 @@
    onAutoplayChange: (autoplay: boolean) => void;
  }
  
-  const voices = [
-    {
-      value: "scarlett-hd",
-      label: "Scarlett HD",
-      descriptionKey: "voice.scarlettHd.desc",
-      tagKeys: ["tag.gentle", "tag.elegant"],
-    },
-    {
-      value: "max-deep",
-      label: "Max Deep",
-      descriptionKey: "voice.maxDeep.desc",
-      tagKeys: ["tag.deep", "tag.confident"],
-    },
-    {
-      value: "luna-sweet",
-      label: "Luna Sweet",
-      descriptionKey: "voice.lunaSweet.desc",
-      tagKeys: ["tag.sweet", "tag.playful"],
-    },
-  ];
- 
  export const AudioSettings = ({
    voiceName,
    genderFilter,
@@ -56,8 +36,8 @@
    onMutedChange,
    onAutoplayChange,
  }: AudioSettingsProps) => {
-    const { t } = useLanguage();
-   const selectedVoice = voices.find(v => v.value === voiceName) || voices[0];
+    const { t, language } = useLanguage();
+   const selectedVoice = STORY_VOICES.find((voice) => voice.value === normalizeStoryVoice(voiceName)) || STORY_VOICES[0];
  
    return (
      <div className="space-y-6 p-6 bg-card rounded-lg border border-border">
@@ -99,12 +79,12 @@
  
        <div className="space-y-2">
           <Label className="text-muted-foreground text-sm">{t("audio.voice")}:</Label>
-         <Select value={voiceName} onValueChange={onVoiceChange}>
+         <Select value={selectedVoice.value} onValueChange={onVoiceChange}>
            <SelectTrigger>
              <SelectValue />
            </SelectTrigger>
            <SelectContent>
-             {voices.map((voice) => (
+             {STORY_VOICES.map((voice) => (
                <SelectItem key={voice.value} value={voice.value}>
                  {voice.label}
                </SelectItem>
@@ -112,14 +92,7 @@
            </SelectContent>
          </Select>
          
-          <p className="text-sm text-muted-foreground">{t(selectedVoice.descriptionKey)}</p>
-         <div className="flex gap-2">
-            {selectedVoice.tagKeys.map((tagKey) => (
-              <span key={tagKey} className="text-xs px-2 py-1 bg-secondary rounded text-muted-foreground">
-                {t(tagKey)}
-             </span>
-           ))}
-         </div>
+          <p className="text-sm text-muted-foreground">{language === "es" ? selectedVoice.descriptionEs : selectedVoice.descriptionEn}</p>
           <p className="text-xs text-muted-foreground">16.0 ♦ {t("audio.per10k")}</p>
        </div>
  

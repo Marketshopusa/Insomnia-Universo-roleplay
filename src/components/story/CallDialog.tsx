@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { toast } from "@/hooks/use-toast";
 import { startWavRecording, blobToBase64, type WavRecorder } from "@/lib/wavRecorder";
 import { streamSpeech, type SpeechStream } from "@/lib/ttsStream";
+import { regionLocale } from "@/lib/regions";
 import { invokeFunctionWithRetry } from "@/lib/invokeFunction";
 
 type CallState = "idle" | "listening" | "thinking" | "speaking";
@@ -29,6 +30,7 @@ interface CallDialogProps {
   story: any;
   language: string;
   voice: string;
+  region: string;
   adultMode: boolean;
   history: Turn[];
   onTurn: (userText: string, assistantText: string | null) => void;
@@ -50,6 +52,7 @@ export const CallDialog = ({
   story,
   language,
   voice,
+  region,
   adultMode,
   history,
   onTurn,
@@ -104,7 +107,7 @@ export const CallDialog = ({
 
   const speak = async (text: string) => {
     try {
-      const speech = streamSpeech(text, voice, language, undefined, true);
+      const speech = streamSpeech(text, voice, language, undefined, true, region);
       streamRef.current = speech;
       await speech.done;
       streamRef.current = null;
@@ -136,6 +139,7 @@ export const CallDialog = ({
         history: historyRef.current.slice(-12),
         userMessage: userText,
         adultMode,
+        region,
     });
     if (error || !data?.content) {
       const status = (error as { context?: Response } | null)?.context?.status;
@@ -172,7 +176,7 @@ export const CallDialog = ({
       if (Recognition) {
         try {
           const recognition = new Recognition();
-          recognition.lang = es ? "es-ES" : "en-US";
+          recognition.lang = es ? regionLocale(region) : "en-US";
           recognition.continuous = true;
           recognition.interimResults = true;
           recognition.onresult = (event) => {
@@ -239,7 +243,7 @@ export const CallDialog = ({
     recognitionRef.current = null;
     if (!userText) {
       const audio = await blobToBase64(blob);
-      const { data, error } = await invokeFunctionWithRetry<{ text?: string; error?: string }>("speech-to-text", { audio, mimeType: "audio/wav", language: es ? "es" : "en" });
+      const { data, error } = await invokeFunctionWithRetry<{ text?: string; error?: string }>("speech-to-text", { audio, mimeType: "audio/wav", language: es ? "es" : "en", region });
       userText = ((data as any)?.text || "").trim();
       if (error || (data as any)?.error) {
         toast({

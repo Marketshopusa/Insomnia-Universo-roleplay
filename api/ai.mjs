@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { supabaseUrl as BASE, publishableKey as KEY } from "./config.mjs";
+import { chirpLocale, slangInstruction } from "./regions.mjs";
 const send = (res, status, value) => res.status(status).json(value);
 async function authenticated(req) {
   const jwt = String(req.headers.authorization || "").replace(/^Bearer\s+/i, "");
@@ -96,6 +97,7 @@ export default async function handler(req, res) {
         "Premisa inicial (contexto de fondo, no reinicies la escena): " + String(story.description || "").slice(0, 2200) + ".",
         "Los Ãºltimos turnos son la escena actual. ContinÃºa exactamente desde la Ãºltima intervenciÃ³n: conserva lugar, tiempo, personajes presentes, relaciones y hechos establecidos. Los sucesos recientes prevalecen sobre la premisa inicial.",
         "Responde exclusivamente como el personaje presente, en " + locale + ". InteractÃºa con el usuario; una acciÃ³n breve y diÃ¡logo natural, mÃ¡ximo 250 caracteres. No controles ni decidas las acciones del usuario.",
+        slangInstruction(body.language, body.region),
         ...(adultMode ? [
           "Todos los personajes de esta escena son adultos. Sigue la tensiÃ³n romÃ¡ntica, intimidad, secretos y consecuencias emocionales con naturalidad, sin moralizar ni interrumpir el rol por una simple alusiÃ³n sexual.",
           "Si el contexto previo fue mÃ¡s explÃ­cito, continÃºa desde su consecuencia emocional o el diÃ¡logo presente sin describir actos sexuales grÃ¡ficos. MantÃ©n la voz y la agencia del personaje.",
@@ -133,14 +135,14 @@ export default async function handler(req, res) {
     }
     if (action === "speech-to-text") {
       if (typeof body.audio !== "string" || body.audio.length < 2700 || body.audio.length > 12000000) return send(res, 400, { error: "invalid_audio" });
-      const lang = body.language === "es" ? "es-ES" : body.language === "en" ? "en-US" : undefined;
+      const lang = body.language === "es" ? chirpLocale("es", body.region) : body.language === "en" ? "en-US" : undefined;
       const opts = lang ? { audioTranscriptionConfig: { languageCodes: [lang] } } : {};
       const content = await generate("gemini-3.5-transcribe", [{ inlineData: { mimeType: body.mimeType || "audio/wav", data: body.audio } }], opts);
       return send(res, 200, { text: content });
     }
     if (action === "generate-narrative") {
       const story = body.story || {};
-      const prompt = "Escribe una narraciÃ³n original en " + (body.language === "es" ? "espaÃ±ol" : "inglÃ©s") + " para " + String(story.title || "").slice(0, 250) + ". Premisa: " + String(story.description || "").slice(0, 2500) + ". Crea " + Math.min(5, Math.max(1, Number(body.chapters) || 3)) + " secciones breves con diÃ¡logos y continuidad.";
+      const prompt = "Escribe una narraciÃ³n original en " + (body.language === "es" ? "espaÃ±ol" : "inglÃ©s") + " para " + String(story.title || "").slice(0, 250) + ". Premisa: " + String(story.description || "").slice(0, 2500) + ". Crea " + Math.min(5, Math.max(1, Number(body.chapters) || 3)) + " secciones breves con diÃ¡logos y continuidad. " + slangInstruction(body.language, body.region);
       return send(res, 200, { content: await generate("gemini-3.5-flash-lite", [{ text: prompt }], { maxOutputTokens: 2000 }) });
     }
     if (action === "generate-shorts-series") {

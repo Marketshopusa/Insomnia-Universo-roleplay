@@ -64,6 +64,21 @@ def parse_role_reply(raw_reply):
         raise ValueError("Incomplete or overlong gesture/dialogue")
     return "*" + gesture + "* " + dialogue
 
+REGION_SLANG = {
+    "ar": "Escribe con jerga de Argentina: vos, tenés, che y dale.",
+    "ve": "Escribe con jerga de Venezuela: chamo y vale.",
+    "co": "Escribe con jerga de Colombia: parce, bacano y qué más.",
+    "mx": "Escribe con jerga de México: órale, ahorita y chido.",
+    "es": "Escribe con jerga de España: vale, tío y mola.",
+    "cl": "Escribe con jerga de Chile: po, cachai y al tiro.",
+}
+
+def slang_clause(job):
+    if job.get("language") != "es":
+        return ""
+    region = str(job.get("region") or "mx")
+    return " " + REGION_SLANG.get(region, REGION_SLANG["mx"])
+
 def reply_for(job):
     from difflib import SequenceMatcher
     story = job.get("story") or {}
@@ -106,7 +121,8 @@ def reply_for(job):
             ". Responde a ESTE mensaje, sin repetir la reaccion anterior. Si hay pregunta, " +
             "contesta lo que pregunta en la primera frase del dialogo. No inventes hechos. " +
             "Devuelve SOLO JSON con 'gesto' (breve, en primera persona) y 'dialogo' " +
-            "(una o dos frases en primera persona, hablando directamente a " + player + ")."
+            "(una o dos frases en primera persona, hablando directamente a " + player + ")." +
+            slang_clause(job)
         )
         try:
             fast = parse_role_reply(model_chat(
@@ -144,7 +160,8 @@ def reply_for(job):
         "'gesto': accion propia en primera persona, maximo 80 caracteres. " +
         "'dialogo': lo que le dices directamente a " + player +
         ", una o dos frases, maximo 260 caracteres. " +
-        ("Gesto y dialogo SOLO en espanol, sin palabras inglesas." if spanish else "Everything in English.")
+        ("Gesto y dialogo SOLO en espanol, sin palabras inglesas." if spanish else "Everything in English.") +
+        slang_clause(job)
     )
     messages = [{"role": "system", "content": instruction}]
     previous = ("\n".join("Antes " + player + " dijo: " + old[:300]

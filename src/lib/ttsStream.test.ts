@@ -75,10 +75,16 @@ it("does not play a mismatched device voice when neural TTS has no quota", async
 
 it("speaks dialogue without narrating roleplay actions or spelling vocalizations", () => {
   expect(roleplaySpeechText("*Me acerco a Daniel* ¿Trajiste la carta?")).toBe("¿Trajiste la carta?");
-  expect(roleplaySpeechText("*Sollozo* No puedo seguir.")).toBe("No puedo seguir.");
+  expect(roleplaySpeechText("*Sollozo* No puedo seguir.")).toBe("[crying] No puedo seguir.");
   expect(roleplayPerformance("*Sollozo* No puedo seguir.")).toBe("sad");
   expect(roleplaySpeechText("*Gimo de dolor* Ahhh, me duele.")).toBe("Ay, me duele.");
   expect(roleplayPerformance("*Gimo de dolor* Ahhh, me duele.")).toBe("pain");
+  expect(roleplaySpeechText("*Gimo de placer* Sí, así.")).toBe("Sí, así.");
+  expect(roleplayPerformance("*Gimo de placer* Sí, así.")).toBe("pleasure");
+  expect(roleplaySpeechText("*Grito* ¡Basta!")).toBe("[gasps] ¡Basta!");
+  expect(roleplayPerformance("*Grito* ¡Basta!")).toBe("scream");
+  expect(roleplaySpeechText("*Sonrío* Hola.")).toBe("[laughing] Hola.");
+  expect(roleplayPerformance("*Sonrío* Hola.")).toBe("amused");
   expect(roleplaySpeechText("*Río* No me lo esperaba.")).toBe("[laughing] No me lo esperaba.");
   expect(roleplaySpeechText("*Suspiro* Tenemos que hablar.")).toBe("[sigh] Tenemos que hablar.");
 });
