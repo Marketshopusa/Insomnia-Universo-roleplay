@@ -104,7 +104,7 @@ def clean_turns(raw, latest):
 
 def memory_transcript(turns, player, character):
     """Opening facts plus the latest beats. The local model only has 4096 tokens."""
-    recent_count = min(8, len(turns))
+    recent_count = min(4, len(turns))
     older, recent = turns[:-recent_count], turns[-recent_count:]
     if not older:
         return "", recent
@@ -113,11 +113,11 @@ def memory_transcript(turns, player, character):
         who = character if turn["role"] == "assistant" else player
         return who + ": " + clip_text(turn["content"], limit)
 
-    opening = [line(turn, 220) for turn in older[:4]]
-    budget = 2200 - sum(len(item) + 1 for item in opening)
+    opening = [line(turn, 160) for turn in older[:2]]
+    budget = 700 - sum(len(item) + 1 for item in opening)
     tail = []
-    for turn in reversed(older[4:]):
-        item = line(turn, 140)
+    for turn in reversed(older[2:]):
+        item = line(turn, 110)
         if budget < len(item) + 1:
             break
         budget -= len(item) + 1
@@ -130,8 +130,8 @@ def conversation_messages(job):
     spanish = job.get("language") == "es"
     character = str(story.get("character_role") or "personaje presente")[:160]
     player = str(story.get("player_role") or "protagonista")[:160]
-    latest = str(job.get("userMessage") or "")[:1500]
-    premise = clip_text(story.get("description") or "", 360)
+    latest = clip_text(job.get("userMessage") or "", 700)
+    premise = clip_text(story.get("description") or "", 180)
     turns = clean_turns((job.get("history") or [])[-48:], latest)
     chronicle, recent = memory_transcript(turns, player, character)
     memory = (
@@ -158,34 +158,49 @@ def conversation_messages(job):
     messages = [{"role": "system", "content": instruction}]
     for turn in recent:
         who = character if turn["role"] == "assistant" else player
-        messages.append({"role": turn["role"], "content": who + ": " + clip_text(turn["content"], 320)})
+        messages.append({"role": turn["role"], "content": who + ": " + clip_text(turn["content"], 180)})
     closing = latest + "\n\nSigue ahora esta misma historia, como " + character + ", sin borrar lo que ya pasó."
     messages.append({"role": "user", "content": closing})
+    return trim_messages(messages)
+
+def trim_messages(messages, limit=4200):
+    """Keep the prompt inside the 4096-token local model, or llama refuses the turn."""
+    while sum(len(item["content"]) for item in messages) > limit and len(messages) > 2:
+        del messages[1]
+    total = sum(len(item["content"]) for item in messages)
+    if total > limit:
+        messages[-1]["content"] = clip_text(messages[-1]["content"], max(180, len(messages[-1]["content"]) - (total - limit)))
     return messages
+
+def exact_copy(content, previous):
+    current = normalize_reply(content)
+    prior = normalize_reply(previous)
+    return bool(current and prior and current == prior)
 
 def reply_for(job):
     started = time.monotonic()
     raw = (job.get("history") or [])[-48:]
     latest = str(job.get("userMessage") or "")
+    previous = next((str(turn.get("content") or "") for turn in reversed(raw)
+                     if turn.get("role") == "assistant"), "")
     messages = conversation_messages(job)
-    instruction = messages[0]["content"]
+    parsed = ""
     for attempt in range(2):
-        raw_reply = model_chat(messages, 0.62 + attempt * 0.08, 220, json_mode=True)
         try:
-            content = parse_role_reply(raw_reply)
-        except (ValueError, TypeError, AttributeError, json.JSONDecodeError):
-            content = ""
-        invalid = (not content or len(content) > 520 or
-                   normalize_reply(content) == normalize_reply(latest) or
-                   repeated_reply(content, raw[-12:]))
-        if not invalid:
+            raw_reply = model_chat(messages, 0.7 + attempt * 0.1, 220, json_mode=True)
+            parsed = parse_role_reply(raw_reply)
+        except Exception as error:
+            print("Chat attempt failed", job.get("jobId", "local"), attempt, repr(error)[:180], flush=True)
+            parsed = ""
+        if parsed and not exact_copy(parsed, previous) and normalize_reply(parsed) != normalize_reply(latest):
             print("Chat generation timing", job.get("jobId", "local"),
                   "total", round(time.monotonic() - started, 2),
                   "retry", attempt, flush=True)
-            return content
-        messages = [{"role": "system", "content": instruction +
-                     " La respuesta anterior se salió de la historia. Mantén los mismos hechos, el mismo lugar y las mismas relaciones."},
-                    *messages[1:]]
+            return parsed
+        messages = trim_messages(messages, 2600)
+        messages[0]["content"] += " Responde al mensaje nuevo. No copies la frase anterior."
+    if parsed:
+        return parsed
     raise RuntimeError("Local response left the ongoing story")
 
 def handle(cloud, owner, name):
