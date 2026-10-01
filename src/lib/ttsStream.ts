@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { speakWithDeviceVoice } from "@/lib/browserSpeechFallback";
 const FUNCTIONS_URL = "/api/speech";
 const PCM_SAMPLE_RATE = 24_000;
 
@@ -6,6 +7,7 @@ class SpeechHttpError extends Error {
   constructor(public readonly status: number, message: string) { super(message); }
 }
 let paymentRequiredUntil = 0;
+let providerQuotaUntil = 0;
 
 export interface SpeechStream {
   /** Resolves only after the complete audio has finished playing. */
@@ -78,6 +80,7 @@ async function receivePcmOnce(text: string, voice: string, signal: AbortSignal, 
   if (!response.ok || !response.body) {
     const payload = await response.json().catch(() => null) as { message?: string; detail?: string } | null;
     if (response.status === 402) paymentRequiredUntil = Date.now() + 60_000;
+    if (response.status === 429) providerQuotaUntil = Date.now() + 45_000;
     throw new SpeechHttpError(response.status, payload?.message || payload?.detail || `tts_failed_${response.status}`);
   }
 
@@ -127,6 +130,7 @@ async function receivePcmOnce(text: string, voice: string, signal: AbortSignal, 
 
 async function receivePcm(text: string, voice: string, signal: AbortSignal, onChunk: (bytes: Uint8Array) => void) {
   if (Date.now() < paymentRequiredUntil) throw new SpeechHttpError(402, "Voice provider has no credits");
+  if (Date.now() < providerQuotaUntil) throw new SpeechHttpError(429, "Gemini voice quota temporarily exhausted");
   let lastError: unknown;
   for (let attempt = 0; attempt < 2; attempt += 1) {
     let audioStarted = false;
@@ -161,11 +165,12 @@ function decodePcm(value: string, carry: Uint8Array): { bytes: Uint8Array; carry
  * Plays PCM as the provider sends it. All pieces share one AudioContext clock,
  * so they remain in order without waiting for the full phrase to download.
  */
-export function streamSpeech(text: string, voice: string): SpeechStream {
+export function streamSpeech(text: string, voice: string, language = "es", onFallback?: () => void): SpeechStream {
   const controller = new AbortController();
   let context: AudioContext | null = null;
   const sources = new Set<AudioBufferSourceNode>();
   let stopped = false;
+  let browserSpeaking = false;
   let schedulingComplete = false;
   let finishPlayback: () => void = () => {};
   let markStarted: () => void = () => {};
@@ -196,6 +201,7 @@ export function streamSpeech(text: string, voice: string): SpeechStream {
     if (stopped) return;
     stopped = true;
     controller.abort();
+    if (browserSpeaking) window.speechSynthesis?.cancel();
     finishPlayback();
     for (const source of sources) {
       try { source.stop(); } catch { /* Already ended. */ }
@@ -247,6 +253,25 @@ export function streamSpeech(text: string, voice: string): SpeechStream {
       if (!stopped) stop();
     } catch (error) {
       if (stopped || (error instanceof DOMException && error.name === "AbortError")) return;
+      const status = error instanceof SpeechHttpError ? error.status : 0;
+      const canUseBackup = !playbackReported && (status === 402 || status === 429 || status >= 500 || error instanceof TypeError);
+      if (canUseBackup) {
+        try {
+          await context?.close();
+          context = null;
+          browserSpeaking = true;
+          await speakWithDeviceVoice(text, language, controller.signal, () => {
+            reportFirstPlayback();
+            onFallback?.();
+          });
+          browserSpeaking = false;
+          if (!stopped) stop();
+          return;
+        } catch (backupError) {
+          browserSpeaking = false;
+          console.warn("Device voice backup failed:", backupError);
+        }
+      }
       stop();
       throw error;
     }

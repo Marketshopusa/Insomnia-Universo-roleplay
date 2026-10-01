@@ -392,7 +392,14 @@ type Mode = "select" | "read" | "roleplay";
        streamRef.current = null;
        setPlayingId(id);
        const activeVoice = voiceRef.current;
-       const speech = streamSpeech(text, activeVoice);
+       const speech = streamSpeech(text, activeVoice, language, () => {
+          toast({
+            title: language === "es" ? "Voz de respaldo activada" : "Device voice activated",
+            description: language === "es"
+              ? "Gemini llegÃ³ a su lÃ­mite. Esta voz procede de tu dispositivo y puede sonar diferente."
+              : "Gemini reached its limit. This voice comes from your device and may sound different.",
+          });
+        });
        streamRef.current = speech;
        await speech.done;
        if (streamRef.current === speech) {

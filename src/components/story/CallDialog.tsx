@@ -104,7 +104,14 @@ export const CallDialog = ({
 
   const speak = async (text: string) => {
     try {
-      const speech = streamSpeech(text, voice);
+      const speech = streamSpeech(text, voice, language, () => {
+        toast({
+          title: es ? "Voz de respaldo activada" : "Device voice activated",
+          description: es
+            ? "Gemini llegÃ³ a su lÃ­mite. Esta voz procede de tu dispositivo y puede sonar diferente."
+            : "Gemini reached its limit. This voice comes from your device and may sound different.",
+        });
+      });
       streamRef.current = speech;
       await speech.done;
       streamRef.current = null;
