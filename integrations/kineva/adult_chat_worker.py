@@ -118,29 +118,27 @@ def reply_for(job):
         except (ValueError, TypeError, AttributeError):
             pass
     fact_prompt = (
-        "Analiza DOS mensajes consecutivos del usuario " + player + " en una historia. " +
-        character + " es otro personaje. El mensaje ANTERIOR aporta el evento mas reciente; " +
-        "el mensaje ACTUAL puede ser una pregunta corta que continua ese evento. " +
-        "Devuelve SOLO JSON breve con claves acciones_usuario, acciones_personaje, " +
-        "hecho_actual, estado_vigente, que_ya_ocurrio, que_debe_responder_personaje. " +
-        "En 'estado_vigente' explica quien hizo, envio y recibio el objeto reciente. " +
-        "Distingue ANTERIOR de ACTUAL; si hay dos objetos parecidos no los mezcles. " +
-        "No uses ninguna premisa inicial, no inventes y no escribas la respuesta del personaje."
+        "Resume solo los hechos de los mensajes del usuario en un rol. "
+        "El ANTERIOR es contexto; el ACTUAL manda. No inventes ni redactes la respuesta. "
+        "Devuelve JSON BREVE con exactamente tres claves: "
+        "hecho_actual (que ocurrio ahora), actores_y_objetos (quien hizo, envio y recibio que), "
+        "pendiente (que debe contestar el personaje). Maximo una frase corta por clave."
     )
+
     started = time.monotonic()
     fact_context = user_turns[-1][:650] if user_turns and len(latest) < 150 else ""
     fact_input = ("MENSAJE ANTERIOR de " + player + ": " + fact_context + "\n\n"
                   if fact_context else "") + "MENSAJE ACTUAL de " + player + ": " + latest
     facts_text = model_chat([{"role": "system", "content": fact_prompt},
-                             {"role": "user", "content": fact_input}], 0.1, 260, json_mode=True)
+                             {"role": "user", "content": fact_input}], 0.1, 140, json_mode=True)
     fact_seconds = time.monotonic() - started
     try:
         facts = json.loads(facts_text)
         if not isinstance(facts, dict):
             raise ValueError("facts must be an object")
-        facts = {key: str(facts.get(key) or "")[:260] for key in (
-            "acciones_usuario", "acciones_personaje", "hecho_actual", "estado_vigente",
-            "que_ya_ocurrio", "que_debe_responder_personaje")}
+        facts = {key: str(facts.get(key) or "")[:220] for key in (
+            "hecho_actual", "actores_y_objetos", "pendiente")}
+
     except (ValueError, TypeError):
         facts = {"hecho_actual": latest[:400]}
     premise_clause = ("Premisa inicial: " + premise + ". " if len(raw) < 2 else "")
@@ -155,13 +153,15 @@ def reply_for(job):
         "reacciona ahora sin retroceder ni repetir las frases anteriores. " +
         "Conserva las relaciones y el tono de la escena; evita sermones genericos. " +
         "No inventes confesiones, sentimientos ni acciones previas que el historial no confirme. " +
+        "Si te preguntan algo, responde claramente en la primera frase; si no sabes, dilo. " +
+        "No afirmes reconocer un objeto o simbolo sin que el historial lo confirme. " +
         "En 'dialogo' habla DIRECTAMENTE a " + player + " usando 'tu', nunca te refieras " +
         "a el como si fuera una tercera persona. No decidas acciones de " + player +
         ". Devuelve SOLO JSON con 'gesto' y 'dialogo'. " +
         "'gesto': accion propia en primera persona, maximo 80 caracteres. " +
         "'dialogo': lo que le dices directamente a " + player +
         ", una o dos frases, maximo 260 caracteres. " +
-        ("Todo en espanol." if spanish else "Everything in English.")
+        ("Gesto y dialogo SOLO en espanol, sin palabras inglesas." if spanish else "Everything in English.")
     )
     messages = [{"role": "system", "content": instruction}]
     previous = ("\n".join("Antes " + player + " dijo: " + old[:300]
