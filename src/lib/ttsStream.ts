@@ -75,10 +75,6 @@ function splitSpeechText(text: string, maximumLength = 700): string[] {
 }
 
 export function roleplaySpeechText(text: string): string {
-  let dialogue = text.replace(/\*[^*]+\*/g, " ").replace(/\s+/g, " ").trim();
-  // Stage directions describe actions on screen; the character speaks only dialogue.
-  if (!dialogue) return "";
-  dialogue = dialogue.replace(/\ba+h{2,}\b/gi, "Ay").replace(/\bm{3,}\b/gi, "Mmm");
   const performance = roleplayPerformance(text);
   // Pleasure and pain stay in the prompt. A spoken tag would be read aloud by Chirp.
   const cue = performance === "scream" ? "[gasps]"
@@ -86,7 +82,14 @@ export function roleplaySpeechText(text: string): string {
     : performance === "amused" ? "[laughing]"
     : performance === "soft" ? "[sigh]"
     : "";
-  return [cue && !dialogue.startsWith(cue) ? cue : "", dialogue].filter(Boolean).join(" ");
+  let spoken = text
+    .replace(/\*([^*]+)\*/g, (_, direction: string) => ` ${direction.trim()}. `)
+    .replace(/[*_#`]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!spoken) return "";
+  spoken = spoken.replace(/\ba+h{2,}\b/gi, "Ay").replace(/\bm{3,}\b/gi, "Mmm");
+  return [cue && !spoken.startsWith(cue) ? cue : "", spoken].filter(Boolean).join(" ");
 }
 
 export function roleplayPerformance(text: string): Performance {
@@ -242,10 +245,10 @@ export function streamSpeech(text: string, voice: string, language = "es", onFal
       if (context.state === "suspended") await context.resume();
       if (stopped || !context) return;
       const playbackEnded = new Promise<void>((resolve) => { finishPlayback = resolve; });
-      const textChunks = splitSpeechText(roleplay ? roleplaySpeechText(text) : text);
+      const textChunks = splitSpeechText(roleplay ? roleplaySpeechText(text) : text, roleplay ? 900 : 700);
       const performance = roleplay ? roleplayPerformance(text) : "neutral";
       if (textChunks.length === 0) { stop(); return; }
-      if (textChunks[0].length > 220) {
+      if (!roleplay && textChunks[0].length > 220) {
         const firstParts = splitSpeechText(textChunks[0], 180);
         if (firstParts.length > 1) textChunks.splice(0, 1, firstParts[0], firstParts.slice(1).join(" "));
       }

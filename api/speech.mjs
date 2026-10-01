@@ -115,7 +115,7 @@ const key = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
   const geminiAvailable = Boolean(key && key !== "[SENSITIVE]");
   if (!geminiAvailable && !isChirpConfigured()) return res.status(503).json({ error: "neural_voice_not_configured" });
   const raw = typeof req.body?.text === "string" ? req.body.text : "";
-  const text = raw.replace(/[*_#]/g, "").replace(/\s+/g, " ").trim().slice(0, 900);
+  const text = raw.replace(/[*_#]/g, "").replace(/\s+/g, " ").trim().slice(0, req.body?.roleplay === true ? 1400 : 900);
   const plainText = removePerformanceCues(text);
   if (!plainText) return res.status(400).json({ error: "missing_text" });
   const voice = previewVoice(req.body.voice);
@@ -141,12 +141,15 @@ const key = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
   if (eligible.length === 0) quotaExceeded = true;
 
   const tryPreview = async (queue) => {
-    for (const model of geminiAvailable ? queue : []) {
+    const pending = geminiAvailable ? [...queue] : [];
+    const retried = new Set();
+    while (pending.length) {
+      const model = pending.shift();
       const modelStartedAt = Date.now();
       try {
         const legacy = model === "gemini-3.1-flash-tts-preview" || model === "gemini-2.5-flash-preview-tts";
         const speechText = legacy
-          ? `Interpreta solo el diálogo. ${accent} ${mood} [laughing], [crying], [gasps] y [sigh] indican sonidos; no leas las etiquetas ni agregues palabras. El placer y el dolor se oyen en la voz, sin decir esas palabras. DIÁLOGO:\n` + text
+          ? `Lee en voz alta toda la escena, narración y diálogo, sin omitir la narración. ${accent} ${mood} [laughing], [crying], [gasps] y [sigh] indican sonidos; no leas las etiquetas ni agregues palabras. El placer y el dolor se oyen en la voz, sin decir esas palabras. ESCENA:\n` + text
           : text;
         const upstream = await fetch(
           legacy
@@ -180,8 +183,15 @@ const key = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
           quotaExceeded ||= upstream.status === 429;
           if (upstream.status === 429) {
             const retrySeconds = Number(upstream.headers.get("retry-after"));
-            quotaCooldownUntil.set(model, Date.now() + (Number.isFinite(retrySeconds) && retrySeconds > 0
-              ? Math.min(retrySeconds * 1000, 120_000) : 45_000));
+            const waitMs = Number.isFinite(retrySeconds) && retrySeconds > 0
+              ? Math.min(retrySeconds * 1000, 120_000) : 45_000;
+            quotaCooldownUntil.set(model, Date.now() + waitMs);
+            if (req.body.roleplay === true && !retried.has(model)) {
+              retried.add(model);
+              await new Promise((resolve) => setTimeout(resolve, Math.min(waitMs, 6000)));
+              pending.unshift(model);
+              continue;
+            }
           }
           console.warn("Insomnia speech provider", model, upstream.status, "after_ms", Date.now() - modelStartedAt);
           if ([429, 500, 502, 503, 504].includes(upstream.status)) continue;
@@ -204,13 +214,19 @@ const key = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
     return false;
   };
 
-  // Roleplay and Spanish stay on the same Gemini preview voice and accent.
-  // Chirp is only the fallback: it drops laughs and, without es-VE/es-AR/etc., sounds like neutral es-US.
+  // Roleplay stays on Gemini preview. Chirp drops the laugh and the chosen accent,
+  // so it must not replace that voice after a few lines.
   // Cloud texttospeech Gemini (Agent Platform) stays behind GCP_GEMINI_TTS_TRIAL_ENABLED.
   const keepVoice = req.body.roleplay === true || emotional || req.body.language !== "en";
   const cooled = models.filter((model) => !eligible.includes(model));
   if (keepVoice && await tryPreview(eligible)) return;
   if (keepVoice && await tryPreview(cooled)) return;
+  if (req.body.roleplay === true) {
+    return res.status(quotaExceeded ? 429 : lastStatus).json({
+      error: quotaExceeded ? "tts_quota_exhausted" : "tts_unavailable",
+      message: "La voz con acento y expresiones está en pausa unos segundos. Pulsa Escuchar otra vez. No cambié a la voz plana.",
+    });
+  }
 
   if (isChirpConfigured()) {
     const chirpStarted = Date.now();
