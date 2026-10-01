@@ -77,7 +77,7 @@ def slang_clause(job):
     if job.get("language") != "es":
         return ""
     region = str(job.get("region") or "mx")
-    return " " + REGION_SLANG.get(region, REGION_SLANG["mx"])
+    return " " + REGION_SLANG.get(region, REGION_SLANG["mx"]) + " Mantén esta misma región en cada turno. No vuelvas al español neutro ni cambies de país."
 
 def reply_for(job):
     from difflib import SequenceMatcher

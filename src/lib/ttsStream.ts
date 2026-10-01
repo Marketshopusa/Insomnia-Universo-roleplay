@@ -20,7 +20,7 @@ const wait = (milliseconds: number) =>
 
 type Performance = "neutral" | "amused" | "sad" | "pain" | "pleasure" | "scream" | "soft";
 
-async function requestSpeech(text: string, voice: string, language: string, region: string, performance: Performance, signal: AbortSignal) {
+async function requestSpeech(text: string, voice: string, language: string, region: string, performance: Performance, roleplay: boolean, signal: AbortSignal) {
   const { data: { session } } = await supabase.auth.getSession();
   return fetch(FUNCTIONS_URL, {
     method: "POST",
@@ -28,7 +28,7 @@ async function requestSpeech(text: string, voice: string, language: string, regi
       "Content-Type": "application/json",
       ...(session?.access_token ? { Authorization: "Bearer " + session.access_token } : {}),
     },
-    body: JSON.stringify({ text, voice, language, region, performance, stream: true }),
+    body: JSON.stringify({ text, voice, language, region, performance, roleplay, stream: true }),
     signal,
   });
 }
@@ -91,6 +91,7 @@ export function roleplaySpeechText(text: string): string {
 
 export function roleplayPerformance(text: string): Performance {
   const directions = [...text.matchAll(/\*([^*]+)\*/g)].map((match) => match[1]).join(" ");
+  const spoken = text.replace(/\*[^*]+\*/g, " ");
   if (/(?:placer|pleasure|gemido de placer|gimo de placer|(?:^|\s)gim[oe]\b)/i.test(directions)
     && !/dolor|pain/i.test(directions)) return "pleasure";
   if (/(?:dolor|pain|quejid|me dol[ií]|grito de dolor)/i.test(directions)) return "pain";
@@ -98,11 +99,12 @@ export function roleplayPerformance(text: string): Performance {
   if (/(?:solloz|llor|l[aá]grima|\bcry\b|\bsob\b)/i.test(directions)) return "sad";
   if (/(?:\br[ií][eo]\b|\brisas?\b|carcajad|sonr[ií]|laugh)/i.test(directions)) return "amused";
   if (/(?:suspiro|exhalo|susurr|whisper|sigh)/i.test(directions)) return "soft";
+  if (/(?:\b(?:ja){2,}ja\b|\b(?:je){2,}je\b|\bjaja+\b|\bjeje+\b)/i.test(spoken)) return "amused";
   return "neutral";
 }
 
-async function receivePcmOnce(text: string, voice: string, language: string, region: string, performance: Performance, signal: AbortSignal, onChunk: (bytes: Uint8Array) => void, onProvider: () => void) {
-  const response = await requestSpeech(text, voice, language, region, performance, signal);
+async function receivePcmOnce(text: string, voice: string, language: string, region: string, performance: Performance, roleplay: boolean, signal: AbortSignal, onChunk: (bytes: Uint8Array) => void, onProvider: () => void) {
+  const response = await requestSpeech(text, voice, language, region, performance, roleplay, signal);
   if (!response.ok || !response.body) {
     const payload = await response.json().catch(() => null) as { message?: string; detail?: string } | null;
     throw new SpeechHttpError(response.status, payload?.message || payload?.detail || `tts_failed_${response.status}`);
@@ -153,12 +155,12 @@ async function receivePcmOnce(text: string, voice: string, language: string, reg
   if (audioSeconds < Math.max(0.8, spokenWords * 0.19)) throw new Error("tts_audio_too_short");
 }
 
-async function receivePcm(text: string, voice: string, language: string, region: string, performance: Performance, signal: AbortSignal, onChunk: (bytes: Uint8Array) => void, onProvider: () => void) {
+async function receivePcm(text: string, voice: string, language: string, region: string, performance: Performance, roleplay: boolean, signal: AbortSignal, onChunk: (bytes: Uint8Array) => void, onProvider: () => void) {
   let lastError: unknown;
   for (let attempt = 0; attempt < 2; attempt += 1) {
     let audioStarted = false;
     try {
-      return await receivePcmOnce(text, voice, language, region, performance, signal, (bytes) => {
+      return await receivePcmOnce(text, voice, language, region, performance, roleplay, signal, (bytes) => {
         audioStarted = true;
         onChunk(bytes);
       }, onProvider);
@@ -272,7 +274,7 @@ export function streamSpeech(text: string, voice: string, language = "es", onFal
       };
       for (const chunk of textChunks) {
         if (stopped) return;
-        await receivePcm(chunk, voice, language, region, performance, controller.signal, schedule, () => {
+        await receivePcm(chunk, voice, language, region, performance, roleplay, controller.signal, schedule, () => {
           if (providerNoticeSent) return;
           providerNoticeSent = true;
           onFallback?.();

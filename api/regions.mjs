@@ -19,11 +19,12 @@ export function chirpLocale(language, region) {
 
 export function slangInstruction(language, region) {
   if (language !== "es") return "";
-  return REGIONS[normalizeRegion(region)].slang;
+  const item = REGIONS[normalizeRegion(region)];
+  return `${item.slang} Mantén esta misma región en cada turno. No vuelvas al español neutro ni cambies de país.`;
 }
 
 export function accentHint(language, region) {
-  if (language === "en") return "Speak American English.";
+  if (language === "en") return "Speak American English. Keep this same voice on every line.";
   const item = REGIONS[normalizeRegion(region)];
-  return `Habla en español con acento de ${item.label}.`;
+  return `Habla en español con acento de ${item.label}. Mantén exactamente ese acento y la misma voz en cada frase. No cambies a español neutro ni a otro país.`;
 }

@@ -30,7 +30,7 @@ const slangFor = (region?: string) => {
     es: "Escribe con jerga de España: vale, tío y mola.",
     cl: "Escribe con jerga de Chile: po, cachai y al tiro.",
   };
-  return lines[region || ""] || lines.mx;
+  return (lines[region || ""] || lines.mx) + " Mantén esta misma región en cada turno. No vuelvas al español neutro ni cambies de país.";
 };
 
 const sleep = (milliseconds: number) =>
