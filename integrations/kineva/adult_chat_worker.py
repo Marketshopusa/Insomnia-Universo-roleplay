@@ -117,44 +117,27 @@ def reply_for(job):
                 return fast
         except (ValueError, TypeError, AttributeError):
             pass
-    fact_prompt = (
-        "Resume solo los hechos de los mensajes del usuario en un rol. "
-        "El ANTERIOR es contexto; el ACTUAL manda. No inventes ni redactes la respuesta. "
-        "Devuelve JSON BREVE con exactamente tres claves: "
-        "hecho_actual (que ocurrio ahora), actores_y_objetos (quien hizo, envio y recibio que), "
-        "pendiente (que debe contestar el personaje). Maximo una frase corta por clave."
-    )
-
+    # Ground the reply in the user's actual turn in one model pass. A separate
+    # fact-extraction request doubled latency and sometimes distorted actors.
     started = time.monotonic()
-    fact_context = user_turns[-1][:650] if user_turns and len(latest) < 150 else ""
-    fact_input = ("MENSAJE ANTERIOR de " + player + ": " + fact_context + "\n\n"
-                  if fact_context else "") + "MENSAJE ACTUAL de " + player + ": " + latest
-    facts_text = model_chat([{"role": "system", "content": fact_prompt},
-                             {"role": "user", "content": fact_input}], 0.1, 140, json_mode=True)
-    fact_seconds = time.monotonic() - started
-    try:
-        facts = json.loads(facts_text)
-        if not isinstance(facts, dict):
-            raise ValueError("facts must be an object")
-        facts = {key: str(facts.get(key) or "")[:220] for key in (
-            "hecho_actual", "actores_y_objetos", "pendiente")}
-
-    except (ValueError, TypeError):
-        facts = {"hecho_actual": latest[:400]}
+    facts = {"mensaje_actual": latest[:1200]}
+    if user_turns and len(latest) < 150:
+        facts["mensaje_anterior"] = user_turns[-1][:300]
     premise_clause = ("Premisa inicial: " + premise + ". " if len(raw) < 2 else "")
     instruction = (
         "Interpreta SOLO a " + character + " en un chat de rol adulto con " + player + ". " +
         premise_clause +
         "Los hechos recientes tienen prioridad absoluta sobre la premisa inicial. " +
         "No vuelvas a un evento anterior si ya hay uno nuevo. " +
-        "Hechos del turno actual, con actores comprobados: " +
-        json.dumps(facts, ensure_ascii=False) +
-        ". Lo que hizo " + player + " no lo hiciste tu. El hecho actual ya ocurrio: " +
-        "reacciona ahora sin retroceder ni repetir las frases anteriores. " +
+        "Mensaje actual literal: " + json.dumps(facts, ensure_ascii=False) +
+        ". Determina quien hizo cada accion y a quien pertenece cada objeto ANTES de responder. " +
+        "Lo que hizo " + player + " no lo hiciste tu. Reacciona al hecho actual " +
+        "sin retroceder ni repetir las frases anteriores. " +
         "Conserva las relaciones y el tono de la escena; evita sermones genericos. " +
         "No inventes confesiones, sentimientos ni acciones previas que el historial no confirme. " +
         "Si te preguntan algo, responde claramente en la primera frase; si no sabes, dilo. " +
-        "No afirmes reconocer un objeto o simbolo sin que el historial lo confirme. " +
+        "Si una foto o un objeto no tiene contenido descrito, no inventes su aspecto ni su significado. " +
+        "No afirmes reconocer un lugar, objeto o simbolo sin que el historial lo confirme. " +
         "En 'dialogo' habla DIRECTAMENTE a " + player + " usando 'tu', nunca te refieras " +
         "a el como si fuera una tercera persona. No decidas acciones de " + player +
         ". Devuelve SOLO JSON con 'gesto' y 'dialogo'. " +
@@ -185,7 +168,7 @@ def reply_for(job):
                    repeated_reply(content, raw[-12:]))
         if not invalid:
             print("Chat generation timing", job.get("jobId", "local"),
-                  "facts", round(fact_seconds, 2), "total", round(time.monotonic() - started, 2),
+                  "total", round(time.monotonic() - started, 2),
                   "retry", attempt, flush=True)
             return content
         messages = [messages[0], messages[-1]]
@@ -255,7 +238,7 @@ def main():
                     if item.get("name", "").endswith(".json"):
                         worked = handle(cloud, owner, item["name"]) or worked
             if not worked:
-                time.sleep(3)
+                time.sleep(1)
         except Exception as error:
             print("Chat worker error", repr(error)[:350], file=sys.stderr, flush=True)
             time.sleep(8)

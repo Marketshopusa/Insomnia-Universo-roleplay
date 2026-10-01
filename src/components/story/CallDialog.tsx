@@ -104,14 +104,7 @@ export const CallDialog = ({
 
   const speak = async (text: string) => {
     try {
-      const speech = streamSpeech(text, voice, language, () => {
-        toast({
-          title: es ? "Voz neural alternativa activada" : "Neural backup activated",
-          description: es
-            ? "Chirp 3 HD está leyendo con una voz neural asignada al personaje."
-            : "Chirp 3 HD is speaking with the character's assigned neural voice.",
-        });
-      });
+      const speech = streamSpeech(text, voice, language);
       streamRef.current = speech;
       await speech.done;
       streamRef.current = null;

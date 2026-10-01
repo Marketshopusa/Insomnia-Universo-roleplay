@@ -392,14 +392,7 @@ type Mode = "select" | "read" | "roleplay";
        streamRef.current = null;
        setPlayingId(id);
        const activeVoice = voiceRef.current;
-       const speech = streamSpeech(text, activeVoice, language, () => {
-          toast({
-            title: language === "es" ? "Voz neural alternativa activada" : "Neural backup activated",
-            description: language === "es"
-              ? "Chirp 3 HD está leyendo con una voz neural asignada al personaje."
-              : "Chirp 3 HD is speaking with the character's assigned neural voice.",
-          });
-        });
+       const speech = streamSpeech(text, activeVoice, language);
        streamRef.current = speech;
        await speech.done;
        if (streamRef.current === speech) {

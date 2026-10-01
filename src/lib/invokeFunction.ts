@@ -62,8 +62,8 @@ async function callAdultStoryChat<T>(body: unknown): Promise<FunctionResult<T>> 
       try { if (key) localStorage.setItem(key, JSON.stringify({ jobId, signature, createdAt: Date.now() })); } catch {}
     }
     let consecutiveErrors = 0;
-    for (let attempt = 0; attempt < 75; attempt += 1) {
-      await wait(consecutiveErrors ? 700 : 1500);
+    for (let attempt = 0; attempt < 120; attempt += 1) {
+      await wait(consecutiveErrors ? 700 : attempt < 20 ? 500 : 1000);
       const result = await supabase.functions.invoke<ChatReply>("adult-story-chat", {
         body: { action: "status", jobId },
       });
