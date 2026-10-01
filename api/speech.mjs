@@ -72,6 +72,14 @@ export default async function handler(req, res) {
     ? await createClient(supabaseUrl, publishableKey, { auth: { persistSession: false } }).auth.getUser(jwt)
     : { data: null, error: true };
   if (error || !data?.user) return res.status(401).json({ error: "login_required" });
+  if (req.body?.metric === "device_voice") {
+    const state = req.body.state;
+    const reasons = new Set(["unavailable", "start_timeout", "playback_failed", "unknown"]);
+    if (!["attempt", "started", "failed"].includes(state)) return res.status(400).json({ error: "invalid_voice_metric" });
+    const reason = reasons.has(req.body.reason) ? req.body.reason : "unknown";
+    console.info("Insomnia device_voice", state, state === "failed" ? reason : "");
+    return res.status(204).end();
+  }
   if (req.body?.metric === "first_playback") {
     const elapsed = Number(req.body.elapsedMs);
     if (!Number.isFinite(elapsed) || elapsed < 0 || elapsed > 120_000) {

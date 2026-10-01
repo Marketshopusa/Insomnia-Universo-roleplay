@@ -177,6 +177,20 @@ export function streamSpeech(text: string, voice: string, language = "es", onFal
   const started = new Promise<void>((resolve) => { markStarted = resolve; });
   const requestedAt = performance.now();
   let playbackReported = false;
+  const reportDeviceVoice = (state: "attempt" | "started" | "failed", reason = "unknown") => {
+    void supabase.auth.getSession().then(({ data }) => {
+      if (!data.session?.access_token) return;
+      return fetch(FUNCTIONS_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer " + data.session.access_token,
+        },
+        body: JSON.stringify({ metric: "device_voice", state, reason }),
+        keepalive: true,
+      });
+    }).catch(() => {});
+  };
   const reportFirstPlayback = () => {
     if (playbackReported) return;
     playbackReported = true;
@@ -260,8 +274,10 @@ export function streamSpeech(text: string, voice: string, language = "es", onFal
           await context?.close();
           context = null;
           browserSpeaking = true;
+          reportDeviceVoice("attempt");
           await speakWithDeviceVoice(text, language, controller.signal, () => {
             reportFirstPlayback();
+            reportDeviceVoice("started");
             onFallback?.();
           });
           browserSpeaking = false;
@@ -269,7 +285,13 @@ export function streamSpeech(text: string, voice: string, language = "es", onFal
           return;
         } catch (backupError) {
           browserSpeaking = false;
+          const reason = backupError instanceof Error ? backupError.message : "";
+          reportDeviceVoice("failed", reason === "device_voice_unavailable" ? "unavailable"
+            : reason === "device_voice_start_timeout" ? "start_timeout"
+            : reason === "device_voice_failed" ? "playback_failed" : "unknown");
           console.warn("Device voice backup failed:", backupError);
+          stop();
+          throw new SpeechHttpError(status || 503, "device_voice_failed");
         }
       }
       stop();

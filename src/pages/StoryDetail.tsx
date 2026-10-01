@@ -413,9 +413,11 @@ type Mode = "select" | "read" | "roleplay";
        const status = (e as { status?: number })?.status;
        toast({
          title: language === "es" ? "La voz Gemini no está disponible" : "Gemini voice is unavailable",
-         description: status === 429
-           ? (language === "es" ? "Se alcanzó la cuota de voces. El texto sigue disponible." : "The voice quota has been reached. The text remains available.")
-           : (language === "es" ? "No se pudo reproducir la voz seleccionada. Inténtalo de nuevo." : "The selected voice could not play. Please try again."),
+         description: (e as Error)?.message === "device_voice_failed"
+           ? (language === "es" ? "Gemini no tiene cuota y la voz de respaldo de este navegador tampoco pudo iniciar." : "Gemini has no voice quota, and this browser could not start its backup voice.")
+           : status === 429
+             ? (language === "es" ? "Se alcanzó la cuota de voces. El texto sigue disponible." : "The voice quota has been reached. The text remains available.")
+             : (language === "es" ? "No se pudo reproducir la voz seleccionada. Inténtalo de nuevo." : "The selected voice could not play. Please try again."),
          variant: "destructive",
        });
      }

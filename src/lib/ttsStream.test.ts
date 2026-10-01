@@ -103,3 +103,16 @@ it("uses the device voice when Gemini has exhausted its voice quota", async () =
   expect(spoken).toEqual(["Hola, quÃ© tal."]);
   expect(fallback).toHaveBeenCalledTimes(1);
 });
+
+it("reports a failed backup when the browser has no speech synthesis", async () => {
+  vi.spyOn(supabase.auth, "getSession").mockResolvedValue({ data: { session: { access_token: "test" } }, error: null } as any);
+  vi.stubGlobal("fetch", vi.fn(async () => new Response(null, { status: 204 })));
+  vi.stubGlobal("AudioContext", class {
+    state = "running";
+    close() { return Promise.resolve(); }
+  });
+  vi.stubGlobal("speechSynthesis", undefined);
+  vi.stubGlobal("SpeechSynthesisUtterance", undefined);
+  const speech = streamSpeech("Una prueba.", "scarlett-hd", "es");
+  await expect(speech.done).rejects.toThrow("device_voice_failed");
+});

@@ -121,9 +121,11 @@ export const CallDialog = ({
       const status = (error as { status?: number })?.status;
       toast({
         title: es ? "La voz Gemini no está disponible" : "Gemini voice is unavailable",
-        description: status === 429
-          ? (es ? "Se alcanzó la cuota de voces. Puedes seguir por texto." : "The voice quota has been reached. You can continue by text.")
-          : (es ? "No se pudo reproducir la voz seleccionada." : "The selected voice could not play."),
+        description: (error as Error)?.message === "device_voice_failed"
+          ? (es ? "Gemini no tiene cuota y la voz de respaldo de este navegador tampoco pudo iniciar." : "Gemini has no voice quota, and this browser could not start its backup voice.")
+          : status === 429
+            ? (es ? "Se alcanzó la cuota de voces. Puedes seguir por texto." : "The voice quota has been reached. You can continue by text.")
+            : (es ? "No se pudo reproducir la voz seleccionada." : "The selected voice could not play."),
         variant: "destructive",
       });
       hangUp();
