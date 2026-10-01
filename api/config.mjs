@@ -1,0 +1,2 @@
+export const supabaseUrl = "https://cexzmelshvbgabihtfvx.supabase.co";
+export const publishableKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNleHptZWxzaHZiZ2FiaWh0ZnZ4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk3MDI4OTMsImV4cCI6MjEwNTI3ODg5M30.xfgDBFh74dz_7e0B064Xgesch209RNYU1fZ9zyjFCCY";

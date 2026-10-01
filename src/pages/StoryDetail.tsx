@@ -8,10 +8,13 @@
  import { Skeleton } from "@/components/ui/skeleton";
 import { ArrowLeft, Send, Play, Image as ImageIcon, Volume2, VolumeX, BookOpen, MessageSquare, Loader2, RotateCw, Sparkles, ChevronDown, ChevronUp } from "lucide-react";
 import { CallDialog } from "@/components/story/CallDialog";
-import { STORY_VOICES, getStoryVoice, setStoryVoice, voiceGender } from "@/lib/voices";
+import { VoiceMenu } from "@/components/story/VoiceMenu";
+import { RegionMenu } from "@/components/story/RegionMenu";
+import { getStoryVoice, setStoryVoice } from "@/lib/voices";
+import { getStoryRegion, setStoryRegion } from "@/lib/regions";
 import { streamSpeech, type SpeechStream } from "@/lib/ttsStream";
 import { invokeFunctionWithRetry } from "@/lib/invokeFunction";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { generateSceneImage } from "@/lib/sceneImage";
  import { useStory } from "@/hooks/useStories";
  import { useLanguage } from "@/contexts/LanguageContext";
 import { useTranslatedTexts, useTranslatedText } from "@/hooks/useTranslatedTexts";
@@ -52,6 +55,8 @@ type Mode = "select" | "read" | "roleplay";
   const [narrativeLoading, setNarrativeLoading] = useState(false);
   const [voice, setVoice] = useState<string>(() => getStoryVoice(storyId));
   const voiceRef = useRef<string>(voice);
+  const [region, setRegion] = useState<string>(() => getStoryRegion(storyId));
+  const regionRef = useRef<string>(region);
   const audioCacheRef = useRef<Map<string, string>>(new Map());
   const changeVoice = (value: string) => {
     setVoice(value);
@@ -59,10 +64,24 @@ type Mode = "select" | "read" | "roleplay";
     setStoryVoice(storyId, value);
     audioCacheRef.current.clear();
   };
+  const changeRegion = (value: string) => {
+    setRegion(value);
+    regionRef.current = value;
+    setStoryRegion(storyId, value);
+    audioCacheRef.current.clear();
+  };
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const streamRef = useRef<SpeechStream | null>(null);
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [sessionLoaded, setSessionLoaded] = useState(false);
+  useEffect(() => {
+    const nextVoice = getStoryVoice(storyId);
+    const nextRegion = getStoryRegion(storyId);
+    setVoice(nextVoice);
+    voiceRef.current = nextVoice;
+    setRegion(nextRegion);
+    regionRef.current = nextRegion;
+  }, [storyId]);
    const audioUnlockedRef = useRef(false);
 
    // Generated scene illustrations keyed by message id (or "narrative")
@@ -301,15 +320,42 @@ type Mode = "select" | "read" | "roleplay";
           .filter((m) => m.id !== "intro")
           .map((m) => ({ role: m.role, content: m.content })),
         userMessage,
-        explicit: story?.story_type === "real_sex" || !!story?.has_explicit_images,
+        adultMode: adultEnabled && consentGiven,
+        region: regionRef.current,
     });
     if (error || !data?.content) {
-      const code = (data as any)?.error;
+      const status = (error as { context?: Response } | null)?.context?.status;
+      const code = status === 402 ? "credits_exhausted" : (data as any)?.error;
       if (code === "rate_limited") toast({ title: t("mode.rateLimited"), variant: "destructive" });
       else if (code === "credits_exhausted") toast({ title: t("mode.creditsExhausted"), variant: "destructive" });
+      else if (code === "local_chat_unavailable") toast({
+        title: language === "es" ? "Kineva local no está disponible" : "Local Kineva is unavailable",
+        description: data?.message,
+        variant: "destructive",
+      });
+      else if (code === "local_chat_failed") toast({
+        title: language === "es" ? "La respuesta repitió la escena" : "The reply repeated the scene",
+        description: language === "es" ? "Tu mensaje sigue listo para reenviar. El motor local está conectado." : "Your message is ready to resend. The local engine is connected.",
+        variant: "destructive",
+      });
+      else if (code === "chat_status_unavailable" || code === "chat_job_expired") toast({
+        title: language === "es" ? "No pudimos recuperar la respuesta" : "Could not retrieve the reply",
+        description: data?.message,
+        variant: "destructive",
+      });
       else if (code === "content_blocked") toast({
         title: language === "es" ? "Esta escena no puede continuar" : "This scene cannot continue",
         description: data?.message,
+        variant: "destructive",
+      });
+      else if (code === "off_role") toast({
+        title: language === "es" ? "La respuesta salió de la escena; inténtalo de nuevo" : "The reply left the scene; try again",
+        description: language === "es" ? "Conservé tu mensaje para reenviarlo." : "Your message is ready to resend.",
+        variant: "destructive",
+      });
+      else if (code === "ai_timeout" || code === "ai_unavailable" || status === 503 || status === 504) toast({
+        title: language === "es" ? (status === 503 ? "Gemini est\u00e1 temporalmente saturado" : "La IA no pudo responder") : (status === 503 ? "Gemini is temporarily busy" : "AI could not respond"),
+        description: data?.message || (language === "es" ? "Tu mensaje sigue en el cuadro para reenviarlo." : "Your message remains in the box for another attempt."),
         variant: "destructive",
       });
       else toast({ title: t("mode.aiError"), variant: "destructive" });
@@ -348,14 +394,11 @@ type Mode = "select" | "read" | "roleplay";
        timestamp: new Date(),
      };
  
-     setMessages((prev) => [...prev, assistantMessage]);
+     const nextMessages = [...messages, userMessage, assistantMessage];
+     setMessages(nextMessages);
      setIsTyping(false);
-      if (!isMuted) playAudio(responseContent, assistantMessage.id);
-       // Persist the updated conversation
-       setMessages((prev) => {
-         saveSession(prev, narrative || null, mode);
-         return prev;
-       });
+     if (!isMuted) void playAudio(responseContent, assistantMessage.id);
+     void saveSession(nextMessages, narrative || null, mode);
    };
 
   const playAudio = async (text: string, id: string) => {
@@ -368,7 +411,7 @@ type Mode = "select" | "read" | "roleplay";
        streamRef.current = null;
        setPlayingId(id);
        const activeVoice = voiceRef.current;
-       const speech = streamSpeech(text, activeVoice);
+       const speech = streamSpeech(text, activeVoice, language, undefined, id !== "narrative" && id !== "intro", regionRef.current);
        streamRef.current = speech;
        await speech.done;
        if (streamRef.current === speech) {
@@ -376,76 +419,19 @@ type Mode = "select" | "read" | "roleplay";
          setPlayingId(null);
        }
      } catch (e) {
-       console.error("playAudio error:", e);
-        streamRef.current = null;
-        speakWithBrowser(text, id);
+       console.error("Gemini voice playback failed:", e);
+       streamRef.current = null;
+       setPlayingId(null);
+       const status = (e as { status?: number })?.status;
+       toast({
+         title: language === "es" ? "La voz Gemini no está disponible" : "Gemini voice is unavailable",
+         description: status === 429
+           ? (language === "es" ? "Se alcanzó la cuota de voces. El texto sigue disponible." : "The voice quota has been reached. The text remains available.")
+           : (language === "es" ? "No se pudo reproducir la voz seleccionada. Inténtalo de nuevo." : "The selected voice could not play. Please try again."),
+         variant: "destructive",
+       });
      }
    };
-
-    const femaleHints = [
-      "female", "mujer", "femenina",
-      "mónica", "monica", "paulina", "lucia", "luciana", "helena",
-      "google español", "google us english", "samantha", "victoria",
-      "sara", "sabina", "elvira", "zira", "tessa", "karen", "fiona",
-    ];
-    const maleHints = ["male", "hombre", "diego", "jorge", "carlos", "pablo", "enrique", "george", "daniel", "fred"];
-
-    // Device fallback keeps the gender of the voice chosen for this story
-    const pickDeviceVoice = (langCode: string): SpeechSynthesisVoice | null => {
-      const voices = window.speechSynthesis.getVoices();
-      if (!voices.length) return null;
-      const base = langCode.split("-")[0];
-      const inLang = voices.filter((v) => v.lang?.toLowerCase().startsWith(base));
-      const pool = inLang.length ? inLang : voices;
-      const wantMale = voiceGender(voiceRef.current) === "male";
-      const wanted = wantMale ? maleHints : femaleHints;
-      const other = wantMale ? femaleHints : maleHints;
-      const byHint = pool.find((v) => wanted.some((h) => v.name.toLowerCase().includes(h)));
-      const notOther = pool.find((v) => !other.some((h) => v.name.toLowerCase().includes(h)));
-      return byHint || notOther || pool[0] || null;
-    };
-
-    const speakWithBrowser = (text: string, id: string) => {
-      try {
-        if (typeof window === "undefined" || !("speechSynthesis" in window)) {
-          setPlayingId(null);
-          return;
-        }
-        // Strip markdown markers for cleaner narration
-        const clean = text.replace(/[*_#`"]/g, "").trim();
-        const langCode = language === "es" ? "es-ES" : "en-US";
-
-        const speak = () => {
-          window.speechSynthesis.cancel();
-          const utter = new SpeechSynthesisUtterance(clean);
-          utter.lang = langCode;
-          const deviceVoice = pickDeviceVoice(langCode);
-          if (deviceVoice) utter.voice = deviceVoice;
-          // Warm, calm narration; pitch follows the chosen voice gender
-          utter.rate = 0.95;
-          utter.pitch = voiceGender(voiceRef.current) === "male" ? 0.9 : 1.15;
-          utter.onend = () => setPlayingId(null);
-          utter.onerror = () => setPlayingId(null);
-          setPlayingId(id);
-          window.speechSynthesis.speak(utter);
-        };
-
-        // Voices may load asynchronously the first time
-        if (window.speechSynthesis.getVoices().length === 0) {
-          window.speechSynthesis.onvoiceschanged = () => {
-            window.speechSynthesis.onvoiceschanged = null;
-            speak();
-          };
-          // Trigger load
-          window.speechSynthesis.getVoices();
-        } else {
-          speak();
-        }
-      } catch (e) {
-        console.error("speakWithBrowser error:", e);
-        setPlayingId(null);
-      }
-    };
 
    const stopAudio = () => {
      streamRef.current?.stop();
@@ -496,77 +482,39 @@ type Mode = "select" | "read" | "roleplay";
 
    // Generate a vivid illustration of a scene; the cover is only a loose identity reference
    const illustrateScene = async (text: string, key: string) => {
-     if (!story || illustratingId) return;
-     setIllustratingId(key);
-     try {
-       const { data, error } = await supabase.functions.invoke("illustrate-scene", {
-         body: {
-            sceneText: buildIllustrationContext(text, key),
-            focusText: text,
-           coverImageUrl: story.cover_image && !isVideoCover ? story.cover_image : undefined,
-           characterRole: story.character_role,
-            playerRole: story.player_role,
-            storyTitle: story.title,
-            storyDescription: story.description,
-           explicit: story.story_type === "real_sex" || !!story.has_explicit_images,
-           language,
-         },
-       });
-        if (error || !(data as any)?.taskId) {
-         toast({
-           title: language === "es" ? "No se pudo ilustrar la escena" : "Could not illustrate the scene",
-            description: (data as any)?.detail || error?.message,
-           variant: "destructive",
-         });
-         return;
-       }
-        const taskId = (data as any).taskId as string;
-        let completedImageUrl: string | undefined;
-        for (let attempt = 0; attempt < 40; attempt += 1) {
-          await new Promise((resolve) => window.setTimeout(resolve, 3000));
-          const { data: statusData, error: statusError } = await supabase.functions.invoke("illustrate-scene", {
-            body: {
-              action: "status",
-              taskId,
-              prompt: (data as any).prompt,
-              blueprint: (data as any).blueprint,
-              focusText: text,
-            },
-          });
-          if (statusError || (statusData as any)?.error) {
-            toast({
-              title: language === "es" ? "No se pudo ilustrar la escena" : "Could not illustrate the scene",
-              description: (statusData as any)?.detail || statusError?.message,
-              variant: "destructive",
-            });
-            return;
-          }
-          if ((statusData as any)?.status === "complete" && (statusData as any)?.imageUrl) {
-            completedImageUrl = (statusData as any).imageUrl;
-            break;
-          }
-        }
-        if (!completedImageUrl) {
-          toast({
-            title: language === "es" ? "La ilustración está tardando demasiado" : "The illustration is taking too long",
-            description: language === "es" ? "Inténtalo nuevamente en unos minutos." : "Please try again in a few minutes.",
-            variant: "destructive",
-          });
-          return;
-        }
-        setSceneImages((prev) => ({ ...prev, [key]: completedImageUrl }));
-     } finally {
-       setIllustratingId(null);
-     }
-   };
+      if (!story || illustratingId) return;
+      setIllustratingId(key);
+      try {
+        const imageUrl = await generateSceneImage({
+          source: "story",
+          sceneKey: key,
+          sceneText: buildIllustrationContext(text, key),
+          focusText: text,
+          coverImageUrl: story.cover_image && !isVideoCover ? story.cover_image : undefined,
+          characterRole: story.character_role,
+          playerRole: story.player_role,
+          storyTitle: story.title,
+          storyDescription: story.description,
+          language,
+        });
+        setSceneImages((previous) => ({ ...previous, [key]: imageUrl }));
+      } catch (failure) {
+        toast({
+          title: language === "es" ? "No se pudo ilustrar la escena" : "Could not illustrate the scene",
+          description: failure instanceof Error ? failure.message : undefined,
+          variant: "destructive",
+        });
+      } finally {
+        setIllustratingId(null);
+      }
+    };
 
-   const generateNarrative = async () => {
+    const generateNarrative = async () => {
      if (!story) return;
      setNarrativeLoading(true);
      setNarrative("");
      try {
-       const { data, error } = await supabase.functions.invoke("generate-narrative", {
-         body: {
+       const { data, error } = await invokeFunctionWithRetry<any>("generate-narrative", {
            story: {
              title: story.title,
              description: story.description,
@@ -575,9 +523,9 @@ type Mode = "select" | "read" | "roleplay";
              story_type: story.story_type,
            },
            language,
+           region: regionRef.current,
            explicit: story.story_type === "real_sex" || !!story.has_explicit_images,
            chapters: 5,
-         },
        });
        if (error || !(data as any)?.content) {
          const code = (data as any)?.error;
@@ -903,18 +851,8 @@ type Mode = "select" | "read" | "roleplay";
                 <div className="p-4 border-b border-border flex items-center justify-between flex-wrap gap-2">
                   <h2 className="font-display text-lg">{tTitle || story.title}</h2>
                   <div className="flex gap-2 items-center">
-                    <Select value={voice} onValueChange={changeVoice}>
-                      <SelectTrigger className="h-9 w-[132px] sm:w-[150px] rounded-none text-xs">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {STORY_VOICES.map((option) => (
-                          <SelectItem key={option.value} value={option.value} className="text-xs">
-                            {option.label} · {language === "es" ? option.descriptionEs : option.descriptionEn}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <VoiceMenu value={voice} language={language} onChange={changeVoice} />
+                    <RegionMenu value={region} language={language} onChange={changeRegion} />
                     {narrative && (
                       playingId === "narrative" ? (
                         <Button variant="outline" size="sm" onClick={stopAudio} className="gap-2">
@@ -990,25 +928,17 @@ type Mode = "select" | "read" | "roleplay";
             {mode === "roleplay" && (
              <Card className="h-[600px] flex flex-col bg-card border-border">
                {/* Chat Header */}
-               <div className="p-4 border-b border-border flex items-center justify-between">
+               <div className="p-4 border-b border-border flex flex-wrap items-center justify-between gap-2">
                   <h2 className="font-display text-lg">{tTitle || story.title}</h2>
-                 <div className="flex items-center gap-1">
-                    <Select value={voice} onValueChange={changeVoice}>
-                      <SelectTrigger className="h-9 w-[132px] sm:w-[150px] rounded-none text-xs">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {STORY_VOICES.map((option) => (
-                          <SelectItem key={option.value} value={option.value} className="text-xs">
-                            {option.label} · {language === "es" ? option.descriptionEs : option.descriptionEn}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                 <div className="flex flex-wrap items-center gap-1">
+                    <VoiceMenu value={voice} language={language} onChange={changeVoice} />
+                    <RegionMenu value={region} language={language} onChange={changeRegion} />
                     <CallDialog
                       story={story}
                       language={language}
                       voice={voice}
+                      region={region}
+                      adultMode={adultEnabled && consentGiven}
                       history={messages
                         .filter((message) => message.id !== "intro")
                         .map((message) => ({ role: message.role, content: message.content }))}

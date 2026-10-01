@@ -7,8 +7,10 @@ export interface ShortsSeries {
   premise: string | null;
   category: string;
   is_adult: boolean;
+  is_published: boolean;
   cover_url: string | null;
   created_by: string | null;
+  video_provider: "gateway" | "kineva";
   created_at: string;
 }
 
@@ -22,6 +24,8 @@ export interface ShortsEpisode {
   video_url: string | null;
   status: string;
   error_message: string | null;
+  job_id: string | null;
+  kineva_shot_count: number | null;
 }
 
 export interface SeriesWithEpisodes extends ShortsSeries {

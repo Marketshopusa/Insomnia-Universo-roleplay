@@ -33,8 +33,13 @@ Deno.serve(async (req) => {
   const apiKey = Deno.env.get("LOVABLE_API_KEY");
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
   const service = createClient(supabaseUrl, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+  const userClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!, {
+    global: { headers: { Authorization: req.headers.get("Authorization") ?? "" } },
+  });
 
   try {
+    const { data: auth } = await userClient.auth.getUser();
+    if (!auth.user) return json({ error: "unauthorized" }, 401);
     if (!apiKey) throw new Error("Missing LOVABLE_API_KEY");
     const { action, episodeId } = await req.json();
     if (!episodeId) return json({ error: "episodeId requerido" }, 400);
@@ -46,6 +51,10 @@ Deno.serve(async (req) => {
       .maybeSingle();
     if (error) throw error;
     if (!episode) return json({ error: "episodio no encontrado" }, 404);
+    const { data: series } = await service.from("shorts_series")
+      .select("created_by,video_provider").eq("id", episode.series_id).maybeSingle();
+    if (!series || series.created_by !== auth.user.id) return json({ error: "forbidden" }, 403);
+    if (series.video_provider === "kineva") return json({ error: "use_kineva_video" }, 409);
 
     if (action === "create") {
       if (episode.video_url) return json({ status: "completed", path: episode.video_url });

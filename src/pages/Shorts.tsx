@@ -1,3 +1,4 @@
+import { invokeFunctionWithRetry } from "@/lib/invokeFunction";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
@@ -15,10 +16,10 @@ import {
 } from "@/components/ui/dialog";
 import { Loader2, Plus, Sparkles } from "lucide-react";
 import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
 import { useAdultMode } from "@/contexts/AdultModeContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { useShorts } from "@/hooks/useShorts";
+import { uploadKinevaReference } from "@/lib/kinevaReference";
 import { ShortEpisodeCard } from "@/components/shorts/ShortEpisodeCard";
 
 const Shorts = () => {
@@ -28,6 +29,7 @@ const Shorts = () => {
   const [open, setOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [premise, setPremise] = useState("");
+  const [referenceImage, setReferenceImage] = useState<File | null>(null);
   const [category, setCategory] = useState("romance");
   const [isAdult, setIsAdult] = useState(adultEnabled);
   const [episodes, setEpisodes] = useState(3);
@@ -64,18 +66,21 @@ const Shorts = () => {
       return;
     }
     setCreating(true);
-    const { data, error } = await supabase.functions.invoke("generate-shorts-series", {
-      body: { premise, category, isAdult, episodes },
-    });
-    setCreating(false);
-    if (error || data?.error) {
-      toast.error("No se pudo generar la serie");
-      return;
+    try {
+      const referencePath = await uploadKinevaReference(user.id, premise, referenceImage);
+      const { data, error } = await invokeFunctionWithRetry<{ error?: string }>(
+        "generate-shorts-series", { premise, category, isAdult, episodes, referencePath });
+      if (error || data?.error) throw new Error(data?.error || error?.message || "No se pudo generar la serie");
+      toast.success("Serie creada. Genera el video de cada episodio.");
+      setOpen(false);
+      setPremise("");
+      setReferenceImage(null);
+      reload();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo generar la serie");
+    } finally {
+      setCreating(false);
     }
-    toast.success("Serie creada. Genera el video de cada episodio.");
-    setOpen(false);
-    setPremise("");
-    reload();
   };
 
   return (
@@ -86,7 +91,7 @@ const Shorts = () => {
             <p className="text-[11px] uppercase tracking-[0.3em] text-accent">Insomnia Shorts</p>
             <h1 className="font-display text-3xl md:text-4xl mt-1">Series verticales generadas por IA</h1>
             <p className="text-sm text-muted-foreground mt-2 max-w-xl">
-              Micro-episodios cinematográficos de 15 segundos. Desliza para continuar la historia.
+              Episodios verticales cinematográficos. Desliza para continuar la historia.
             </p>
           </div>
 
@@ -114,6 +119,13 @@ const Shorts = () => {
                     className="rounded-none"
                     placeholder="Ella vuelve al hotel donde lo dejó hace diez años, y él sigue tras la barra…"
                   />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="shorts-reference">Imagen de referencia (opcional)</Label>
+                  <Input id="shorts-reference" type="file" accept="image/png,image/jpeg,image/webp"
+                    onChange={(event) => setReferenceImage(event.target.files?.[0] ?? null)}
+                    className="rounded-none" />
+                  <p className="text-xs text-muted-foreground">Si no subes una foto, Kineva crearÃ¡ la primera imagen a partir de tu idea.</p>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-2">

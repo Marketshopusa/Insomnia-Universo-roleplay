@@ -68,9 +68,16 @@ serve(async (req) => {
     if (!resp.ok) {
       const detail = await resp.text();
       console.error("STT error:", resp.status, detail);
+      let message = "La transcripcion no esta disponible.";
+      try {
+        const parsed = JSON.parse(detail);
+        message = parsed?.message || parsed?.error?.message || message;
+      } catch {
+        // Keep the local message when the provider does not return JSON.
+      }
       return new Response(
-        JSON.stringify({ error: "stt_error", detail, status: resp.status }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({ error: "stt_error", message, status: resp.status }),
+        { status: resp.status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 

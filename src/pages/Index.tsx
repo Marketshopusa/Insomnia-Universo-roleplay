@@ -33,7 +33,7 @@ import { ShieldAlert, Lock, Sparkles } from "lucide-react";
    const [currentPage, setCurrentPage] = useState(1);
  
    // Audio settings state
-   const [voiceName, setVoiceName] = useState("scarlett-hd");
+   const [voiceName, setVoiceName] = useState("Aoede");
    const [genderFilter, setGenderFilter] = useState("All");
    const [styleFilter, setStyleFilter] = useState("All");
    const [isMuted, setIsMuted] = useState(false);

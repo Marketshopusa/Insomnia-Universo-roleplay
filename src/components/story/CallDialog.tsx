@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { Phone, PhoneOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { supabase } from "@/integrations/supabase/client";
+
 import { toast } from "@/hooks/use-toast";
 import { startWavRecording, blobToBase64, type WavRecorder } from "@/lib/wavRecorder";
-import { voiceGender } from "@/lib/voices";
 import { streamSpeech, type SpeechStream } from "@/lib/ttsStream";
+import { regionLocale } from "@/lib/regions";
 import { invokeFunctionWithRetry } from "@/lib/invokeFunction";
 
 type CallState = "idle" | "listening" | "thinking" | "speaking";
@@ -15,10 +15,23 @@ interface Turn {
   content: string;
 }
 
+interface BrowserRecognition {
+  lang: string;
+  continuous: boolean;
+  interimResults: boolean;
+  onresult: ((event: { results: ArrayLike<{ 0: { transcript: string }; isFinal: boolean }> }) => void) | null;
+  onerror: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+  abort: () => void;
+}
+
 interface CallDialogProps {
   story: any;
   language: string;
   voice: string;
+  region: string;
+  adultMode: boolean;
   history: Turn[];
   onTurn: (userText: string, assistantText: string | null) => void;
 }
@@ -39,6 +52,8 @@ export const CallDialog = ({
   story,
   language,
   voice,
+  region,
+  adultMode,
   history,
   onTurn,
 }: CallDialogProps) => {
@@ -51,6 +66,8 @@ export const CallDialog = ({
   const historyRef = useRef<Turn[]>(history);
   const activeRef = useRef(false);
   const timersRef = useRef<number[]>([]);
+  const recognitionRef = useRef<BrowserRecognition | null>(null);
+  const transcriptRef = useRef("");
 
   useEffect(() => {
     historyRef.current = history;
@@ -80,49 +97,32 @@ export const CallDialog = ({
     stopSpeaking();
     recorderRef.current?.cancel();
     recorderRef.current = null;
+    recognitionRef.current?.abort();
+    recognitionRef.current = null;
+    transcriptRef.current = "";
     setState("idle");
   };
 
   useEffect(() => hangUp, []);
 
-  const speakWithDevice = (text: string) =>
-    new Promise<void>((resolve) => {
-      if (!("speechSynthesis" in window)) {
-        resolve();
-        return;
-      }
-      window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(text.replace(/[*_#`\"]/g, ""));
-      utterance.lang = es ? "es-ES" : "en-US";
-      utterance.rate = 0.98;
-      utterance.pitch = 1.1;
-      const wantMale = voiceGender(voice) === "male";
-      utterance.pitch = wantMale ? 0.9 : 1.1;
-      const hints = wantMale
-        ? ["male", "hombre", "diego", "jorge", "carlos", "pablo", "enrique", "george", "daniel", "fred"]
-        : ["female", "mujer", "femenina", "monica", "mónica", "paulina", "lucia", "helena", "samantha", "sabina", "elvira", "zira"];
-      const voices = window.speechSynthesis.getVoices();
-      const pool = voices.filter((item) => item.lang.toLowerCase().startsWith(es ? "es" : "en"));
-      const candidates = pool.length ? pool : voices;
-      const matchingVoice =
-        candidates.find((item) => hints.some((hint) => item.name.toLowerCase().includes(hint))) ||
-        candidates[0];
-      if (matchingVoice) utterance.voice = matchingVoice;
-      utterance.onend = () => resolve();
-      utterance.onerror = () => resolve();
-      window.speechSynthesis.speak(utterance);
-    });
-
   const speak = async (text: string) => {
     try {
-      const speech = streamSpeech(text, voice);
+      const speech = streamSpeech(text, voice, language, undefined, true, region);
       streamRef.current = speech;
       await speech.done;
       streamRef.current = null;
-    } catch {
+    } catch (error) {
       streamRef.current?.stop();
       streamRef.current = null;
-      await speakWithDevice(text);
+      const status = (error as { status?: number })?.status;
+      toast({
+        title: es ? "La voz Gemini no está disponible" : "Gemini voice is unavailable",
+        description: status === 429
+          ? (es ? "Se alcanzó la cuota de voces. Puedes seguir por texto." : "The voice quota has been reached. You can continue by text.")
+          : (es ? "No se pudo reproducir la voz seleccionada." : "The selected voice could not play."),
+        variant: "destructive",
+      });
+      hangUp();
     }
   };
 
@@ -138,9 +138,19 @@ export const CallDialog = ({
         language,
         history: historyRef.current.slice(-12),
         userMessage: userText,
-        explicit: story?.story_type === "real_sex" || !!story?.has_explicit_images,
+        adultMode,
+        region,
     });
     if (error || !data?.content) {
+      const status = (error as { context?: Response } | null)?.context?.status;
+      if (status === 402 || data?.error === "credits_exhausted") {
+        return {
+          content: "", error: "credits_exhausted",
+          message: es
+            ? "El proveedor de IA no tiene creditos para responder."
+            : "The AI provider has no credits to respond.",
+        };
+      }
       return { content: "", error: data?.error, message: data?.message };
     }
     return { content: data.content, error: undefined, message: undefined };
@@ -157,6 +167,28 @@ export const CallDialog = ({
         return;
       }
       recorderRef.current = recorder;
+      transcriptRef.current = "";
+      const browser = window as Window & {
+        SpeechRecognition?: new () => BrowserRecognition;
+        webkitSpeechRecognition?: new () => BrowserRecognition;
+      };
+      const Recognition = browser.SpeechRecognition || browser.webkitSpeechRecognition;
+      if (Recognition) {
+        try {
+          const recognition = new Recognition();
+          recognition.lang = es ? regionLocale(region) : "en-US";
+          recognition.continuous = true;
+          recognition.interimResults = true;
+          recognition.onresult = (event) => {
+            transcriptRef.current = Array.from(event.results)
+              .map((result) => result[0]?.transcript || "").join(" ").trim();
+          };
+          recognition.start();
+          recognitionRef.current = recognition;
+        } catch {
+          recognitionRef.current = null;
+        }
+      }
 
       let silentFor = 0;
       let heardVoice = false;
@@ -198,6 +230,7 @@ export const CallDialog = ({
     clearTimers();
     if (!recorder) return;
     setState("thinking");
+    recognitionRef.current?.stop();
     const blob = await recorder.stop();
     if (!activeRef.current) return;
 
@@ -206,12 +239,25 @@ export const CallDialog = ({
       return;
     }
 
-    const audio = await blobToBase64(blob);
-    const { data, error } = await supabase.functions.invoke("speech-to-text", {
-      body: { audio, mimeType: "audio/wav", language: es ? "es" : "en" },
-    });
-    const userText = ((data as any)?.text || "").trim();
-    if (error || !userText) {
+    let userText = transcriptRef.current.trim();
+    recognitionRef.current = null;
+    if (!userText) {
+      const audio = await blobToBase64(blob);
+      const { data, error } = await invokeFunctionWithRetry<{ text?: string; error?: string }>("speech-to-text", { audio, mimeType: "audio/wav", language: es ? "es" : "en", region });
+      userText = ((data as any)?.text || "").trim();
+      if (error || (data as any)?.error) {
+        toast({
+          title: es ? "No se pudo transcribir la llamada" : "Could not transcribe the call",
+          description: es
+            ? "La voz en la nube no esta disponible. Puedes escribir tu mensaje en el chat."
+            : "Cloud transcription is unavailable. You can type your message in chat.",
+          variant: "destructive",
+        });
+        hangUp();
+        return;
+      }
+    }
+    if (!userText) {
       if (activeRef.current) void listen();
       return;
     }
@@ -223,15 +269,18 @@ export const CallDialog = ({
       historyRef.current = [...historyRef.current, { role: "user", content: userText }];
       onTurn(userText, null);
       toast({
-        title: replyResult.error === "content_blocked"
-          ? (es ? "Esta escena no puede continuar" : "This scene cannot continue")
-          : (es ? "El personaje no pudo responder" : "The character could not answer"),
+        title: replyResult.error === "credits_exhausted"
+          ? (es ? "Se agotaron los creditos de IA" : "AI credits are exhausted")
+          : replyResult.error === "content_blocked"
+            ? (es ? "Esta escena no puede continuar" : "This scene cannot continue")
+            : (es ? "El personaje no pudo responder" : "The character could not answer"),
         description: replyResult.message || (es
           ? "Guardamos lo que dijiste. La llamada continuará escuchando."
           : "What you said was saved. The call will keep listening."),
         variant: "destructive",
       });
-      void listen();
+      if (replyResult.error === "credits_exhausted") hangUp();
+      else void listen();
       return;
     }
 

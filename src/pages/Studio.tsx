@@ -1,6 +1,16 @@
-import { useState } from "react";
+import { invokeFunctionWithRetry } from "@/lib/invokeFunction";
+import { generateSceneImage } from "@/lib/sceneImage";
+import {
+  createLocalJob,
+  encodeLocalImage,
+  fetchLocalJob,
+  localVideoSrc,
+  probeLocalKineva,
+  type LocalJob,
+  type LocalStudioStatus,
+} from "@/lib/kinevaLocal";
+import { useEffect, useState } from "react";
 import { Clapperboard, Loader2, Sparkles } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
 
  import { MainLayout } from "@/components/layout/MainLayout";
  import { Button } from "@/components/ui/button";
@@ -31,7 +41,7 @@ import { useLanguage } from "@/contexts/LanguageContext";
    AlertDialogTitle,
    AlertDialogTrigger,
  } from "@/components/ui/alert-dialog";
- 
+
 const models = [
   { value: "apprentice-6", label: "Apprentice 6 (♦)" },
   { value: "master-pro", label: "Master Pro (♦♦)" },
@@ -44,7 +54,7 @@ const languages = [
 ];
 
 const chapterOptions = [3, 5, 7, 10, 15, 20];
- 
+
  const Studio = () => {
    const { user } = useAuth();
    const { toast } = useToast();
@@ -53,8 +63,12 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
    const createProject = useCreateNovelProject();
    const updateProject = useUpdateNovelProject();
    const deleteProject = useDeleteNovelProject();
- 
+
   const [model, setModel] = useState("apprentice-6");
+  const [referenceImage, setReferenceImage] = useState<File | null>(null);
+  const [localEpisodes, setLocalEpisodes] = useState(1);
+  const [localHealth, setLocalHealth] = useState<LocalStudioStatus>("missing-worker");
+  const [localJob, setLocalJob] = useState<LocalJob | null>(null);
   const [creativity, setCreativity] = useState("balanced");
   const [description, setDescription] = useState("");
   const [chapterCount, setChapterCount] = useState(7);
@@ -65,8 +79,10 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
   const [generatingVideos, setGeneratingVideos] = useState(false);
   const [videoProgress, setVideoProgress] = useState("");
   const [novel, setNovel] = useState<any>(null);
+   const [chapterImages, setChapterImages] = useState<Record<number, string>>({});
+   const [illustratingChapter, setIllustratingChapter] = useState<number | null>(null);
 
- 
+
   const creativityLevels = [
     { value: "conservative", label: t("studio.creativity.conservative") },
     { value: "balanced", label: t("studio.creativity.balanced") },
@@ -74,60 +90,58 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
     { value: "wild", label: t("studio.creativity.wild") },
   ];
 
-  const createVideosForNovel = async (generated: any) => {
-    const chapters = generated?.chapters ?? [];
-    if (chapters.length === 0) throw new Error("La novela no contiene capítulos para convertir en videos");
-
-    setGeneratingVideos(true);
-    setVideoProgress("Creando la serie de Shorts…");
-
-    const { data: series, error: seriesError } = await supabase
-      .from("shorts_series")
-      .insert({
-        title: generated.title || "Serie sin título",
-        premise: generated.logline || description || null,
-        category: "romance",
-        is_adult: !isSafeForWork,
-        created_by: user?.id,
-        is_published: true,
-      })
-      .select()
-      .single();
-    if (seriesError || !series) {
-      throw new Error(seriesError?.message || "No se pudo crear la serie de Shorts");
-    }
-
-    const episodesPayload = chapters.map((chapter: any, index: number) => ({
-      series_id: series.id,
-      episode_number: chapter.number ?? index + 1,
-      title: chapter.title || `Capítulo ${index + 1}`,
-      script: (chapter.content ?? "").slice(0, 2000),
-      video_prompt: `${chapter.video_prompt || chapter.content?.slice(0, 500) || ""}. Spoken dialogue and narration must be in ${language}. Tell the story through voices and actions only; never show captions, subtitles, narration, dialogue, or story text on screen.`,
-      status: "pending",
-    }));
-
-    const { data: episodes, error: episodesError } = await supabase
-      .from("shorts_episodes")
-      .insert(episodesPayload)
-      .select();
-    if (episodesError || !episodes) {
-      throw new Error(episodesError?.message || "No se pudieron crear los episodios");
-    }
-
-    let started = 0;
-    for (let index = 0; index < episodes.length; index += 1) {
-      setVideoProgress(`Iniciando video ${index + 1} de ${episodes.length}…`);
-      const { data, error } = await supabase.functions.invoke("shorts-video", {
-        body: { action: "create", episodeId: episodes[index].id },
+  useEffect(() => {
+    let cancelled = false;
+    const check = () => {
+      void probeLocalKineva().then((probe) => {
+        if (!cancelled) setLocalHealth(probe.status);
       });
-      if (!error && !data?.error) started += 1;
+    };
+    check();
+    const timer = window.setInterval(check, 5000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!localJob || ["completed", "failed"].includes(localJob.state)) return;
+    const timer = window.setInterval(() => {
+      void fetchLocalJob(localJob.id).then(setLocalJob).catch(() => {
+        setVideoProgress("Se perdió la conexión con Kineva en esta PC.");
+      });
+    }, 4000);
+    return () => window.clearInterval(timer);
+  }, [localJob?.id, localJob?.state]);
+
+  const localStatusText = localHealth === "ready"
+    ? "Kineva listo en esta PC."
+    : localHealth === "missing-comfy"
+      ? "Falta ComfyUI (127.0.0.1:8188). Enciéndelo en esta PC."
+      : localHealth === "missing-template"
+        ? "Falta la plantilla de Kineva en esta PC."
+        : "Falta el worker de Kineva (127.0.0.1:8787). Ábrelo en esta PC.";
+
+  const createVideosForNovel = async (generated: any) => {
+    if (localHealth === "missing-worker") {
+      throw new Error("Falta el worker de Kineva en esta PC (127.0.0.1:8787).");
     }
-
-    if (started === 0) throw new Error("La serie fue creada, pero el generador no pudo iniciar los videos");
-
+    if (localHealth === "missing-comfy") {
+      throw new Error("Falta ComfyUI en esta PC (127.0.0.1:8188).");
+    }
+    if (localHealth === "missing-template") {
+      throw new Error("Falta la plantilla de Kineva en esta PC.");
+    }
+    const idea = String(description || generated?.logline || generated?.title || "").trim();
+    setGeneratingVideos(true);
+    setVideoProgress("Encolando el video en esta PC…");
+    const image = referenceImage ? await encodeLocalImage(referenceImage) : null;
+    const job = await createLocalJob({ idea, image, episodes: localEpisodes });
+    setLocalJob(job);
     toast({
-      title: "Proyecto y videos creados",
-      description: `${started} de ${episodes.length} videos están generándose en la pestaña Shorts.`,
+      title: "Video en cola en esta PC",
+      description: `${job.total} episodio${job.total === 1 ? "" : "s"} con ComfyUI local.`,
     });
   };
 
@@ -143,19 +157,18 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
 
     setGenerating(true);
     setNovel(null);
+    let generated: any = null;
     try {
-      const { data, error } = await supabase.functions.invoke("generate-novel", {
-        body: {
+      const { data, error } = await invokeFunctionWithRetry<any>("generate-novel", {
           description,
           chapterCount,
           language,
           creativity,
           isSafeForWork,
-        },
       });
       if (error || data?.error) throw new Error(data?.error || error?.message);
 
-      const generated = data.novel;
+      generated = data.novel;
       setNovel(generated);
 
       const content = (generated.chapters ?? [])
@@ -185,11 +198,18 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
         const created = await createProject.mutateAsync(payload);
         setCurrentProjectId(created.id);
       }
-
+    } catch (e) {
+      toast({
+        title: "La novela en la nube no se generó",
+        description: e instanceof Error ? e.message : "El video local se encola igual.",
+        variant: "destructive",
+      });
+    }
+    try {
       await createVideosForNovel(generated);
     } catch (e) {
       toast({
-        title: "No se pudo generar el proyecto",
+        title: "No se pudo encolar el video en esta PC",
         description: e instanceof Error ? e.message : undefined,
         variant: "destructive",
       });
@@ -205,9 +225,8 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
       toast({ title: t("studio.toast.loginToCreate"), variant: "destructive" });
       return;
     }
-    const chapters = novel?.chapters ?? [];
-    if (!novel || chapters.length === 0) {
-      toast({ title: "Primero genera el proyecto completo con IA", variant: "destructive" });
+    if (description.trim().length < 5 && !novel?.logline) {
+      toast({ title: "Escribe la idea del video", variant: "destructive" });
       return;
     }
 
@@ -228,19 +247,43 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
    const handleWriteOutline = () => {
     toast({ title: t("studio.toast.outline"), description: t("studio.toast.outlineDesc") });
    };
- 
+
    const handleBlankNovel = () => {
      setDescription("");
      setCurrentProjectId(null);
     toast({ title: t("studio.toast.blank") });
    };
- 
+
+   const illustrateChapter = async (chapter: any, index: number) => {
+     if (!novel || illustratingChapter !== null) return;
+     setIllustratingChapter(index);
+     try {
+       const imageUrl = await generateSceneImage({
+         source: "novel",
+         sceneKey: String(chapter.number || index + 1),
+         focusText: String(chapter.content || chapter.summary || chapter.video_prompt || "").slice(0, 1800),
+         sceneText: (novel.chapters || []).slice(Math.max(0, index - 2), index + 1)
+           .map((item: any) => String(item.summary || item.content || "").slice(0, 600)).join("\n"),
+         storyTitle: novel.title,
+         storyDescription: novel.logline || description,
+         characterRole: JSON.stringify(novel.characters || []).slice(0, 1200),
+         playerRole: "",
+         language,
+       });
+       setChapterImages((previous) => ({ ...previous, [index]: imageUrl }));
+     } catch (failure) {
+       toast({ title: "No se pudo ilustrar el capÃ­tulo", description: failure instanceof Error ? failure.message : undefined, variant: "destructive" });
+     } finally {
+       setIllustratingChapter(null);
+     }
+   };
+
    const handleSaveProject = async () => {
      if (!user) {
       toast({ title: t("studio.toast.loginToSave"), variant: "destructive" });
        return;
      }
- 
+
      try {
        if (currentProjectId) {
          await updateProject.mutateAsync({
@@ -270,7 +313,7 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
         toast({ title: t("studio.toast.saveError"), variant: "destructive" });
      }
    };
- 
+
    const handleLoadProject = (project: any) => {
      setCurrentProjectId(project.id);
      setDescription(project.description || "");
@@ -281,7 +324,7 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
      setIsSafeForWork(project.is_safe_for_work);
     toast({ title: t("studio.toast.loaded") });
    };
- 
+
    const handleDeleteProjects = async () => {
      if (projects) {
        for (const project of projects) {
@@ -292,7 +335,7 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
        setDescription("");
      }
    };
- 
+
    const handleReset = () => {
      setDescription("");
      setModel("apprentice-6");
@@ -303,12 +346,13 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
      setCurrentProjectId(null);
     toast({ title: t("studio.toast.reset") });
    };
- 
+
    if (!user) {
      return (
        <MainLayout>
          <div className="container mx-auto px-4 py-16 text-center">
           <h1 className="text-3xl font-display mb-4">{t("studio.title")}</h1>
+          <p role="status" className={`mb-4 text-sm ${localHealth === "ready" ? "text-emerald-600" : "text-amber-600"}`}>{localStatusText}</p>
           <p className="text-muted-foreground mb-6">{t("studio.loginRequired")}</p>
            <Link to="/login">
             <Button>{t("nav.login")}</Button>
@@ -317,16 +361,20 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
        </MainLayout>
      );
    }
- 
+
    return (
      <MainLayout>
        <div className="container mx-auto px-4 py-8 max-w-4xl">
         <h1 className="text-3xl font-display text-center mb-8">{t("studio.title")}</h1>
- 
-         {/* AI Settings */}
+        <p role="status" className={`mb-6 text-center text-sm ${localHealth === "ready" ? "text-emerald-600" : "text-amber-600"}`}>{localStatusText}</p>
+
+         <Card className="p-6 mb-6 space-y-2">
+           <Label>Motor de video</Label>
+           <p className="text-sm font-medium">Kineva · ComfyUI en esta PC</p>
+         </Card>
          <Card className="p-6 mb-6">
           <h2 className="text-lg font-medium text-center mb-6">{t("studio.aiSection")}</h2>
-           
+
            <div className="grid grid-cols-2 gap-6">
              <div className="space-y-2">
               <Label>{t("studio.model")}:</Label>
@@ -343,7 +391,7 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
                  </SelectContent>
                </Select>
              </div>
- 
+
              <div className="space-y-2">
               <Label>{t("studio.creativity")}:</Label>
                <Select value={creativity} onValueChange={setCreativity}>
@@ -361,8 +409,29 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
              </div>
            </div>
          </Card>
- 
-         {/* Description */}
+
+          <Card className="p-6 mb-6 space-y-3">
+            <Label htmlFor="kineva-reference">Imagen inicial (opcional)</Label>
+            <input id="kineva-reference" type="file" accept="image/png,image/jpeg,image/webp"
+              onChange={(event) => setReferenceImage(event.target.files?.[0] ?? null)}
+              className="block w-full text-sm" />
+            <div className="space-y-2">
+              <Label>Episodios en esta PC</Label>
+              <Select value={String(localEpisodes)} onValueChange={(value) => setLocalEpisodes(Number(value))}>
+                <SelectTrigger className="w-56"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="1">1 episodio</SelectItem>
+                  <SelectItem value="2">2 episodios</SelectItem>
+                  <SelectItem value="3">3 episodios</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Sube una foto para conservar su identidad o deja este campo vacío. El video se crea en ComfyUI de esta PC, no en la nube.
+            </p>
+          </Card>
+
+        {/* Description */}
          <Card className="p-6 mb-6">
           <h2 className="text-lg font-medium text-center mb-4">{t("studio.description")}</h2>
            <Textarea
@@ -371,7 +440,7 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
              onChange={(e) => setDescription(e.target.value)}
              className="min-h-[200px] resize-none"
            />
- 
+
            <div className="flex flex-wrap items-center justify-between gap-4 mt-4">
              <div className="flex items-center gap-4">
                <div className="flex items-center gap-2">
@@ -389,13 +458,13 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
                    </SelectContent>
                  </Select>
                </div>
- 
+
                <div className="flex items-center gap-2">
                  <Switch checked={isSafeForWork} onCheckedChange={setIsSafeForWork} />
                 <Label>{t("studio.safeForWork")}</Label>
                </div>
              </div>
- 
+
              <div className="flex items-center gap-2">
               <Label>{t("studio.language")}:</Label>
                <Select value={language} onValueChange={setLanguage}>
@@ -413,7 +482,7 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
              </div>
            </div>
          </Card>
- 
+
         {/* Generar proyecto completo */}
         <Button
           size="lg"
@@ -432,6 +501,24 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
           )}
         </Button>
 
+        {localJob && (
+          <Card className="p-6 mb-6 space-y-4">
+            <h2 className="text-lg font-medium">Video en esta PC</h2>
+            <p role="status">
+              {localJob.state === "queued" ? "En cola…"
+                : localJob.state === "rendering" ? `Creando video ${localJob.current} de ${localJob.total}…`
+                : localJob.state === "failed" ? `Error: ${localJob.error || "Kineva no pudo crear el video."}`
+                : "Video listo."}
+            </p>
+            {localJob.videos?.map((video) => (
+              <div key={video.url}>
+                <h3 className="text-sm font-medium">Episodio {video.episode}</h3>
+                <video controls className="mt-2 w-full rounded-md" src={localVideoSrc(video.url)} />
+              </div>
+            ))}
+          </Card>
+        )}
+
         {novel && (
           <Card className="p-6 mb-6 space-y-6">
             <div className="flex flex-wrap items-start justify-between gap-4">
@@ -441,9 +528,6 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
                 <p className="text-sm text-muted-foreground mt-1">{novel.logline}</p>
               )}
               </div>
-              <Link to="/shorts">
-                <Button variant="outline" className="rounded-none">Ver en Shorts</Button>
-              </Link>
             </div>
 
             {Array.isArray(novel.characters) && novel.characters.length > 0 && (
@@ -485,6 +569,14 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
                     {ch.number}. {ch.title}
                   </p>
                   <p className="text-sm whitespace-pre-wrap leading-relaxed">{ch.content}</p>
+                  <Button variant="secondary" size="sm" disabled={illustratingChapter !== null}
+                    onClick={() => illustrateChapter(ch, i)}>
+                    {illustratingChapter === i ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Sparkles className="w-4 h-4 mr-2" />}
+                    {chapterImages[i] ? "Recrear imagen" : "Ilustrar capÃ­tulo"}
+                  </Button>
+                  {chapterImages[i] && <img src={chapterImages[i]} alt={"Escena del capÃ­tulo " + (i + 1)}
+                    className="w-full max-w-md rounded-md" />}
+
                   {ch.video_prompt && (
                     <p className="text-xs font-mono text-muted-foreground break-words border-t border-border pt-2">
                       Video prompt: {ch.video_prompt}
@@ -506,12 +598,12 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
                 </>
               ) : (
                 <>
-                  <Clapperboard className="w-5 h-5 mr-2" /> Generar videos capítulo por capítulo
+                  <Clapperboard className="w-5 h-5 mr-2" /> Crear video con ComfyUI en esta PC
                 </>
               )}
             </Button>
             <p className="text-xs text-muted-foreground text-center">
-              Crea una serie en la pestaña Shorts con un episodio de video por capítulo, manteniendo la identidad de los personajes.
+              El video se encola en ComfyUI de esta PC: tu idea, una imagen opcional y de 1 a 3 episodios.
             </p>
           </Card>
         )}
@@ -524,7 +616,7 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
           <Button onClick={handleWriteOutline}>{t("studio.writeOutline")}</Button>
           <Button onClick={handleBlankNovel}>{t("studio.blankNovel")}</Button>
          </div>
- 
+
          {/* Project Management */}
          <div className="grid grid-cols-3 gap-4 mb-4">
            <Button variant="secondary" onClick={handleSaveProject}>
@@ -579,7 +671,7 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
              </AlertDialogContent>
            </AlertDialog>
          </div>
- 
+
          <div className="grid grid-cols-3 gap-4">
           <Button variant="outline">{t("studio.downloadProject")}</Button>
           <Button variant="outline">{t("studio.uploadProject")}</Button>
@@ -589,5 +681,5 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
      </MainLayout>
    );
  };
- 
+
  export default Studio;

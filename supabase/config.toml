@@ -1,4 +1,4 @@
-project_id = "pbormuamewbajnylzfqs"
+project_id = "cexzmelshvbgabihtfvx"
 
 [functions.translate]
 verify_jwt = false
@@ -16,3 +16,9 @@ verify_jwt = false
 
 [functions.shorts-video]
 verify_jwt = false
+
+[functions.kineva-video]
+verify_jwt = true
+
+[functions.adult-story-chat]
+verify_jwt = true
