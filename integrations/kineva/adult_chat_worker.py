@@ -33,7 +33,9 @@ def repeated_reply(content, history):
 
 def model_chat(messages, temperature, max_tokens, json_mode=False):
     payload = {"model": "magnum-v4-12b", "messages": messages, "max_tokens": max_tokens,
-               "temperature": temperature, "chat_template_kwargs": {"enable_thinking": False}}
+               "temperature": temperature, "repeat_penalty": 1.18,
+               "presence_penalty": 0.6, "frequency_penalty": 0.4,
+               "chat_template_kwargs": {"enable_thinking": False}}
     if json_mode:
         payload["response_format"] = {"type": "json_object"}
     request = Request(os.environ.get("KINEVA_CHAT_MODEL_URL", "http://127.0.0.1:8788/v1/chat/completions"),
@@ -145,15 +147,17 @@ def conversation_messages(job):
         + memory + " "
         "El mensaje nuevo continúa esta misma escena, pero es una réplica nueva. "
         "No reinicies la historia y no respondas como si lo anterior no hubiera pasado. "
+        "Habla como una persona en un chat, no como un guion ni un discurso. "
         "Prohibido repetir el gesto, la disculpa o las frases del turno anterior. "
-        "Contesta lo que " + player + " acaba de decir, como lo haría una persona, no un guion. "
+        "No recicles metida de pata, no sé cómo explicarlo, ni el mismo labio o las mismas manos. "
+        "La primera frase del dialogo contesta lo que " + player + " acaba de decir. "
         "Si el mensaje está mal transcrito, interprétalo dentro de la escena en curso. "
         "Lo que hizo " + player + " no lo hiciste tú. No decidas las acciones de " + player + ". "
-        "No des un sermón ni saltes a otra trama. Si preguntan algo, contesta en la primera frase. "
+        "No des un sermón ni saltes a otra trama. "
         "En 'dialogo' habla DIRECTAMENTE a " + player + " usando 'tú'. "
         "Devuelve SOLO JSON con 'gesto' y 'dialogo'. "
-        "'gesto': una acción propia distinta a la anterior, en primera persona, máximo 80 caracteres. "
-        "'dialogo': una o dos frases nuevas, máximo 260 caracteres. "
+        "'gesto': una acción física nueva, en primera persona, máximo 70 caracteres. "
+        "'dialogo': una o dos frases cortas, máximo 180 caracteres. "
         + ("Gesto y diálogo SOLO en español, sin palabras inglesas." if spanish else "Everything in English.")
         + slang_clause(job)
     )
@@ -161,7 +165,13 @@ def conversation_messages(job):
     for turn in recent:
         who = character if turn["role"] == "assistant" else player
         messages.append({"role": turn["role"], "content": who + ": " + clip_text(turn["content"], 180)})
-    closing = latest + "\n\nSigue ahora esta misma historia, como " + character + ", sin borrar lo que ya pasó."
+    prior = next((turn["content"] for turn in reversed(turns) if turn["role"] == "assistant"), "")
+    banned = gesture_of(prior)
+    closing = (
+        latest + "\n\nContesta esa frase, como " + character + ". "
+        "No la resumas y no te disculpes otra vez si ya lo hiciste."
+        + (" Gesto prohibido, no lo repitas: " + banned + "." if banned else "")
+    )
     messages.append({"role": "user", "content": closing})
     return trim_messages(messages)
 
@@ -194,7 +204,12 @@ def too_similar(content, previous):
     if SequenceMatcher(None, current, prior).ratio() >= 0.62:
         return True
     left, right = gesture_of(content), gesture_of(previous)
-    return bool(left and right and (left == right or SequenceMatcher(None, left, right).ratio() >= 0.75))
+    if left and right and (left == right or SequenceMatcher(None, left, right).ratio() >= 0.75):
+        return True
+    prior_words = prior.split()
+    current_words = current.split()
+    seen = {" ".join(prior_words[index:index + 5]) for index in range(max(0, len(prior_words) - 4))}
+    return any(" ".join(current_words[index:index + 5]) in seen for index in range(max(0, len(current_words) - 4)))
 
 def reply_for(job):
     started = time.monotonic()
