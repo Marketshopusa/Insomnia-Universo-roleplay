@@ -7,6 +7,7 @@ import {
   localVideoSrc,
   probeLocalKineva,
   type LocalJob,
+  type LocalProbe,
   type LocalStudioStatus,
 } from "@/lib/kinevaLocal";
 import { useEffect, useState } from "react";
@@ -121,16 +122,15 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
       ? "Falta ComfyUI (127.0.0.1:8188). Enciéndelo en esta PC."
       : localHealth === "missing-template"
         ? "Falta la plantilla de Kineva en esta PC."
-        : "Falta el worker de Kineva (127.0.0.1:8787). Ábrelo en esta PC.";
+        : "Al generar el video, Chrome pregunta si puede usar Kineva en esta PC. Pulsa Permitir. El worker sigue en 127.0.0.1:8787.";
 
-  const createVideosForNovel = async (generated: any) => {
-    if (localHealth === "missing-worker") {
-      throw new Error("Falta el worker de Kineva en esta PC (127.0.0.1:8787).");
-    }
-    if (localHealth === "missing-comfy") {
+  const createVideosForNovel = async (generated: any, pendingProbe?: Promise<LocalProbe>) => {
+    const probe = await (pendingProbe ?? probeLocalKineva());
+    setLocalHealth(probe.status);
+    if (probe.status === "missing-comfy") {
       throw new Error("Falta ComfyUI en esta PC (127.0.0.1:8188).");
     }
-    if (localHealth === "missing-template") {
+    if (probe.status === "missing-template") {
       throw new Error("Falta la plantilla de Kineva en esta PC.");
     }
     const idea = String(description || generated?.logline || generated?.title || "").trim();
@@ -155,6 +155,7 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
       return;
     }
 
+    const loopbackProbe = probeLocalKineva();
     setGenerating(true);
     setNovel(null);
     let generated: any = null;
@@ -206,7 +207,7 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
       });
     }
     try {
-      await createVideosForNovel(generated);
+      await createVideosForNovel(generated, loopbackProbe);
     } catch (e) {
       toast({
         title: "No se pudo encolar el video en esta PC",
@@ -230,8 +231,9 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
       return;
     }
 
+    const loopbackProbe = probeLocalKineva();
     try {
-      await createVideosForNovel(novel);
+      await createVideosForNovel(novel, loopbackProbe);
     } catch (e) {
       toast({
         title: "No se pudieron generar los videos",

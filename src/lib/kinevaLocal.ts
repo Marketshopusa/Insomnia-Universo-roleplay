@@ -24,7 +24,13 @@ export interface LocalJob {
   error: string | null;
 }
 
-type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
+type LoopbackInit = RequestInit & { targetAddressSpace?: "loopback" };
+type FetchLike = (input: string, init?: LoopbackInit) => Promise<Response>;
+
+/** Chrome blocks a public HTTPS page from calling http://127.0.0.1 unless the request is marked as loopback. */
+export function loopbackInit(init: LoopbackInit = {}): LoopbackInit {
+  return { mode: "cors", ...init, targetAddressSpace: "loopback" };
+}
 
 export function localVideoSrc(url: string) {
   if (!url) return "";
@@ -39,7 +45,7 @@ export function clampLocalEpisodes(value: number) {
 
 export async function probeLocalKineva(fetchImpl: FetchLike = fetch): Promise<LocalProbe> {
   try {
-    const response = await fetchImpl(`${LOCAL_KINEVA_URL}/health`);
+    const response = await fetchImpl(`${LOCAL_KINEVA_URL}/health`, loopbackInit());
     const data = await response.json().catch(() => ({})) as { ready?: boolean; template?: boolean; comfy?: boolean };
     const comfy = data.comfy === true;
     const template = data.template === true;
@@ -72,7 +78,7 @@ export async function createLocalJob(
   if (idea.length < 5) throw new Error("Escribe una idea breve de 5 a 1500 caracteres.");
   let response: Response;
   try {
-    response = await fetchImpl(`${LOCAL_KINEVA_URL}/jobs`, {
+    response = await fetchImpl(`${LOCAL_KINEVA_URL}/jobs`, loopbackInit({
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -80,9 +86,9 @@ export async function createLocalJob(
         image: input.image || null,
         episodes: clampLocalEpisodes(input.episodes ?? 1),
       }),
-    });
+    }));
   } catch {
-    throw new Error("Falta el worker de Kineva en esta PC (127.0.0.1:8787).");
+    throw new Error("Chrome no dejó conectar con Kineva en esta PC. Si aparece el aviso de loopback, pulsa Permitir y deja el worker en 127.0.0.1:8787.");
   }
   const data = await response.json().catch(() => ({})) as LocalJob & { error?: string };
   if (!response.ok) throw new Error(data.error || "No se pudo comenzar el video en esta PC.");
@@ -90,7 +96,7 @@ export async function createLocalJob(
 }
 
 export async function fetchLocalJob(id: string, fetchImpl: FetchLike = fetch): Promise<LocalJob> {
-  const response = await fetchImpl(`${LOCAL_KINEVA_URL}/jobs/${id}`);
+  const response = await fetchImpl(`${LOCAL_KINEVA_URL}/jobs/${id}`, loopbackInit());
   const data = await response.json().catch(() => ({})) as LocalJob & { error?: string };
   if (!response.ok) throw new Error(data.error || "No se pudo leer el video local.");
   return data;
