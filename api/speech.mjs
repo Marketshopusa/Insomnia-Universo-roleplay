@@ -72,6 +72,14 @@ export default async function handler(req, res) {
     ? await createClient(supabaseUrl, publishableKey, { auth: { persistSession: false } }).auth.getUser(jwt)
     : { data: null, error: true };
   if (error || !data?.user) return res.status(401).json({ error: "login_required" });
+  if (req.body?.metric === "first_playback") {
+    const elapsed = Number(req.body.elapsedMs);
+    if (!Number.isFinite(elapsed) || elapsed < 0 || elapsed > 120_000) {
+      return res.status(400).json({ error: "invalid_voice_metric" });
+    }
+    console.info("Insomnia speech browser_first_audio_ms", Math.round(elapsed));
+    return res.status(204).end();
+  }
 
   const key = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
   if (!key || key === "[SENSITIVE]") return res.status(503).json({ error: "gemini_not_configured", message: "Gemini no estÃ¡ configurado en Insomnia." });

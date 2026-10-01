@@ -170,6 +170,27 @@ export function streamSpeech(text: string, voice: string): SpeechStream {
   let finishPlayback: () => void = () => {};
   let markStarted: () => void = () => {};
   const started = new Promise<void>((resolve) => { markStarted = resolve; });
+  const requestedAt = performance.now();
+  let playbackReported = false;
+  const reportFirstPlayback = () => {
+    if (playbackReported) return;
+    playbackReported = true;
+    markStarted();
+    const elapsedMs = Math.round(performance.now() - requestedAt);
+    // Only a duration is sent; the story and spoken text stay out of telemetry.
+    void supabase.auth.getSession().then(({ data }) => {
+      if (!data.session?.access_token) return;
+      return fetch(FUNCTIONS_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer " + data.session.access_token,
+        },
+        body: JSON.stringify({ metric: "first_playback", elapsedMs }),
+        keepalive: true,
+      });
+    }).catch(() => {});
+  };
 
   const stop = () => {
     if (stopped) return;
@@ -214,7 +235,7 @@ export function streamSpeech(text: string, voice: string): SpeechStream {
         const startAt = Math.max(scheduledAt, context.currentTime + (scheduledAt === 0 ? 0.08 : 0.025));
         source.start(startAt);
         scheduledAt = startAt + buffer.duration;
-        if (sources.size === 1) markStarted();
+        if (sources.size === 1) reportFirstPlayback();
       };
       for (const chunk of textChunks) {
         if (stopped) return;

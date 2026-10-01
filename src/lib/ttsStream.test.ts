@@ -4,21 +4,24 @@ import { streamSpeech } from "./ttsStream";
 
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
-it("starts the first spoken sentence while the next network response is still pending", async () => {
+it("starts playback as soon as a PCM chunk arrives, before the stream closes", async () => {
   const bytes = new Uint8Array(24_000 * 2 * 2);
   const view = new DataView(bytes.buffer);
-  for (let sample = 0; sample < bytes.length / 2; sample += 1) {
-    view.setInt16(sample * 2, 1000, true);
-  }
+  for (let sample = 0; sample < bytes.length / 2; sample += 1) view.setInt16(sample * 2, 1000, true);
   const audio = Buffer.from(bytes).toString("base64");
-  const body = 'data: {"type":"speech.audio.delta","audio":"' + audio + '"}\n\n' +
-    'data: {"type":"speech.audio.done"}\n\n';
-  let requests = 0;
-  const fetchMock = vi.fn(() => {
-    requests += 1;
-    return requests === 1
-      ? Promise.resolve(new Response(body, { status: 200 }))
-      : new Promise<Response>(() => {});
+  let closeStream: ReadableStreamDefaultController<Uint8Array> | null = null;
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      closeStream = controller;
+      controller.enqueue(new TextEncoder().encode('data: {"type":"speech.audio.delta","audio":"' + audio + '"}\n\n'));
+    },
+  });
+  let speechRequests = 0;
+  const fetchMock = vi.fn((_url: string, init?: RequestInit) => {
+    const payload = JSON.parse(String(init?.body || "{}"));
+    if (payload.metric) return Promise.resolve(new Response(null, { status: 204 }));
+    speechRequests += 1;
+    return Promise.resolve(new Response(stream, { status: 200 }));
   });
   vi.spyOn(supabase.auth, "getSession").mockResolvedValue({ data: { session: { access_token: "test" } }, error: null } as any);
   vi.stubGlobal("fetch", fetchMock);
@@ -45,18 +48,15 @@ it("starts the first spoken sentence while the next network response is still pe
   }
   vi.stubGlobal("AudioContext", AudioContextMock);
 
-  const speech = streamSpeech(
-    "Primera frase amable que llega rapidamente con varias palabras. " +
-    "Segunda frase amable que tarda en llegar con varias palabras.",
-    "scarlett-hd",
-  );
+  const speech = streamSpeech("Hola, bienvenida a nuestra historia.", "scarlett-hd");
   await speech.started;
-  expect(requests).toBe(2);
+  expect(speechRequests).toBe(1);
   expect(starts).toBe(1);
+  closeStream?.enqueue(new TextEncoder().encode('data: {"type":"speech.audio.done"}\n\n'));
+  closeStream?.close();
   speech.stop();
   await speech.done;
 });
-
 it("does not retry a payment failure before switching to device speech", async () => {
   const fetchMock = vi.fn(async () =>
     new Response('{"message":"Not enough credits"}', { status: 402 }),
