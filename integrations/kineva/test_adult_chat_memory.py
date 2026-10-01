@@ -48,7 +48,7 @@ class StoryMemoryTest(unittest.TestCase):
         self.assertIn("cabaña", packed)
         self.assertIn("maceta", packed)
         self.assertIn("fogón", packed)
-        self.assertLess(len(packed), 9000)
+        self.assertLess(len(packed), 4200)
 
 
 if __name__ == "__main__":
