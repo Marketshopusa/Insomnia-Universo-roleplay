@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { lockedStoryFacts, storyContinuityLines, storyVoiceLines } from "./ai.mjs";
+import { generate, generationConfigFor, lockedStoryFacts, storyContinuityLines, storyVoiceLines } from "./ai.mjs";
 
 test("a video stays with the person who sent it", () => {
   const facts = lockedStoryFacts([
@@ -40,4 +40,34 @@ test("an English scene keeps the same ownership rule", () => {
   assert.match(lines, /that action is yours/);
   assert.match(lines, /sent it to the wrong person/);
   assert.match(lines, /Do not say you also watched it/);
+});
+
+test("story chat turns thinking off and retries when Gemini rejects that setting", async () => {
+  assert.deepEqual(
+    generationConfigFor("gemini-2.5-flash", { temperature: 0.7, maxOutputTokens: 2048 }, { fastReply: true }).thinkingConfig,
+    { thinkingBudget: 0 },
+  );
+  assert.equal(generationConfigFor("gemini-2.5-flash", { temperature: 0.7 }, {}).thinkingConfig, undefined);
+  const previous = process.env.GEMINI_API_KEY;
+  process.env.GEMINI_API_KEY = "test-key";
+  const bodies = [];
+  const content = await generate("gemini-2.5-flash", [], { temperature: 0.7, maxOutputTokens: 2048 }, {
+    fastReply: true,
+    fallbackModels: [],
+    contents: [{ role: "user", parts: [{ text: "ese video no era para mí" }] }],
+    fetchImpl: async (_url, init) => {
+      bodies.push(JSON.parse(init.body).generationConfig);
+      if (bodies.length === 1) {
+        return new Response(JSON.stringify({ error: { message: "Thinking budget is not supported for this model." } }), { status: 400 });
+      }
+      return new Response(JSON.stringify({
+        candidates: [{ content: { parts: [{ text: "Ups, qué pena, sí me equivoqué." }] } }],
+      }), { status: 200 });
+    },
+  });
+  assert.equal(content, "Ups, qué pena, sí me equivoqué.");
+  assert.deepEqual(bodies[0].thinkingConfig, { thinkingBudget: 0 });
+  assert.equal(bodies[1].thinkingConfig, undefined);
+  if (previous === undefined) delete process.env.GEMINI_API_KEY;
+  else process.env.GEMINI_API_KEY = previous;
 });

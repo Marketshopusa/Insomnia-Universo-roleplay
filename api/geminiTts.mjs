@@ -235,6 +235,141 @@ export function geminiStreamPlan(text, preset, language, performance = "neutral"
   };
 }
 
+export function geminiStreamBody(text, preset, language, performance = "neutral", region = "mx") {
+  const voice = cloudGeminiVoiceFor(preset, language);
+  const prompt = geminiSpeechDirection(language, performance, region);
+  return {
+    contents: {
+      role: "user",
+      parts: { text: `${prompt}: ${text}` },
+    },
+    generation_config: {
+      speech_config: {
+        language_code: voice.languageCode,
+        voice_config: {
+          prebuilt_voice_config: { voice_name: voice.name },
+        },
+      },
+    },
+    safety_settings: [
+      "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+      "HARM_CATEGORY_DANGEROUS_CONTENT",
+      "HARM_CATEGORY_HARASSMENT",
+      "HARM_CATEGORY_HATE_SPEECH",
+    ].map((category) => ({ category, threshold: "BLOCK_NONE" })),
+  };
+}
+
+export function geminiStreamUrl(projectId) {
+  return `https://aiplatform.googleapis.com/v1beta1/projects/${encodeURIComponent(projectId)}/locations/global/publishers/google/models/${MODEL}:streamGenerateContent?alt=sse`;
+}
+
+/** PCM bytes from one SSE line, or null when the line has no audio. */
+export function pcmFromSseLine(line) {
+  const trimmed = String(line || "").trim();
+  if (!trimmed.startsWith("data:")) return null;
+  const payload = trimmed.slice(5).trim();
+  if (!payload || payload === "[DONE]") return null;
+  let event;
+  try { event = JSON.parse(payload); } catch { return null; }
+  const parts = event?.candidates?.[0]?.content?.parts;
+  const list = Array.isArray(parts) ? parts : parts ? [parts] : [];
+  const chunks = [];
+  for (const part of list) {
+    const data = part?.inlineData?.data || part?.inline_data?.data;
+    if (typeof data !== "string" || !data) continue;
+    const bytes = Buffer.from(data, "base64");
+    if (bytes.length) chunks.push(bytes);
+  }
+  if (!chunks.length) return null;
+  return chunks.length === 1 ? chunks[0] : Buffer.concat(chunks);
+}
+
+/**
+ * HTTP audio stream for the same Gemini 2.5 Flash TTS voice.
+ * The whole line goes in one request. onAudio runs only for real PCM.
+ * A failure before the first sample returns ok:false so the caller can use unary synthesis.
+ */
+export async function streamGeminiSpeech(text, preset, language, { performance = "neutral", region = "mx", tokenProvider = getCredentials, fetchImpl = fetch, onAudio = () => {}, firstAudioMs = 8000 } = {}) {
+  const projectId = quotaProjectId();
+  if (!projectId) return { ok: false, status: 0, detail: "missing_project" };
+  const token = await tokenProvider();
+  const controller = new AbortController();
+  let timer = setTimeout(() => controller.abort(), firstAudioMs);
+  const clearTimer = () => { clearTimeout(timer); timer = null; };
+  let response;
+  try {
+    response = await fetchImpl(geminiStreamUrl(projectId), {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer " + token,
+        "Content-Type": "application/json",
+        "x-goog-user-project": projectId,
+      },
+      body: JSON.stringify(geminiStreamBody(text, preset, language, performance, region)),
+      signal: controller.signal,
+    });
+  } catch (error) {
+    clearTimer();
+    return { ok: false, status: 0, detail: error?.name || "fetch_failed" };
+  }
+  if (!response?.ok || !response.body) {
+    clearTimer();
+    const detail = await response?.text?.().catch(() => "") || "";
+    return { ok: false, status: response?.status || 0, detail: String(detail).replace(/\s+/g, " ").slice(0, 240) };
+  }
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let pendingText = "";
+  let pendingPcm = Buffer.alloc(0);
+  let heard = false;
+  const emit = (bytes) => {
+    pendingPcm = Buffer.concat([pendingPcm, bytes]);
+    const even = pendingPcm.length - (pendingPcm.length % 2);
+    if (even < 2) return;
+    const chunk = pendingPcm.subarray(0, even);
+    pendingPcm = Buffer.from(pendingPcm.subarray(even));
+    if (!heard) {
+      heard = true;
+      clearTimer();
+      timer = setTimeout(() => controller.abort(), 50000);
+    }
+    onAudio(Buffer.from(chunk));
+  };
+  const consume = (block, flush) => {
+    const lines = block.split(/\r?\n/);
+    const rest = flush ? "" : (lines.pop() ?? "");
+    for (const line of lines) {
+      const audio = pcmFromSseLine(line);
+      if (audio) emit(audio);
+    }
+    if (flush && rest) {
+      const audio = pcmFromSseLine(rest);
+      if (audio) emit(audio);
+    }
+    return rest;
+  };
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      pendingText += decoder.decode(value, { stream: true });
+      pendingText = consume(pendingText, false);
+    }
+    pendingText += decoder.decode();
+    consume(pendingText, true);
+  } catch (error) {
+    clearTimer();
+    if (heard) return { ok: true, partial: true, detail: error?.name || "stream_closed" };
+    return { ok: false, status: 0, detail: error?.name || "stream_failed" };
+  } finally {
+    clearTimer();
+    reader.releaseLock?.();
+  }
+  if (!heard) return { ok: false, status: 200, detail: "no_audio" };
+  return { ok: true };
+}
+
 export async function synthesizeGemini(text, preset, language, { performance = "neutral", region = "mx", tokenProvider = getCredentials, fetchImpl = fetch, sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)) } = {}) {
   const token = await tokenProvider();
   const projectId = quotaProjectId();

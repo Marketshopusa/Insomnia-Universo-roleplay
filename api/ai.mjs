@@ -9,63 +9,78 @@ async function authenticated(req) {
   const { data, error } = await client.auth.getUser(jwt);
   return !error && !!data.user;
 }
-async function generate(model, parts, settings = {}, options = {}) {
+export function generationConfigFor(candidate, settings, options = {}, thinking = true) {
+  if (!thinking || !options.fastReply) return settings;
+  if (candidate === "gemini-3.8-flash") return { ...settings, thinkingConfig: { thinkingLevel: "low" } };
+  return { ...settings, thinkingConfig: { thinkingBudget: 0 } };
+}
+
+export async function generate(model, parts, settings = {}, options = {}) {
   const key = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
   if (!key || key === "[SENSITIVE]") throw Object.assign(new Error("Gemini no estÃ¡ configurado en Insomnia (Vercel)."), { status: 503, code: "gemini_not_configured" });
+  const fetchImpl = options.fetchImpl || fetch;
   const choices = model === "gemini-3.5-transcribe"
     ? [model]
     : [...new Set([model, ...(options.fallbackModels || ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite"])])];
   let lastError;
   for (const candidate of choices) {
-    try {
-      const response = await fetch("https://generativelanguage.googleapis.com/v1beta/models/" + candidate + ":generateContent", {
-        method: "POST",
-        headers: { "x-goog-api-key": key, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: options.contents || [{ role: "user", parts }],
-          ...(options.systemInstruction ? { systemInstruction: { parts: [{ text: options.systemInstruction }] } } : {}),
-          ...(options.adultMode ? { safetySettings: [
-            { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "OFF" },
-          ] } : {}),
-          generationConfig: candidate === "gemini-3.8-flash" && options.fastReply
-            ? { ...settings, thinkingConfig: { thinkingLevel: "low" } }
-            : settings,
-        }),
-        signal: AbortSignal.timeout(17000),
-      });
-      const data = await response.json();
-      if (!response.ok) {
-        console.warn("Insomnia AI upstream", candidate, response.status, data?.error?.status);
-        lastError = Object.assign(new Error(data?.error?.message || "Gemini no respondiÃ³."), {
-          status: response.status, code: response.status === 429 ? "rate_limited" : "ai_unavailable",
+    let allowThinking = true;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        const generationConfig = generationConfigFor(candidate, settings, options, allowThinking);
+        const response = await fetchImpl("https://generativelanguage.googleapis.com/v1beta/models/" + candidate + ":generateContent", {
+          method: "POST",
+          headers: { "x-goog-api-key": key, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: options.contents || [{ role: "user", parts }],
+            ...(options.systemInstruction ? { systemInstruction: { parts: [{ text: options.systemInstruction }] } } : {}),
+            ...(options.adultMode ? { safetySettings: [
+              { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "OFF" },
+            ] } : {}),
+            generationConfig,
+          }),
+          signal: AbortSignal.timeout(17000),
         });
-        if ([404, 429, 500, 502, 503, 504].includes(response.status)) continue;
-        throw lastError;
+        const data = await response.json();
+        if (!response.ok) {
+          console.warn("Insomnia AI upstream", candidate, response.status, data?.error?.status);
+          const message = data?.error?.message || "";
+          if (allowThinking && response.status === 400 && generationConfig.thinkingConfig && /thinking/i.test(message)) {
+            allowThinking = false;
+            continue;
+          }
+          lastError = Object.assign(new Error(message || "Gemini no respondiÃ³."), {
+            status: response.status, code: response.status === 429 ? "rate_limited" : "ai_unavailable",
+          });
+          if ([404, 429, 500, 502, 503, 504].includes(response.status)) break;
+          throw lastError;
+        }
+        const blockReason = data.promptFeedback?.blockReason || (["SAFETY", "PROHIBITED_CONTENT", "BLOCKLIST"].includes(data.candidates?.[0]?.finishReason) ? data.candidates[0].finishReason : null);
+        if (blockReason) {
+          console.warn("Insomnia AI content blocked", candidate, blockReason);
+          throw Object.assign(new Error(blockReason === "PROHIBITED_CONTENT"
+            ? "Gemini rechazÃ³ esta escena por una restricciÃ³n propia del proveedor. El modo +18 no puede desactivar ese bloqueo."
+            : "Gemini bloqueÃ³ esta escena. El mensaje permanece disponible para que puedas editarlo."), {
+            status: 422, code: "content_blocked", blockReason,
+          });
+        }
+        const content = (data.candidates?.[0]?.content?.parts || []).map(p => p.text || "").join("").trim();
+        if (!content) {
+          console.warn("Insomnia AI empty output", candidate, "keys", Object.keys(data || {}), "feedback", data.promptFeedback?.blockReason, "candidateCount", data.candidates?.length, "finish", data.candidates?.[0]?.finishReason, "thoughts", data.usageMetadata?.thoughtsTokenCount);
+          lastError = Object.assign(new Error("Gemini no devolviÃ³ texto."), { status: 502, code: "ai_unavailable" });
+          break;
+        }
+        if (options.validate && !options.validate(content)) {
+          lastError = Object.assign(new Error("La respuesta saliÃ³ del personaje o cambiÃ³ de idioma."), { status: 502, code: "off_role" });
+          console.warn("Insomnia AI rejected off-role output", candidate);
+          break;
+        }
+        return content;
+      } catch (error) {
+        if (error.name !== "TimeoutError") throw error;
+        lastError = Object.assign(new Error("Gemini tardÃ³ demasiado en responder."), { status: 504, code: "ai_timeout" });
+        break;
       }
-      const blockReason = data.promptFeedback?.blockReason || (["SAFETY", "PROHIBITED_CONTENT", "BLOCKLIST"].includes(data.candidates?.[0]?.finishReason) ? data.candidates[0].finishReason : null);
-      if (blockReason) {
-        console.warn("Insomnia AI content blocked", candidate, blockReason);
-        throw Object.assign(new Error(blockReason === "PROHIBITED_CONTENT"
-          ? "Gemini rechazÃ³ esta escena por una restricciÃ³n propia del proveedor. El modo +18 no puede desactivar ese bloqueo."
-          : "Gemini bloqueÃ³ esta escena. El mensaje permanece disponible para que puedas editarlo."), {
-          status: 422, code: "content_blocked", blockReason,
-        });
-      }
-      const content = (data.candidates?.[0]?.content?.parts || []).map(p => p.text || "").join("").trim();
-      if (!content) {
-        console.warn("Insomnia AI empty output", candidate, "keys", Object.keys(data || {}), "feedback", data.promptFeedback?.blockReason, "candidateCount", data.candidates?.length, "finish", data.candidates?.[0]?.finishReason, "thoughts", data.usageMetadata?.thoughtsTokenCount);
-        lastError = Object.assign(new Error("Gemini no devolviÃ³ texto."), { status: 502, code: "ai_unavailable" });
-        continue;
-      }
-      if (options.validate && !options.validate(content)) {
-        lastError = Object.assign(new Error("La respuesta saliÃ³ del personaje o cambiÃ³ de idioma."), { status: 502, code: "off_role" });
-        console.warn("Insomnia AI rejected off-role output", candidate);
-        continue;
-      }
-      return content;
-    } catch (error) {
-      if (error.name !== "TimeoutError") throw error;
-      lastError = Object.assign(new Error("Gemini tardÃ³ demasiado en responder."), { status: 504, code: "ai_timeout" });
     }
   }
   throw lastError;

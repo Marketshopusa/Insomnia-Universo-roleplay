@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { cloudGeminiVoiceFor, decodeLinear16, explainGeminiFailure, geminiSpeechDirection, removePerformanceCues, synthesizeGemini } from "./geminiTts.mjs";
+import { cloudGeminiVoiceFor, decodeLinear16, explainGeminiFailure, geminiSpeechDirection, geminiStreamBody, pcmFromSseLine, removePerformanceCues, streamGeminiSpeech, synthesizeGemini } from "./geminiTts.mjs";
 
 function sampleWav() {
   const pcm = Buffer.alloc(48_000, 1);
@@ -103,6 +103,77 @@ test("a disabled Agent Platform API is enabled once and then spoken", async () =
   assert.equal(result.status, 200);
   assert.ok(urls.some((url) => String(url).includes("projects/project-92a5eaa1-857a-4011-a86/services/aiplatform.googleapis.com:enable")));
   assert.match(explainGeminiFailure(403, "Agent Platform API has not been used in project 28149907863 before or it is disabled."), /28149907863/);
+  if (previousAccount === undefined) delete process.env.GOOGLE_CLOUD_TTS_SERVICE_ACCOUNT_JSON;
+  else process.env.GOOGLE_CLOUD_TTS_SERVICE_ACCOUNT_JSON = previousAccount;
+});
+
+function sseAudio(chunks) {
+  const encoder = new TextEncoder();
+  return new Response(new ReadableStream({
+    start(controller) {
+      for (const chunk of chunks) {
+        const payload = JSON.stringify({
+          candidates: [{ content: { parts: [{ inlineData: { mimeType: "audio/pcm", data: chunk.toString("base64") } }] } }],
+        });
+        controller.enqueue(encoder.encode(`data: ${payload}\n\n`));
+      }
+      controller.close();
+    },
+  }), { status: 200, headers: { "Content-Type": "text/event-stream" } });
+}
+
+test("streaming speaks the whole line once and emits each audio chunk", async () => {
+  const line = "Ella [moaning] gimió con fuerza y [shouting] gritó de placer.";
+  const first = Buffer.alloc(4);
+  first.writeInt16LE(1000, 0);
+  first.writeInt16LE(2000, 2);
+  const second = Buffer.alloc(2);
+  second.writeInt16LE(-3000, 0);
+  const previousAccount = process.env.GOOGLE_CLOUD_TTS_SERVICE_ACCOUNT_JSON;
+  process.env.GOOGLE_CLOUD_TTS_SERVICE_ACCOUNT_JSON = JSON.stringify({ project_id: "project-92a5eaa1-857a-4011-a86" });
+  const heard = [];
+  let calls = 0;
+  const result = await streamGeminiSpeech(line, "Aoede", "es", {
+    performance: "pleasure",
+    region: "plain",
+    tokenProvider: async () => "test-oauth-token",
+    onAudio: (pcm) => heard.push(Buffer.from(pcm)),
+    fetchImpl: async (url, init) => {
+      calls += 1;
+      assert.match(String(url), /models\/gemini-2\.5-flash-tts:streamGenerateContent\?alt=sse/);
+      assert.equal(init.headers["x-goog-user-project"], "project-92a5eaa1-857a-4011-a86");
+      const body = JSON.parse(init.body);
+      const spoken = body.contents.parts.text;
+      assert.equal(spoken.split(line).length - 1, 1);
+      assert.match(spoken, /\[moaning\]/);
+      assert.match(spoken, /\[shouting\]/);
+      assert.equal(body.generation_config.speech_config.language_code, "es-ES");
+      assert.equal(body.generation_config.speech_config.voice_config.prebuilt_voice_config.voice_name, "Aoede");
+      assert.equal(body.safety_settings[0].threshold, "BLOCK_NONE");
+      assert.match(geminiStreamBody(line, "Aoede", "es", "pleasure", "plain").contents.parts.text, /voz natural/);
+      return sseAudio([first, second]);
+    },
+  });
+  assert.equal(calls, 1);
+  assert.equal(result.ok, true);
+  assert.deepEqual(heard, [first, second]);
+  assert.equal(pcmFromSseLine("data: [DONE]"), null);
+  if (previousAccount === undefined) delete process.env.GOOGLE_CLOUD_TTS_SERVICE_ACCOUNT_JSON;
+  else process.env.GOOGLE_CLOUD_TTS_SERVICE_ACCOUNT_JSON = previousAccount;
+});
+
+test("a failed audio stream returns before any sound so unary speech can take over", async () => {
+  const previousAccount = process.env.GOOGLE_CLOUD_TTS_SERVICE_ACCOUNT_JSON;
+  process.env.GOOGLE_CLOUD_TTS_SERVICE_ACCOUNT_JSON = JSON.stringify({ project_id: "project-92a5eaa1-857a-4011-a86" });
+  let heard = false;
+  const result = await streamGeminiSpeech("Hola.", "Aoede", "es", {
+    tokenProvider: async () => "test-oauth-token",
+    onAudio: () => { heard = true; },
+    fetchImpl: async () => new Response("stream unavailable", { status: 404 }),
+  });
+  assert.equal(result.ok, false);
+  assert.equal(result.status, 404);
+  assert.equal(heard, false);
   if (previousAccount === undefined) delete process.env.GOOGLE_CLOUD_TTS_SERVICE_ACCOUNT_JSON;
   else process.env.GOOGLE_CLOUD_TTS_SERVICE_ACCOUNT_JSON = previousAccount;
 });
