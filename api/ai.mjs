@@ -76,12 +76,31 @@ export function storyContinuityLines(spanish) {
     return [
       "Standing order for every chat, new or already underway: you are that person, with your own identity, your own way of speaking, and a memory of what happened. Follow the story's current course. Do not restart it, do not change the facts or who did each thing, and do not jump to another scene.",
       "What already happened stays true. Answer the latest line as part of the same conversation. Speak fluently, with new wording. Do not repeat the same phrases, apologies, or gestures from one message to the next.",
+      "A video, photo, or message stays with the person who sent it. If she sent a video of herself, it remains hers. Do not say it belongs to her partner or to someone else.",
+      "Do not invent a couple and do not merge two people into one. Each person stays who they already were. Do not change the subject.",
     ];
   }
   return [
     "Orden fija para todo chat, nuevo o ya empezado: eres esa persona, con identidad propia, su forma de hablar y memoria de lo que pasó. Sigue el rumbo de la historia. No la reinicies, no cambies los hechos ni quién hizo cada cosa, y no disocies la conversación.",
     "Lo que ya pasó sigue siendo cierto. Responde a lo último como parte de la misma conversación, con fluidez y con palabras nuevas. No repitas las mismas frases, disculpas o gestos de un mensaje a otro.",
+    "Un video, una foto o un mensaje se queda con quien lo envió. Si ella envió un video de ella, sigue siendo suyo: no digas que es de su pareja ni de otra persona.",
+    "No inventes una pareja ni juntes a dos personajes. Cada persona sigue siendo quien ya era en la conversación. No cambies de tema.",
   ];
+}
+
+const FACT_PATTERN = /video|envi[eéó]|grabaci[oó]n|foto|pareja|novi[oa]|espos[oa]|mensaje/i;
+
+/** Quotes the turns that decide who sent something or who is with whom. */
+export function lockedStoryFacts(history, characterName, playerName) {
+  const facts = [];
+  for (const entry of history) {
+    const text = String(entry?.text || "").replace(/\s+/g, " ").trim();
+    if (!FACT_PATTERN.test(text)) continue;
+    const who = entry.role === "model" ? characterName : playerName;
+    const piece = text.split(/(?<=[.!?])\s+/).find((part) => FACT_PATTERN.test(part)) || text;
+    facts.push(who + ": " + piece.slice(0, 240));
+  }
+  return facts.slice(-16);
 }
 
 export function storyVoiceLines(character, player, spanish, locale) {
@@ -155,8 +174,16 @@ export default async function handler(req, res) {
       const remembered = older.length
         ? ["Hechos ya cerrados. Siguen siendo ciertos y de quien los hizo. No los actúes otra vez:", ...closed, "Después, en orden:", ...later].join("\n").slice(0, 3600)
         : "";
+      const facts = lockedStoryFacts([...older, ...recent], characterName, playerName);
+      if (facts.length) {
+        systemInstruction += "\nHechos fijos. No los reescribas ni se los pases a otra persona:\n" + facts.join("\n");
+      }
       if (remembered) {
         systemInstruction += "\n" + remembered;
+      }
+      const namedRecent = recent.slice(-10).map(line);
+      if (namedRecent.length) {
+        systemInstruction += "\nTurnos recientes, con quién habló:\n" + namedRecent.join("\n");
       }
       const contents = [];
       for (const entry of recent) {
@@ -168,9 +195,9 @@ export default async function handler(req, res) {
       if (contents.at(-1)?.role === "user") contents.at(-1).parts[0].text += "\n" + latest;
       else contents.push({ role: "user", parts: [{ text: latest }] });
       const content = await generate(
-        adultMode ? "gemini-3.5-flash-lite" : "gemini-2.5-flash",
+        "gemini-2.5-flash",
         [],
-        { maxOutputTokens: 2048, temperature: 0.82 },
+        { maxOutputTokens: 2048, temperature: 0.7 },
         { contents, systemInstruction, adultMode, fallbackModels: ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite"], fastReply: true, validate: (reply) => !isOffRole(reply) },
       );
       return send(res, 200, { content });

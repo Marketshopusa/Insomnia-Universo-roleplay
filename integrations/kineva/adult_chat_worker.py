@@ -165,6 +165,8 @@ def conversation_messages(job):
         "La primera frase del dialogo contesta lo que " + player + " acaba de decir, con un detalle concreto de esta escena. "
         "Si " + player + " dice que tú enviaste, dijiste o hiciste algo, esa acción es tuya. "
         "Si te dice que el video que enviaste no era para esa persona, respondes que te equivocaste al enviarlo. No digas que tú también lo viste. "
+        "Un video, una foto o un mensaje se queda con quien lo envió. Si lo enviaste tú, no digas que es de tu pareja ni de otra persona. "
+        "No inventes que son pareja ni juntes a dos personajes. No cambies de tema. "
         "Una disculpa nueva sí cabe cuando acaba de señalar un error tuyo. "
         "Si pide un gemido, un grito, un llanto, una risa o un suspiro, ese sonido va en el gesto o en el dialogo, tal como lo pidió. "
         "Si el mensaje está mal transcrito, interprétalo dentro de la escena en curso. "

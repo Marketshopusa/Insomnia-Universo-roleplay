@@ -1,6 +1,21 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { storyContinuityLines, storyVoiceLines } from "./ai.mjs";
+import { lockedStoryFacts, storyContinuityLines, storyVoiceLines } from "./ai.mjs";
+
+test("a video stays with the person who sent it", () => {
+  const facts = lockedStoryFacts([
+    { role: "model", text: "Te envié un video mío, de mí sola." },
+    { role: "user", text: "Luego te digo qué voy a hacer con tu video." },
+    { role: "model", text: "Hoy hace calor." },
+  ], "Andrea", "William");
+  assert.deepEqual(facts, [
+    "Andrea: Te envié un video mío, de mí sola.",
+    "William: Luego te digo qué voy a hacer con tu video.",
+  ]);
+  const rules = storyContinuityLines(true).join("\n");
+  assert.match(rules, /sigue siendo suyo/);
+  assert.match(rules, /No inventes una pareja/);
+});
 
 test("every chat keeps the same memory and does not restart the story", () => {
   const lines = storyContinuityLines(true).join("\n");

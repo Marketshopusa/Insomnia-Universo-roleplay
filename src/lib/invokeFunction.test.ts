@@ -15,22 +15,20 @@ beforeEach(() => {
   localStorage.clear();
 });
 
-it("keeps the same chat job when one status request fails and then recovers", async () => {
-  invoke
-    .mockResolvedValueOnce({ data: { status: "pending", jobId: "job-1" }, error: null })
-    .mockResolvedValueOnce({ data: null, error: new Error("transient status failure") })
-    .mockResolvedValueOnce({ data: { status: "completed", content: "Una respuesta nueva." }, error: null });
+it("asks Gemini for the adult scene instead of the small local model", async () => {
+  const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+    new Response(JSON.stringify({ content: "Ese video lo envié yo." }), { status: 200 }),
+  );
   const result = await invokeFunctionWithRetry<{ content: string }>("story-chat", {
     adultMode: true,
     story: { title: "Historia" },
-    userMessage: "ContinÃºa desde aquÃ­",
+    userMessage: "Continúa desde aquí",
   });
   expect(result.error).toBeNull();
-  expect(result.data?.content).toBe("Una respuesta nueva.");
-  expect(invoke.mock.calls.map(([name, options]) => [name, options.body.action])).toEqual([
-    ["adult-story-chat", "create"],
-    ["adult-story-chat", "status"],
-    ["adult-story-chat", "status"],
-  ]);
-  expect(localStorage.getItem("kineva-adult-pending:test-user")).toBeNull();
+  expect(result.data?.content).toBe("Ese video lo envié yo.");
+  expect(invoke).not.toHaveBeenCalled();
+  const body = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
+  expect(body.action).toBe("story-chat");
+  expect(body.body.adultMode).toBe(true);
+  fetchMock.mockRestore();
 });
