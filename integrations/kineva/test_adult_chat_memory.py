@@ -49,6 +49,9 @@ class StoryMemoryTest(unittest.TestCase):
         self.assertIn("maceta", packed)
         self.assertIn("fogón", packed)
         self.assertIn("Prohibido repetir el gesto", packed)
+        self.assertIn("esa acción es tuya", packed)
+        self.assertIn("te equivocaste al enviarlo", packed)
+        self.assertNotIn("no te disculpes otra vez", packed)
         self.assertLess(len(packed), 4200)
 
     def test_a_copied_apology_is_rejected(self):

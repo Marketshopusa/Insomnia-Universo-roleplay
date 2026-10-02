@@ -57,12 +57,12 @@ def parse_role_reply(raw_reply):
                 if m.end() >= 35]
         gesture = (gesture[:cuts[0]].rstrip(" ,.;") if cuts else
                    gesture[:100].rsplit(" ", 1)[0])
-    if len(dialogue) > 350:
+    if len(dialogue) > 420:
         boundaries = [match.end() for match in re.finditer(
-            r"[.!?](?=\s|$)", dialogue[:350]) if match.end() >= 90]
+            r"[.!?](?=\s|$)", dialogue[:420]) if match.end() >= 90]
         if boundaries:
             dialogue = dialogue[:boundaries[-1]].strip()
-    if not gesture or not dialogue or len(gesture) > 100 or len(dialogue) > 350:
+    if not gesture or not dialogue or len(gesture) > 100 or len(dialogue) > 420:
         raise ValueError("Incomplete or overlong gesture/dialogue")
     return "*" + gesture + "* " + dialogue
 
@@ -125,7 +125,7 @@ def memory_transcript(turns, player, character):
         budget -= len(item) + 1
         chosen.append(item)
     chosen.reverse()
-    chronicle = "Hechos ya cerrados, no los actúes de nuevo: " + " | ".join(closed)
+    chronicle = "Hechos ya cerrados. Siguen siendo ciertos y de quien los hizo. No los actúes otra vez: " + " | ".join(closed)
     if chosen:
         chronicle += "\nDespués, en orden:\n" + "\n".join(chosen)
     return chronicle, recent
@@ -152,30 +152,34 @@ def conversation_messages(job):
         "El mensaje nuevo continúa esta misma escena, pero es una réplica nueva. "
         "La memoria va en orden. No regreses al inicio ni mezcles una escena vieja con la actual. "
         "No reinicies la historia y no respondas como si lo anterior no hubiera pasado. "
-        "Habla como una persona en un chat, no como un guion ni un discurso. "
-        "Prohibido repetir el gesto, la disculpa o las frases del turno anterior. "
-        "No recicles metida de pata, no sé cómo explicarlo, ni el mismo labio o las mismas manos. "
-        "La primera frase del dialogo contesta lo que " + player + " acaba de decir. "
+        "Habla como " + character + " en una conversación real con " + player + ": su forma de querer, su humor, su vergüenza o su carácter. "
+        "Que se sienta una persona, no una ficha ni un contestador. "
+        "Prohibido repetir el gesto o las mismas frases del turno anterior. "
+        "La primera frase del dialogo contesta lo que " + player + " acaba de decir, con un detalle concreto de esta escena. "
+        "Si " + player + " dice que tú enviaste, dijiste o hiciste algo, esa acción es tuya. "
+        "Si te dice que el video que enviaste no era para esa persona, respondes que te equivocaste al enviarlo. No digas que tú también lo viste. "
+        "Una disculpa nueva sí cabe cuando acaba de señalar un error tuyo. "
         "Si pide un gemido, un grito, un llanto, una risa o un suspiro, ese sonido va en el gesto o en el dialogo, tal como lo pidió. "
         "Si el mensaje está mal transcrito, interprétalo dentro de la escena en curso. "
         "Lo que hizo " + player + " no lo hiciste tú. No decidas las acciones de " + player + ". "
         "No des un sermón ni saltes a otra trama. "
         "En 'dialogo' habla DIRECTAMENTE a " + player + " usando 'tú'. "
         "Devuelve SOLO JSON con 'gesto' y 'dialogo'. "
-        "'gesto': una acción física nueva, en primera persona, máximo 70 caracteres. "
-        "'dialogo': una o dos frases cortas, máximo 180 caracteres. "
+        "'gesto': una acción física nueva, en primera persona, máximo 80 caracteres. "
+        "'dialogo': dos a cuatro frases dichas en voz alta, máximo 320 caracteres. "
         + ("Gesto y diálogo SOLO en español, sin palabras inglesas." if spanish else "Everything in English.")
         + slang_clause(job)
     )
     messages = [{"role": "system", "content": instruction}]
     for turn in recent:
         who = character if turn["role"] == "assistant" else player
-        messages.append({"role": turn["role"], "content": who + ": " + clip_text(turn["content"], 180)})
+        messages.append({"role": turn["role"], "content": who + ": " + clip_text(turn["content"], 240)})
     prior = next((turn["content"] for turn in reversed(turns) if turn["role"] == "assistant"), "")
     banned = gesture_of(prior)
     closing = (
-        latest + "\n\nContesta esa frase, como " + character + ". "
-        "No la resumas y no te disculpes otra vez si ya lo hiciste."
+        latest + "\n\nContesta esa frase, como " + character + ", mirando a " + player + ". "
+        "Si te dice que tú hiciste algo, esa acción es tuya. "
+        "No la resumas y no repitas el gesto anterior."
         + (" Gesto prohibido, no lo repitas: " + banned + "." if banned else "")
     )
     messages.append({"role": "user", "content": closing})
@@ -227,7 +231,7 @@ def reply_for(job):
     parsed = ""
     for attempt in range(3):
         try:
-            raw_reply = model_chat(messages, 0.75 + attempt * 0.1, 220, json_mode=True)
+            raw_reply = model_chat(messages, 0.85 + attempt * 0.05, 480, json_mode=True)
             parsed = parse_role_reply(raw_reply)
         except Exception as error:
             print("Chat attempt failed", job.get("jobId", "local"), attempt, repr(error)[:180], flush=True)

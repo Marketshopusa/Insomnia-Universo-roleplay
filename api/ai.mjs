@@ -70,6 +70,28 @@ async function generate(model, parts, settings = {}, options = {}) {
   }
   throw lastError;
 }
+
+export function storyVoiceLines(character, player, spanish, locale) {
+  const name = String(character || "el personaje").slice(0, 80);
+  const other = String(player || "la otra persona").slice(0, 80);
+  if (!spanish) {
+    return [
+      "You are " + name + ", in a conversation with " + other + ". Reply only as " + name + ", in " + locale + ".",
+      "Speak like that person in a real conversation: their warmth, humor, shame, or temper, matching this story. Two to four spoken sentences, and a short gesture only when it adds something. Answer what they just said, with one concrete detail from this scene. It should feel like someone is there, not a form or an answering machine.",
+      "If " + other + " says you sent, said, or did something, that action is yours. Answer as the person who did it. If they say the video you sent was not for them, say you sent it to the wrong person. Do not say you also watched it. What " + other + " did is not something you did, and you do not decide their actions.",
+      "A new apology fits when they just pointed out a mistake of yours. Do not repeat the same gesture or the same sentences from the previous turn.",
+      "If they ask for a moan, a shout, crying, a laugh, or a sigh, that reaction stays in the reply, as they asked.",
+    ];
+  }
+  return [
+    "Eres " + name + " y hablas con " + other + ". Responde solo como " + name + ", en " + locale + ".",
+    "Habla como esa persona en una conversación real: con su forma de querer, su humor, su vergüenza o su carácter, según esta historia. Dos a cuatro frases dichas en voz alta, y un gesto breve solo si aporta. Contesta lo que acaban de decirte, con un detalle concreto de esta escena. Que se sienta alguien al otro lado, no una ficha ni un contestador.",
+    "Si " + other + " dice que tú enviaste, dijiste o hiciste algo, esa acción es tuya y contestas como quien la hizo. Si te dice que el video que enviaste no era para esa persona, respondes que te equivocaste al enviarlo. No digas que tú también lo viste. Lo que hizo " + other + " no lo hiciste tú, y no decides sus actos.",
+    "Una disculpa nueva sí cabe cuando acaba de señalar un error tuyo. Prohibido repetir el gesto o las mismas frases del turno anterior.",
+    "Si pide un gemido, un grito, un llanto, una risa o un suspiro, esa reacción va en la respuesta, tal como la pidió.",
+  ];
+}
+
 export default async function handler(req, res) {
   if (req.method !== "POST") return send(res, 405, { error: "method_not_allowed" });
   const { action, body = {} } = req.body || {};
@@ -79,10 +101,10 @@ export default async function handler(req, res) {
       const story = body.story || {};
       const spanish = body.language === "es";
       const adultMode = body.adultMode === true;
-      const locale = spanish ? "espaÃ±ol" : "inglÃ©s";
+      const locale = spanish ? "español" : "inglés";
       const isOffRole = (text) => {
         const reply = String(text || "").trim();
-        if (!reply || reply.length > 360 || reply.split(/\n\s*\n/).length > 2) return true;
+        if (!reply || reply.length > 720 || reply.split(/\n\s*\n/).length > 3) return true;
         if (/(respond as a character|under \d+ characters|brief action and natural dialogue|do not decide user actions|character .{0,80} currently|conversaci[oÃ³]n:|premise:|el usuario interpreta a|estÃ¡s interpretando a|language:|\bspanish\s*\.|\benglish\s*\.)/i.test(reply)) return true;
         if (spanish) {
           const english = (reply.match(/\b(the|this|that|with|and|your|you|she|he|her|him|friend|girlfriend|respond|character|scene|under|currently|feeling|something|said|sent)\b/gi) || []).length;
@@ -96,7 +118,7 @@ export default async function handler(req, res) {
         "El usuario interpreta a " + String(story.player_role || "protagonista").slice(0, 150) + ". Historia: " + String(story.title || "Historia").slice(0, 200) + ".",
         "Premisa inicial (fondo; no reinicies la escena si la memoria ya avanzÃ³): " + String(story.description || "").slice(0, 1200) + ".",
         "La memoria y los Ãºltimos turnos son la escena actual, en orden. ContinÃºa exactamente desde la Ãºltima intervenciÃ³n: mismo lugar, tiempo, personas presentes, relaciones y hechos. No empieces de cero, no regreses al inicio, no mezcles una escena vieja con la de ahora y no respondas como si lo anterior no hubiera pasado. Si el mensaje estÃ¡ mal transcrito, interprÃ©talo dentro de esa escena.",
-        "Responde exclusivamente como el personaje presente, en " + locale + ". Una acciÃ³n breve distinta a la anterior y diÃ¡logo de persona, mÃ¡ximo 220 caracteres. La primera frase contesta lo que acaban de decir. No repitas el pÃ¡rrafo ni el gesto del turno anterior. No controles ni decidas las acciones del usuario. Si pide un gemido, un grito, un llanto, una risa o un suspiro, esa reacción va en la respuesta, tal como la pidió.",
+        ...storyVoiceLines(story.character_role, story.player_role, spanish, locale),
         slangInstruction(body.language, body.region),
         ...(adultMode ? [
           "Todos los personajes de esta escena son adultos. Sigue la tensiÃ³n romÃ¡ntica, intimidad, secretos y consecuencias emocionales con naturalidad, sin moralizar ni interrumpir el rol por una simple alusiÃ³n sexual.",
@@ -111,11 +133,13 @@ export default async function handler(req, res) {
       });
       const recent = history.slice(-24);
       const older = history.slice(0, -24);
-      const line = (entry) => (entry.role === "model" ? "Personaje" : "Usuario") + ": " + entry.text.slice(0, 180);
+      const characterName = String(story.character_role || "Personaje").slice(0, 80);
+      const playerName = String(story.player_role || "Usuario").slice(0, 80);
+      const line = (entry) => (entry.role === "model" ? characterName : playerName) + ": " + entry.text.slice(0, 240);
       const closed = older.slice(0, 2).map(line);
       const later = older.slice(2).slice(-12).map(line);
       const remembered = older.length
-        ? ["Hechos ya cerrados, no los actúes de nuevo:", ...closed, "Después, en orden:", ...later].join("\n").slice(0, 2800)
+        ? ["Hechos ya cerrados. Siguen siendo ciertos y de quien los hizo. No los actúes otra vez:", ...closed, "Después, en orden:", ...later].join("\n").slice(0, 2800)
         : "";
       if (remembered) {
         systemInstruction += "\n" + remembered;
@@ -132,7 +156,7 @@ export default async function handler(req, res) {
       const content = await generate(
         adultMode ? "gemini-3.5-flash-lite" : "gemini-2.5-flash",
         [],
-        { maxOutputTokens: 2048, temperature: 0.65 },
+        { maxOutputTokens: 2048, temperature: 0.82 },
         { contents, systemInstruction, adultMode, fallbackModels: ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite"], fastReply: true, validate: (reply) => !isOffRole(reply) },
       );
       return send(res, 200, { content });
