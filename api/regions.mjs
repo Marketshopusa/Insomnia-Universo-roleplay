@@ -12,6 +12,14 @@ export function normalizeRegion(value) {
   return Object.prototype.hasOwnProperty.call(REGIONS, value) ? value : "mx";
 }
 
+export function speechLocale(language, region) {
+  if (language === "en") return "en-US";
+  const id = normalizeRegion(region);
+  if (id === "es") return "es-ES";
+  if (id === "mx") return "es-MX";
+  return "es-419";
+}
+
 export function chirpLocale(language, region) {
   if (language === "en") return "en-US";
   return REGIONS[normalizeRegion(region)].locale;

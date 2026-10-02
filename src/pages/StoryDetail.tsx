@@ -949,7 +949,9 @@ type Mode = "select" | "read" | "roleplay";
                         .map((message) => ({ role: message.role, content: message.content }))}
                       onTurn={(userText, assistantText) => {
                         setMessages((previous) => {
-                          const next: Message[] = [
+                          const last = previous[previous.length - 1];
+                          const spoken = last?.role === "user" && last.content === userText;
+                          const next: Message[] = spoken ? [...previous] : [
                             ...previous,
                             { id: `${Date.now()}-u`, role: "user", content: userText, timestamp: new Date() },
                           ];

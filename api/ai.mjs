@@ -1,6 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { supabaseUrl as BASE, publishableKey as KEY } from "./config.mjs";
-import { chirpLocale, slangInstruction } from "./regions.mjs";
+import { slangInstruction, speechLocale } from "./regions.mjs";
 const send = (res, status, value) => res.status(status).json(value);
 async function authenticated(req) {
   const jwt = String(req.headers.authorization || "").replace(/^Bearer\s+/i, "");
@@ -145,7 +145,7 @@ export default async function handler(req, res) {
     }
     if (action === "speech-to-text") {
       if (typeof body.audio !== "string" || body.audio.length < 2700 || body.audio.length > 12000000) return send(res, 400, { error: "invalid_audio" });
-      const lang = body.language === "es" ? chirpLocale("es", body.region) : body.language === "en" ? "en-US" : undefined;
+      const lang = body.language === "es" || body.language === "en" ? speechLocale(body.language, body.region) : undefined;
       const opts = lang ? { audioTranscriptionConfig: { languageCodes: [lang] } } : {};
       const content = await generate("gemini-3.5-transcribe", [{ inlineData: { mimeType: body.mimeType || "audio/wav", data: body.audio } }], opts);
       return send(res, 200, { text: content });

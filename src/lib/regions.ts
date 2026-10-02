@@ -25,6 +25,15 @@ export const regionById = (value?: string | null) =>
 
 export const regionLocale = (value?: string | null) => regionById(value).locale;
 
+/** Chrome's call recognizer rejects several country codes. es-419 covers Latin America. */
+export const browserSpeechLocale = (language?: string | null, region?: string | null) => {
+  if (language === "en") return "en-US";
+  const id = normalizeRegion(region);
+  if (id === "es") return "es-ES";
+  if (id === "mx") return "es-MX";
+  return "es-419";
+};
+
 const keyFor = (storyId: string) => `insomnia.region.${storyId}`;
 
 /** The accent chosen for a story stays the same for reading, chat and calls. */
