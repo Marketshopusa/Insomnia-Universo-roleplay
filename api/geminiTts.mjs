@@ -189,9 +189,7 @@ async function enableAgentPlatform(token, fetchImpl) {
   return true;
 }
 
-export async function synthesizeGemini(text, preset, language, { performance = "neutral", region = "mx", tokenProvider = getCredentials, fetchImpl = fetch, sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)) } = {}) {
-  const token = await tokenProvider();
-  const projectId = quotaProjectId();
+export function geminiSpeechDirection(language, performance, region) {
   const mood = (language === "en" ? {
     amused: "Let out a real short laugh. [laughing] is that sound, not a word.",
     sad: "The voice breaks and crying is audible. [crying] is that sound, not a word.",
@@ -213,6 +211,34 @@ export async function synthesizeGemini(text, preset, language, { performance = "
   const prompt = language === "en"
     ? `Say only the text, in that order. Do not add scenes or restart the story. [laughing], [crying], [gasps], [sigh], [shouting], [moaning] and [whispering] are real sounds, not words. ${mood}`
     : `${accent} Di exactamente el texto, en ese orden. No agregues escenas ni vuelvas a empezar la historia. [laughing], [crying], [gasps], [sigh], [shouting], [moaning] y [whispering] son sonidos reales, no palabras. ${mood}`;
+  return prompt;
+}
+
+const BLOCK_NONE = 4;
+const HARM = { hate: 1, dangerous: 2, harassment: 3, sexual: 4 };
+
+export function geminiStreamPlan(text, preset, language, performance = "neutral", region = "mx") {
+  const voice = cloudGeminiVoiceFor(preset, language);
+  return {
+    streamingConfig: {
+      voice: { languageCode: voice.languageCode, name: voice.name, modelName: voice.modelName },
+      streamingAudioConfig: { audioEncoding: 7, sampleRateHertz: 24000 },
+      advancedVoiceOptions: {
+        safetySettings: {
+          settings: [HARM.sexual, HARM.dangerous, HARM.harassment, HARM.hate].map((category) => ({
+            category, threshold: BLOCK_NONE,
+          })),
+        },
+      },
+    },
+    input: { text, prompt: geminiSpeechDirection(language, performance, region) },
+  };
+}
+
+export async function synthesizeGemini(text, preset, language, { performance = "neutral", region = "mx", tokenProvider = getCredentials, fetchImpl = fetch, sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)) } = {}) {
+  const token = await tokenProvider();
+  const projectId = quotaProjectId();
+  const prompt = geminiSpeechDirection(language, performance, region);
   const request = (voice, relaxSafety) => fetchImpl("https://texttospeech.googleapis.com/v1/text:synthesize", {
     method: "POST",
     headers: {

@@ -117,7 +117,7 @@ def memory_transcript(turns, player, character):
 
     closed = [line(turn, 120) for turn in older[:2]]
     chosen = []
-    budget = 700
+    budget = 1000
     for turn in reversed(older[2:]):
         item = line(turn, 140)
         if budget < len(item) + 1:
@@ -146,7 +146,14 @@ def conversation_messages(job):
         "Conserva lugar, personas, relaciones y hechos de los turnos recientes. No empieces de cero."
     )
     instruction = (
-        "Interpreta SOLO a " + character + " en un chat de rol con " + player + ". "
+        ("Orden fija para todo chat, nuevo o ya empezado: eres " + character + ", con identidad propia y memoria de lo que pasó. "
+         "Sigue el rumbo. No reinicies la historia, no cambies los hechos ni quién hizo cada cosa, y no disocies la conversación. "
+         "Habla con fluidez y con palabras nuevas. No repitas las mismas frases de un mensaje a otro. "
+         if spanish else
+         "Standing order for every chat, new or already underway: you are " + character + ", with your own identity and a memory of what happened. "
+         "Follow the course. Do not restart the story, do not change who did each thing, and do not break the conversation. "
+         "Speak fluently, with new wording. Do not repeat the same phrases from one message to the next. ")
+        + "Interpreta SOLO a " + character + " en un chat de rol con " + player + ". "
         "Premisa de fondo, solo si no contradice la memoria: " + premise + ". "
         + memory + " "
         "El mensaje nuevo continúa esta misma escena, pero es una réplica nueva. "

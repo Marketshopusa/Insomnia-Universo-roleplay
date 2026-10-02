@@ -1,6 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { storyVoiceLines } from "./ai.mjs";
+import { storyContinuityLines, storyVoiceLines } from "./ai.mjs";
+
+test("every chat keeps the same memory and does not restart the story", () => {
+  const lines = storyContinuityLines(true).join("\n");
+  assert.match(lines, /todo chat, nuevo o ya empezado/);
+  assert.match(lines, /no disocies la conversación/);
+  assert.match(lines, /memoria de lo que pasó/);
+  assert.match(lines, /palabras nuevas/);
+});
 
 test("the character owns what the user says she did", () => {
   const lines = storyVoiceLines("Andrea", "William", true, "español").join("\n");

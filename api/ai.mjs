@@ -71,6 +71,19 @@ async function generate(model, parts, settings = {}, options = {}) {
   throw lastError;
 }
 
+export function storyContinuityLines(spanish) {
+  if (!spanish) {
+    return [
+      "Standing order for every chat, new or already underway: you are that person, with your own identity, your own way of speaking, and a memory of what happened. Follow the story's current course. Do not restart it, do not change the facts or who did each thing, and do not jump to another scene.",
+      "What already happened stays true. Answer the latest line as part of the same conversation. Speak fluently, with new wording. Do not repeat the same phrases, apologies, or gestures from one message to the next.",
+    ];
+  }
+  return [
+    "Orden fija para todo chat, nuevo o ya empezado: eres esa persona, con identidad propia, su forma de hablar y memoria de lo que pasó. Sigue el rumbo de la historia. No la reinicies, no cambies los hechos ni quién hizo cada cosa, y no disocies la conversación.",
+    "Lo que ya pasó sigue siendo cierto. Responde a lo último como parte de la misma conversación, con fluidez y con palabras nuevas. No repitas las mismas frases, disculpas o gestos de un mensaje a otro.",
+  ];
+}
+
 export function storyVoiceLines(character, player, spanish, locale) {
   const name = String(character || "el personaje").slice(0, 80);
   const other = String(player || "la otra persona").slice(0, 80);
@@ -114,6 +127,7 @@ export default async function handler(req, res) {
         return false;
       };
       let systemInstruction = [
+        ...storyContinuityLines(spanish),
         "Eres el personaje de una historia de rol en curso. Personaje o reparto: " + String(story.character_role || "personaje principal").slice(0, 200) + ".",
         "El usuario interpreta a " + String(story.player_role || "protagonista").slice(0, 150) + ". Historia: " + String(story.title || "Historia").slice(0, 200) + ".",
         "Premisa inicial (fondo; no reinicies la escena si la memoria ya avanzÃ³): " + String(story.description || "").slice(0, 1200) + ".",
@@ -135,11 +149,11 @@ export default async function handler(req, res) {
       const older = history.slice(0, -24);
       const characterName = String(story.character_role || "Personaje").slice(0, 80);
       const playerName = String(story.player_role || "Usuario").slice(0, 80);
-      const line = (entry) => (entry.role === "model" ? characterName : playerName) + ": " + entry.text.slice(0, 240);
+      const line = (entry) => (entry.role === "model" ? characterName : playerName) + ": " + entry.text.slice(0, 320);
       const closed = older.slice(0, 2).map(line);
       const later = older.slice(2).slice(-12).map(line);
       const remembered = older.length
-        ? ["Hechos ya cerrados. Siguen siendo ciertos y de quien los hizo. No los actúes otra vez:", ...closed, "Después, en orden:", ...later].join("\n").slice(0, 2800)
+        ? ["Hechos ya cerrados. Siguen siendo ciertos y de quien los hizo. No los actúes otra vez:", ...closed, "Después, en orden:", ...later].join("\n").slice(0, 3600)
         : "";
       if (remembered) {
         systemInstruction += "\n" + remembered;

@@ -49,6 +49,8 @@ class StoryMemoryTest(unittest.TestCase):
         self.assertIn("maceta", packed)
         self.assertIn("fogón", packed)
         self.assertIn("Prohibido repetir el gesto", packed)
+        self.assertIn("Orden fija para todo chat", packed)
+        self.assertIn("no disocies", packed)
         self.assertIn("esa acción es tuya", packed)
         self.assertIn("te equivocaste al enviarlo", packed)
         self.assertNotIn("no te disculpes otra vez", packed)
