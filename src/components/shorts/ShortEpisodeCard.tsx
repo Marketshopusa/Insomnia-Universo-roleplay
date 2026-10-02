@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
+import { episodeStatusLabel } from "@/lib/shortsCatalog";
 import { Loader2, Play, Sparkles, Volume2, VolumeX } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -13,14 +14,12 @@ import {
 interface Props {
   series: SeriesWithEpisodes;
   episode: ShortsEpisode;
-  active: boolean;
   onUpdated: () => void;
 }
 
 export const ShortEpisodeCard = ({
   series,
   episode,
-  active,
   onUpdated,
 }: Props) => {
   const { user } = useAuth();
@@ -48,13 +47,6 @@ export const ShortEpisodeCard = ({
       alive = false;
     };
   }, [episode.video_url]);
-
-  useEffect(() => {
-    const el = videoRef.current;
-    if (!el) return;
-    if (active) el.play().catch(() => undefined);
-    else el.pause();
-  }, [active, videoUrl]);
 
   useEffect(
     () => () => {
@@ -96,9 +88,11 @@ export const ShortEpisodeCard = ({
     if (error || data?.error) {
       setGenerating(false);
       toast.error(
-        data?.detail
+        data?.error === "reference_image_required"
+          ? "Este capítulo necesita una imagen de referencia antes de producirse."
+          : data?.detail
           ? "El generador rechazó la escena"
-          : "No se pudo iniciar la generación",
+          : data?.error || "No se pudo iniciar la generación",
       );
       return;
     }
@@ -144,108 +138,88 @@ export const ShortEpisodeCard = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const stateLabel = generating ? "En producción" : episodeStatusLabel(episode);
+
   return (
-    <section className="h-[calc(100vh-4rem)] snap-start snap-always flex items-center justify-center px-4 py-4">
-      <div className="relative w-full max-w-[420px] h-full overflow-hidden border border-border bg-card">
+    <article className="flex flex-col overflow-hidden border border-border bg-card">
+      <div className="relative aspect-[9/16] max-h-[520px] bg-muted">
         {videoUrl ? (
           <video
             ref={videoRef}
             src={videoUrl}
-            className="absolute inset-0 w-full h-full object-cover"
+            className="absolute inset-0 h-full w-full object-cover"
             loop
             playsInline
+            controls
             muted={muted}
           />
         ) : (
           <div className="absolute inset-0 bg-gradient-to-br from-primary/20 via-background to-accent/20" />
         )}
-
-        <div className="absolute inset-x-0 bottom-0 p-5 bg-gradient-to-t from-background via-background/85 to-transparent">
+        {!videoUrl && !generating && (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <Play className="h-12 w-12 text-primary/40" />
+          </div>
+        )}
+        <span className="absolute left-3 top-3 bg-background/80 px-2 py-1 text-[10px] uppercase tracking-[0.2em] text-accent">
+          {stateLabel}
+        </span>
+        {videoUrl && (
+          <button
+            onClick={() => setMuted((value) => !value)}
+            className="absolute right-3 top-3 border border-border bg-background/70 p-2"
+          >
+            {muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
+          </button>
+        )}
+      </div>
+      <div className="space-y-3 p-4">
+        <div>
           <p className="text-[11px] uppercase tracking-[0.25em] text-accent">
-            {series.title} · N°{String(episode.episode_number).padStart(2, "0")}
+            Capítulo {String(episode.episode_number).padStart(2, "0")}
           </p>
-          <h3 className="font-display text-2xl mt-1">{episode.title}</h3>
-          {kineva && !series.is_published && series.created_by === user?.id && (
-            <div className="mt-2 text-xs text-accent">
-              <p>Vista previa del creador. La serie aún no aparece en el catálogo público.</p>
-              {canPublish && (
-                <Button size="sm" variant="outline" className="mt-2"
-                  onClick={handlePublish} disabled={publishing}>
-                  {publishing ? "Publicando..." : "Publicar serie revisada"}
-                </Button>
-              )}
-            </div>
-          )}
-          {reviewWarning && kineva && (
-            <p className="text-xs text-amber-400 mt-2">
-              Revisa la continuidad visual: Kineva detectÃ³ un salto entre cuadros en esta toma.
-            </p>
-          )}
-          {generating && kineva && (
-            <p className="text-xs text-accent mt-2">{progress || "Kineva preparando tomas…"}</p>
-          )}
-
-          {!videoUrl && series.created_by === user?.id && (
-            <Button
-              className="mt-4 w-full rounded-none"
-              onClick={() => handleGenerate()}
-              disabled={generating}
-            >
-              {generating ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Generando
-                  episodio…
-                </>
-              ) : (
-                <>
-                  <Sparkles className="w-4 h-4 mr-2" /> Generar video del
-                  episodio
-                </>
-              )}
-            </Button>
-          )}
+          <h3 className="mt-1 font-display text-xl">{episode.title}</h3>
+          {episode.script && <p className="mt-2 line-clamp-4 text-sm text-muted-foreground">{episode.script}</p>}
         </div>
-
+        {episode.error_message && (
+          <p className="text-sm text-destructive">{episode.error_message}</p>
+        )}
+        {reviewWarning && kineva && (
+          <p className="text-xs text-amber-400">
+            Revisa la continuidad visual: Kineva detectó un salto entre cuadros en esta toma.
+          </p>
+        )}
+        {generating && kineva && (
+          <p className="text-xs text-accent">{progress || "Kineva preparando tomas…"}</p>
+        )}
+        {kineva && !series.is_published && series.created_by === user?.id && canPublish && (
+          <Button size="sm" variant="outline" onClick={handlePublish} disabled={publishing}>
+            {publishing ? "Publicando..." : "Publicar serie revisada"}
+          </Button>
+        )}
+        {!videoUrl && series.created_by === user?.id && (
+          <Button className="w-full rounded-none" onClick={() => handleGenerate()} disabled={generating}>
+            {generating ? (
+              <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Produciendo capítulo…</>
+            ) : (
+              <><Sparkles className="mr-2 h-4 w-4" /> Producir este capítulo</>
+            )}
+          </Button>
+        )}
         {videoUrl && kineva && series.created_by === user?.id && (
-          <div className="absolute top-4 left-4 flex items-center gap-1 bg-background/80 p-1">
+          <div className="flex items-center gap-2">
             <label htmlFor={`shot-${episode.id}`} className="sr-only">Número de toma</label>
             <input id={`shot-${episode.id}`} type="number" min={1}
               max={episode.kineva_shot_count ?? 1} value={shotNumber}
               onChange={(event) => setShotNumber(Math.max(1, Math.min(
                 episode.kineva_shot_count ?? 1, Number(event.target.value) || 1)))}
-              className="w-12 bg-background border border-border text-center text-sm" />
-            <Button size="sm" variant="outline" onClick={() => handleGenerate("repair")}
-              disabled={generating}>
+              className="w-12 border border-border bg-background text-center text-sm" />
+            <Button size="sm" variant="outline" onClick={() => handleGenerate("repair")} disabled={generating}>
               {generating ? "Reparando…" : "Regenerar toma"}
             </Button>
           </div>
         )}
-
-        {videoUrl && (
-          <button
-            onClick={() => setMuted((m) => !m)}
-            className="absolute top-4 right-4 p-2 bg-background/70 border border-border"
-          >
-            {muted ? (
-              <VolumeX className="w-4 h-4" />
-            ) : (
-              <Volume2 className="w-4 h-4" />
-            )}
-          </button>
-        )}
-
-        {series.is_adult && (
-          <span className="absolute top-4 left-4 text-[10px] px-2 py-1 bg-destructive/20 border border-destructive/40 text-destructive">
-            18+
-          </span>
-        )}
-
-        {!videoUrl && !generating && (
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <Play className="w-12 h-12 text-primary/40" />
-          </div>
-        )}
       </div>
-    </section>
+    </article>
   );
 };

@@ -28,6 +28,7 @@ import { Clapperboard, Loader2, Sparkles } from "lucide-react";
  import { Card } from "@/components/ui/card";
  import { useAuth } from "@/contexts/AuthContext";
  import { useNovelProjects, useCreateNovelProject, useUpdateNovelProject, useDeleteNovelProject } from "@/hooks/useNovelProjects";
+ import { novelFromProject } from "@/lib/novelProject";
  import { useToast } from "@/hooks/use-toast";
  import { Link } from "react-router-dom";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -74,7 +75,7 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
   const [description, setDescription] = useState("");
   const [chapterCount, setChapterCount] = useState(7);
   const [isSafeForWork, setIsSafeForWork] = useState(false);
-  const [language, setLanguage] = useState("English");
+  const [language, setLanguage] = useState("Spanish");
   const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
   const [generatingVideos, setGeneratingVideos] = useState(false);
@@ -105,6 +106,18 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
       window.clearInterval(timer);
     };
   }, []);
+
+  useEffect(() => {
+    const savedId = window.sessionStorage.getItem("insomnia.studio.localJob");
+    if (!savedId) return;
+    void fetchLocalJob(savedId).then(setLocalJob).catch(() => {
+      window.sessionStorage.removeItem("insomnia.studio.localJob");
+    });
+  }, []);
+
+  useEffect(() => {
+    if (localJob?.id) window.sessionStorage.setItem("insomnia.studio.localJob", localJob.id);
+  }, [localJob?.id]);
 
   useEffect(() => {
     if (!localJob || ["completed", "failed"].includes(localJob.state)) return;
@@ -324,7 +337,15 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
      setModel(project.model.toLowerCase().replace(" ", "-"));
      setCreativity(project.creativity.toLowerCase());
      setIsSafeForWork(project.is_safe_for_work);
-    toast({ title: t("studio.toast.loaded") });
+     const restored = novelFromProject(project);
+     setNovel(restored.chapters.length ? restored : null);
+     toast({
+       title: restored.chapters.length ? t("studio.toast.loaded") : "Este proyecto no guardó los capítulos",
+       description: restored.chapters.length
+         ? `${restored.chapters.length} capítulos recuperados.`
+         : "La idea sigue aquí. Vuelve a generar el proyecto para escribir los capítulos otra vez.",
+       ...(restored.chapters.length ? {} : { variant: "destructive" as const }),
+     });
    };
 
    const handleDeleteProjects = async () => {
@@ -367,8 +388,35 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
    return (
      <MainLayout>
        <div className="container mx-auto px-4 py-8 max-w-4xl">
-        <h1 className="text-3xl font-display text-center mb-8">{t("studio.title")}</h1>
+        <h1 className="text-3xl font-display text-center mb-2">{t("studio.title")}</h1>
         <p role="status" className={`mb-6 text-center text-sm ${localHealth === "ready" ? "text-emerald-600" : "text-amber-600"}`}>{localStatusText}</p>
+
+        <section className="mb-8">
+          <h2 className="font-display text-xl mb-3">Tus novelas</h2>
+          {projectsLoading ? (
+            <p className="text-sm text-muted-foreground">Cargando proyectos…</p>
+          ) : !projects?.length ? (
+            <p className="text-sm text-muted-foreground">Todavía no hay novelas guardadas. Al generar un proyecto, los capítulos quedan aquí.</p>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {projects.map((project) => (
+                <button
+                  key={project.id}
+                  type="button"
+                  onClick={() => handleLoadProject(project)}
+                  className="border border-border bg-card p-4 text-left transition-colors hover:border-primary/60"
+                >
+                  <p className="font-display text-lg leading-tight">{project.title}</p>
+                  <p className="mt-1 text-[11px] uppercase tracking-[0.16em] text-accent">
+                    {project.chapter_count} capítulos · {new Date(project.updated_at).toLocaleDateString("es")}
+                  </p>
+                  {project.description && <p className="mt-2 line-clamp-2 text-sm text-muted-foreground">{project.description}</p>}
+                  {!project.content && <p className="mt-2 text-xs text-amber-500">El texto de los capítulos no quedó guardado.</p>}
+                </button>
+              ))}
+            </div>
+          )}
+        </section>
 
          <Card className="p-6 mb-6 space-y-2">
            <Label>Motor de video</Label>

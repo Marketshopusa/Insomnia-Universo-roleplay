@@ -52,6 +52,8 @@
            user_id: user.id,
            title: projectData.title || "Untitled Project",
            description: projectData.description,
+           content: projectData.content,
+           outline: projectData.outline,
            chapter_count: projectData.chapter_count || 7,
            language: projectData.language || "English",
            model: projectData.model || "Apprentice 6",

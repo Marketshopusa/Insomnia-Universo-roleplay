@@ -1,5 +1,7 @@
 import { invokeFunctionWithRetry } from "@/lib/invokeFunction";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { seriesStatus } from "@/lib/shortsCatalog";
+import { useState } from "react";
+import { Link } from "react-router-dom";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,7 +22,14 @@ import { useAdultMode } from "@/contexts/AdultModeContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { useShorts } from "@/hooks/useShorts";
 import { uploadKinevaReference } from "@/lib/kinevaReference";
-import { ShortEpisodeCard } from "@/components/shorts/ShortEpisodeCard";
+import { SeriesCover } from "@/components/shorts/SeriesCover";
+import { Skeleton } from "@/components/ui/skeleton";
+
+const createError = (code: string) => ({
+  reference_image_unavailable: "No se pudo usar esa imagen. Prueba con otra foto o crea la serie sin ella.",
+  premise_too_short: "Describe la premisa con un poco más de detalle.",
+  ai_timeout: "La serie tardó demasiado. Revisa Shorts: puede haber quedado guardada.",
+}[code] || code);
 
 const Shorts = () => {
   const { enabled: adultEnabled } = useAdultMode();
@@ -33,28 +42,6 @@ const Shorts = () => {
   const [category, setCategory] = useState("romance");
   const [isAdult, setIsAdult] = useState(adultEnabled);
   const [episodes, setEpisodes] = useState(3);
-  const [activeId, setActiveId] = useState<string | null>(null);
-  const feedRef = useRef<HTMLDivElement>(null);
-
-  const items = useMemo(
-    () => series.flatMap((s) => s.episodes.map((e) => ({ series: s, episode: e }))),
-    [series],
-  );
-
-  useEffect(() => {
-    const root = feedRef.current;
-    if (!root) return;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) setActiveId((entry.target as HTMLElement).dataset.id ?? null);
-        });
-      },
-      { root, threshold: 0.6 },
-    );
-    root.querySelectorAll("[data-id]").forEach((el) => observer.observe(el));
-    return () => observer.disconnect();
-  }, [items]);
 
   const handleCreate = async () => {
     if (!user) {
@@ -68,10 +55,10 @@ const Shorts = () => {
     setCreating(true);
     try {
       const referencePath = await uploadKinevaReference(user.id, premise, referenceImage);
-      const { data, error } = await invokeFunctionWithRetry<{ error?: string }>(
+      const { data, error } = await invokeFunctionWithRetry<{ error?: string; message?: string }>(
         "generate-shorts-series", { premise, category, isAdult, episodes, referencePath });
-      if (error || data?.error) throw new Error(data?.error || error?.message || "No se pudo generar la serie");
-      toast.success("Serie creada. Genera el video de cada episodio.");
+      if (error || data?.error) throw new Error(createError(data?.message || data?.error || error?.message || "No se pudo generar la serie"));
+      toast.success("Serie creada. Entra en la portada para ver los capítulos.");
       setOpen(false);
       setPremise("");
       setReferenceImage(null);
@@ -89,9 +76,10 @@ const Shorts = () => {
         <div className="container mx-auto px-4 py-6 flex flex-wrap items-end justify-between gap-4">
           <div>
             <p className="text-[11px] uppercase tracking-[0.3em] text-accent">Insomnia Shorts</p>
-            <h1 className="font-display text-3xl md:text-4xl mt-1">Series verticales generadas por IA</h1>
+            <h1 className="font-display text-3xl md:text-4xl mt-1">Series</h1>
             <p className="text-sm text-muted-foreground mt-2 max-w-xl">
-              Episodios verticales cinematográficos. Desliza para continuar la historia.
+              Cada serie tiene su portada. Entra para ver los capítulos en orden.
+              {!adultEnabled && " Las series 18+ aparecen al activar ese modo."}
             </p>
           </div>
 
@@ -105,7 +93,7 @@ const Shorts = () => {
               <DialogHeader>
                 <DialogTitle className="font-display text-2xl">Crear serie de shorts</DialogTitle>
                 <DialogDescription>
-                  La IA escribe los episodios y genera el video vertical de cada uno.
+                  La IA escribe los capítulos y los guarda dentro de una portada.
                 </DialogDescription>
               </DialogHeader>
 
@@ -125,27 +113,17 @@ const Shorts = () => {
                   <Input id="shorts-reference" type="file" accept="image/png,image/jpeg,image/webp"
                     onChange={(event) => setReferenceImage(event.target.files?.[0] ?? null)}
                     className="rounded-none" />
-                  <p className="text-xs text-muted-foreground">Si no subes una foto, Kineva crearÃ¡ la primera imagen a partir de tu idea.</p>
+                  <p className="text-xs text-muted-foreground">Sin foto, la serie igual se guarda. El video la pide cuando vayas a producirlo.</p>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-2">
                     <Label>Categoría</Label>
-                    <Input
-                      value={category}
-                      onChange={(e) => setCategory(e.target.value)}
-                      className="rounded-none"
-                    />
+                    <Input value={category} onChange={(e) => setCategory(e.target.value)} className="rounded-none" />
                   </div>
                   <div className="space-y-2">
                     <Label>Episodios</Label>
-                    <Input
-                      type="number"
-                      min={1}
-                      max={6}
-                      value={episodes}
-                      onChange={(e) => setEpisodes(Number(e.target.value))}
-                      className="rounded-none"
-                    />
+                    <Input type="number" min={1} max={6} value={episodes}
+                      onChange={(e) => setEpisodes(Number(e.target.value))} className="rounded-none" />
                   </div>
                 </div>
                 <div className="flex items-center justify-between border border-border p-3">
@@ -157,13 +135,9 @@ const Shorts = () => {
                 </div>
                 <Button className="w-full rounded-none" onClick={handleCreate} disabled={creating}>
                   {creating ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Escribiendo episodios…
-                    </>
+                    <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Escribiendo episodios…</>
                   ) : (
-                    <>
-                      <Sparkles className="w-4 h-4 mr-2" /> Generar serie
-                    </>
+                    <><Sparkles className="w-4 h-4 mr-2" /> Generar serie</>
                   )}
                 </Button>
               </div>
@@ -172,34 +146,46 @@ const Shorts = () => {
         </div>
       </div>
 
-      {loading ? (
-        <div className="h-[60vh] flex items-center justify-center">
-          <Loader2 className="w-6 h-6 animate-spin text-primary" />
-        </div>
-      ) : items.length === 0 ? (
-        <div className="h-[60vh] flex flex-col items-center justify-center text-center gap-3 px-4">
-          <p className="font-display text-2xl">Aún no hay shorts</p>
-          <p className="text-sm text-muted-foreground max-w-sm">
-            Crea la primera serie y la IA escribirá los episodios y generará el video vertical de cada uno.
-          </p>
-        </div>
-      ) : (
-        <div
-          ref={feedRef}
-          className="h-[calc(100vh-4rem)] overflow-y-auto snap-y snap-mandatory scrollbar-none"
-        >
-          {items.map(({ series: s, episode }) => (
-            <div key={episode.id} data-id={episode.id}>
-              <ShortEpisodeCard
-                series={s}
-                episode={episode}
-                active={activeId === episode.id}
-                onUpdated={reload}
-              />
-            </div>
-          ))}
-        </div>
-      )}
+      <div className="container mx-auto px-4 py-8">
+        {loading ? (
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+            {Array.from({ length: 5 }).map((_, index) => <Skeleton key={index} className="aspect-[4/5] rounded-none" />)}
+          </div>
+        ) : series.length === 0 ? (
+          <div className="h-[50vh] flex flex-col items-center justify-center text-center gap-3 px-4">
+            <p className="font-display text-2xl">Aún no hay series</p>
+            <p className="text-sm text-muted-foreground max-w-sm">
+              Crea una serie y sus capítulos quedarán juntos, dentro de la portada.
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+            {series.map((item, index) => {
+              const status = seriesStatus(item.episodes);
+              return (
+                <Link key={item.id} to={`/shorts/${item.id}`} className="group relative overflow-hidden border border-border/60 bg-card/60 transition-all duration-300 hover:-translate-y-1 hover:border-primary/60">
+                  <div className="relative aspect-[4/5] overflow-hidden bg-muted">
+                    <SeriesCover series={item} className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-110" />
+                    <div className="absolute inset-0 bg-gradient-to-t from-background via-background/20 to-transparent" />
+                    <div className="absolute bottom-0 right-0 border-l border-t border-border/60 bg-background/80 px-2.5 py-1">
+                      <span className="font-display text-xs italic text-accent">N°{String(index + 1).padStart(2, "0")}</span>
+                    </div>
+                    {item.is_adult && (
+                      <span className="absolute top-2 left-2 text-[10px] px-2 py-1 bg-destructive/80 text-destructive-foreground">18+</span>
+                    )}
+                  </div>
+                  <div className="space-y-1 p-3">
+                    <h2 className="font-display text-base leading-tight line-clamp-2 group-hover:text-primary">{item.title}</h2>
+                    <p className="text-[11px] text-muted-foreground">
+                      {item.episodes.length} {item.episodes.length === 1 ? "capítulo" : "capítulos"} · {status.label}
+                    </p>
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        )}
+      </div>
     </MainLayout>
   );
 };
