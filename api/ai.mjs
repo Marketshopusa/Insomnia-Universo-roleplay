@@ -180,14 +180,16 @@ export function storyContinuityLines(spanish) {
   if (!spanish) {
     return [
       "Standing order for every chat, new or already underway: you are that person, with your own identity, your own way of speaking, and a memory of what happened. Follow the story's current course. Do not restart it, do not change the facts or who did each thing, and do not jump to another scene.",
-      "What already happened stays true. Answer the latest line as part of the same conversation. Speak fluently, with new wording. Do not repeat the same phrases, apologies, or gestures from one message to the next.",
+      "What already happened stays true. Answer the latest line as part of the same conversation. Speak fluently, with new wording. Do not repeat the same phrases or the same apologies.",
+      "Stay in the same place, the same posture, and the same action. If they were hugging, they are still hugging. If they were in the rain, they are still in the rain. Do not move them to the kitchen, the bathroom, the bed, or another room unless the latest line does.",
       "A video, photo, or message stays with the person who sent it. If she sent a video of herself, it remains hers. Do not say it belongs to her partner or to someone else.",
       "Do not invent a couple and do not merge two people into one. Each person stays who they already were. Do not change the subject.",
     ];
   }
   return [
     "Orden fija para todo chat, nuevo o ya empezado: eres esa persona, con identidad propia, su forma de hablar y memoria de lo que pasó. Sigue el rumbo de la historia. No la reinicies, no cambies los hechos ni quién hizo cada cosa, y no disocies la conversación.",
-    "Lo que ya pasó sigue siendo cierto. Responde a lo último como parte de la misma conversación, con fluidez y con palabras nuevas. No repitas las mismas frases, disculpas o gestos de un mensaje a otro.",
+    "Lo que ya pasó sigue siendo cierto. Responde a lo último como parte de la misma conversación, con fluidez y con palabras nuevas. No repitas las mismas frases ni las mismas disculpas.",
+    "Quédate en el mismo lugar, la misma postura y la misma acción. Si estaban abrazados, siguen abrazados. Si estaban bajo la lluvia, siguen bajo la lluvia. No pases a la cocina, al baño, a la cama ni a otra habitación salvo que el último mensaje lo haga.",
     "Un video, una foto o un mensaje se queda con quien lo envió. Si ella envió un video de ella, sigue siendo suyo: no digas que es de su pareja ni de otra persona.",
     "No inventes una pareja ni juntes a dos personajes. Cada persona sigue siendo quien ya era en la conversación. No cambies de tema.",
   ];
@@ -208,13 +210,113 @@ export function lockedStoryFacts(history, characterName, playerName) {
   return facts.slice(-16);
 }
 
+const PLACE_WORDS = ["cocina", "baño", "bano", "cama", "sofa", "sofá", "sala", "lluvia", "tormenta", "tejado", "techo", "calle", "auto", "carro", "oficina", "balcon", "balcón", "playa", "bosque", "ducha", "jardin", "jardín", "camioneta", "cabaña", "cabana"];
+const POSTURE_WORDS = ["abraz", "acostad", "sentad", "arrodill", "de pie", "protegiendo", "bajo la lluvia"];
+const ANCHOR_STOP = new Set("para como donde cuando porque estan estan estaba estaban tiene tienen tenia desde sobre entre contra hacia ellos ellas nosotros ustedes persona historia escena capitulo capitulos seccion secciones breve breves dialogo dialogos escribe escribir mismo misma".split(" "));
+
+export function mentionsMinor(text) {
+  const value = String(text || "").toLowerCase();
+  if (/\b(niñ[oa]s?|beb[eé]|infante|menor de edad|preescolar|adolescente)\b/.test(value)) return true;
+  return /\b(?:1[0-7]|[1-9])\s*años\b/.test(value);
+}
+
+function lastWord(text, words) {
+  const lower = String(text || "").toLowerCase();
+  let found = "";
+  let at = -1;
+  for (const word of words) {
+    const index = lower.lastIndexOf(word);
+    if (index > at) {
+      at = index;
+      found = word;
+    }
+  }
+  return found;
+}
+
+/** The place and posture already established. A later reply may not replace them. */
+export function sceneLock(turns, latest = "") {
+  const blob = [...(Array.isArray(turns) ? turns : []).map((turn) => turn?.text || turn?.content || ""), latest].join("\n");
+  return { place: lastWord(blob, PLACE_WORDS), posture: lastWord(blob, POSTURE_WORDS) };
+}
+
+export function sceneLockLine(lock, spanish) {
+  if (!lock?.place && !lock?.posture) return "";
+  if (!spanish) {
+    return "Fixed state. Do not change it unless the latest message changes it. "
+      + (lock.place ? "Place: " + lock.place + ". " : "")
+      + (lock.posture ? "Posture or action: " + lock.posture + ". " : "")
+      + "Do not move to another room, posture, or activity.";
+  }
+  return "Estado fijo. No lo cambies salvo que el último mensaje lo cambie. "
+    + (lock.place ? "Lugar: " + lock.place + ". " : "")
+    + (lock.posture ? "Postura o acción: " + lock.posture + ". " : "")
+    + "Prohibido pasar a otra habitación, a otra postura o a otra actividad.";
+}
+
+export function replyChangesScene(reply, context) {
+  const text = String(reply || "").toLowerCase();
+  const around = String(context || "").toLowerCase();
+  const jumped = (words) => words.some((word) => text.includes(word) && !around.includes(word));
+  return jumped(PLACE_WORDS) || jumped(POSTURE_WORDS);
+}
+
+export function anchorWords(source) {
+  const plain = String(source || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const words = plain.match(/[a-zñ]{5,}/g) || [];
+  const unique = [];
+  for (const word of words) {
+    if (ANCHOR_STOP.has(word) || unique.includes(word)) continue;
+    unique.push(word);
+    if (unique.length >= 8) break;
+  }
+  return unique;
+}
+
+export function narrativeStays(source, output) {
+  const written = String(output || "").trim();
+  if (!written) return false;
+  if (mentionsMinor(written) && !mentionsMinor(source)) return false;
+  const keys = anchorWords(source);
+  if (!keys.length) return true;
+  const plain = written.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const hits = keys.filter((word) => plain.includes(word)).length;
+  return hits >= Math.min(2, keys.length);
+}
+
+export function narrativeRequest(body) {
+  const story = body?.story || {};
+  const spanish = body?.language !== "en";
+  const source = [story.title, story.description, story.character_role, story.player_role, body?.scene].filter(Boolean).join("\n");
+  const minor = mentionsMinor(source);
+  const chapters = Math.min(5, Math.max(1, Number(body?.chapters) || 3));
+  const lines = [
+    spanish ? "Escribe en español." : "Write in English.",
+    "Esta no es una historia nueva. Narra exactamente la premisa de abajo, con las mismas personas, el mismo parentesco, el mismo lugar y el mismo suceso.",
+    "Prohibido cambiar de trama, de habitación, de edad o de actividad. Si la premisa es proteger a alguien de la lluvia y de una tormenta, el relato es esa protección y no otra escena.",
+    "No inventes la edad de nadie. Si la premisa no dice una edad, no pongas una.",
+    "No escribas romance ni sexo con un menor de edad. Si hay un menor, el relato se queda en lo que la premisa ya dice, sin contenido sexual ni romántico.",
+    minor ? "Hay un menor en el material de origen: cero contenido sexual o romántico." : "",
+    !minor && body?.explicit === true
+      ? "Si la premisa ya es íntima entre adultos, sigue esa intimidad. No la cambies por otra trama."
+      : "No añadas sexo que la premisa no contiene.",
+    "Crea " + chapters + " secciones breves y continuas, en el mismo lugar, con diálogo.",
+    slangInstruction(body?.language, body?.region),
+    "Título: " + String(story.title || "").slice(0, 200),
+    "Personajes, tal como están escritos: " + [story.character_role, story.player_role].filter(Boolean).join(" / ").slice(0, 400),
+    "Premisa obligatoria: " + String(story.description || "").slice(0, 2500),
+    body?.scene ? "Escena que ya se está viviendo. Continúa esta, no otra:\n" + String(body.scene).slice(0, 4000) : "",
+  ];
+  return lines.filter(Boolean).join("\n");
+}
+
 export function storyVoiceLines(character, player, spanish, locale) {
   const name = String(character || "el personaje").slice(0, 80);
   const other = String(player || "la otra persona").slice(0, 80);
   if (!spanish) {
     return [
       "You are " + name + ", in a conversation with " + other + ". Reply only as " + name + ", in " + locale + ".",
-      "Speak like that person in a real conversation: their warmth, humor, shame, or temper, matching this story. Two to four spoken sentences, and a short gesture only when it adds something. Answer what they just said, with one concrete detail from this scene. It should feel like someone is there, not a form or an answering machine.",
+      "Speak like that person in a real conversation: their warmth, humor, shame, or temper, matching this story. Two to four spoken sentences. Answer what they just said without moving the scene. It should feel like someone is there, not a form or an answering machine.",
       "If " + other + " says you sent, said, or did something, that action is yours. Answer as the person who did it. If they say the video you sent was not for them, say you sent it to the wrong person. Do not say you also watched it. What " + other + " did is not something you did, and you do not decide their actions.",
       "A new apology fits when they just pointed out a mistake of yours. Do not repeat the same gesture or the same sentences from the previous turn.",
       "If they ask for a moan, a shout, crying, a laugh, or a sigh, that reaction stays in the reply, as they asked.",
@@ -222,7 +324,7 @@ export function storyVoiceLines(character, player, spanish, locale) {
   }
   return [
     "Eres " + name + " y hablas con " + other + ". Responde solo como " + name + ", en " + locale + ".",
-    "Habla como esa persona en una conversación real: con su forma de querer, su humor, su vergüenza o su carácter, según esta historia. Dos a cuatro frases dichas en voz alta, y un gesto breve solo si aporta. Contesta lo que acaban de decirte, con un detalle concreto de esta escena. Que se sienta alguien al otro lado, no una ficha ni un contestador.",
+    "Habla como esa persona en una conversación real: con su forma de querer, su humor, su vergüenza o su carácter, según esta historia. Dos a cuatro frases dichas en voz alta. Contesta lo que acaban de decirte sin mover la escena. Que se sienta alguien al otro lado, no una ficha ni un contestador.",
     "Si " + other + " dice que tú enviaste, dijiste o hiciste algo, esa acción es tuya y contestas como quien la hizo. Si te dice que el video que enviaste no era para esa persona, respondes que te equivocaste al enviarlo. No digas que tú también lo viste. Lo que hizo " + other + " no lo hiciste tú, y no decides sus actos.",
     "Una disculpa nueva sí cabe cuando acaba de señalar un error tuyo. Prohibido repetir el gesto o las mismas frases del turno anterior.",
     "Si pide un gemido, un grito, un llanto, una risa o un suspiro, esa reacción va en la respuesta, tal como la pidió.",
@@ -239,9 +341,19 @@ export default async function handler(req, res) {
       const spanish = body.language === "es";
       const adultMode = body.adultMode === true;
       const locale = spanish ? "español" : "inglés";
+      const history = (Array.isArray(body.history) ? body.history : []).flatMap((entry) => {
+        const role = entry?.role === "assistant" ? "model" : entry?.role === "user" ? "user" : null;
+        const text = String(entry?.content || "").trim().slice(0, 700);
+        return role && text ? [{ role, text }] : [];
+      });
+      const latest = String(body.userMessage || "").trim().slice(0, 1200);
+      const sceneContext = [story.title, story.description, story.character_role, story.player_role, ...history.map((entry) => entry.text), latest].join("\n");
+      const lock = sceneLock(history, latest);
       const isOffRole = (text) => {
         const reply = String(text || "").trim();
         if (!reply || reply.length > 720 || reply.split(/\n\s*\n/).length > 3) return true;
+        if (replyChangesScene(reply, sceneContext)) return true;
+        if (mentionsMinor(reply) && !mentionsMinor(sceneContext)) return true;
         if (/(respond as a character|under \d+ characters|brief action and natural dialogue|do not decide user actions|character .{0,80} currently|conversaci[oÃ³]n:|premise:|el usuario interpreta a|estÃ¡s interpretando a|language:|\bspanish\s*\.|\benglish\s*\.)/i.test(reply)) return true;
         if (spanish) {
           const english = (reply.match(/\b(the|this|that|with|and|your|you|she|he|her|him|friend|girlfriend|respond|character|scene|under|currently|feeling|something|said|sent)\b/gi) || []).length;
@@ -258,17 +370,14 @@ export default async function handler(req, res) {
         "La memoria y los Ãºltimos turnos son la escena actual, en orden. ContinÃºa exactamente desde la Ãºltima intervenciÃ³n: mismo lugar, tiempo, personas presentes, relaciones y hechos. No empieces de cero, no regreses al inicio, no mezcles una escena vieja con la de ahora y no respondas como si lo anterior no hubiera pasado. Si el mensaje estÃ¡ mal transcrito, interprÃ©talo dentro de esa escena.",
         ...storyVoiceLines(story.character_role, story.player_role, spanish, locale),
         slangInstruction(body.language, body.region),
-        ...(adultMode ? [
+        ...(adultMode && !mentionsMinor(sceneContext) ? [
           "Todos los personajes de esta escena son adultos. Sigue la tensiÃ³n romÃ¡ntica, intimidad, secretos y consecuencias emocionales con naturalidad, sin moralizar ni interrumpir el rol por una simple alusiÃ³n sexual.",
           "Si el contexto previo fue mÃ¡s explÃ­cito, continÃºa desde su consecuencia emocional o el diÃ¡logo presente sin describir actos sexuales grÃ¡ficos. MantÃ©n la voz y la agencia del personaje. Un gemido, un grito, un llanto o una risa que el usuario pida sí se incluye.",
         ] : []),
-        "No narres un resumen, no cambies de escena sin que el usuario lo haga, no presentes fichas o instrucciones, no expliques el rol ni traduzcas. Entrega Ãºnicamente la respuesta que verÃ¡ el usuario.",
-      ].join("\n");
-      const history = (Array.isArray(body.history) ? body.history : []).flatMap((entry) => {
-        const role = entry?.role === "assistant" ? "model" : entry?.role === "user" ? "user" : null;
-        const text = String(entry?.content || "").trim().slice(0, 700);
-        return role && text ? [{ role, text }] : [];
-      });
+        "No narres un resumen, no cambies de escena sin que el usuario lo haga, no presentes fichas o instrucciones, no expliques el rol ni traduzcas. Entrega únicamente la respuesta que verá el usuario.",
+        sceneLockLine(lock, spanish),
+        mentionsMinor(sceneContext) ? "Hay un menor en esta historia. Cero romance y cero contenido sexual. Sigue solo la escena ya escrita." : "",
+      ].filter(Boolean).join("\n");
       const recent = history.slice(-24);
       const older = history.slice(0, -24);
       const characterName = String(story.character_role || "Personaje").slice(0, 80);
@@ -295,15 +404,14 @@ export default async function handler(req, res) {
         if (contents.at(-1)?.role === entry.role) contents.at(-1).parts[0].text += "\n" + entry.text;
         else contents.push({ role: entry.role, parts: [{ text: entry.text }] });
       }
-      const latest = String(body.userMessage || "").trim().slice(0, 1200);
       if (!latest) return send(res, 400, { error: "missing_message" });
       if (contents.at(-1)?.role === "user") contents.at(-1).parts[0].text += "\n" + latest;
       else contents.push({ role: "user", parts: [{ text: latest }] });
       const content = await generate(
         "gemini-2.5-flash",
         [],
-        { maxOutputTokens: 2048, temperature: 0.7 },
-        { contents, systemInstruction, adultMode, fallbackModels: ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite"], fastReply: true, validate: (reply) => !isOffRole(reply) },
+        { maxOutputTokens: 2048, temperature: 0.45 },
+        { contents, systemInstruction, adultMode: adultMode && !mentionsMinor(sceneContext), fallbackModels: ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite"], fastReply: true, validate: (reply) => !isOffRole(reply) },
       );
       return send(res, 200, { content });
     }
@@ -320,8 +428,26 @@ export default async function handler(req, res) {
     }
     if (action === "generate-narrative") {
       const story = body.story || {};
-      const prompt = "Escribe una narraciÃ³n original en " + (body.language === "es" ? "espaÃ±ol" : "inglÃ©s") + " para " + String(story.title || "").slice(0, 250) + ". Premisa: " + String(story.description || "").slice(0, 2500) + ". Crea " + Math.min(5, Math.max(1, Number(body.chapters) || 3)) + " secciones breves con diÃ¡logos y continuidad. " + slangInstruction(body.language, body.region);
-      return send(res, 200, { content: await generate("gemini-3.5-flash-lite", [{ text: prompt }], { maxOutputTokens: 2000 }) });
+      const source = [story.title, story.description, story.character_role, story.player_role, body.scene].filter(Boolean).join("\n");
+      const prompt = narrativeRequest(body);
+      const options = {
+        fastReply: true,
+        fallbackModels: [],
+        validate: (reply) => narrativeStays(source, reply),
+      };
+      let content;
+      try {
+        content = await generate("gemini-2.5-flash", [{ text: prompt }], { maxOutputTokens: 2000, temperature: 0.4 }, options);
+      } catch (error) {
+        if (error.code !== "off_role") throw error;
+        content = await generate(
+          "gemini-2.5-flash",
+          [{ text: prompt + "\n\nEl intento anterior cambió la historia. Escribe solo la premisa, con las mismas personas y el mismo suceso, sin otra trama ni otra edad." }],
+          { maxOutputTokens: 2000, temperature: 0.2 },
+          options,
+        );
+      }
+      return send(res, 200, { content });
     }
     if (action === "generate-shorts-series") {
       const idea = String(body.premise || "").trim().slice(0, 1000);

@@ -161,7 +161,9 @@ def conversation_messages(job):
         "No reinicies la historia y no respondas como si lo anterior no hubiera pasado. "
         "Habla como " + character + " en una conversación real con " + player + ": su forma de querer, su humor, su vergüenza o su carácter. "
         "Que se sienta una persona, no una ficha ni un contestador. "
-        "Prohibido repetir el gesto o las mismas frases del turno anterior. "
+        "Quédate en el mismo lugar, la misma postura y la misma acción. "
+        "Si estabas abrazándolo, sigues en ese abrazo. Si estabas bajo la lluvia, sigues bajo la lluvia. "
+        "Prohibido pasar a la cocina, al baño, a la cama o a otra habitación si el mensaje no lo hizo. "
         "La primera frase del dialogo contesta lo que " + player + " acaba de decir, con un detalle concreto de esta escena. "
         "Si " + player + " dice que tú enviaste, dijiste o hiciste algo, esa acción es tuya. "
         "Si te dice que el video que enviaste no era para esa persona, respondes que te equivocaste al enviarlo. No digas que tú también lo viste. "
@@ -174,7 +176,7 @@ def conversation_messages(job):
         "No des un sermón ni saltes a otra trama. "
         "En 'dialogo' habla DIRECTAMENTE a " + player + " usando 'tú'. "
         "Devuelve SOLO JSON con 'gesto' y 'dialogo'. "
-        "'gesto': una acción física nueva, en primera persona, máximo 80 caracteres. "
+        "'gesto': la misma postura y el mismo lugar, en primera persona, máximo 80 caracteres. No cambies de habitación. "
         "'dialogo': dos a cuatro frases dichas en voz alta, máximo 320 caracteres. "
         + ("Gesto y diálogo SOLO en español, sin palabras inglesas." if spanish else "Everything in English.")
         + slang_clause(job)
@@ -188,7 +190,7 @@ def conversation_messages(job):
     closing = (
         latest + "\n\nContesta esa frase, como " + character + ", mirando a " + player + ". "
         "Si te dice que tú hiciste algo, esa acción es tuya. "
-        "No la resumas y no repitas el gesto anterior."
+        "No la resumas. No cambies de lugar ni de postura."
         + (" Gesto prohibido, no lo repitas: " + banned + "." if banned else "")
     )
     messages.append({"role": "user", "content": closing})
@@ -240,7 +242,7 @@ def reply_for(job):
     parsed = ""
     for attempt in range(3):
         try:
-            raw_reply = model_chat(messages, 0.85 + attempt * 0.05, 480, json_mode=True)
+            raw_reply = model_chat(messages, 0.55 + attempt * 0.05, 480, json_mode=True)
             parsed = parse_role_reply(raw_reply)
         except Exception as error:
             print("Chat attempt failed", job.get("jobId", "local"), attempt, repr(error)[:180], flush=True)
@@ -252,7 +254,7 @@ def reply_for(job):
             return parsed
         messages = trim_messages([messages[0], messages[-1]], 2600)
         messages[0]["content"] += (
-            " Tu intento anterior repitió el turno previo. Gesto distinto y frases nuevas. "
+            " Tu intento anterior repitió las frases. Usa palabras nuevas, pero el mismo lugar y la misma postura. "
             "Responde solo a esto: " + clip_text(latest, 240)
         )
     raise RuntimeError("Local response repeated the previous turn")

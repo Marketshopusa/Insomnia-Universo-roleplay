@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { cleanTranscript, generate, generationConfigFor, lockedStoryFacts, speechToTextBody, storyContinuityLines, storyVoiceLines, transcribeAudio } from "./ai.mjs";
+import { cleanTranscript, generate, generationConfigFor, lockedStoryFacts, mentionsMinor, narrativeRequest, narrativeStays, replyChangesScene, sceneLock, speechToTextBody, storyContinuityLines, storyVoiceLines, transcribeAudio } from "./ai.mjs";
 
 test("a video stays with the person who sent it", () => {
   const facts = lockedStoryFacts([
@@ -17,10 +17,33 @@ test("a video stays with the person who sent it", () => {
   assert.match(rules, /No inventes una pareja/);
 });
 
+test("a reply cannot move the scene or invent a child", () => {
+  const lock = sceneLock([
+    { text: "Te cubro con el abrigo bajo la lluvia. Tienes miedo de la tormenta." },
+  ], "No me sueltes.");
+  assert.equal(lock.place, "tormenta");
+  assert.equal(replyChangesScene("Te llevo a la cocina y te abrazo.", "bajo la lluvia, miedo de la tormenta"), true);
+  assert.equal(replyChangesScene("Sigo cubriéndote bajo la lluvia.", "bajo la lluvia, miedo de la tormenta"), false);
+  assert.equal(mentionsMinor("una niña de 7 años"), true);
+  assert.equal(mentionsMinor("un hombre protege a su sobrina de la tormenta"), false);
+  const source = "Un hombre protege a su sobrina de la lluvia porque teme las tormentas.";
+  assert.equal(narrativeStays(source, "La sobrina sigue bajo la lluvia y la tormenta no cesa."), true);
+  assert.equal(narrativeStays(source, "Una niña de 7 años mira el tejado con su tío."), false);
+  const request = narrativeRequest({
+    language: "es",
+    story: { title: "La tormenta", description: source, character_role: "la sobrina", player_role: "el hombre" },
+  });
+  assert.match(request, /no es una historia nueva/);
+  assert.match(request, /No inventes la edad/);
+  assert.match(request, /lluvia/);
+});
+
 test("every chat keeps the same memory and does not restart the story", () => {
   const lines = storyContinuityLines(true).join("\n");
   assert.match(lines, /todo chat, nuevo o ya empezado/);
   assert.match(lines, /no disocies la conversación/);
+  assert.match(lines, /mismo lugar/);
+  assert.match(lines, /bajo la lluvia/);
   assert.match(lines, /memoria de lo que pasó/);
   assert.match(lines, /palabras nuevas/);
 });

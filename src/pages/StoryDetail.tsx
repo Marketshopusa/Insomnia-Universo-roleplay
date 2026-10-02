@@ -538,6 +538,12 @@ type Mode = "select" | "read" | "roleplay";
            region: activeRegion(),
            explicit: story.story_type === "real_sex" || !!story.has_explicit_images,
            chapters: 5,
+           scene: messages
+             .filter((message) => message.id !== "intro")
+             .slice(-8)
+             .map((message) => `${message.role === "user" ? "Usuario" : "Personaje"}: ${message.content}`)
+             .join("\n")
+             .slice(0, 4000),
        });
        if (error || !(data as any)?.content) {
          const code = (data as any)?.error;
