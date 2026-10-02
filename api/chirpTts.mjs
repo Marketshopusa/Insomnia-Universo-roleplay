@@ -44,13 +44,29 @@ export function cloudGeminiVoiceFor(preset, language, region) {
   return {
     languageCode: locale,
     name: previewVoice(preset),
+    modelName: "gemini-2.5-flash-tts",
     model_name: "gemini-2.5-flash-tts",
   };
 }
 
+function geminiLocales(language, region) {
+  const first = cloudGeminiVoiceFor("Aoede", language, region).languageCode;
+  if (language === "en" || first === "es-ES") return [first];
+  return [first, "es-ES"];
+}
+
 function quotaProjectId() {
+  if (process.env.GCP_PROJECT_ID) return process.env.GCP_PROJECT_ID;
   const account = process.env.GCP_SERVICE_ACCOUNT_EMAIL || "";
-  return process.env.GCP_PROJECT_ID || account.split("@")[1]?.replace(/\.iam\.gserviceaccount\.com$/, "");
+  const fromEmail = account.split("@")[1]?.replace(/\.iam\.gserviceaccount\.com$/, "");
+  if (fromEmail) return fromEmail;
+  try {
+    const credentials = JSON.parse(process.env.GOOGLE_CLOUD_TTS_SERVICE_ACCOUNT_JSON || "");
+    return credentials.project_id
+      || credentials.client_email?.split("@")[1]?.replace(/\.iam\.gserviceaccount\.com$/, "");
+  } catch {
+    return undefined;
+  }
 }
 
 export function removePerformanceCues(text) {
@@ -227,7 +243,7 @@ export async function synthesizeCloudGemini(text, preset, language, { performanc
   const prompt = language === "en"
     ? `Read the narration and the dialogue aloud. [laughing], [crying], [gasps], [sigh] and [shouting] are sounds, not words. ${mood}`
     : `${accent} Lee en voz alta la narración y el diálogo, sin omitir la narración. ${mood}`;
-  const request = (voice) => fetchImpl("https://texttospeech.googleapis.com/v1/text:synthesize", {
+  const request = (voice, relaxSafety) => fetchImpl("https://texttospeech.googleapis.com/v1/text:synthesize", {
     method: "POST",
     headers: {
       Authorization: "Bearer " + token,
@@ -238,20 +254,42 @@ export async function synthesizeCloudGemini(text, preset, language, { performanc
       input: { text, prompt },
       voice,
       audioConfig: { audioEncoding: "LINEAR16" },
+      ...(relaxSafety ? {
+        advancedVoiceOptions: {
+          safetySettings: {
+            settings: [
+              "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+              "HARM_CATEGORY_DANGEROUS_CONTENT",
+              "HARM_CATEGORY_HARASSMENT",
+              "HARM_CATEGORY_HATE_SPEECH",
+            ].map((category) => ({ category, threshold: "BLOCK_NONE" })),
+          },
+        },
+      } : {}),
     }),
     signal: AbortSignal.timeout(20000),
   });
-  const voice = cloudGeminiVoiceFor(preset, language, region);
-  let response = await request(voice);
-  if (!response.ok && [400, 404].includes(response.status) && voice.languageCode !== "es-US" && language !== "en") {
-    await response.text().catch(() => "");
-    response = await request({ ...voice, languageCode: "es-US" });
+  const speaker = previewVoice(preset);
+  let failure = { status: 502, detail: "" };
+  for (const languageCode of geminiLocales(language, region)) {
+    for (const relaxSafety of [true, false]) {
+      const response = await request({
+        languageCode,
+        name: speaker,
+        modelName: "gemini-2.5-flash-tts",
+        model_name: "gemini-2.5-flash-tts",
+      }, relaxSafety);
+      if (response.ok) {
+        const payload = await response.json();
+        if (typeof payload.audioContent !== "string") throw new Error("cloud_gemini_no_audio");
+        return { status: 200, pcm: decodeLinear16(payload.audioContent) };
+      }
+      failure = {
+        status: response.status,
+        detail: (await response.text().catch(() => "")).replace(/\s+/g, " ").slice(0, 240),
+      };
+      if (![400, 404].includes(response.status)) return failure;
+    }
   }
-  if (!response.ok) {
-    const detail = (await response.text().catch(() => "")).replace(/\s+/g, " ").slice(0, 240);
-    return { status: response.status, detail };
-  }
-  const payload = await response.json();
-  if (typeof payload.audioContent !== "string") throw new Error("cloud_gemini_no_audio");
-  return { status: 200, pcm: decodeLinear16(payload.audioContent) };
+  return failure;
 }

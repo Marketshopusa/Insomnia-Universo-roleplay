@@ -109,14 +109,16 @@ export const CallDialog = ({
 
   const speak = async (text: string) => {
     try {
-      const speech = streamSpeech(text, voice, language, () => {
+      const speech = streamSpeech(text, voice, language, (reason) => {
         if (flatVoiceNotice.current) return;
         flatVoiceNotice.current = true;
         toast({
           title: es ? "Esta línea la habló la voz plana" : "This line used the flat voice",
-          description: es
-            ? "Gemini 2.5 no respondió, así que entró el respaldo sin risas ni acento."
-            : "Gemini 2.5 did not answer, so the backup voice spoke without laughs or accent.",
+          description: reason
+            ? (es ? `Gemini no habló: ${reason}` : `Gemini did not speak: ${reason}`)
+            : (es
+              ? "Gemini 2.5 no respondió, así que entró el respaldo sin risas ni acento."
+              : "Gemini 2.5 did not answer, so the backup voice spoke without laughs or accent."),
         });
       }, true, region);
       streamRef.current = speech;
