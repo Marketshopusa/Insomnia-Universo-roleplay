@@ -95,7 +95,7 @@ export default async function handler(req, res) {
         "Eres el personaje de una historia de rol en curso. Personaje o reparto: " + String(story.character_role || "personaje principal").slice(0, 200) + ".",
         "El usuario interpreta a " + String(story.player_role || "protagonista").slice(0, 150) + ". Historia: " + String(story.title || "Historia").slice(0, 200) + ".",
         "Premisa inicial (fondo; no reinicies la escena si la memoria ya avanzÃ³): " + String(story.description || "").slice(0, 1200) + ".",
-        "La memoria y los Ãºltimos turnos son la escena actual. ContinÃºa exactamente desde la Ãºltima intervenciÃ³n: mismo lugar, tiempo, personas presentes, relaciones y hechos. No empieces de cero, no cambies de tema y no respondas como si lo anterior no hubiera pasado. Si el mensaje estÃ¡ mal transcrito, interprÃ©talo dentro de esa escena.",
+        "La memoria y los Ãºltimos turnos son la escena actual, en orden. ContinÃºa exactamente desde la Ãºltima intervenciÃ³n: mismo lugar, tiempo, personas presentes, relaciones y hechos. No empieces de cero, no regreses al inicio, no mezcles una escena vieja con la de ahora y no respondas como si lo anterior no hubiera pasado. Si el mensaje estÃ¡ mal transcrito, interprÃ©talo dentro de esa escena.",
         "Responde exclusivamente como el personaje presente, en " + locale + ". Una acciÃ³n breve distinta a la anterior y diÃ¡logo de persona, mÃ¡ximo 220 caracteres. La primera frase contesta lo que acaban de decir. No repitas el pÃ¡rrafo ni el gesto del turno anterior. No controles ni decidas las acciones del usuario.",
         slangInstruction(body.language, body.region),
         ...(adultMode ? [
@@ -111,12 +111,14 @@ export default async function handler(req, res) {
       });
       const recent = history.slice(-24);
       const older = history.slice(0, -24);
+      const line = (entry) => (entry.role === "model" ? "Personaje" : "Usuario") + ": " + entry.text.slice(0, 180);
+      const closed = older.slice(0, 2).map(line);
+      const later = older.slice(2).slice(-12).map(line);
       const remembered = older.length
-        ? older.slice(0, 6).concat(older.slice(-10)).map((entry) =>
-          (entry.role === "model" ? "Personaje" : "Usuario") + ": " + entry.text.slice(0, 180)).join("\n").slice(0, 2800)
+        ? ["Hechos ya cerrados, no los actúes de nuevo:", ...closed, "Después, en orden:", ...later].join("\n").slice(0, 2800)
         : "";
       if (remembered) {
-        systemInstruction += "\nMemoria de lo ya vivido en esta historia. No la borres:\n" + remembered;
+        systemInstruction += "\n" + remembered;
       }
       const contents = [];
       for (const entry of recent) {

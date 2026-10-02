@@ -42,26 +42,6 @@ export function cloudGeminiVoiceFor(preset, language) {
   };
 }
 
-/** The opening piece stays short so the first sound is back within a few seconds. */
-export function speechPieces(text) {
-  const clean = text.replace(/\s+/g, " ").trim();
-  if (!clean) return [];
-  const chunks = [];
-  let current = "";
-  for (const word of clean.split(" ")) {
-    if (!word) continue;
-    const limit = chunks.length === 0 ? 52 : 220;
-    if (current && `${current} ${word}`.length > limit) {
-      chunks.push(current);
-      current = word;
-    } else {
-      current = current ? `${current} ${word}` : word;
-    }
-  }
-  if (current) chunks.push(current);
-  return chunks;
-}
-
 export function quotaProjectId() {
   if (process.env.GCP_PROJECT_ID) return process.env.GCP_PROJECT_ID;
   const account = process.env.GCP_SERVICE_ACCOUNT_EMAIL || "";
@@ -231,8 +211,8 @@ export async function synthesizeGemini(text, preset, language, { performance = "
     : "Habla como una persona en la escena, con emoción natural.");
   const accent = accentHint(language, region);
   const prompt = language === "en"
-    ? `Read the narration and the dialogue aloud. [laughing], [crying], [gasps], [sigh] and [shouting] are sounds, not words. ${mood}`
-    : `${accent} Lee en voz alta la narración y el diálogo, sin omitir la narración. ${mood}`;
+    ? `Say only the text, in that order. Do not add scenes or restart the story. [laughing], [crying], [gasps], [sigh] and [shouting] are real sounds, not words. ${mood}`
+    : `${accent} Di exactamente el texto, en ese orden. No agregues escenas ni vuelvas a empezar la historia. [laughing], [crying], [gasps], [sigh] y [shouting] son sonidos reales, no palabras. ${mood}`;
   const request = (voice, relaxSafety) => fetchImpl("https://texttospeech.googleapis.com/v1/text:synthesize", {
     method: "POST",
     headers: {
