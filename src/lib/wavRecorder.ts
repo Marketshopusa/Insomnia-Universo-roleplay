@@ -54,24 +54,33 @@ export interface WavRecorder {
 }
 
 export async function startWavRecording(): Promise<WavRecorder> {
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
   const AudioCtx: typeof AudioContext =
     (window as any).AudioContext || (window as any).webkitAudioContext;
   const ctx = new AudioCtx();
+  const resumed = ctx.resume();
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  await resumed;
   const source = ctx.createMediaStreamSource(stream);
   const processor = ctx.createScriptProcessor(4096, 1, 1);
+  const silence = ctx.createGain();
+  silence.gain.value = 0;
   const chunks: Float32Array[] = [];
   let level = 0;
 
   processor.onaudioprocess = (e) => {
     const data = e.inputBuffer.getChannelData(0);
     chunks.push(new Float32Array(data));
-    let peak = 0;
-    for (let i = 0; i < data.length; i += 64) peak = Math.max(peak, Math.abs(data[i]));
-    level = peak;
+    let sum = 0;
+    let count = 0;
+    for (let i = 0; i < data.length; i += 8) {
+      sum += data[i] * data[i];
+      count += 1;
+    }
+    level = Math.sqrt(sum / Math.max(1, count));
   };
   source.connect(processor);
-  processor.connect(ctx.destination);
+  processor.connect(silence);
+  silence.connect(ctx.destination);
 
   const teardown = () => {
     try { processor.disconnect(); } catch { /* noop */ }

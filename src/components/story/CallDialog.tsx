@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from "react";
-import { Phone, PhoneOff } from "lucide-react";
+import { Phone } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 import { toast } from "@/hooks/use-toast";
 import { startWavRecording, blobToBase64, type WavRecorder } from "@/lib/wavRecorder";
 import { streamSpeech, type SpeechStream } from "@/lib/ttsStream";
-import { regionLocale } from "@/lib/regions";
+import { browserSpeechLocale } from "@/lib/regions";
 import { invokeFunctionWithRetry } from "@/lib/invokeFunction";
 
 type CallState = "idle" | "listening" | "thinking" | "speaking";
@@ -21,6 +21,7 @@ interface BrowserRecognition {
   interimResults: boolean;
   onresult: ((event: { results: ArrayLike<{ 0: { transcript: string }; isFinal: boolean }> }) => void) | null;
   onerror: (() => void) | null;
+  onend: (() => void) | null;
   start: () => void;
   stop: () => void;
   abort: () => void;
@@ -176,12 +177,20 @@ export const CallDialog = ({
       if (Recognition) {
         try {
           const recognition = new Recognition();
-          recognition.lang = es ? regionLocale(region) : "en-US";
+          recognition.lang = browserSpeechLocale(language, region);
           recognition.continuous = true;
           recognition.interimResults = true;
           recognition.onresult = (event) => {
             transcriptRef.current = Array.from(event.results)
               .map((result) => result[0]?.transcript || "").join(" ").trim();
+          };
+          recognition.onerror = () => {
+            if (recognitionRef.current === recognition) recognitionRef.current = null;
+          };
+          recognition.onend = () => {
+            if (activeRef.current && recognitionRef.current === recognition && recorderRef.current) {
+              try { recognition.start(); } catch { recognitionRef.current = null; }
+            }
           };
           recognition.start();
           recognitionRef.current = recognition;
@@ -194,7 +203,7 @@ export const CallDialog = ({
       let heardVoice = false;
       const meter = window.setInterval(() => {
         const level = recorder.getLevel();
-        if (level > 0.035) {
+        if (level > 0.012) {
           heardVoice = true;
           silentFor = 0;
         } else {
@@ -262,12 +271,12 @@ export const CallDialog = ({
       return;
     }
 
+    onTurn(userText, null);
     const replyResult = await askCharacter(userText);
     const reply = replyResult.content;
     if (!activeRef.current) return;
     if (!reply) {
       historyRef.current = [...historyRef.current, { role: "user", content: userText }];
-      onTurn(userText, null);
       toast({
         title: replyResult.error === "credits_exhausted"
           ? (es ? "Se agotaron los creditos de IA" : "AI credits are exhausted")
@@ -296,21 +305,31 @@ export const CallDialog = ({
   };
 
   const active = state !== "idle";
+  const status = state === "listening"
+    ? (es ? "Escuchando" : "Listening")
+    : state === "thinking"
+      ? (es ? "Respondiendo" : "Answering")
+      : state === "speaking"
+        ? (es ? "Hablando" : "Speaking")
+        : "";
 
   return (
-    <Button
-      type="button"
-      size="icon"
-      onClick={() => (active ? hangUp() : void listen())}
-      className={`h-10 w-10 shrink-0 rounded-full border transition-colors sm:h-11 sm:w-11 ${
-        active
-          ? "border-call-active/60 bg-call-active text-call-active-foreground hover:bg-call-active/90"
-          : "border-call-inactive/60 bg-call-inactive text-call-inactive-foreground hover:bg-call-inactive/90"
-      }`}
-      aria-label={active ? (es ? "Colgar llamada" : "Hang up call") : (es ? "Iniciar llamada" : "Start call")}
-      title={active ? (es ? "Colgar llamada" : "Hang up call") : (es ? "Iniciar llamada" : "Start call")}
-    >
-      {active ? <PhoneOff className="h-5 w-5" /> : <Phone className="h-5 w-5" />}
-    </Button>
+    <div className="flex items-center gap-2">
+      {status && <span className="text-xs text-muted-foreground">{status}</span>}
+      <Button
+        type="button"
+        size="icon"
+        onClick={() => (active ? hangUp() : void listen())}
+        className={`h-10 w-10 shrink-0 rounded-full border transition-colors sm:h-11 sm:w-11 ${
+          active
+            ? "border-call-active/60 bg-call-active text-call-active-foreground hover:bg-call-active/90"
+            : "border-call-inactive/60 bg-call-inactive text-call-inactive-foreground hover:bg-call-inactive/90"
+        }`}
+        aria-label={active ? (es ? "Colgar llamada" : "Hang up call") : (es ? "Iniciar llamada" : "Start call")}
+        title={active ? (es ? "Colgar llamada" : "Hang up call") : (es ? "Iniciar llamada" : "Start call")}
+      >
+        <Phone className={`h-5 w-5 ${active ? "animate-pulse" : ""}`} />
+      </Button>
+    </div>
   );
 };
