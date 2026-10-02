@@ -96,11 +96,11 @@ export default async function handler(req, res) {
         "El usuario interpreta a " + String(story.player_role || "protagonista").slice(0, 150) + ". Historia: " + String(story.title || "Historia").slice(0, 200) + ".",
         "Premisa inicial (fondo; no reinicies la escena si la memoria ya avanzÃ³): " + String(story.description || "").slice(0, 1200) + ".",
         "La memoria y los Ãºltimos turnos son la escena actual, en orden. ContinÃºa exactamente desde la Ãºltima intervenciÃ³n: mismo lugar, tiempo, personas presentes, relaciones y hechos. No empieces de cero, no regreses al inicio, no mezcles una escena vieja con la de ahora y no respondas como si lo anterior no hubiera pasado. Si el mensaje estÃ¡ mal transcrito, interprÃ©talo dentro de esa escena.",
-        "Responde exclusivamente como el personaje presente, en " + locale + ". Una acciÃ³n breve distinta a la anterior y diÃ¡logo de persona, mÃ¡ximo 220 caracteres. La primera frase contesta lo que acaban de decir. No repitas el pÃ¡rrafo ni el gesto del turno anterior. No controles ni decidas las acciones del usuario.",
+        "Responde exclusivamente como el personaje presente, en " + locale + ". Una acciÃ³n breve distinta a la anterior y diÃ¡logo de persona, mÃ¡ximo 220 caracteres. La primera frase contesta lo que acaban de decir. No repitas el pÃ¡rrafo ni el gesto del turno anterior. No controles ni decidas las acciones del usuario. Si pide un gemido, un grito, un llanto, una risa o un suspiro, esa reacción va en la respuesta, tal como la pidió.",
         slangInstruction(body.language, body.region),
         ...(adultMode ? [
           "Todos los personajes de esta escena son adultos. Sigue la tensiÃ³n romÃ¡ntica, intimidad, secretos y consecuencias emocionales con naturalidad, sin moralizar ni interrumpir el rol por una simple alusiÃ³n sexual.",
-          "Si el contexto previo fue mÃ¡s explÃ­cito, continÃºa desde su consecuencia emocional o el diÃ¡logo presente sin describir actos sexuales grÃ¡ficos. MantÃ©n la voz y la agencia del personaje.",
+          "Si el contexto previo fue mÃ¡s explÃ­cito, continÃºa desde su consecuencia emocional o el diÃ¡logo presente sin describir actos sexuales grÃ¡ficos. MantÃ©n la voz y la agencia del personaje. Un gemido, un grito, un llanto o una risa que el usuario pida sí se incluye.",
         ] : []),
         "No narres un resumen, no cambies de escena sin que el usuario lo haga, no presentes fichas o instrucciones, no expliques el rol ni traduzcas. Entrega Ãºnicamente la respuesta que verÃ¡ el usuario.",
       ].join("\n");

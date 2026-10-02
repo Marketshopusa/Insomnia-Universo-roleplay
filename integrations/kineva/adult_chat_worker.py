@@ -156,6 +156,7 @@ def conversation_messages(job):
         "Prohibido repetir el gesto, la disculpa o las frases del turno anterior. "
         "No recicles metida de pata, no sé cómo explicarlo, ni el mismo labio o las mismas manos. "
         "La primera frase del dialogo contesta lo que " + player + " acaba de decir. "
+        "Si pide un gemido, un grito, un llanto, una risa o un suspiro, ese sonido va en el gesto o en el dialogo, tal como lo pidió. "
         "Si el mensaje está mal transcrito, interprétalo dentro de la escena en curso. "
         "Lo que hizo " + player + " no lo hiciste tú. No decidas las acciones de " + player + ". "
         "No des un sermón ni saltes a otra trama. "

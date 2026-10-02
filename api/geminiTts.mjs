@@ -57,7 +57,7 @@ export function quotaProjectId() {
 }
 
 export function removePerformanceCues(text) {
-  return text.replace(/\[(?:laughing|sigh|uhm|short pause|medium pause|long pause|laughs|sighs|gasps|crying)\]/gi, "").replace(/\s+/g, " ").trim();
+  return text.replace(/\[(?:laughing|sigh|uhm|short pause|medium pause|long pause|laughs|sighs|gasps|crying|shouting|moaning|whispering)\]/gi, "").replace(/\s+/g, " ").trim();
 }
 
 function resamplePcm16(pcm, fromRate, toRate = 24000) {
@@ -195,15 +195,15 @@ export async function synthesizeGemini(text, preset, language, { performance = "
   const mood = (language === "en" ? {
     amused: "Let out a real short laugh. [laughing] is that sound, not a word.",
     sad: "The voice breaks and crying is audible. [crying] is that sound, not a word.",
-    pain: "Pain is audible in the breath before the dialogue. Do not say the word pain.",
-    pleasure: "A brief sound of pleasure comes before the dialogue. Do not say the word moan.",
+    pain: "Where [moaning] appears, that is a sound of pain. Still say the written words.",
+    pleasure: "Where [moaning] appears, that is a real moan. Where [shouting] appears with pleasure, that is a cry of pleasure. Do not say the words moan or scream.",
     scream: "There is a jolt of fear or anger. [gasps] and [shouting] are sounds, not words.",
     soft: "Speak quietly, almost in a sigh. [sigh] is that sound, not a word.",
   } : {
     amused: "Suelta una risa breve de verdad. [laughing] es ese sonido, no una palabra.",
     sad: "La voz se quiebra y se oye el llanto. [crying] es ese sonido, no una palabra.",
-    pain: "Se oye el dolor en la respiración antes del diálogo. No digas la palabra dolor.",
-    pleasure: "Se oye un gemido breve de placer antes del diálogo. No digas la palabra gemido.",
+    pain: "Donde está [moaning] se oye un quejido de dolor. Di igual las palabras escritas.",
+    pleasure: "Donde está [moaning] se oye un gemido de verdad. Donde está [shouting] junto al placer, es un grito de placer. No digas las palabras gemido ni grito.",
     scream: "Hay un sobresalto de miedo o rabia. [gasps] y [shouting] son sonidos, no palabras.",
     soft: "Habla bajo, casi en un suspiro. [sigh] es ese sonido, no una palabra.",
   })[performance] || (language === "en"
@@ -211,8 +211,8 @@ export async function synthesizeGemini(text, preset, language, { performance = "
     : "Habla como una persona en la escena, con emoción natural.");
   const accent = accentHint(language, region);
   const prompt = language === "en"
-    ? `Say only the text, in that order. Do not add scenes or restart the story. [laughing], [crying], [gasps], [sigh] and [shouting] are real sounds, not words. ${mood}`
-    : `${accent} Di exactamente el texto, en ese orden. No agregues escenas ni vuelvas a empezar la historia. [laughing], [crying], [gasps], [sigh] y [shouting] son sonidos reales, no palabras. ${mood}`;
+    ? `Say only the text, in that order. Do not add scenes or restart the story. [laughing], [crying], [gasps], [sigh], [shouting], [moaning] and [whispering] are real sounds, not words. ${mood}`
+    : `${accent} Di exactamente el texto, en ese orden. No agregues escenas ni vuelvas a empezar la historia. [laughing], [crying], [gasps], [sigh], [shouting], [moaning] y [whispering] son sonidos reales, no palabras. ${mood}`;
   const request = (voice, relaxSafety) => fetchImpl("https://texttospeech.googleapis.com/v1/text:synthesize", {
     method: "POST",
     headers: {

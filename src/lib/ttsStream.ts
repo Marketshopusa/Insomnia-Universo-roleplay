@@ -33,37 +33,54 @@ async function requestSpeech(text: string, voice: string, language: string, regi
   });
 }
 
-export function roleplaySpeechText(text: string): string {
-  const performance = roleplayPerformance(text);
-  // Pleasure and pain stay in the prompt. Gemini speaks the other tags as sounds.
-  const cue = performance === "scream" ? "[gasps]"
-    : performance === "sad" ? "[crying]"
-    : performance === "amused" ? "[laughing]"
-    : performance === "soft" ? "[sigh]"
-    : "";
+const letter = String.raw`\p{L}`;
+const notLetterBefore = String.raw`(?<![\p{L}\p{N}_])`;
+const notLetterAfter = String.raw`(?![\p{L}\p{N}_])`;
+const word = (body: string) => new RegExp(`${notLetterBefore}(?:${body})${notLetterAfter}`, "giu");
+
+const VOCAL_CUES: { pattern: RegExp; tag: string; performance: Performance }[] = [
+  { pattern: word(`(?:grit${letter}*|chill${letter}*|scream${letter}*)(?=[^.!?]{0,30}${notLetterBefore}(?:placer|pleasure|gusto)${notLetterAfter})`), tag: "[shouting]", performance: "pleasure" },
+  { pattern: word(`(?:gim${letter}*|jim${letter}*|gem(?:id${letter}*|[ií]${letter}*)|moan${letter}*|quej${letter}*)(?=[^.!?]{0,24}${notLetterBefore}(?:dolor|pain)${notLetterAfter})`), tag: "[moaning]", performance: "pain" },
+  { pattern: word(`(?:gim${letter}*|jim${letter}*|gem(?:id${letter}*|[ií]${letter}*)|moan${letter}*)`), tag: "[moaning]", performance: "pleasure" },
+  { pattern: word(`(?:llor${letter}*|solloz${letter}*|l[aá]grim${letter}*|cry(?:ing)?|sob(?:bing|bed|s)?)`), tag: "[crying]", performance: "sad" },
+  { pattern: word(`(?:r[ií]e(?:ndose|ndo)?|r[ií][oó]|re[ií](?:r|mos|s|a|an|as)?|risas?|riendo|carcajad${letter}*|sonr[ií]${letter}*|laugh${letter}*|ja(?:ja)+|je(?:je)+)`), tag: "[laughing]", performance: "amused" },
+  { pattern: word(`(?:suspir${letter}*|exhal${letter}*|sigh${letter}*)`), tag: "[sigh]", performance: "soft" },
+  { pattern: word(`(?:susurr${letter}*|whisper${letter}*)`), tag: "[whispering]", performance: "soft" },
+  { pattern: word(`(?:miedo|sust[oa]${letter}*|aterr${letter}*|p[aá]nic${letter}*|fear|scared)`), tag: "[gasps]", performance: "scream" },
+  { pattern: word(`(?:grit${letter}*|chill${letter}*|scream${letter}*)`), tag: "[shouting]", performance: "scream" },
+];
+
+/** Puts a sound where the line asks for a moan, shout, cry, laugh, or sigh. */
+export function performSpeech(text: string): { text: string; performance: Performance } {
   let spoken = text
     .replace(/\*([^*]+)\*/g, (_, direction: string) => ` ${direction.trim()}. `)
     .replace(/[*_#`]/g, " ")
     .replace(/\s+/g, " ")
-    .trim();
-  if (!spoken) return "";
-  spoken = spoken.replace(/\ba+h{2,}\b/gi, "Ay").replace(/\bm{3,}\b/gi, "Mmm");
-  return [cue && !spoken.startsWith(cue) ? cue : "", spoken].filter(Boolean).join(" ");
+    .trim()
+    .replace(/\ba+h{2,}\b/gi, "Ay")
+    .replace(/\bm{3,}\b/gi, "Mmm");
+  const performances = new Set<Performance>();
+  for (const cue of VOCAL_CUES) {
+    const pattern = new RegExp(cue.pattern.source, cue.pattern.flags);
+    spoken = spoken.replace(pattern, (match, offset: number) => {
+      if (spoken[offset - 1] === "[") return match;
+      const before = spoken.slice(Math.max(0, offset - 16), offset);
+      if (/\[[a-z]+\]\s*$/i.test(before)) return match;
+      performances.add(cue.performance);
+      return `${cue.tag} ${match}`;
+    });
+  }
+  if (/\b(?:angust\w*|nervios|avergonz\w*)\b/i.test(spoken)) performances.add("sad");
+  const rank: Performance[] = ["pleasure", "pain", "scream", "sad", "amused", "soft"];
+  return { text: spoken, performance: rank.find((item) => performances.has(item)) ?? "neutral" };
+}
+
+export function roleplaySpeechText(text: string): string {
+  return performSpeech(text).text;
 }
 
 export function roleplayPerformance(text: string): Performance {
-  const directions = [...text.matchAll(/\*([^*]+)\*/g)].map((match) => match[1]).join(" ");
-  const spoken = text.replace(/\*[^*]+\*/g, " ");
-  if (/(?:placer|pleasure|gemido de placer|gimo de placer|(?:^|\s)gim[oe]\b)/i.test(directions)
-    && !/dolor|pain/i.test(directions)) return "pleasure";
-  if (/(?:dolor|pain|quejid|me dol[ií]|grito de dolor)/i.test(directions)) return "pain";
-  if (/(?:grito|chill|scream|miedo|sust[oa]|aterr|tembl|p[aá]nic|rabia|furia|enoj)/i.test(`${directions} ${spoken}`)) return "scream";
-  if (/(?:angust|nervios|avergonz)/i.test(directions)) return "sad";
-  if (/(?:solloz|llor|l[aá]grima|\bcry\b|\bsob\b)/i.test(directions)) return "sad";
-  if (/(?:\br[ií][eo]\b|\brisas?\b|carcajad|sonr[ií]|laugh)/i.test(directions)) return "amused";
-  if (/(?:suspiro|exhalo|susurr|whisper|sigh)/i.test(directions)) return "soft";
-  if (/(?:\b(?:ja){2,}ja\b|\b(?:je){2,}je\b|\bjaja+\b|\bjeje+\b)/i.test(spoken)) return "amused";
-  return "neutral";
+  return performSpeech(text).performance;
 }
 
 async function receivePcmOnce(text: string, voice: string, language: string, region: string, performance: Performance, roleplay: boolean, signal: AbortSignal, onChunk: (bytes: Uint8Array) => void) {
@@ -202,8 +219,9 @@ export function streamSpeech(text: string, voice: string, language = "es", rolep
       if (context.state === "suspended") await context.resume();
       if (stopped || !context) return;
       const playbackEnded = new Promise<void>((resolve) => { finishPlayback = resolve; });
-      const spoken = (roleplay ? roleplaySpeechText(text) : text).replace(/[*_#`]/g, "").replace(/\s+/g, " ").trim();
-      const performance = roleplay ? roleplayPerformance(text) : "neutral";
+      const prepared = performSpeech(text);
+      const spoken = prepared.text;
+      const performance = prepared.performance;
       if (!spoken) { stop(); return; }
       let scheduledAt = context.currentTime;
 
