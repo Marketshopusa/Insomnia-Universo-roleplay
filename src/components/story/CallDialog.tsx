@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 import { toast } from "@/hooks/use-toast";
 import { startWavRecording, blobToBase64, type WavRecorder } from "@/lib/wavRecorder";
 import { streamSpeech, type SpeechStream } from "@/lib/ttsStream";
-import { browserSpeechLocale } from "@/lib/regions";
 import { invokeFunctionWithRetry } from "@/lib/invokeFunction";
 
 type CallState = "idle" | "listening" | "thinking" | "speaking";
@@ -13,18 +12,6 @@ type CallState = "idle" | "listening" | "thinking" | "speaking";
 interface Turn {
   role: "user" | "assistant";
   content: string;
-}
-
-interface BrowserRecognition {
-  lang: string;
-  continuous: boolean;
-  interimResults: boolean;
-  onresult: ((event: { results: ArrayLike<{ 0: { transcript: string }; isFinal: boolean }> }) => void) | null;
-  onerror: (() => void) | null;
-  onend: (() => void) | null;
-  start: () => void;
-  stop: () => void;
-  abort: () => void;
 }
 
 interface CallDialogProps {
@@ -67,9 +54,6 @@ export const CallDialog = ({
   const historyRef = useRef<Turn[]>(history);
   const activeRef = useRef(false);
   const timersRef = useRef<number[]>([]);
-  const recognitionRef = useRef<BrowserRecognition | null>(null);
-  const transcriptRef = useRef("");
-
   useEffect(() => {
     historyRef.current = history;
   }, [history]);
@@ -97,9 +81,6 @@ export const CallDialog = ({
     stopSpeaking();
     recorderRef.current?.cancel();
     recorderRef.current = null;
-    recognitionRef.current?.abort();
-    recognitionRef.current = null;
-    transcriptRef.current = "";
     setState("idle");
   };
 
@@ -165,36 +146,6 @@ export const CallDialog = ({
         return;
       }
       recorderRef.current = recorder;
-      transcriptRef.current = "";
-      const browser = window as Window & {
-        SpeechRecognition?: new () => BrowserRecognition;
-        webkitSpeechRecognition?: new () => BrowserRecognition;
-      };
-      const Recognition = browser.SpeechRecognition || browser.webkitSpeechRecognition;
-      if (Recognition) {
-        try {
-          const recognition = new Recognition();
-          recognition.lang = browserSpeechLocale(language, region);
-          recognition.continuous = true;
-          recognition.interimResults = true;
-          recognition.onresult = (event) => {
-            transcriptRef.current = Array.from(event.results)
-              .map((result) => result[0]?.transcript || "").join(" ").trim();
-          };
-          recognition.onerror = () => {
-            if (recognitionRef.current === recognition) recognitionRef.current = null;
-          };
-          recognition.onend = () => {
-            if (activeRef.current && recognitionRef.current === recognition && recorderRef.current) {
-              try { recognition.start(); } catch { recognitionRef.current = null; }
-            }
-          };
-          recognition.start();
-          recognitionRef.current = recognition;
-        } catch {
-          recognitionRef.current = null;
-        }
-      }
 
       let silentFor = 0;
       let heardVoice = false;
@@ -236,32 +187,28 @@ export const CallDialog = ({
     clearTimers();
     if (!recorder) return;
     setState("thinking");
-    recognitionRef.current?.stop();
+    const spoke = recorder.heardSpeech();
     const blob = await recorder.stop();
     if (!activeRef.current) return;
 
-    if (blob.size < 4096) {
+    if (!spoke || blob.size < 4096) {
       void listen();
       return;
     }
 
-    let userText = transcriptRef.current.trim();
-    recognitionRef.current = null;
-    if (!userText) {
-      const audio = await blobToBase64(blob);
-      const { data, error } = await invokeFunctionWithRetry<{ text?: string; error?: string; message?: string }>("speech-to-text", { audio, mimeType: "audio/wav", language: es ? "es" : "en", region });
-      userText = (data?.text || "").trim();
-      if (error || data?.error) {
-        toast({
-          title: es ? "No se pudo transcribir la llamada" : "Could not transcribe the call",
-          description: data?.message || error?.message || (es
-            ? "Gemini no oyó este turno. La llamada sigue abierta: habla de nuevo."
-            : "Gemini did not hear this turn. The call stays open: speak again."),
-          variant: "destructive",
-        });
-        if (activeRef.current) void listen();
-        return;
-      }
+    const audio = await blobToBase64(blob);
+    const { data, error } = await invokeFunctionWithRetry<{ text?: string; error?: string; message?: string }>("speech-to-text", { audio, mimeType: "audio/wav", language: es ? "es" : "en", region });
+    const userText = (data?.text || "").trim();
+    if (error || data?.error) {
+      toast({
+        title: es ? "No se pudo transcribir la llamada" : "Could not transcribe the call",
+        description: data?.message || error?.message || (es
+          ? "No llegó la voz del micrófono. La llamada sigue abierta: habla de nuevo."
+          : "The microphone audio did not arrive. The call stays open: speak again."),
+        variant: "destructive",
+      });
+      if (activeRef.current) void listen();
+      return;
     }
     if (!userText) {
       if (activeRef.current) void listen();

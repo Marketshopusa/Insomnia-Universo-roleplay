@@ -1,9 +1,9 @@
 import { expect, it, vi } from "vitest";
 import { generateSceneImage } from "./sceneImage";
 
-it("uses the ComfyUI image on this computer and does not queue a cloud job", async () => {
+it("uses the ComfyUI image on this computer and does not call the cloud", async () => {
   const invoke = vi.fn();
-  const url = await generateSceneImage({ focusText: "Ella cruza la calle" }, {
+  const url = await generateSceneImage({ focusText: "Ella cruza la calle de noche" }, {
     renderLocal: async () => "data:image/png;base64,abc",
     invoke: invoke as never,
   });
@@ -11,45 +11,26 @@ it("uses the ComfyUI image on this computer and does not queue a cloud job", asy
   expect(invoke).not.toHaveBeenCalled();
 });
 
-it("reads a finished cloud image when this device has no ComfyUI", async () => {
-  const invoke = vi.fn()
-    .mockResolvedValueOnce({ data: { jobId: "11111111-1111-1111-1111-111111111111", status: "queued" }, error: null })
-    .mockResolvedValueOnce({ data: { status: "ready", imageUrl: "https://example.com/scene.png" }, error: null });
-  const url = await generateSceneImage({ focusText: "Ella cruza la calle" }, {
-    renderLocal: async () => null,
-    invoke: invoke as never,
-    wait: async () => {},
-  });
-  expect(url).toBe("https://example.com/scene.png");
-  expect(invoke).toHaveBeenLastCalledWith("illustrate-scene", {
-    action: "status",
-    jobId: "11111111-1111-1111-1111-111111111111",
-  });
-});
-
-it("shows ComfyUI's failure instead of waiting", async () => {
-  const invoke = vi.fn()
-    .mockResolvedValueOnce({ data: { jobId: "11111111-1111-1111-1111-111111111111", status: "queued" }, error: null })
-    .mockResolvedValueOnce({
-      data: { status: "failed", message: "Falta el modelo de imagen en ComfyUI: flux.safetensors" },
-      error: null,
-    });
-  await expect(generateSceneImage({}, {
-    renderLocal: async () => null,
-    invoke: invoke as never,
-    wait: async () => {},
-  })).rejects.toThrow(/Falta el modelo de imagen/);
-});
-
-it("says when ComfyUI never takes the illustration", async () => {
+it("returns the picture drawn on the server", async () => {
   const invoke = vi.fn(async () => ({
-    data: { jobId: "11111111-1111-1111-1111-111111111111", status: "queued" },
+    data: { status: "ready", imageUrl: "data:image/png;base64,server" },
     error: null,
   }));
-  await expect(generateSceneImage({}, {
+  const url = await generateSceneImage({ focusText: "Ella cruza la calle de noche" }, {
     renderLocal: async () => null,
     invoke: invoke as never,
-    wait: async () => {},
-    attempts: 1,
-  })).rejects.toThrow(/ComfyUI no tomó la ilustración/);
+  });
+  expect(url).toBe("data:image/png;base64,server");
+  expect(invoke).toHaveBeenCalledOnce();
+});
+
+it("shows the server error instead of waiting for a computer", async () => {
+  const invoke = vi.fn(async () => ({
+    data: { error: "scene_draw_failed", message: "Gemini no entregó la imagen de esta escena." },
+    error: { message: "Gemini no entregó la imagen de esta escena." },
+  }));
+  await expect(generateSceneImage({ focusText: "Ella cruza la calle de noche" }, {
+    renderLocal: async () => null,
+    invoke: invoke as never,
+  })).rejects.toThrow(/no entregó la imagen/);
 });

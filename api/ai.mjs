@@ -89,15 +89,6 @@ export async function generate(model, parts, settings = {}, options = {}) {
   throw lastError;
 }
 
-export function transcriptionInstruction(language, region) {
-  const spanish = language !== "en";
-  const locale = speechLocale(spanish ? "es" : "en", region);
-  if (!spanish) {
-    return "Transcribe exactly what the person says in this audio. Language: " + locale + ". Return only the spoken words, with no quotes and no commentary. If no words are clear, return empty.";
-  }
-  return "Transcribe exactamente lo que dice la persona en este audio. Idioma: " + locale + ". Devuelve únicamente las palabras dichas, sin comillas ni comentarios. Si no hay palabras claras, devuelve vacío.";
-}
-
 export function cleanTranscript(text) {
   const cleaned = String(text || "")
     .trim()
@@ -108,31 +99,81 @@ export function cleanTranscript(text) {
   return cleaned;
 }
 
-export function speechToTextRequest(body) {
-  const language = body.language === "en" ? "en" : "es";
+/** The microphone file alone. A chat prompt makes Gemini answer "hola, ¿qué tal?" instead of hearing the audio. */
+export function speechToTextBody(fileUri, mimeType, languageCode) {
   return {
-    model: "gemini-2.5-flash",
-    parts: [
-      { text: transcriptionInstruction(language, body.region) },
-      { inlineData: { mimeType: body.mimeType || "audio/wav", data: body.audio } },
-    ],
-    settings: { temperature: 0, maxOutputTokens: 512 },
-    options: {
-      fastReply: true,
-      allowEmpty: true,
-      timeoutMs: 45000,
-      fallbackModels: ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite"],
+    contents: [{ role: "user", parts: [{ fileData: { fileUri, mimeType } }] }],
+    generationConfig: {
+      audioTranscriptionConfig: { languageCodes: languageCode ? [languageCode] : [] },
     },
   };
 }
 
-export async function transcribeAudio(body, generateImpl = generate) {
+function transcriptFrom(data) {
+  const parts = data?.candidates?.[0]?.content?.parts || [];
+  return cleanTranscript(parts.map((part) => part.text || "").join(""));
+}
+
+export async function transcribeAudio(body, options = {}) {
   if (typeof body.audio !== "string" || body.audio.length < 2700 || body.audio.length > 12000000) {
     throw Object.assign(new Error("El audio de la llamada no llegó completo."), { status: 400, code: "invalid_audio" });
   }
-  const request = speechToTextRequest(body);
-  const content = await generateImpl(request.model, request.parts, request.settings, request.options);
-  return { text: cleanTranscript(content) };
+  const key = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+  if (!key || key === "[SENSITIVE]") {
+    throw Object.assign(new Error("Gemini no está configurado para oír la llamada."), { status: 503, code: "gemini_not_configured" });
+  }
+  const fetchImpl = options.fetchImpl || fetch;
+  const mimeType = body.mimeType || "audio/wav";
+  const bytes = Buffer.from(body.audio, "base64");
+  if (bytes.length < 2048) return { text: "" };
+  const language = body.language === "en" ? "en" : "es";
+  const locale = speechLocale(language, body.region);
+  const ask = async (requestBody) => {
+    let current = requestBody;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const response = await fetchImpl("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-transcribe:generateContent", {
+        method: "POST",
+        headers: { "x-goog-api-key": key, "Content-Type": "application/json" },
+        body: JSON.stringify(current),
+        signal: AbortSignal.timeout(30000),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (response.ok) return { text: transcriptFrom(data) };
+      const message = data?.error?.message || "";
+      if (attempt === 0 && response.status === 400 && current.generationConfig) {
+        current = { contents: current.contents };
+        continue;
+      }
+      throw Object.assign(new Error(message || "No se pudo transcribir el micrófono."), {
+        status: response.status, code: "stt_failed",
+      });
+    }
+    return { text: "" };
+  };
+  try {
+    const uploaded = await fetchImpl("https://generativelanguage.googleapis.com/upload/v1beta/files", {
+      method: "POST",
+      headers: {
+        "x-goog-api-key": key,
+        "X-Goog-Upload-Protocol": "raw",
+        "X-Goog-Upload-Command": "start, upload, finalize",
+        "X-Goog-Upload-Header-Content-Length": String(bytes.length),
+        "X-Goog-Upload-Header-Content-Type": mimeType,
+        "Content-Type": mimeType,
+      },
+      body: bytes,
+      signal: AbortSignal.timeout(20000),
+    });
+    const uploadedData = await uploaded.json().catch(() => ({}));
+    const fileUri = uploadedData.file?.uri || uploadedData.uri;
+    if (uploaded.ok && fileUri) return await ask(speechToTextBody(fileUri, mimeType, locale));
+  } catch (error) {
+    if (error.code === "stt_failed") throw error;
+  }
+  return ask({
+    contents: [{ role: "user", parts: [{ inlineData: { mimeType, data: body.audio } }] }],
+    generationConfig: { audioTranscriptionConfig: { languageCodes: [locale] } },
+  });
 }
 
 export function storyContinuityLines(spanish) {

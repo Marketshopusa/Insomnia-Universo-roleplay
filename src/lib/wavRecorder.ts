@@ -51,6 +51,8 @@ export interface WavRecorder {
   cancel: () => void;
   /** 0..1 current input level, for the call UI meter */
   getLevel: () => number;
+  /** True once the microphone captured speech, not just room noise. */
+  heardSpeech: () => boolean;
 }
 
 export async function startWavRecording(): Promise<WavRecorder> {
@@ -58,7 +60,9 @@ export async function startWavRecording(): Promise<WavRecorder> {
     (window as any).AudioContext || (window as any).webkitAudioContext;
   const ctx = new AudioCtx();
   const resumed = ctx.resume();
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  const stream = await navigator.mediaDevices.getUserMedia({
+    audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+  });
   await resumed;
   const source = ctx.createMediaStreamSource(stream);
   const processor = ctx.createScriptProcessor(4096, 1, 1);
@@ -66,6 +70,7 @@ export async function startWavRecording(): Promise<WavRecorder> {
   silence.gain.value = 0;
   const chunks: Float32Array[] = [];
   let level = 0;
+  let spoke = false;
 
   processor.onaudioprocess = (e) => {
     const data = e.inputBuffer.getChannelData(0);
@@ -77,6 +82,7 @@ export async function startWavRecording(): Promise<WavRecorder> {
       count += 1;
     }
     level = Math.sqrt(sum / Math.max(1, count));
+    if (level > 0.03) spoke = true;
   };
   source.connect(processor);
   processor.connect(silence);
@@ -91,6 +97,7 @@ export async function startWavRecording(): Promise<WavRecorder> {
 
   return {
     getLevel: () => level,
+    heardSpeech: () => spoke,
     cancel: () => { chunks.length = 0; teardown(); },
     stop: async () => {
       const rate = ctx.sampleRate;
