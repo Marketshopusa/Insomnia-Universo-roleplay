@@ -7,12 +7,12 @@ function sendEvent(res, event) {
   res.write("data: " + JSON.stringify(event) + "\n\n");
 }
 
-function writePcm(res, pcm, provider, startedAt) {
+function writePcm(res, pcm, provider, startedAt, reason) {
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache, no-transform");
   res.setHeader("X-Accel-Buffering", "no");
   res.flushHeaders();
-  sendEvent(res, { type: "speech.provider", provider });
+  sendEvent(res, { type: "speech.provider", provider, ...(reason ? { reason } : {}) });
   console.info("Insomnia speech first_audio", provider, "total_ms", Date.now() - startedAt);
   for (let offset = 0; offset < pcm.length; offset += 32_768) {
     sendEvent(res, { type: "speech.audio.delta", audio: pcm.subarray(offset, offset + 32_768).toString("base64") });
@@ -60,20 +60,23 @@ export default async function handler(req, res) {
   const region = typeof req.body.region === "string" ? req.body.region : "mx";
   const performance = ["neutral", "amused", "sad", "pain", "pleasure", "scream", "soft"].includes(req.body.performance)
     ? req.body.performance : "neutral";
+  let geminiReason = "";
   try {
     const expressive = await synthesizeCloudGemini(text, req.body.voice, req.body.language, { performance, region });
     if (expressive.status === 200) {
       writePcm(res, expressive.pcm, "google-cloud-tts", startedAt);
       return;
     }
-    console.warn("Insomnia speech gemini-2.5-flash-tts", expressive.status, expressive.detail || "", "after_ms", Date.now() - startedAt);
+    geminiReason = `${expressive.status} ${expressive.detail || ""}`.trim();
+    console.warn("Insomnia speech gemini-2.5-flash-tts", geminiReason, "after_ms", Date.now() - startedAt);
   } catch (failure) {
-    console.warn("Insomnia speech cloud-tts failed", failure?.name || "Error", "after_ms", Date.now() - startedAt);
+    geminiReason = failure?.message || failure?.name || "Error";
+    console.warn("Insomnia speech cloud-tts failed", geminiReason, "after_ms", Date.now() - startedAt);
   }
   try {
     const result = await synthesizeChirp(plainText, req.body.voice, req.body.language, { region });
     if (result.status === 200) {
-      writePcm(res, result.pcm, "chirp3-hd", startedAt);
+      writePcm(res, result.pcm, "chirp3-hd", startedAt, geminiReason.slice(0, 180));
       return;
     }
     console.warn("Insomnia speech chirp3-hd", result.status, "after_ms", Date.now() - startedAt);

@@ -73,14 +73,19 @@ test("a missing regional Chirp voice falls back to es-US", async () => {
 
 test("Cloud Gemini uses the character's expressive voice and PCM response", async () => {
   const { pcm, wav } = sampleWav();
+  const previousAccount = process.env.GOOGLE_CLOUD_TTS_SERVICE_ACCOUNT_JSON;
+  process.env.GOOGLE_CLOUD_TTS_SERVICE_ACCOUNT_JSON = JSON.stringify({ project_id: "project-92a5eaa1-857a-4011-a86" });
   const result = await synthesizeCloudGemini("Ay, me duele.", "scarlett-hd", "es", {
     performance: "pain",
     tokenProvider: async () => "test-oauth-token",
     fetchImpl: async (_url, init) => {
+      assert.equal(init.headers["x-goog-user-project"], "project-92a5eaa1-857a-4011-a86");
       const body = JSON.parse(init.body);
+      assert.equal(body.voice.modelName, "gemini-2.5-flash-tts");
       assert.equal(body.voice.model_name, "gemini-2.5-flash-tts");
       assert.equal(body.voice.languageCode, "es-MX");
       assert.equal(body.voice.name, "Aoede");
+      assert.equal(body.advancedVoiceOptions.safetySettings.settings[0].threshold, "BLOCK_NONE");
       assert.equal(body.audioConfig.audioEncoding, "LINEAR16");
       assert.equal(body.audioConfig.sampleRateHertz, undefined);
       assert.equal(body.input.text, "Ay, me duele.");
@@ -100,10 +105,11 @@ test("Cloud Gemini uses the character's expressive voice and PCM response", asyn
       locales.push(body.voice.languageCode);
       assert.match(body.input.prompt, /venezolano/);
       if (body.voice.languageCode === "es-419") return new Response("{}", { status: 400 });
+      assert.equal(body.voice.modelName, "gemini-2.5-flash-tts");
       return new Response(JSON.stringify({ audioContent: wav.toString("base64") }), { status: 200 });
     },
   });
-  assert.deepEqual(locales, ["es-419", "es-US"]);
+  assert.deepEqual(locales, ["es-419", "es-419", "es-ES"]);
   assert.equal(regional.status, 200);
   assert.equal(cloudGeminiVoiceFor("luna-sweet", "es", "ve").languageCode, "es-419");
   assert.equal(cloudGeminiVoiceFor("Aoede", "es", "es").languageCode, "es-ES");
@@ -113,4 +119,6 @@ test("Cloud Gemini uses the character's expressive voice and PCM response", asyn
   raw.writeInt16LE(1000, 0);
   raw.writeInt16LE(-1000, 2);
   assert.deepEqual(decodeLinear16(raw.toString("base64")), raw);
+  if (previousAccount === undefined) delete process.env.GOOGLE_CLOUD_TTS_SERVICE_ACCOUNT_JSON;
+  else process.env.GOOGLE_CLOUD_TTS_SERVICE_ACCOUNT_JSON = previousAccount;
 });

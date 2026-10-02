@@ -107,7 +107,7 @@ export function roleplayPerformance(text: string): Performance {
   return "neutral";
 }
 
-async function receivePcmOnce(text: string, voice: string, language: string, region: string, performance: Performance, roleplay: boolean, signal: AbortSignal, onChunk: (bytes: Uint8Array) => void, onProvider: () => void) {
+async function receivePcmOnce(text: string, voice: string, language: string, region: string, performance: Performance, roleplay: boolean, signal: AbortSignal, onChunk: (bytes: Uint8Array) => void, onProvider: (reason?: string) => void) {
   const response = await requestSpeech(text, voice, language, region, performance, roleplay, signal);
   if (!response.ok || !response.body) {
     const payload = await response.json().catch(() => null) as { message?: string; detail?: string } | null;
@@ -123,10 +123,10 @@ async function receivePcmOnce(text: string, voice: string, language: string, reg
     if (!line.startsWith("data:")) return;
     const raw = line.slice(5).trim();
     if (!raw || raw === "[DONE]") return;
-    let event: { type?: string; audio?: string; message?: string; provider?: string };
+    let event: { type?: string; audio?: string; message?: string; provider?: string; reason?: string };
     try { event = JSON.parse(raw); } catch { return; }
     if (event.type === "speech.error") throw new Error(event.message || "tts_stream_failed");
-    if (event.type === "speech.provider" && event.provider === "chirp3-hd") { onProvider(); return; }
+    if (event.type === "speech.provider" && event.provider === "chirp3-hd") { onProvider(event.reason); return; }
     if (event.type === "speech.audio.done") {
       receivedDone = true;
       return;
@@ -159,7 +159,7 @@ async function receivePcmOnce(text: string, voice: string, language: string, reg
   if (audioSeconds < Math.max(0.8, spokenWords * 0.19)) throw new Error("tts_audio_too_short");
 }
 
-async function receivePcm(text: string, voice: string, language: string, region: string, performance: Performance, roleplay: boolean, signal: AbortSignal, onChunk: (bytes: Uint8Array) => void, onProvider: () => void) {
+async function receivePcm(text: string, voice: string, language: string, region: string, performance: Performance, roleplay: boolean, signal: AbortSignal, onChunk: (bytes: Uint8Array) => void, onProvider: (reason?: string) => void) {
   let lastError: unknown;
   for (let attempt = 0; attempt < 2; attempt += 1) {
     let audioStarted = false;
@@ -194,7 +194,7 @@ function decodePcm(value: string, carry: Uint8Array): { bytes: Uint8Array; carry
  * Plays PCM as the provider sends it. All pieces share one AudioContext clock,
  * so they remain in order without waiting for the full phrase to download.
  */
-export function streamSpeech(text: string, voice: string, language = "es", onFallback?: () => void, roleplay = false, region = "mx"): SpeechStream {
+export function streamSpeech(text: string, voice: string, language = "es", onFallback?: (reason?: string) => void, roleplay = false, region = "mx"): SpeechStream {
   const controller = new AbortController();
   let context: AudioContext | null = null;
   const sources = new Set<AudioBufferSourceNode>();
@@ -278,10 +278,10 @@ export function streamSpeech(text: string, voice: string, language = "es", onFal
       };
       for (const chunk of textChunks) {
         if (stopped) return;
-        await receivePcm(chunk, voice, language, region, performance, roleplay, controller.signal, schedule, () => {
+        await receivePcm(chunk, voice, language, region, performance, roleplay, controller.signal, schedule, (reason) => {
           if (providerNoticeSent) return;
           providerNoticeSent = true;
-          onFallback?.();
+          onFallback?.(reason);
         });
       }
       schedulingComplete = true;

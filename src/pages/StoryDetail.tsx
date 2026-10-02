@@ -417,14 +417,16 @@ type Mode = "select" | "read" | "roleplay";
        streamRef.current = null;
        setPlayingId(id);
        const activeVoice = voiceRef.current;
-       const speech = streamSpeech(text, activeVoice, language, () => {
+       const speech = streamSpeech(text, activeVoice, language, (reason) => {
          if (flatVoiceNotice.current) return;
          flatVoiceNotice.current = true;
          toast({
            title: language === "es" ? "Esta línea la habló la voz plana" : "This line used the flat voice",
-           description: language === "es"
-             ? "Gemini 2.5 no respondió, así que entró el respaldo sin risas ni acento."
-             : "Gemini 2.5 did not answer, so the backup voice spoke without laughs or accent.",
+           description: reason
+             ? (language === "es" ? `Gemini no habló: ${reason}` : `Gemini did not speak: ${reason}`)
+             : (language === "es"
+               ? "Gemini 2.5 no respondió, así que entró el respaldo sin risas ni acento."
+               : "Gemini 2.5 did not answer, so the backup voice spoke without laughs or accent."),
          });
        }, id !== "narrative" && id !== "intro", regionRef.current);
        streamRef.current = speech;
