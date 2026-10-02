@@ -69,6 +69,7 @@ export const CallDialog = ({
   const timersRef = useRef<number[]>([]);
   const recognitionRef = useRef<BrowserRecognition | null>(null);
   const transcriptRef = useRef("");
+  const flatVoiceNotice = useRef(false);
 
   useEffect(() => {
     historyRef.current = history;
@@ -108,7 +109,16 @@ export const CallDialog = ({
 
   const speak = async (text: string) => {
     try {
-      const speech = streamSpeech(text, voice, language, undefined, true, region);
+      const speech = streamSpeech(text, voice, language, () => {
+        if (flatVoiceNotice.current) return;
+        flatVoiceNotice.current = true;
+        toast({
+          title: es ? "Esta línea la habló la voz plana" : "This line used the flat voice",
+          description: es
+            ? "Gemini 2.5 no respondió, así que entró el respaldo sin risas ni acento."
+            : "Gemini 2.5 did not answer, so the backup voice spoke without laughs or accent.",
+        });
+      }, true, region);
       streamRef.current = speech;
       await speech.done;
       streamRef.current = null;

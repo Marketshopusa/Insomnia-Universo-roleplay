@@ -66,7 +66,7 @@ export default async function handler(req, res) {
       writePcm(res, expressive.pcm, "google-cloud-tts", startedAt);
       return;
     }
-    console.warn("Insomnia speech gemini-2.5-flash-tts", expressive.status, "after_ms", Date.now() - startedAt);
+    console.warn("Insomnia speech gemini-2.5-flash-tts", expressive.status, expressive.detail || "", "after_ms", Date.now() - startedAt);
   } catch (failure) {
     console.warn("Insomnia speech cloud-tts failed", failure?.name || "Error", "after_ms", Date.now() - startedAt);
   }

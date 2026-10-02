@@ -8,6 +8,8 @@ it("lists the Gemini 2.5 Flash TTS voices and keeps scarlett-hd as Aoede", () =>
   expect(STORY_VOICES.filter((voice) => voice.gender === "male")).toHaveLength(16);
   expect(STORY_VOICES.some((voice) => voice.value === "Charon")).toBe(true);
   expect(STORY_VOICES.some((voice) => voice.value === "Puck")).toBe(true);
+  expect(STORY_VOICES.find((voice) => voice.value === "Aoede")?.formerName).toBe("Scarlett");
+  expect(STORY_VOICES.find((voice) => voice.value === "Leda")?.formerName).toBe("Luna");
   expect(normalizeStoryVoice("scarlett-hd")).toBe("Aoede");
   expect(normalizeStoryVoice("Charon")).toBe("Charon");
   expect(normalizeStoryVoice("max-deep")).toBe("Charon");

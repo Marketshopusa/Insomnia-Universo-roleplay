@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { cloudVoiceFor, cloudGeminiVoiceFor, decodeWavPcm, removePerformanceCues, synthesizeChirp, synthesizeCloudGemini } from "./chirpTts.mjs";
+import { cloudVoiceFor, cloudGeminiVoiceFor, decodeLinear16, decodeWavPcm, removePerformanceCues, synthesizeChirp, synthesizeCloudGemini } from "./chirpTts.mjs";
 
 function sampleWav() {
   const pcm = Buffer.alloc(48_000, 1);
@@ -81,6 +81,8 @@ test("Cloud Gemini uses the character's expressive voice and PCM response", asyn
       assert.equal(body.voice.model_name, "gemini-2.5-flash-tts");
       assert.equal(body.voice.languageCode, "es-MX");
       assert.equal(body.voice.name, "Aoede");
+      assert.equal(body.audioConfig.audioEncoding, "LINEAR16");
+      assert.equal(body.audioConfig.sampleRateHertz, undefined);
       assert.equal(body.input.text, "Ay, me duele.");
       assert.match(body.input.prompt, /México/);
       assert.match(body.input.prompt, /dolor/);
@@ -107,4 +109,8 @@ test("Cloud Gemini uses the character's expressive voice and PCM response", asyn
   assert.equal(cloudGeminiVoiceFor("Aoede", "es", "es").languageCode, "es-ES");
   assert.equal(cloudGeminiVoiceFor("luna-sweet", "es").name, "Leda");
   assert.equal(removePerformanceCues("[sigh] Me duele."), "Me duele.");
+  const raw = Buffer.alloc(4);
+  raw.writeInt16LE(1000, 0);
+  raw.writeInt16LE(-1000, 2);
+  assert.deepEqual(decodeLinear16(raw.toString("base64")), raw);
 });
