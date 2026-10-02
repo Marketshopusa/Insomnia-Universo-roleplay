@@ -61,7 +61,7 @@ test("Spanish uses one es-ES request and keeps the regional accent in the prompt
   assert.deepEqual(locales, ["es-ES"]);
   assert.equal(result.status, 200);
   const pieces = speechPieces("Hola chamo. " + "palabra ".repeat(40));
-  assert.ok(pieces[0].length <= 80);
+  assert.ok(pieces[0].length <= 52);
   assert.ok(pieces.length > 1);
   assert.equal(cloudGeminiVoiceFor("luna-sweet", "es", "ve").name, "Leda");
   assert.equal(cloudGeminiVoiceFor("Aoede", "es", "es").languageCode, "es-ES");

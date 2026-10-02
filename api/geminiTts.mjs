@@ -50,7 +50,7 @@ export function speechPieces(text) {
   let current = "";
   for (const word of clean.split(" ")) {
     if (!word) continue;
-    const limit = chunks.length === 0 ? 80 : 220;
+    const limit = chunks.length === 0 ? 52 : 220;
     if (current && `${current} ${word}`.length > limit) {
       chunks.push(current);
       current = word;
