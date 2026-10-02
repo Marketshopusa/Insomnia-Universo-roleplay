@@ -28,6 +28,7 @@ export const regionLocale = (value?: string | null) => regionById(value).locale;
 /** Chrome's call recognizer rejects several country codes. es-419 covers Latin America. */
 export const browserSpeechLocale = (language?: string | null, region?: string | null) => {
   if (language === "en") return "en-US";
+  if (region === "plain") return "es-ES";
   const id = normalizeRegion(region);
   if (id === "es") return "es-ES";
   if (id === "mx") return "es-MX";
@@ -35,6 +36,26 @@ export const browserSpeechLocale = (language?: string | null, region?: string | 
 };
 
 const keyFor = (storyId: string) => `insomnia.region.${storyId}`;
+const accentKeyFor = (storyId: string) => `insomnia.accent.${storyId}`;
+
+/** Regional accent stays on until the listener turns it off for that story. */
+export const getStoryAccent = (storyId?: string) => {
+  if (typeof window === "undefined") return true;
+  const stored = storyId ? window.localStorage.getItem(accentKeyFor(storyId)) : null;
+  const value = stored ?? window.localStorage.getItem("insomnia.accent");
+  return value !== "0";
+};
+
+export const setStoryAccent = (storyId: string | undefined, enabled: boolean) => {
+  if (typeof window === "undefined") return;
+  const value = enabled ? "1" : "0";
+  if (storyId) window.localStorage.setItem(accentKeyFor(storyId), value);
+  window.localStorage.setItem("insomnia.accent", value);
+};
+
+/** The country stays saved. Off means Gemini's own voice, without a regional accent. */
+export const spokenRegion = (region: string, accentEnabled: boolean) =>
+  accentEnabled ? normalizeRegion(region) : "plain";
 
 /** The accent chosen for a story stays the same for reading, chat and calls. */
 export const getStoryRegion = (storyId?: string) => {

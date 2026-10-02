@@ -34,6 +34,11 @@ class StoryMemoryTest(unittest.TestCase):
         self.assertIn("gruñón", packed)
         self.assertIn("cabaña", packed)
         self.assertNotIn("No vuelvas a un evento anterior", packed)
+        plain = dict(job(history, latest))
+        plain["region"] = "plain"
+        quiet = "\n".join(item["content"] for item in conversation_messages(plain))
+        self.assertNotIn("chamo", quiet)
+        self.assertNotIn("Mantén esta misma región", quiet)
 
     def test_opening_fact_survives_a_long_story(self):
         history = [

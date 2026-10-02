@@ -11,7 +11,7 @@ import { CallDialog } from "@/components/story/CallDialog";
 import { VoiceMenu } from "@/components/story/VoiceMenu";
 import { RegionMenu } from "@/components/story/RegionMenu";
 import { getStoryVoice, setStoryVoice } from "@/lib/voices";
-import { getStoryRegion, setStoryRegion } from "@/lib/regions";
+import { getStoryAccent, getStoryRegion, setStoryAccent, setStoryRegion, spokenRegion } from "@/lib/regions";
 import { streamSpeech, type SpeechStream } from "@/lib/ttsStream";
 import { invokeFunctionWithRetry } from "@/lib/invokeFunction";
 import { generateSceneImage } from "@/lib/sceneImage";
@@ -59,6 +59,8 @@ type Mode = "select" | "read" | "roleplay";
   const voiceRef = useRef<string>(voice);
   const [region, setRegion] = useState<string>(() => getStoryRegion(storyId));
   const regionRef = useRef<string>(region);
+  const [accent, setAccent] = useState<boolean>(() => getStoryAccent(storyId));
+  const accentRef = useRef<boolean>(accent);
   const audioCacheRef = useRef<Map<string, string>>(new Map());
   const changeVoice = (value: string) => {
     setVoice(value);
@@ -72,6 +74,13 @@ type Mode = "select" | "read" | "roleplay";
     setStoryRegion(storyId, value);
     audioCacheRef.current.clear();
   };
+  const changeAccent = (enabled: boolean) => {
+    setAccent(enabled);
+    accentRef.current = enabled;
+    setStoryAccent(storyId, enabled);
+    audioCacheRef.current.clear();
+  };
+  const activeRegion = () => spokenRegion(regionRef.current, accentRef.current);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const streamRef = useRef<SpeechStream | null>(null);
   const [playingId, setPlayingId] = useState<string | null>(null);
@@ -79,10 +88,13 @@ type Mode = "select" | "read" | "roleplay";
   useEffect(() => {
     const nextVoice = getStoryVoice(storyId);
     const nextRegion = getStoryRegion(storyId);
+    const nextAccent = getStoryAccent(storyId);
     setVoice(nextVoice);
     voiceRef.current = nextVoice;
     setRegion(nextRegion);
     regionRef.current = nextRegion;
+    setAccent(nextAccent);
+    accentRef.current = nextAccent;
   }, [storyId]);
    const audioUnlockedRef = useRef(false);
 
@@ -323,7 +335,7 @@ type Mode = "select" | "read" | "roleplay";
           .map((m) => ({ role: m.role, content: m.content })),
         userMessage,
         adultMode: adultEnabled && consentGiven,
-        region: regionRef.current,
+        region: activeRegion(),
     });
     if (error || !data?.content) {
       const status = (error as { context?: Response } | null)?.context?.status;
@@ -416,7 +428,7 @@ type Mode = "select" | "read" | "roleplay";
        streamRef.current = null;
        setPlayingId(id);
        const activeVoice = voiceRef.current;
-       const speech = streamSpeech(text, activeVoice, language, id !== "narrative" && id !== "intro", regionRef.current);
+       const speech = streamSpeech(text, activeVoice, language, id !== "narrative" && id !== "intro", activeRegion());
        streamRef.current = speech;
        await speech.done;
        if (streamRef.current === speech) {
@@ -523,7 +535,7 @@ type Mode = "select" | "read" | "roleplay";
              story_type: story.story_type,
            },
            language,
-           region: regionRef.current,
+           region: activeRegion(),
            explicit: story.story_type === "real_sex" || !!story.has_explicit_images,
            chapters: 5,
        });
@@ -852,7 +864,7 @@ type Mode = "select" | "read" | "roleplay";
                   <h2 className="font-display text-lg">{tTitle || story.title}</h2>
                   <div className="flex gap-2 items-center">
                     <VoiceMenu value={voice} language={language} onChange={changeVoice} />
-                    <RegionMenu value={region} language={language} onChange={changeRegion} />
+                    <RegionMenu value={region} accent={accent} language={language} onChange={changeRegion} onAccentChange={changeAccent} />
                     {narrative && (
                       playingId === "narrative" ? (
                         <Button variant="outline" size="sm" onClick={stopAudio} className="gap-2">
@@ -932,12 +944,12 @@ type Mode = "select" | "read" | "roleplay";
                   <h2 className="font-display text-lg">{tTitle || story.title}</h2>
                  <div className="flex flex-wrap items-center gap-1">
                     <VoiceMenu value={voice} language={language} onChange={changeVoice} />
-                    <RegionMenu value={region} language={language} onChange={changeRegion} />
+                    <RegionMenu value={region} accent={accent} language={language} onChange={changeRegion} onAccentChange={changeAccent} />
                     <CallDialog
                       story={story}
                       language={language}
                       voice={voice}
-                      region={region}
+                      region={spokenRegion(region, accent)}
                       adultMode={adultEnabled && consentGiven}
                       history={messages
                         .filter((message) => message.id !== "intro")

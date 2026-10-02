@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { cloudGeminiVoiceFor, decodeLinear16, explainGeminiFailure, removePerformanceCues, synthesizeGemini } from "./geminiTts.mjs";
+import { cloudGeminiVoiceFor, decodeLinear16, explainGeminiFailure, geminiSpeechDirection, removePerformanceCues, synthesizeGemini } from "./geminiTts.mjs";
 
 function sampleWav() {
   const pcm = Buffer.alloc(48_000, 1);
@@ -43,6 +43,12 @@ test("Gemini 2.5 Flash TTS speaks Aoede with the story accent", async () => {
   assert.deepEqual(result.pcm, pcm);
   if (previousAccount === undefined) delete process.env.GOOGLE_CLOUD_TTS_SERVICE_ACCOUNT_JSON;
   else process.env.GOOGLE_CLOUD_TTS_SERVICE_ACCOUNT_JSON = previousAccount;
+});
+
+test("a plain region keeps Gemini's own Spanish voice", () => {
+  const prompt = geminiSpeechDirection("es", "neutral", "plain");
+  assert.match(prompt, /voz natural/);
+  assert.doesNotMatch(prompt, /venezolano|mexicano|colombiano|rioplatense|chileno|castellano/);
 });
 
 test("Spanish uses one es-ES request and keeps the regional accent in the prompt", async () => {
