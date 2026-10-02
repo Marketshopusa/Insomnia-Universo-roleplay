@@ -54,7 +54,7 @@ export default async function handler(req, res) {
     const { count, error: countError } = await client.from("kineva_scene_jobs")
       .select("id", { count: "exact", head: true }).eq("owner_id", user.id).in("status", ["queued", "running"]);
     if (countError) throw countError;
-    if ((count || 0) >= 3) return send(res, 429, { error: "queue_full", message: "Ya tienes tres imÃ¡genes en proceso." });
+    if ((count || 0) >= 3) return send(res, 429, { error: "queue_full", message: "Ya tienes tres imágenes en proceso." });
     const prompt = [
       "Create one vertical cinematic photorealistic still frame. Natural anatomy and lighting.",
       "The CURRENT action is the subject; preserve the established characters, wardrobe, location and chronology.",
@@ -79,6 +79,6 @@ export default async function handler(req, res) {
     return send(res, 202, { jobId: job.id, status: job.status });
   } catch (failure) {
     console.error("Kineva scene queue", failure.message);
-    return send(res, 500, { error: "scene_queue_unavailable", message: "No se pudo iniciar la ilustraciÃ³n." });
+    return send(res, 500, { error: "scene_queue_unavailable", message: "No se pudo iniciar la ilustración en ComfyUI." });
   }
 }

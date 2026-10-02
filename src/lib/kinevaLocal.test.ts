@@ -1,5 +1,5 @@
 import { expect, it, vi } from "vitest";
-import { clampLocalEpisodes, createLocalJob, localVideoSrc, probeLocalKineva } from "./kinevaLocal";
+import { clampLocalEpisodes, createLocalJob, localVideoSrc, probeLocalKineva, renderLocalScene } from "./kinevaLocal";
 
 it("builds a same-PC video url and keeps episode counts between 1 and 3", () => {
   expect(localVideoSrc("/videos/job/clip.mp4")).toBe("http://127.0.0.1:8787/videos/job/clip.mp4");
@@ -40,4 +40,28 @@ it("enqueues a local job on 127.0.0.1:8787 and never calls a cloud video functio
     method: "POST",
     targetAddressSpace: "loopback",
   }));
+});
+
+it("renders a scene through local ComfyUI and skips devices where Kineva is absent", async () => {
+  const png = await renderLocalScene({ focusText: "Ella cruza la calle" }, vi.fn(async (url: string) => {
+    if (String(url).endsWith("/health")) {
+      return new Response(JSON.stringify({ scenes: true, comfy: true }), { status: 200 });
+    }
+    return new Response(JSON.stringify({ image: "abc" }), { status: 200 });
+  }) as unknown as typeof fetch);
+  expect(png).toBe("data:image/png;base64,abc");
+
+  const absent = await renderLocalScene({}, vi.fn(async () => {
+    throw new Error("connection refused");
+  }) as unknown as typeof fetch);
+  expect(absent).toBeNull();
+
+  const oldWorker = await renderLocalScene({}, vi.fn(async () => new Response(JSON.stringify({
+    ready: true, comfy: true,
+  }), { status: 200 })) as unknown as typeof fetch);
+  expect(oldWorker).toBeNull();
+
+  await expect(renderLocalScene({}, vi.fn(async () => new Response(JSON.stringify({
+    scenes: true, comfy: false,
+  }), { status: 503 })) as unknown as typeof fetch)).rejects.toThrow(/127\.0\.0\.1:8188/);
 });

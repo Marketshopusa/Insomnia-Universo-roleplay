@@ -30,6 +30,13 @@ $exe = Join-Path $env:LOCALAPPDATA 'Microsoft\WinGet\Packages\ggml.llamacpp_Micr
 $model = Join-Path $env:LOCALAPPDATA 'Comfy-Desktop\ComfyUI-Shared\models\LLM\magnum-v4-12b\magnum-v4-12b-Q4_K_M.gguf'
 $env:SUPABASE_URL = 'https://cexzmelshvbgabihtfvx.supabase.co'
 Set-Location $repo
+$imageScript = Join-Path $PSScriptRoot 'start-image-worker.ps1'
+$imageWorker = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+  Where-Object { $_.CommandLine -and $_.CommandLine -like '*image_worker.py*' }
+if (-not $imageWorker) {
+  Start-Process powershell.exe -ArgumentList ('-NoExit -ExecutionPolicy Bypass -File "' + $imageScript + '"') -WorkingDirectory $repo
+  Write-Host 'Iniciando ilustraciones de escena en ComfyUI...'
+}
 while ($true) {
   try {
     if (-not (Test-Path $exe) -or -not (Test-Path $model)) { throw 'Local chat model or llama-server missing' }

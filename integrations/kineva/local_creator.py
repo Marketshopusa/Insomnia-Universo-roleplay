@@ -11,6 +11,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from image_worker import preflight, render, scene_prompt
 from worker import Api, find_manifest, one, wait_for_render
 
 HOST = "127.0.0.1"
@@ -228,7 +229,7 @@ class Handler(BaseHTTPRequestHandler):
                 comfy = False
             ready = template and comfy
             return self._reply(200 if ready else 503, {
-                "ready": ready, "template": template, "comfy": comfy,
+                "ready": ready, "template": template, "comfy": comfy, "scenes": True,
             })
         if len(parts) == 2 and parts[0] == "jobs":
             job = public_job(parts[1])
@@ -271,7 +272,31 @@ class Handler(BaseHTTPRequestHandler):
             return
         return self._reply(404, {"error": "No existe."})
 
+    def _scene(self):
+        if not self._origin():
+            return self._reply(403, {"error": "Abre Insomnia en esta PC."})
+        length = int(self.headers.get("Content-Length", "0"))
+        if length < 1 or length > 200_000:
+            return self._reply(413, {"error": "La solicitud de la escena es demasiado grande."})
+        try:
+            body = json.loads(self.rfile.read(length))
+            prompt = scene_prompt(body)
+        except (ValueError, TypeError, json.JSONDecodeError) as exc:
+            return self._reply(400, {"error": str(exc)})
+        if not OUTPUT.is_dir():
+            return self._reply(503, {"error": "No encuentro la carpeta de salida de ComfyUI."})
+        job_id = str(uuid.uuid4())
+        try:
+            with GPU_LOCK:
+                preflight(COMFY)
+                png = render({"id": job_id, "prompt": prompt}, COMFY, OUTPUT, timeout=180)
+        except Exception as exc:
+            return self._reply(503, {"error": str(exc)[:350]})
+        return self._reply(200, {"image": base64.b64encode(png).decode("ascii")})
+
     def do_POST(self):
+        if urlsplit(self.path).path == "/scenes":
+            return self._scene()
         if urlsplit(self.path).path != "/jobs":
             return self._reply(404, {"error": "No existe."})
         if not self._origin():

@@ -58,6 +58,54 @@ export async function probeLocalKineva(fetchImpl: FetchLike = fetch): Promise<Lo
   }
 }
 
+function abortAfter(ms: number) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  return { signal: controller.signal, stop: () => clearTimeout(timer) };
+}
+
+/** Renders a still on this PC through ComfyUI. Returns null when Kineva is not on this device. */
+export async function renderLocalScene(
+  body: Record<string, unknown>,
+  fetchImpl: FetchLike = fetch,
+): Promise<string | null> {
+  const healthLimit = abortAfter(2500);
+  let health: Response;
+  try {
+    health = await fetchImpl(`${LOCAL_KINEVA_URL}/health`, loopbackInit({
+      signal: healthLimit.signal,
+    }));
+  } catch {
+    return null;
+  } finally {
+    healthLimit.stop();
+  }
+  const info = await health.json().catch(() => ({})) as { scenes?: boolean; comfy?: boolean };
+  if (info.scenes !== true) return null;
+  if (info.comfy !== true) {
+    throw new Error("Falta ComfyUI en esta computadora (127.0.0.1:8188). Enciéndelo y vuelve a ilustrar la escena.");
+  }
+  const renderLimit = abortAfter(180000);
+  let response: Response;
+  try {
+    response = await fetchImpl(`${LOCAL_KINEVA_URL}/scenes`, loopbackInit({
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: renderLimit.signal,
+    }));
+  } catch {
+    throw new Error("ComfyUI no respondió al ilustrar la escena. Déjalo encendido en esta computadora e inténtalo de nuevo.");
+  } finally {
+    renderLimit.stop();
+  }
+  const data = await response.json().catch(() => ({})) as { image?: string; error?: string };
+  if (!response.ok || !data.image) {
+    throw new Error(data.error || "ComfyUI no pudo ilustrar la escena.");
+  }
+  return `data:image/png;base64,${data.image}`;
+}
+
 export async function encodeLocalImage(file: File) {
   if (file.size > 10_000_000 || !["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
     throw new Error("Usa una foto PNG, JPEG o WebP de hasta 10 MB.");

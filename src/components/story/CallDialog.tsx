@@ -249,17 +249,17 @@ export const CallDialog = ({
     recognitionRef.current = null;
     if (!userText) {
       const audio = await blobToBase64(blob);
-      const { data, error } = await invokeFunctionWithRetry<{ text?: string; error?: string }>("speech-to-text", { audio, mimeType: "audio/wav", language: es ? "es" : "en", region });
-      userText = ((data as any)?.text || "").trim();
-      if (error || (data as any)?.error) {
+      const { data, error } = await invokeFunctionWithRetry<{ text?: string; error?: string; message?: string }>("speech-to-text", { audio, mimeType: "audio/wav", language: es ? "es" : "en", region });
+      userText = (data?.text || "").trim();
+      if (error || data?.error) {
         toast({
           title: es ? "No se pudo transcribir la llamada" : "Could not transcribe the call",
-          description: es
-            ? "La voz en la nube no esta disponible. Puedes escribir tu mensaje en el chat."
-            : "Cloud transcription is unavailable. You can type your message in chat.",
+          description: data?.message || error?.message || (es
+            ? "Gemini no oyó este turno. La llamada sigue abierta: habla de nuevo."
+            : "Gemini did not hear this turn. The call stays open: speak again."),
           variant: "destructive",
         });
-        hangUp();
+        if (activeRef.current) void listen();
         return;
       }
     }

@@ -31,34 +31,54 @@ def graph_for(job):
             "images": ["8", 0], "filename_prefix": "kineva_scenes/" + job["id"].replace("-", "")}},
     }
 
+def scene_prompt(body):
+    source = body or {}
+    focus = str(source.get("focusText") or "").strip()[:1800]
+    if len(focus) < 8:
+        raise ValueError("La escena es demasiado corta para ilustrarla.")
+    return "\n".join([
+        "Create one vertical cinematic photorealistic still frame. Natural anatomy and lighting.",
+        "The CURRENT action is the subject; preserve the established characters, wardrobe, location and chronology.",
+        "No captions, speech bubbles, logos or collage.",
+        "Story: " + str(source.get("storyTitle") or "")[:160],
+        "Character identity: " + str(source.get("characterRole") or "")[:900],
+        "Player role: " + str(source.get("playerRole") or "")[:250],
+        "Premise: " + str(source.get("storyDescription") or "")[:650],
+        "Recent context: " + str(source.get("sceneText") or "")[-1900:],
+        "LATEST MOMENT: " + focus,
+    ])
+
 def preflight(comfy):
-    info = comfy.call("GET", "/object_info")
+    try:
+        info = comfy.call("GET", "/object_info")
+    except Exception as error:
+        raise RuntimeError("No hay conexión con ComfyUI en 127.0.0.1:8188.") from error
     expected = [("UNETLoader", "unet_name", MODEL),
                 ("CLIPLoader", "clip_name", ENCODER),
                 ("VAELoader", "vae_name", VAE)]
     for node, field, model in expected:
         if model not in info[node]["input"]["required"][field][0]:
-            raise RuntimeError("Kineva image model missing: " + model)
+            raise RuntimeError("Falta el modelo de imagen en ComfyUI: " + model)
     for node in ("EmptyFlux2LatentImage", "ConditioningZeroOut", "KSampler", "VAEDecode", "SaveImage"):
         if node not in info:
-            raise RuntimeError("Missing ComfyUI node: " + node)
+            raise RuntimeError("Falta el nodo de ComfyUI: " + node)
 
-def render(job, comfy, output_dir):
+def render(job, comfy, output_dir, timeout=600):
     created = comfy.call("POST", "/prompt", {
         "prompt": graph_for(job), "client_id": "insomnia-kineva-scenes"})
     if not created.get("prompt_id"):
-        raise RuntimeError("ComfyUI rejected image prompt: " + str(created)[:500])
+        raise RuntimeError("ComfyUI rechazó la ilustración: " + str(created)[:500])
     prompt_id = created["prompt_id"]
-    deadline = time.monotonic() + 600
+    deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         history = comfy.call("GET", "/history/" + quote(prompt_id)).get(prompt_id)
         if history:
             if history.get("status", {}).get("status_str") != "success":
-                raise RuntimeError("ComfyUI image render failed: " +
+                raise RuntimeError("ComfyUI no pudo ilustrar la escena: " +
                                    str(history.get("status", {}).get("messages", []))[-600:])
             images = history.get("outputs", {}).get("9", {}).get("images", [])
             if len(images) != 1:
-                raise RuntimeError("Expected one rendered image")
+                raise RuntimeError("ComfyUI no devolvió la imagen de la escena.")
             image = images[0]
             if image.get("type") != "output":
                 raise RuntimeError("Unexpected image output type")
@@ -75,7 +95,7 @@ def render(job, comfy, output_dir):
                 raise RuntimeError("Image resolution below minimum")
             return data
         time.sleep(2)
-    raise TimeoutError("Kineva image render timed out")
+    raise TimeoutError("ComfyUI no terminó la ilustración a tiempo.")
 
 def process_one(cloud, comfy, output_dir):
     claimed = cloud.call("POST", "/rest/v1/rpc/claim_kineva_scene_job", {})
@@ -85,6 +105,7 @@ def process_one(cloud, comfy, output_dir):
     print("Image job claimed", job["id"], flush=True)
     result = {}
     try:
+        preflight(comfy)
         image = render(job, comfy, output_dir)
         path = job["owner_id"] + "/" + job["id"] + ".png"
         cloud.call("POST", "/storage/v1/object/kineva-scene-images/" + quote(path, safe="/"),
@@ -108,8 +129,8 @@ def main():
     parser.add_argument("--preflight", action="store_true")
     args = parser.parse_args()
     comfy = Api(os.environ.get("KINEVA_COMFY_URL", "http://127.0.0.1:8188"))
-    preflight(comfy)
     if args.preflight:
+        preflight(comfy)
         print("Kineva still-image preflight OK", flush=True)
         return
     cloud = Api(os.environ["SUPABASE_URL"], os.environ["SUPABASE_SERVICE_ROLE_KEY"])

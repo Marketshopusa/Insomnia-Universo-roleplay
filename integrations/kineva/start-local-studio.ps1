@@ -28,6 +28,13 @@ if (-not (Test-LocalEndpoint "http://127.0.0.1:8188/system_stats")) {
 if (-not (Wait-LocalEndpoint "http://127.0.0.1:8188/system_stats" 90)) {
     Write-Host "ComfyUI no respondió en el puerto 8188."
 }
+$imageScript = Join-Path $PSScriptRoot "start-image-worker.ps1"
+$imageWorker = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+    Where-Object { $_.CommandLine -and $_.CommandLine -like "*image_worker.py*" }
+if (-not $imageWorker) {
+    Start-Process powershell.exe -ArgumentList ('-NoExit -ExecutionPolicy Bypass -File "' + $imageScript + '"') -WorkingDirectory $project
+    Write-Host "Iniciando el worker de ilustraciones (ComfyUI)..."
+}
 if (-not (Test-LocalEndpoint "http://127.0.0.1:8787/health")) {
     Start-Process py -ArgumentList ('-3 -u "' + $server + '"') -WorkingDirectory $PSScriptRoot
     Write-Host "Iniciando Kineva local..."

@@ -1,6 +1,8 @@
 import { createClient } from "@supabase/supabase-js";
 import { supabaseUrl as BASE, publishableKey as KEY } from "./config.mjs";
 import { slangInstruction, speechLocale } from "./regions.mjs";
+
+export const maxDuration = 60;
 const send = (res, status, value) => res.status(status).json(value);
 async function authenticated(req) {
   const jwt = String(req.headers.authorization || "").replace(/^Bearer\s+/i, "");
@@ -19,9 +21,7 @@ export async function generate(model, parts, settings = {}, options = {}) {
   const key = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
   if (!key || key === "[SENSITIVE]") throw Object.assign(new Error("Gemini no estÃ¡ configurado en Insomnia (Vercel)."), { status: 503, code: "gemini_not_configured" });
   const fetchImpl = options.fetchImpl || fetch;
-  const choices = model === "gemini-3.5-transcribe"
-    ? [model]
-    : [...new Set([model, ...(options.fallbackModels || ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite"])])];
+  const choices = [...new Set([model, ...(options.fallbackModels || ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite"])])];
   let lastError;
   for (const candidate of choices) {
     let allowThinking = true;
@@ -39,7 +39,7 @@ export async function generate(model, parts, settings = {}, options = {}) {
             ] } : {}),
             generationConfig,
           }),
-          signal: AbortSignal.timeout(17000),
+          signal: AbortSignal.timeout(options.timeoutMs || 17000),
         });
         const data = await response.json();
         if (!response.ok) {
@@ -52,7 +52,9 @@ export async function generate(model, parts, settings = {}, options = {}) {
           lastError = Object.assign(new Error(message || "Gemini no respondiÃ³."), {
             status: response.status, code: response.status === 429 ? "rate_limited" : "ai_unavailable",
           });
-          if ([404, 429, 500, 502, 503, 504].includes(response.status)) break;
+          const retryAnotherModel = [404, 429, 500, 502, 503, 504].includes(response.status)
+            || (options.allowEmpty && response.status === 400);
+          if (retryAnotherModel) break;
           throw lastError;
         }
         const blockReason = data.promptFeedback?.blockReason || (["SAFETY", "PROHIBITED_CONTENT", "BLOCKLIST"].includes(data.candidates?.[0]?.finishReason) ? data.candidates[0].finishReason : null);
@@ -66,6 +68,7 @@ export async function generate(model, parts, settings = {}, options = {}) {
         }
         const content = (data.candidates?.[0]?.content?.parts || []).map(p => p.text || "").join("").trim();
         if (!content) {
+          if (options.allowEmpty) return "";
           console.warn("Insomnia AI empty output", candidate, "keys", Object.keys(data || {}), "feedback", data.promptFeedback?.blockReason, "candidateCount", data.candidates?.length, "finish", data.candidates?.[0]?.finishReason, "thoughts", data.usageMetadata?.thoughtsTokenCount);
           lastError = Object.assign(new Error("Gemini no devolviÃ³ texto."), { status: 502, code: "ai_unavailable" });
           break;
@@ -84,6 +87,52 @@ export async function generate(model, parts, settings = {}, options = {}) {
     }
   }
   throw lastError;
+}
+
+export function transcriptionInstruction(language, region) {
+  const spanish = language !== "en";
+  const locale = speechLocale(spanish ? "es" : "en", region);
+  if (!spanish) {
+    return "Transcribe exactly what the person says in this audio. Language: " + locale + ". Return only the spoken words, with no quotes and no commentary. If no words are clear, return empty.";
+  }
+  return "Transcribe exactamente lo que dice la persona en este audio. Idioma: " + locale + ". Devuelve únicamente las palabras dichas, sin comillas ni comentarios. Si no hay palabras claras, devuelve vacío.";
+}
+
+export function cleanTranscript(text) {
+  const cleaned = String(text || "")
+    .trim()
+    .replace(/^(transcripci[oó]n|transcript)\s*:\s*/i, "")
+    .replace(/^["“”']+|["“”']+$/g, "")
+    .trim();
+  if (/^(vac[ií]o|empty|\[silence\]|\(silence\)|\(silencio\)|\[silencio\])$/i.test(cleaned)) return "";
+  return cleaned;
+}
+
+export function speechToTextRequest(body) {
+  const language = body.language === "en" ? "en" : "es";
+  return {
+    model: "gemini-2.5-flash",
+    parts: [
+      { text: transcriptionInstruction(language, body.region) },
+      { inlineData: { mimeType: body.mimeType || "audio/wav", data: body.audio } },
+    ],
+    settings: { temperature: 0, maxOutputTokens: 512 },
+    options: {
+      fastReply: true,
+      allowEmpty: true,
+      timeoutMs: 45000,
+      fallbackModels: ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite"],
+    },
+  };
+}
+
+export async function transcribeAudio(body, generateImpl = generate) {
+  if (typeof body.audio !== "string" || body.audio.length < 2700 || body.audio.length > 12000000) {
+    throw Object.assign(new Error("El audio de la llamada no llegó completo."), { status: 400, code: "invalid_audio" });
+  }
+  const request = speechToTextRequest(body);
+  const content = await generateImpl(request.model, request.parts, request.settings, request.options);
+  return { text: cleanTranscript(content) };
 }
 
 export function storyContinuityLines(spanish) {
@@ -226,11 +275,7 @@ export default async function handler(req, res) {
       return send(res, 200, { translations });
     }
     if (action === "speech-to-text") {
-      if (typeof body.audio !== "string" || body.audio.length < 2700 || body.audio.length > 12000000) return send(res, 400, { error: "invalid_audio" });
-      const lang = body.language === "es" || body.language === "en" ? speechLocale(body.language, body.region) : undefined;
-      const opts = lang ? { audioTranscriptionConfig: { languageCodes: [lang] } } : {};
-      const content = await generate("gemini-3.5-transcribe", [{ inlineData: { mimeType: body.mimeType || "audio/wav", data: body.audio } }], opts);
-      return send(res, 200, { text: content });
+      return send(res, 200, await transcribeAudio(body));
     }
     if (action === "generate-narrative") {
       const story = body.story || {};

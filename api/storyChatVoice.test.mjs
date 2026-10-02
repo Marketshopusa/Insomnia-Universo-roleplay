@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { generate, generationConfigFor, lockedStoryFacts, storyContinuityLines, storyVoiceLines } from "./ai.mjs";
+import { cleanTranscript, generate, generationConfigFor, lockedStoryFacts, speechToTextRequest, storyContinuityLines, storyVoiceLines, transcribeAudio } from "./ai.mjs";
 
 test("a video stays with the person who sent it", () => {
   const facts = lockedStoryFacts([
@@ -68,6 +68,42 @@ test("story chat turns thinking off and retries when Gemini rejects that setting
   assert.equal(content, "Ups, qué pena, sí me equivoqué.");
   assert.deepEqual(bodies[0].thinkingConfig, { thinkingBudget: 0 });
   assert.equal(bodies[1].thinkingConfig, undefined);
+  if (previous === undefined) delete process.env.GEMINI_API_KEY;
+  else process.env.GEMINI_API_KEY = previous;
+});
+
+test("a call transcript goes to Gemini 2.5 with the wav and no special transcribe model", async () => {
+  const audio = "A".repeat(3000);
+  const request = speechToTextRequest({ audio, language: "es", region: "mx", mimeType: "audio/wav" });
+  assert.equal(request.model, "gemini-2.5-flash");
+  assert.match(request.parts[0].text, /Transcribe exactamente/);
+  assert.match(request.parts[0].text, /es-MX/);
+  assert.deepEqual(request.parts[1].inlineData, { mimeType: "audio/wav", data: audio });
+  assert.equal(request.settings.audioTranscriptionConfig, undefined);
+  assert.equal(request.options.allowEmpty, true);
+  let seen;
+  const heard = await transcribeAudio({ audio, language: "es", region: "plain" }, async (model, parts, settings, options) => {
+    seen = { model, parts, settings, options };
+    return "\"hola, te estoy oyendo\"";
+  });
+  assert.equal(heard.text, "hola, te estoy oyendo");
+  assert.equal(seen.model, "gemini-2.5-flash");
+  assert.equal(seen.options.timeoutMs, 45000);
+  assert.equal(cleanTranscript("vacío"), "");
+  assert.equal(cleanTranscript("[silence]"), "");
+});
+
+test("silence in a call is an empty transcript, not an error", async () => {
+  const previous = process.env.GEMINI_API_KEY;
+  process.env.GEMINI_API_KEY = "test-key";
+  const content = await generate("gemini-2.5-flash", [{ text: "audio" }], { temperature: 0 }, {
+    allowEmpty: true,
+    fallbackModels: [],
+    fetchImpl: async () => new Response(JSON.stringify({
+      candidates: [{ content: { parts: [{ text: "" }] } }],
+    }), { status: 200 }),
+  });
+  assert.equal(content, "");
   if (previous === undefined) delete process.env.GEMINI_API_KEY;
   else process.env.GEMINI_API_KEY = previous;
 });
