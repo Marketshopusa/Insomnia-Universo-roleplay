@@ -1,34 +1,25 @@
 import { createClient } from "@supabase/supabase-js";
 import { supabaseUrl, publishableKey } from "./config.mjs";
 import { explainGeminiFailure, isGeminiConfigured, synthesizeGemini, removePerformanceCues } from "./geminiTts.mjs";
-import { streamGeminiSpeech } from "./geminiStream.mjs";
 
-export const maxDuration = 60;
 
 function sendEvent(res, event) {
   res.write("data: " + JSON.stringify(event) + "\n\n");
-  if (typeof res.flush === "function") res.flush();
 }
 
-function beginSpeech(res, provider, startedAt) {
+function writePcm(res, pcm, provider, startedAt) {
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache, no-transform");
   res.setHeader("X-Accel-Buffering", "no");
   res.flushHeaders();
   sendEvent(res, { type: "speech.provider", provider });
   console.info("Insomnia speech first_audio", provider, "total_ms", Date.now() - startedAt);
-  return {
-    chunk(pcm) {
-      for (let offset = 0; offset < pcm.length; offset += 32_768) {
-        sendEvent(res, { type: "speech.audio.delta", audio: pcm.subarray(offset, offset + 32_768).toString("base64") });
-      }
-    },
-    finish() {
-      sendEvent(res, { type: "speech.audio.done" });
-      res.end();
-      console.info("Insomnia speech complete", provider, "total_ms", Date.now() - startedAt);
-    },
-  };
+  for (let offset = 0; offset < pcm.length; offset += 32_768) {
+    sendEvent(res, { type: "speech.audio.delta", audio: pcm.subarray(offset, offset + 32_768).toString("base64") });
+  }
+  sendEvent(res, { type: "speech.audio.done" });
+  res.end();
+  console.info("Insomnia speech complete", provider, "total_ms", Date.now() - startedAt);
 }
 
 export default async function handler(req, res) {
@@ -62,24 +53,6 @@ export default async function handler(req, res) {
   const performance = ["neutral", "amused", "sad", "pain", "pleasure", "scream", "soft"].includes(req.body.performance)
     ? req.body.performance : "neutral";
   try {
-    let playback = null;
-    try {
-      await streamGeminiSpeech(text, req.body.voice, req.body.language, {
-        performance,
-        region,
-        onAudio(pcm) {
-          playback ??= beginSpeech(res, "gemini-2.5-flash-tts", startedAt);
-          playback.chunk(pcm);
-        },
-      });
-      if (playback) {
-        playback.finish();
-        return;
-      }
-    } catch (streamError) {
-      if (playback) throw streamError;
-      console.warn("Insomnia speech stream fallback", streamError?.message || streamError?.code || "Error", "after_ms", Date.now() - startedAt);
-    }
     const expressive = await synthesizeGemini(text, req.body.voice, req.body.language, { performance, region });
     if (expressive.status !== 200) {
       console.warn("Insomnia speech gemini-2.5-flash-tts", expressive.status, expressive.detail || "", "after_ms", Date.now() - startedAt);
@@ -89,16 +62,10 @@ export default async function handler(req, res) {
         message: explainGeminiFailure(expressive.status, expressive.detail),
       });
     }
-    const spoken = beginSpeech(res, "gemini-2.5-flash-tts", startedAt);
-    spoken.chunk(expressive.pcm);
-    spoken.finish();
+    writePcm(res, expressive.pcm, "gemini-2.5-flash-tts", startedAt);
     return;
   } catch (failure) {
     console.warn("Insomnia speech gemini failed", failure?.message || failure?.name || "Error", "after_ms", Date.now() - startedAt);
-    if (res.headersSent) {
-      sendEvent(res, { type: "speech.error", message: "tts_stream_failed" });
-      return res.end();
-    }
     return res.status(502).json({
       error: "tts_unavailable",
       message: "Gemini 2.5 Flash TTS no pudo hablar esta línea.",
