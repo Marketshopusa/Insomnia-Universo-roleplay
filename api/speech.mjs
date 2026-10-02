@@ -66,13 +66,7 @@ export default async function handler(req, res) {
       writePcm(res, expressive.pcm, "google-cloud-tts", startedAt);
       return;
     }
-    console.warn("Insomnia speech cloud-tts", expressive.status, "after_ms", Date.now() - startedAt);
-    if (expressive.status === 429) {
-      return res.status(429).json({
-        error: "tts_quota_exhausted",
-        message: "Google Cloud no tiene cuota de voz en este momento. El texto sigue disponible.",
-      });
-    }
+    console.warn("Insomnia speech gemini-2.5-flash-tts", expressive.status, "after_ms", Date.now() - startedAt);
   } catch (failure) {
     console.warn("Insomnia speech cloud-tts failed", failure?.name || "Error", "after_ms", Date.now() - startedAt);
   }

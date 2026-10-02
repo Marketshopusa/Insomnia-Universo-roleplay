@@ -2,9 +2,12 @@ import { ExternalAccountClient, GoogleAuth } from "google-auth-library";
 import { getVercelOidcToken } from "@vercel/oidc";
 import { accentHint, chirpLocale, normalizeRegion } from "./regions.mjs";
 
-const FEMININE = [
+const GEMINI_VOICES = [
   "Aoede", "Zephyr", "Leda", "Kore", "Achernar", "Autonoe", "Callirrhoe",
   "Despina", "Erinome", "Gacrux", "Laomedeia", "Pulcherrima", "Sulafat", "Vindemiatrix",
+  "Achird", "Algenib", "Algieba", "Alnilam", "Charon", "Enceladus", "Fenrir",
+  "Iapetus", "Orus", "Puck", "Rasalgethi", "Sadachbia", "Sadaltager", "Schedar",
+  "Umbriel", "Zubenelgenubi",
 ];
 const aliases = {
   "scarlett-hd": "Aoede",
@@ -13,7 +16,7 @@ const aliases = {
   "max-deep": "Charon",
   "leo-warm": "Puck",
 };
-for (const name of FEMININE) aliases[name] = name;
+for (const name of GEMINI_VOICES) aliases[name] = name;
 let cachedAuth;
 let cachedFederatedAuth;
 
