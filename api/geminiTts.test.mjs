@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { cloudGeminiVoiceFor, decodeLinear16, explainGeminiFailure, removePerformanceCues, synthesizeGemini } from "./geminiTts.mjs";
+import { cloudGeminiVoiceFor, decodeLinear16, explainGeminiFailure, removePerformanceCues, speechPieces, synthesizeGemini } from "./geminiTts.mjs";
 
 function sampleWav() {
   const pcm = Buffer.alloc(48_000, 1);
@@ -32,7 +32,7 @@ test("Gemini 2.5 Flash TTS speaks Aoede with the story accent", async () => {
       assert.equal(init.headers["x-goog-user-project"], "project-92a5eaa1-857a-4011-a86");
       const body = JSON.parse(init.body);
       assert.equal(body.voice.modelName, "gemini-2.5-flash-tts");
-      assert.equal(body.voice.languageCode, "es-MX");
+      assert.equal(body.voice.languageCode, "es-ES");
       assert.equal(body.voice.name, "Aoede");
       assert.equal(body.advancedVoiceOptions.safetySettings.settings[0].threshold, "BLOCK_NONE");
       assert.match(body.input.prompt, /México/);
@@ -45,7 +45,7 @@ test("Gemini 2.5 Flash TTS speaks Aoede with the story accent", async () => {
   else process.env.GOOGLE_CLOUD_TTS_SERVICE_ACCOUNT_JSON = previousAccount;
 });
 
-test("a rejected regional locale retries Spanish from Spain", async () => {
+test("Spanish uses one es-ES request and keeps the regional accent in the prompt", async () => {
   const { wav } = sampleWav();
   const locales = [];
   const result = await synthesizeGemini("Chamo, no puede ser.", "Aoede", "es", {
@@ -55,12 +55,14 @@ test("a rejected regional locale retries Spanish from Spain", async () => {
       const body = JSON.parse(init.body);
       locales.push(body.voice.languageCode);
       assert.match(body.input.prompt, /venezolano/);
-      if (body.voice.languageCode === "es-419") return new Response("{}", { status: 400 });
       return new Response(JSON.stringify({ audioContent: wav.toString("base64") }), { status: 200 });
     },
   });
-  assert.deepEqual(locales, ["es-419", "es-419", "es-ES"]);
+  assert.deepEqual(locales, ["es-ES"]);
   assert.equal(result.status, 200);
+  const pieces = speechPieces("Hola chamo. " + "palabra ".repeat(40));
+  assert.ok(pieces[0].length <= 80);
+  assert.ok(pieces.length > 1);
   assert.equal(cloudGeminiVoiceFor("luna-sweet", "es", "ve").name, "Leda");
   assert.equal(cloudGeminiVoiceFor("Aoede", "es", "es").languageCode, "es-ES");
   assert.equal(removePerformanceCues("[sigh] Me duele."), "Me duele.");
