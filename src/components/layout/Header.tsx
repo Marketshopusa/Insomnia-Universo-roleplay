@@ -45,13 +45,19 @@ import { AdultConsentDialog } from "@/components/adult/AdultConsentDialog";
   };
  
    const navLinks = [
-     { href: "/shorts", label: "Shorts" },
-     { href: "/plans", label: t("nav.plans") },
-     { href: "/studio", label: t("nav.novelStudio") },
-      { href: "/my-stories", label: t("nav.myStories") },
-      { href: "/my-stories#historial", label: "Historial" },
       { href: "/", label: t("nav.home") },
+      { href: "/shorts", label: "Shorts" },
+      { href: "/studio", label: t("nav.novelStudio") },
+      { href: "/my-stories", label: t("nav.myStories") },
+      { href: "/plans", label: t("nav.plans") },
+      { href: "/my-stories#historial", label: "Historial" },
    ];
+   const linkActive = (href: string) => {
+     if (href === "/") return location.pathname === "/";
+     if (href.includes("#")) return location.pathname + location.hash === href;
+     const path = href.split("#")[0];
+     return location.pathname === path || location.pathname.startsWith(path + "/");
+   };
  
    const handleSignOut = async () => {
      await signOut();
@@ -70,7 +76,7 @@ import { AdultConsentDialog } from "@/components/adult/AdultConsentDialog";
                  key={link.href}
                  to={link.href}
                  className={`text-sm font-medium transition-colors hover:text-primary ${
-                   location.pathname === link.href
+                   linkActive(link.href)
                      ? "text-primary"
                      : "text-muted-foreground"
                  }`}
@@ -129,7 +135,7 @@ import { AdultConsentDialog } from "@/components/adult/AdultConsentDialog";
                    to={link.href}
                    onClick={() => setMobileMenuOpen(false)}
                    className={`text-sm font-medium transition-colors hover:text-primary ${
-                     location.pathname === link.href
+                     linkActive(link.href)
                        ? "text-primary"
                        : "text-muted-foreground"
                    }`}

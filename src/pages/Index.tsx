@@ -1,5 +1,5 @@
  import { useState, useEffect } from "react";
- import { useNavigate } from "react-router-dom";
+ import { Link, useNavigate } from "react-router-dom";
  import { MainLayout } from "@/components/layout/MainLayout";
 import { FilterBar } from "@/components/chat/FilterBar";
  import { CategoryTags } from "@/components/chat/CategoryTags";
@@ -16,6 +16,9 @@ import { AdultConsentDialog } from "@/components/adult/AdultConsentDialog";
 import { Button } from "@/components/ui/button";
 import { ShieldAlert, Lock, Sparkles } from "lucide-react";
  import { Skeleton } from "@/components/ui/skeleton";
+import { useShorts } from "@/hooks/useShorts";
+import { seriesStatus } from "@/lib/shortsCatalog";
+import { SeriesCover } from "@/components/shorts/SeriesCover";
  
  type StoryType = "adventure" | "roleplay" | "real_sex";
  type StorySource = "crafted" | "custom";
@@ -42,6 +45,7 @@ import { ShieldAlert, Lock, Sparkles } from "lucide-react";
    const [configStory, setConfigStory] = useState<ConfigurableStory | null>(null);
    const { data: customizations, refetch: refetchCustomizations } = useStoryCustomizations();
 
+   const { series: shortSeries } = useShorts(adultEnabled);
    const { data: categoriesData } = useCategories();
    const { data: storiesData, isLoading } = useStories({
      type: storyType,
@@ -187,7 +191,10 @@ import { ShieldAlert, Lock, Sparkles } from "lucide-react";
            </div>
          )}
  
-         {/* Stories Grid — mosaico Insomnia */}
+         <div className="mb-3 flex items-end justify-between">
+           <h2 className="font-display text-2xl">Historias</h2>
+           <p className="text-xs text-muted-foreground">Entra en la portada para el chat</p>
+         </div>
          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-8">
            {isLoading
              ? Array.from({ length: 10 }).map((_, i) => (
@@ -248,6 +255,35 @@ import { ShieldAlert, Lock, Sparkles } from "lucide-react";
          )}
  
           </>)}
+
+        <section className="mt-4 mb-10">
+          <div className="mb-3 flex items-end justify-between gap-3">
+            <div>
+              <h2 className="font-display text-2xl">Series</h2>
+              <p className="text-xs text-muted-foreground">Entra en la portada para ver los capítulos</p>
+            </div>
+            <Link to="/shorts" className="text-xs uppercase tracking-[0.16em] text-accent">Ver todas</Link>
+          </div>
+          {shortSeries.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Todavía no hay series en este modo.</p>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+              {shortSeries.slice(0, 5).map((item, index) => (
+                <Link key={item.id} to={`/shorts/${item.id}`} className="group overflow-hidden border border-border/60 bg-card/60 transition-all hover:-translate-y-1 hover:border-primary/60">
+                  <div className="relative aspect-[4/5] overflow-hidden bg-muted">
+                    <SeriesCover series={item} className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-110" />
+                    <div className="absolute inset-0 bg-gradient-to-t from-background via-transparent to-transparent" />
+                    <span className="absolute bottom-0 right-0 border-l border-t border-border/60 bg-background/80 px-2 py-1 font-display text-xs italic text-accent">N°{String(index + 1).padStart(2, "0")}</span>
+                  </div>
+                  <div className="space-y-1 p-3">
+                    <h3 className="font-display text-base leading-tight line-clamp-2 group-hover:text-primary">{item.title}</h3>
+                    <p className="text-[11px] text-muted-foreground">{item.episodes.length} capítulos · {seriesStatus(item.episodes).label}</p>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          )}
+        </section>
        </div>
         <AdultConsentDialog
           open={consentOpen}
