@@ -4,6 +4,8 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { STORY_VOICES, normalizeStoryVoice } from "@/lib/voices";
@@ -14,10 +16,14 @@ interface VoiceMenuProps {
   onChange: (value: string) => void;
 }
 
-/** Button 1: feminine Chirp voice. Sits beside the accent button and the red phone. */
+/** Gemini 2.5 Flash TTS voices. Female names come first; male names follow in the same menu. */
 export const VoiceMenu = ({ value, language, onChange }: VoiceMenuProps) => {
   const current = STORY_VOICES.find((voice) => voice.value === normalizeStoryVoice(value)) ?? STORY_VOICES[0];
   const es = language === "es";
+  const groups = [
+    { label: es ? "Femeninas" : "Female", voices: STORY_VOICES.filter((voice) => voice.gender === "female") },
+    { label: es ? "Masculinas" : "Male", voices: STORY_VOICES.filter((voice) => voice.gender === "male") },
+  ];
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -34,15 +40,21 @@ export const VoiceMenu = ({ value, language, onChange }: VoiceMenuProps) => {
           <ChevronDown className="h-3 w-3" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="max-h-80 overflow-y-auto">
-        {STORY_VOICES.map((voice) => (
-          <DropdownMenuItem key={voice.value} onClick={() => onChange(voice.value)}>
-            {voice.label}
-            <span className="ml-2 text-xs text-muted-foreground">
-              {es ? voice.descriptionEs : voice.descriptionEn}
-            </span>
-            {voice.value === current.value ? <span className="ml-auto pl-2">✓</span> : null}
-          </DropdownMenuItem>
+      <DropdownMenuContent align="end" className="max-h-[70vh] w-64 overflow-y-auto">
+        {groups.map((group, index) => (
+          <div key={group.label}>
+            {index > 0 ? <DropdownMenuSeparator /> : null}
+            <DropdownMenuLabel className="text-xs text-muted-foreground">{group.label}</DropdownMenuLabel>
+            {group.voices.map((voice) => (
+              <DropdownMenuItem key={voice.value} onClick={() => onChange(voice.value)}>
+                {voice.label}
+                <span className="ml-2 text-xs text-muted-foreground">
+                  {es ? voice.descriptionEs : voice.descriptionEn}
+                </span>
+                {voice.value === current.value ? <span className="ml-auto pl-2">✓</span> : null}
+              </DropdownMenuItem>
+            ))}
+          </div>
         ))}
       </DropdownMenuContent>
     </DropdownMenu>
