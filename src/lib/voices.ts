@@ -4,14 +4,15 @@ export interface VoiceOption {
   gender: "female" | "male";
   descriptionEs: string;
   descriptionEn: string;
+  formerName?: string;
 }
 
 /** Gemini 2.5 Flash TTS voices. scarlett-hd stays Aoede for stories already saved. */
 export const STORY_VOICES: VoiceOption[] = [
-  { value: "Aoede", label: "Aoede", gender: "female", descriptionEs: "Suave y apasionada", descriptionEn: "Breezy" },
+  { value: "Aoede", label: "Aoede", gender: "female", descriptionEs: "Suave y apasionada", descriptionEn: "Breezy", formerName: "Scarlett" },
   { value: "Zephyr", label: "Zephyr", gender: "female", descriptionEs: "Brillante y cercana", descriptionEn: "Bright" },
-  { value: "Leda", label: "Leda", gender: "female", descriptionEs: "Joven y dulce", descriptionEn: "Youthful" },
-  { value: "Kore", label: "Kore", gender: "female", descriptionEs: "Serena y firme", descriptionEn: "Firm" },
+  { value: "Leda", label: "Leda", gender: "female", descriptionEs: "Joven y dulce", descriptionEn: "Youthful", formerName: "Luna" },
+  { value: "Kore", label: "Kore", gender: "female", descriptionEs: "Serena y firme", descriptionEn: "Firm", formerName: "Aria" },
   { value: "Achernar", label: "Achernar", gender: "female", descriptionEs: "Suave", descriptionEn: "Soft" },
   { value: "Autonoe", label: "Autonoe", gender: "female", descriptionEs: "Brillante", descriptionEn: "Bright" },
   { value: "Callirrhoe", label: "Callirrhoe", gender: "female", descriptionEs: "Relajada", descriptionEn: "Easy-going" },
@@ -26,12 +27,12 @@ export const STORY_VOICES: VoiceOption[] = [
   { value: "Algenib", label: "Algenib", gender: "male", descriptionEs: "Grave", descriptionEn: "Gravelly" },
   { value: "Algieba", label: "Algieba", gender: "male", descriptionEs: "Suave", descriptionEn: "Smooth" },
   { value: "Alnilam", label: "Alnilam", gender: "male", descriptionEs: "Firme", descriptionEn: "Firm" },
-  { value: "Charon", label: "Charon", gender: "male", descriptionEs: "Clara y informativa", descriptionEn: "Informative" },
+  { value: "Charon", label: "Charon", gender: "male", descriptionEs: "Clara y informativa", descriptionEn: "Informative", formerName: "Max" },
   { value: "Enceladus", label: "Enceladus", gender: "male", descriptionEs: "Susurrada", descriptionEn: "Breathy" },
   { value: "Fenrir", label: "Fenrir", gender: "male", descriptionEs: "Entusiasta", descriptionEn: "Excitable" },
   { value: "Iapetus", label: "Iapetus", gender: "male", descriptionEs: "Clara", descriptionEn: "Clear" },
   { value: "Orus", label: "Orus", gender: "male", descriptionEs: "Firme", descriptionEn: "Firm" },
-  { value: "Puck", label: "Puck", gender: "male", descriptionEs: "Animada", descriptionEn: "Upbeat" },
+  { value: "Puck", label: "Puck", gender: "male", descriptionEs: "Animada", descriptionEn: "Upbeat", formerName: "Leo" },
   { value: "Rasalgethi", label: "Rasalgethi", gender: "male", descriptionEs: "Informativa", descriptionEn: "Informative" },
   { value: "Sadachbia", label: "Sadachbia", gender: "male", descriptionEs: "Viva", descriptionEn: "Lively" },
   { value: "Sadaltager", label: "Sadaltager", gender: "male", descriptionEs: "Pausada", descriptionEn: "Knowledgeable" },

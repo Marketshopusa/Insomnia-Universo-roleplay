@@ -57,6 +57,59 @@ export function removePerformanceCues(text) {
   return text.replace(/\[(?:laughing|sigh|uhm|short pause|medium pause|long pause|laughs|sighs|gasps|crying)\]/gi, "").replace(/\s+/g, " ").trim();
 }
 
+function resamplePcm16(pcm, fromRate, toRate = 24000) {
+  if (fromRate === toRate) return pcm;
+  const inputFrames = pcm.length / 2;
+  const outputFrames = Math.max(1, Math.round(inputFrames * toRate / fromRate));
+  const out = Buffer.alloc(outputFrames * 2);
+  for (let index = 0; index < outputFrames; index += 1) {
+    const position = (index * fromRate) / toRate;
+    const left = Math.min(inputFrames - 1, Math.floor(position));
+    const right = Math.min(inputFrames - 1, left + 1);
+    const fraction = position - left;
+    const sample = pcm.readInt16LE(left * 2) * (1 - fraction) + pcm.readInt16LE(right * 2) * fraction;
+    out.writeInt16LE(Math.max(-32768, Math.min(32767, Math.round(sample))), index * 2);
+  }
+  return out;
+}
+
+/** Gemini returns either a WAV or raw 16-bit PCM. Playback always expects 24 kHz mono. */
+export function decodeLinear16(base64) {
+  const bytes = Buffer.from(base64, "base64");
+  if (bytes.length >= 12 && bytes.toString("ascii", 0, 4) === "RIFF" && bytes.toString("ascii", 8, 12) === "WAVE") {
+    let rate = 0;
+    let channels = 0;
+    let audio = null;
+    for (let position = 12; position + 8 <= bytes.length;) {
+      const chunk = bytes.toString("ascii", position, position + 4);
+      const length = bytes.readUInt32LE(position + 4);
+      const start = position + 8;
+      if (start + length > bytes.length) throw new Error("cloud_gemini_truncated_wav");
+      if (chunk === "fmt " && length >= 16) {
+        channels = bytes.readUInt16LE(start + 2);
+        rate = bytes.readUInt32LE(start + 4);
+        if (bytes.readUInt16LE(start) !== 1 || bytes.readUInt16LE(start + 14) !== 16) throw new Error("cloud_gemini_invalid_pcm");
+      }
+      if (chunk === "data") audio = bytes.subarray(start, start + length);
+      position = start + length + (length % 2);
+    }
+    if (!audio?.length || !rate || audio.length % 2) throw new Error("cloud_gemini_invalid_pcm");
+    if (channels === 2) {
+      const mono = Buffer.alloc(audio.length / 2);
+      for (let index = 0; index < mono.length; index += 2) {
+        const sample = Math.round((audio.readInt16LE(index * 2) + audio.readInt16LE(index * 2 + 2)) / 2);
+        mono.writeInt16LE(sample, index);
+      }
+      audio = mono;
+    } else if (channels !== 1) {
+      throw new Error("cloud_gemini_invalid_pcm");
+    }
+    return resamplePcm16(audio, rate);
+  }
+  if (bytes.length < 2 || bytes.length % 2) throw new Error("cloud_gemini_no_audio");
+  return bytes;
+}
+
 export function decodeWavPcm(base64) {
   const wav = Buffer.from(base64, "base64");
   if (wav.length < 44 || wav.toString("ascii", 0, 4) !== "RIFF" || wav.toString("ascii", 8, 12) !== "WAVE") {
@@ -184,17 +237,21 @@ export async function synthesizeCloudGemini(text, preset, language, { performanc
     body: JSON.stringify({
       input: { text, prompt },
       voice,
-      audioConfig: { audioEncoding: "LINEAR16", sampleRateHertz: 24000 },
+      audioConfig: { audioEncoding: "LINEAR16" },
     }),
     signal: AbortSignal.timeout(20000),
   });
   const voice = cloudGeminiVoiceFor(preset, language, region);
   let response = await request(voice);
   if (!response.ok && [400, 404].includes(response.status) && voice.languageCode !== "es-US" && language !== "en") {
+    await response.text().catch(() => "");
     response = await request({ ...voice, languageCode: "es-US" });
   }
-  if (!response.ok) return { status: response.status };
+  if (!response.ok) {
+    const detail = (await response.text().catch(() => "")).replace(/\s+/g, " ").slice(0, 240);
+    return { status: response.status, detail };
+  }
   const payload = await response.json();
   if (typeof payload.audioContent !== "string") throw new Error("cloud_gemini_no_audio");
-  return { status: 200, pcm: decodeWavPcm(payload.audioContent) };
+  return { status: 200, pcm: decodeLinear16(payload.audioContent) };
 }

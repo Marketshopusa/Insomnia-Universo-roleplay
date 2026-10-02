@@ -40,7 +40,7 @@ export const VoiceMenu = ({ value, language, onChange }: VoiceMenuProps) => {
           <ChevronDown className="h-3 w-3" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="max-h-[70vh] w-64 overflow-y-auto">
+      <DropdownMenuContent align="end" className="max-h-[70vh] w-80 overflow-y-auto">
         {groups.map((group, index) => (
           <div key={group.label}>
             {index > 0 ? <DropdownMenuSeparator /> : null}
@@ -48,6 +48,7 @@ export const VoiceMenu = ({ value, language, onChange }: VoiceMenuProps) => {
             {group.voices.map((voice) => (
               <DropdownMenuItem key={voice.value} onClick={() => onChange(voice.value)}>
                 {voice.label}
+                {voice.formerName ? <span className="ml-1 text-xs text-primary">{voice.formerName}</span> : null}
                 <span className="ml-2 text-xs text-muted-foreground">
                   {es ? voice.descriptionEs : voice.descriptionEn}
                 </span>
