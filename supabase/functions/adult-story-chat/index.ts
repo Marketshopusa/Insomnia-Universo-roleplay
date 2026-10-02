@@ -58,7 +58,7 @@ Deno.serve(async (req) => {
     const payload = {
       jobId, ownerId: auth.user.id, createdAt: new Date().toISOString(),
       language: body.language === "es" ? "es" : "en",
-      region: ["ar", "ve", "co", "mx", "es", "cl"].includes(body.region) ? body.region : "mx",
+      region: ["ar", "ve", "co", "mx", "es", "cl", "plain"].includes(body.region) ? body.region : "mx",
       story: {
         title: String(story.title ?? "").slice(0, 160),
         description: String(story.description ?? "").slice(0, 1200),

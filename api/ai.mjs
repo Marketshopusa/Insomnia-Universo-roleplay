@@ -59,8 +59,8 @@ export async function generate(model, parts, settings = {}, options = {}) {
         if (blockReason) {
           console.warn("Insomnia AI content blocked", candidate, blockReason);
           throw Object.assign(new Error(blockReason === "PROHIBITED_CONTENT"
-            ? "Gemini rechazÃ³ esta escena por una restricciÃ³n propia del proveedor. El modo +18 no puede desactivar ese bloqueo."
-            : "Gemini bloqueÃ³ esta escena. El mensaje permanece disponible para que puedas editarlo."), {
+            ? "Gemini rechazó esta escena por una restricción propia del proveedor."
+            : "Gemini bloqueó esta escena. El mensaje permanece disponible para que puedas editarlo."), {
             status: 422, code: "content_blocked", blockReason,
           });
         }

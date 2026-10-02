@@ -15,10 +15,12 @@ beforeEach(() => {
   localStorage.clear();
 });
 
-it("asks Gemini for the adult scene instead of the small local model", async () => {
-  const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
-    new Response(JSON.stringify({ content: "Ese video lo envié yo." }), { status: 200 }),
-  );
+it("sends an adult scene to the local model and keeps the job if one status check fails", async () => {
+  const fetchMock = vi.spyOn(globalThis, "fetch");
+  invoke
+    .mockResolvedValueOnce({ data: { status: "pending", jobId: "job-1" }, error: null })
+    .mockResolvedValueOnce({ data: null, error: new Error("transient status failure") })
+    .mockResolvedValueOnce({ data: { status: "completed", content: "Ese video lo envié yo." }, error: null });
   const result = await invokeFunctionWithRetry<{ content: string }>("story-chat", {
     adultMode: true,
     story: { title: "Historia" },
@@ -26,9 +28,27 @@ it("asks Gemini for the adult scene instead of the small local model", async () 
   });
   expect(result.error).toBeNull();
   expect(result.data?.content).toBe("Ese video lo envié yo.");
+  expect(fetchMock).not.toHaveBeenCalled();
+  expect(invoke.mock.calls.map(([name, options]) => [name, options.body.action, options.body.adultMode])).toEqual([
+    ["adult-story-chat", "create", true],
+    ["adult-story-chat", "status", undefined],
+    ["adult-story-chat", "status", undefined],
+  ]);
+  expect(localStorage.getItem("kineva-adult-pending:test-user")).toBeNull();
+  fetchMock.mockRestore();
+});
+
+it("keeps a scene without adult mode on Gemini", async () => {
+  const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+    new Response(JSON.stringify({ content: "Seguimos en la misma escena." }), { status: 200 }),
+  );
+  const result = await invokeFunctionWithRetry<{ content: string }>("story-chat", {
+    adultMode: false,
+    story: { title: "Historia" },
+    userMessage: "Continúa desde aquí",
+  });
+  expect(result.error).toBeNull();
+  expect(result.data?.content).toBe("Seguimos en la misma escena.");
   expect(invoke).not.toHaveBeenCalled();
-  const body = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
-  expect(body.action).toBe("story-chat");
-  expect(body.body.adultMode).toBe(true);
   fetchMock.mockRestore();
 });
