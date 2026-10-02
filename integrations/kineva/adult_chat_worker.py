@@ -105,8 +105,8 @@ def clean_turns(raw, latest):
     return turns[-48:]
 
 def memory_transcript(turns, player, character):
-    """Opening facts plus the latest beats. The local model only has 4096 tokens."""
-    recent_count = min(4, len(turns))
+    """Recent beats in order. The local model only has 4096 tokens."""
+    recent_count = min(6, len(turns))
     older, recent = turns[:-recent_count], turns[-recent_count:]
     if not older:
         return "", recent
@@ -115,16 +115,20 @@ def memory_transcript(turns, player, character):
         who = character if turn["role"] == "assistant" else player
         return who + ": " + clip_text(turn["content"], limit)
 
-    opening = [line(turn, 160) for turn in older[:2]]
-    budget = 700 - sum(len(item) + 1 for item in opening)
-    tail = []
+    closed = [line(turn, 120) for turn in older[:2]]
+    chosen = []
+    budget = 700
     for turn in reversed(older[2:]):
-        item = line(turn, 110)
+        item = line(turn, 140)
         if budget < len(item) + 1:
             break
         budget -= len(item) + 1
-        tail.append(item)
-    return "\n".join(opening + list(reversed(tail))), recent
+        chosen.append(item)
+    chosen.reverse()
+    chronicle = "Hechos ya cerrados, no los actúes de nuevo: " + " | ".join(closed)
+    if chosen:
+        chronicle += "\nDespués, en orden:\n" + "\n".join(chosen)
+    return chronicle, recent
 
 def conversation_messages(job):
     """Every turn carries the story so far. A long user line must not wipe it."""
@@ -146,6 +150,7 @@ def conversation_messages(job):
         "Premisa de fondo, solo si no contradice la memoria: " + premise + ". "
         + memory + " "
         "El mensaje nuevo continúa esta misma escena, pero es una réplica nueva. "
+        "La memoria va en orden. No regreses al inicio ni mezcles una escena vieja con la actual. "
         "No reinicies la historia y no respondas como si lo anterior no hubiera pasado. "
         "Habla como una persona en un chat, no como un guion ni un discurso. "
         "Prohibido repetir el gesto, la disculpa o las frases del turno anterior. "

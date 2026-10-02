@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { cloudGeminiVoiceFor, decodeLinear16, explainGeminiFailure, removePerformanceCues, speechPieces, synthesizeGemini } from "./geminiTts.mjs";
+import { cloudGeminiVoiceFor, decodeLinear16, explainGeminiFailure, removePerformanceCues, synthesizeGemini } from "./geminiTts.mjs";
 
 function sampleWav() {
   const pcm = Buffer.alloc(48_000, 1);
@@ -55,14 +55,14 @@ test("Spanish uses one es-ES request and keeps the regional accent in the prompt
       const body = JSON.parse(init.body);
       locales.push(body.voice.languageCode);
       assert.match(body.input.prompt, /venezolano/);
+      assert.match(body.input.prompt, /exactamente/);
+      assert.match(body.input.prompt, /\[laughing\]/);
+      assert.equal(body.input.text, "Chamo, no puede ser.");
       return new Response(JSON.stringify({ audioContent: wav.toString("base64") }), { status: 200 });
     },
   });
   assert.deepEqual(locales, ["es-ES"]);
   assert.equal(result.status, 200);
-  const pieces = speechPieces("Hola chamo. " + "palabra ".repeat(40));
-  assert.ok(pieces[0].length <= 52);
-  assert.ok(pieces.length > 1);
   assert.equal(cloudGeminiVoiceFor("luna-sweet", "es", "ve").name, "Leda");
   assert.equal(cloudGeminiVoiceFor("Aoede", "es", "es").languageCode, "es-ES");
   assert.equal(removePerformanceCues("[sigh] Me duele."), "Me duele.");
