@@ -1,18 +1,18 @@
 import { createClient } from "@supabase/supabase-js";
 import { supabaseUrl, publishableKey } from "./config.mjs";
-import { isChirpConfigured, synthesizeChirp, synthesizeCloudGemini, removePerformanceCues } from "./chirpTts.mjs";
+import { explainGeminiFailure, isGeminiConfigured, synthesizeGemini, removePerformanceCues } from "./geminiTts.mjs";
 
 
 function sendEvent(res, event) {
   res.write("data: " + JSON.stringify(event) + "\n\n");
 }
 
-function writePcm(res, pcm, provider, startedAt, reason) {
+function writePcm(res, pcm, provider, startedAt) {
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache, no-transform");
   res.setHeader("X-Accel-Buffering", "no");
   res.flushHeaders();
-  sendEvent(res, { type: "speech.provider", provider, ...(reason ? { reason } : {}) });
+  sendEvent(res, { type: "speech.provider", provider });
   console.info("Insomnia speech first_audio", provider, "total_ms", Date.now() - startedAt);
   for (let offset = 0; offset < pcm.length; offset += 32_768) {
     sendEvent(res, { type: "speech.audio.delta", audio: pcm.subarray(offset, offset + 32_768).toString("base64") });
@@ -30,14 +30,6 @@ export default async function handler(req, res) {
     ? await createClient(supabaseUrl, publishableKey, { auth: { persistSession: false } }).auth.getUser(jwt)
     : { data: null, error: true };
   if (error || !data?.user) return res.status(401).json({ error: "login_required" });
-  if (req.body?.metric === "device_voice") {
-    const state = req.body.state;
-    const reasons = new Set(["unavailable", "start_timeout", "playback_failed", "unknown"]);
-    if (!["attempt", "started", "failed"].includes(state)) return res.status(400).json({ error: "invalid_voice_metric" });
-    const reason = reasons.has(req.body.reason) ? req.body.reason : "unknown";
-    console.info("Insomnia device_voice", state, state === "failed" ? reason : "");
-    return res.status(204).end();
-  }
   if (req.body?.metric === "first_playback") {
     const elapsed = Number(req.body.elapsedMs);
     if (!Number.isFinite(elapsed) || elapsed < 0 || elapsed > 120_000) {
@@ -47,10 +39,10 @@ export default async function handler(req, res) {
     return res.status(204).end();
   }
 
-  if (!isChirpConfigured()) {
+  if (!isGeminiConfigured()) {
     return res.status(503).json({
       error: "neural_voice_not_configured",
-      message: "Google Cloud Chirp no está configurado en este sitio.",
+      message: "Gemini 2.5 Flash TTS no está configurado en este sitio.",
     });
   }
   const raw = typeof req.body?.text === "string" ? req.body.text : "";
@@ -60,37 +52,23 @@ export default async function handler(req, res) {
   const region = typeof req.body.region === "string" ? req.body.region : "mx";
   const performance = ["neutral", "amused", "sad", "pain", "pleasure", "scream", "soft"].includes(req.body.performance)
     ? req.body.performance : "neutral";
-  let geminiReason = "";
   try {
-    const expressive = await synthesizeCloudGemini(text, req.body.voice, req.body.language, { performance, region });
+    const expressive = await synthesizeGemini(text, req.body.voice, req.body.language, { performance, region });
     if (expressive.status === 200) {
-      writePcm(res, expressive.pcm, "google-cloud-tts", startedAt);
+      writePcm(res, expressive.pcm, "gemini-2.5-flash-tts", startedAt);
       return;
     }
-    geminiReason = `${expressive.status} ${expressive.detail || ""}`.trim();
-    console.warn("Insomnia speech gemini-2.5-flash-tts", geminiReason, "after_ms", Date.now() - startedAt);
-  } catch (failure) {
-    geminiReason = failure?.message || failure?.name || "Error";
-    console.warn("Insomnia speech cloud-tts failed", geminiReason, "after_ms", Date.now() - startedAt);
-  }
-  try {
-    const result = await synthesizeChirp(plainText, req.body.voice, req.body.language, { region });
-    if (result.status === 200) {
-      writePcm(res, result.pcm, "chirp3-hd", startedAt, geminiReason.slice(0, 180));
-      return;
-    }
-    console.warn("Insomnia speech chirp3-hd", result.status, "after_ms", Date.now() - startedAt);
-    return res.status(result.status === 429 ? 429 : 502).json({
-      error: result.status === 429 ? "tts_quota_exhausted" : "tts_unavailable",
-      message: result.status === 429
-        ? "Google Cloud no tiene cuota de voz en este momento. El texto sigue disponible."
-        : "La voz de Google Cloud no pudo hablar esta línea.",
+    console.warn("Insomnia speech gemini-2.5-flash-tts", expressive.status, expressive.detail || "", "after_ms", Date.now() - startedAt);
+    const status = expressive.status === 429 ? 429 : expressive.status === 403 ? 403 : 502;
+    return res.status(status).json({
+      error: expressive.status === 429 ? "tts_quota_exhausted" : "tts_unavailable",
+      message: explainGeminiFailure(expressive.status, expressive.detail),
     });
   } catch (failure) {
-    console.warn("Insomnia speech chirp failed", failure?.name || "Error", "after_ms", Date.now() - startedAt);
+    console.warn("Insomnia speech gemini failed", failure?.message || failure?.name || "Error", "after_ms", Date.now() - startedAt);
     return res.status(502).json({
       error: "tts_unavailable",
-      message: "La voz de Google Cloud no pudo hablar esta línea.",
+      message: "Gemini 2.5 Flash TTS no pudo hablar esta línea.",
     });
   }
 }
