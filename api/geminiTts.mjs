@@ -1,6 +1,6 @@
 import { ExternalAccountClient, GoogleAuth } from "google-auth-library";
 import { getVercelOidcToken } from "@vercel/oidc";
-import { accentHint, chirpLocale, normalizeRegion } from "./regions.mjs";
+import { accentHint, normalizeRegion } from "./regions.mjs";
 
 const GEMINI_VOICES = [
   "Aoede", "Zephyr", "Leda", "Kore", "Achernar", "Autonoe", "Callirrhoe",
@@ -17,6 +17,7 @@ const aliases = {
   "leo-warm": "Puck",
 };
 for (const name of GEMINI_VOICES) aliases[name] = name;
+const MODEL = "gemini-2.5-flash-tts";
 let cachedAuth;
 let cachedFederatedAuth;
 
@@ -32,20 +33,14 @@ export function previewVoice(preset) {
   return aliases[preset] || "Aoede";
 }
 
-export function cloudVoiceFor(preset, language, region) {
-  const locale = chirpLocale(language, region);
-  const name = previewVoice(preset);
-  return { languageCode: locale, name: `${locale}-Chirp3-HD-${name}` };
-}
-
 export function cloudGeminiVoiceFor(preset, language, region) {
   const id = normalizeRegion(region);
   const locale = language === "en" ? "en-US" : id === "es" ? "es-ES" : id === "mx" ? "es-MX" : "es-419";
   return {
     languageCode: locale,
     name: previewVoice(preset),
-    modelName: "gemini-2.5-flash-tts",
-    model_name: "gemini-2.5-flash-tts",
+    modelName: MODEL,
+    model_name: MODEL,
   };
 }
 
@@ -55,7 +50,7 @@ function geminiLocales(language, region) {
   return [first, "es-ES"];
 }
 
-function quotaProjectId() {
+export function quotaProjectId() {
   if (process.env.GCP_PROJECT_ID) return process.env.GCP_PROJECT_ID;
   const account = process.env.GCP_SERVICE_ACCOUNT_EMAIL || "";
   const fromEmail = account.split("@")[1]?.replace(/\.iam\.gserviceaccount\.com$/, "");
@@ -100,16 +95,16 @@ export function decodeLinear16(base64) {
       const chunk = bytes.toString("ascii", position, position + 4);
       const length = bytes.readUInt32LE(position + 4);
       const start = position + 8;
-      if (start + length > bytes.length) throw new Error("cloud_gemini_truncated_wav");
+      if (start + length > bytes.length) throw new Error("gemini_truncated_wav");
       if (chunk === "fmt " && length >= 16) {
         channels = bytes.readUInt16LE(start + 2);
         rate = bytes.readUInt32LE(start + 4);
-        if (bytes.readUInt16LE(start) !== 1 || bytes.readUInt16LE(start + 14) !== 16) throw new Error("cloud_gemini_invalid_pcm");
+        if (bytes.readUInt16LE(start) !== 1 || bytes.readUInt16LE(start + 14) !== 16) throw new Error("gemini_invalid_pcm");
       }
       if (chunk === "data") audio = bytes.subarray(start, start + length);
       position = start + length + (length % 2);
     }
-    if (!audio?.length || !rate || audio.length % 2) throw new Error("cloud_gemini_invalid_pcm");
+    if (!audio?.length || !rate || audio.length % 2) throw new Error("gemini_invalid_pcm");
     if (channels === 2) {
       const mono = Buffer.alloc(audio.length / 2);
       for (let index = 0; index < mono.length; index += 2) {
@@ -118,40 +113,33 @@ export function decodeLinear16(base64) {
       }
       audio = mono;
     } else if (channels !== 1) {
-      throw new Error("cloud_gemini_invalid_pcm");
+      throw new Error("gemini_invalid_pcm");
     }
     return resamplePcm16(audio, rate);
   }
-  if (bytes.length < 2 || bytes.length % 2) throw new Error("cloud_gemini_no_audio");
+  if (bytes.length < 2 || bytes.length % 2) throw new Error("gemini_no_audio");
   return bytes;
 }
 
-export function decodeWavPcm(base64) {
-  const wav = Buffer.from(base64, "base64");
-  if (wav.length < 44 || wav.toString("ascii", 0, 4) !== "RIFF" || wav.toString("ascii", 8, 12) !== "WAVE") {
-    throw new Error("chirp_invalid_wav");
-  }
-  let formatOk = false;
-  let audio = null;
-  for (let position = 12; position + 8 <= wav.length;) {
-    const chunk = wav.toString("ascii", position, position + 4);
-    const length = wav.readUInt32LE(position + 4);
-    const start = position + 8;
-    if (start + length > wav.length) throw new Error("chirp_truncated_wav");
-    if (chunk === "fmt ") {
-      formatOk = length >= 16 && wav.readUInt16LE(start) === 1
-        && wav.readUInt16LE(start + 2) === 1 && wav.readUInt32LE(start + 4) === 24000
-        && wav.readUInt16LE(start + 14) === 16;
-    }
-    if (chunk === "data") audio = wav.subarray(start, start + length);
-    position = start + length + (length % 2);
-  }
-  if (!formatOk || !audio?.length || audio.length % 2) throw new Error("chirp_invalid_pcm");
-  return audio;
+export function isGeminiConfigured() {
+  return Boolean(process.env.GOOGLE_CLOUD_TTS_SERVICE_ACCOUNT_JSON || federationConfig());
 }
 
-export function isChirpConfigured() {
-  return Boolean(process.env.GOOGLE_CLOUD_TTS_SERVICE_ACCOUNT_JSON || federationConfig());
+export function explainGeminiFailure(status, detail = "") {
+  if (/Agent Platform API has not been used|aiplatform\.googleapis\.com/i.test(detail)) {
+    const project = detail.match(/project (\d+)/)?.[1] || quotaProjectId() || "";
+    const link = project
+      ? `https://console.cloud.google.com/apis/library/aiplatform.googleapis.com?project=${project}`
+      : "https://console.cloud.google.com/apis/library/aiplatform.googleapis.com";
+    return `Gemini 2.5 Flash TTS está instalado, pero la API Agent Platform sigue apagada en el proyecto. Actívala aquí: ${link}`;
+  }
+  if (status === 403) return "Google Cloud negó el permiso de Gemini 2.5 Flash TTS a la cuenta insomnia-chirp-tts.";
+  if (status === 429) return "Se acabó la cuota de Gemini 2.5 Flash TTS. El texto sigue disponible.";
+  return "Gemini 2.5 Flash TTS no pudo hablar esta línea.";
+}
+
+function agentPlatformDisabled(detail) {
+  return /Agent Platform API has not been used|aiplatform\.googleapis\.com/i.test(detail || "");
 }
 
 async function getCredentials() {
@@ -160,14 +148,14 @@ async function getCredentials() {
     if (!cachedAuth) {
       const credentials = JSON.parse(process.env.GOOGLE_CLOUD_TTS_SERVICE_ACCOUNT_JSON);
       if (credentials.type !== "service_account" || !credentials.client_email || !credentials.private_key) {
-        throw new Error("chirp_credentials_invalid");
+        throw new Error("gemini_credentials_invalid");
       }
       cachedAuth = new GoogleAuth({ credentials, scopes: ["https://www.googleapis.com/auth/cloud-platform"] });
     }
     client = await cachedAuth.getClient();
   } else {
     const config = federationConfig();
-    if (!config) throw new Error("chirp_credentials_missing");
+    if (!config) throw new Error("gemini_credentials_missing");
     if (!cachedFederatedAuth) {
       cachedFederatedAuth = ExternalAccountClient.fromJSON({
         type: "external_account",
@@ -179,47 +167,33 @@ async function getCredentials() {
           getSubjectToken: () => getVercelOidcToken({ audience: `https://iam.googleapis.com/${config.resource}` }),
         },
       });
-      if (!cachedFederatedAuth) throw new Error("chirp_federation_invalid");
+      if (!cachedFederatedAuth) throw new Error("gemini_federation_invalid");
       cachedFederatedAuth.scopes = ["https://www.googleapis.com/auth/cloud-platform"];
     }
     client = cachedFederatedAuth;
   }
   const access = await client.getAccessToken();
-  if (!access?.token) throw new Error("chirp_auth_failed");
+  if (!access?.token) throw new Error("gemini_auth_failed");
   return access.token;
 }
 
-async function requestChirp(text, voice, tokenProvider, fetchImpl) {
-  const token = await tokenProvider();
-  const response = await fetchImpl("https://texttospeech.googleapis.com/v1/text:synthesize", {
+async function enableAgentPlatform(token, fetchImpl) {
+  const project = quotaProjectId();
+  if (!project) return false;
+  const response = await fetchImpl(`https://serviceusage.googleapis.com/v1/projects/${project}/services/aiplatform.googleapis.com:enable`, {
     method: "POST",
     headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      input: { text },
-      voice,
-      audioConfig: { audioEncoding: "LINEAR16", sampleRateHertz: 24000 },
-    }),
-    signal: AbortSignal.timeout(18000),
+    body: "{}",
+    signal: AbortSignal.timeout(20000),
   });
-  if (!response.ok) return { status: response.status };
-  const payload = await response.json();
-  if (typeof payload.audioContent !== "string") throw new Error("chirp_no_audio");
-  return { status: 200, pcm: decodeWavPcm(payload.audioContent) };
+  if (!response.ok) {
+    await response.text().catch(() => "");
+    return false;
+  }
+  return true;
 }
 
-export async function synthesizeChirp(text, preset, language, { region, tokenProvider = getCredentials, fetchImpl = fetch } = {}) {
-  const voice = cloudVoiceFor(preset, language, region);
-  const first = await requestChirp(text, voice, tokenProvider, fetchImpl);
-  if (first.status === 200 || language === "en" || voice.languageCode === "es-US") return first;
-  if (![400, 404].includes(first.status)) return first;
-  const fallbackName = voice.name.slice(voice.name.lastIndexOf("-") + 1);
-  return requestChirp(text, {
-    languageCode: "es-US",
-    name: `es-US-Chirp3-HD-${fallbackName}`,
-  }, tokenProvider, fetchImpl);
-}
-
-export async function synthesizeCloudGemini(text, preset, language, { performance = "neutral", region = "mx", tokenProvider = getCredentials, fetchImpl = fetch } = {}) {
+export async function synthesizeGemini(text, preset, language, { performance = "neutral", region = "mx", tokenProvider = getCredentials, fetchImpl = fetch, sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)) } = {}) {
   const token = await tokenProvider();
   const projectId = quotaProjectId();
   const mood = (language === "en" ? {
@@ -270,26 +244,34 @@ export async function synthesizeCloudGemini(text, preset, language, { performanc
     signal: AbortSignal.timeout(20000),
   });
   const speaker = previewVoice(preset);
-  let failure = { status: 502, detail: "" };
-  for (const languageCode of geminiLocales(language, region)) {
-    for (const relaxSafety of [true, false]) {
-      const response = await request({
-        languageCode,
-        name: speaker,
-        modelName: "gemini-2.5-flash-tts",
-        model_name: "gemini-2.5-flash-tts",
-      }, relaxSafety);
-      if (response.ok) {
-        const payload = await response.json();
-        if (typeof payload.audioContent !== "string") throw new Error("cloud_gemini_no_audio");
-        return { status: 200, pcm: decodeLinear16(payload.audioContent) };
+  const attempt = async () => {
+    let failure = { status: 502, detail: "" };
+    for (const languageCode of geminiLocales(language, region)) {
+      for (const relaxSafety of [true, false]) {
+        const response = await request({
+          languageCode,
+          name: speaker,
+          modelName: MODEL,
+          model_name: MODEL,
+        }, relaxSafety);
+        if (response.ok) {
+          const payload = await response.json();
+          if (typeof payload.audioContent !== "string") throw new Error("gemini_no_audio");
+          return { status: 200, pcm: decodeLinear16(payload.audioContent) };
+        }
+        failure = {
+          status: response.status,
+          detail: (await response.text().catch(() => "")).replace(/\s+/g, " ").slice(0, 240),
+        };
+        if (![400, 404].includes(response.status)) return failure;
       }
-      failure = {
-        status: response.status,
-        detail: (await response.text().catch(() => "")).replace(/\s+/g, " ").slice(0, 240),
-      };
-      if (![400, 404].includes(response.status)) return failure;
     }
+    return failure;
+  };
+  let result = await attempt();
+  if (result.status === 403 && agentPlatformDisabled(result.detail) && await enableAgentPlatform(token, fetchImpl)) {
+    await sleep(5000);
+    result = await attempt();
   }
-  return failure;
+  return result;
 }

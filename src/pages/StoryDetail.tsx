@@ -74,7 +74,6 @@ type Mode = "select" | "read" | "roleplay";
   };
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const streamRef = useRef<SpeechStream | null>(null);
-  const flatVoiceNotice = useRef(false);
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [sessionLoaded, setSessionLoaded] = useState(false);
   useEffect(() => {
@@ -417,18 +416,7 @@ type Mode = "select" | "read" | "roleplay";
        streamRef.current = null;
        setPlayingId(id);
        const activeVoice = voiceRef.current;
-       const speech = streamSpeech(text, activeVoice, language, (reason) => {
-         if (flatVoiceNotice.current) return;
-         flatVoiceNotice.current = true;
-         toast({
-           title: language === "es" ? "Esta línea la habló la voz plana" : "This line used the flat voice",
-           description: reason
-             ? (language === "es" ? `Gemini no habló: ${reason}` : `Gemini did not speak: ${reason}`)
-             : (language === "es"
-               ? "Gemini 2.5 no respondió, así que entró el respaldo sin risas ni acento."
-               : "Gemini 2.5 did not answer, so the backup voice spoke without laughs or accent."),
-         });
-       }, id !== "narrative" && id !== "intro", regionRef.current);
+       const speech = streamSpeech(text, activeVoice, language, id !== "narrative" && id !== "intro", regionRef.current);
        streamRef.current = speech;
        await speech.done;
        if (streamRef.current === speech) {
@@ -439,12 +427,10 @@ type Mode = "select" | "read" | "roleplay";
        console.error("Cloud voice playback failed:", e);
        streamRef.current = null;
        setPlayingId(null);
-       const status = (e as { status?: number })?.status;
+       const message = e instanceof Error ? e.message : "";
        toast({
-         title: language === "es" ? "La voz de Google Cloud no está disponible" : "Google Cloud voice is unavailable",
-         description: status === 429
-           ? (language === "es" ? "Se alcanzó la cuota de Google Cloud. El texto sigue disponible." : "The Google Cloud voice quota has been reached. The text remains available.")
-           : (language === "es" ? "No se pudo reproducir la voz seleccionada. Inténtalo de nuevo." : "The selected voice could not play. Please try again."),
+         title: language === "es" ? "Gemini 2.5 no pudo hablar" : "Gemini 2.5 could not speak",
+         description: message || (language === "es" ? "La voz no respondió." : "The voice did not answer."),
          variant: "destructive",
        });
      }
@@ -457,9 +443,6 @@ type Mode = "select" | "read" | "roleplay";
        audioRef.current.pause();
        audioRef.current = null;
      }
-      if (typeof window !== "undefined" && "speechSynthesis" in window) {
-        window.speechSynthesis.cancel();
-      }
      setPlayingId(null);
    };
 

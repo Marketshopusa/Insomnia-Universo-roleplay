@@ -69,7 +69,6 @@ export const CallDialog = ({
   const timersRef = useRef<number[]>([]);
   const recognitionRef = useRef<BrowserRecognition | null>(null);
   const transcriptRef = useRef("");
-  const flatVoiceNotice = useRef(false);
 
   useEffect(() => {
     historyRef.current = history;
@@ -90,7 +89,6 @@ export const CallDialog = ({
       URL.revokeObjectURL(audioUrlRef.current);
       audioUrlRef.current = null;
     }
-    window.speechSynthesis?.cancel();
   };
 
   const hangUp = () => {
@@ -109,30 +107,17 @@ export const CallDialog = ({
 
   const speak = async (text: string) => {
     try {
-      const speech = streamSpeech(text, voice, language, (reason) => {
-        if (flatVoiceNotice.current) return;
-        flatVoiceNotice.current = true;
-        toast({
-          title: es ? "Esta línea la habló la voz plana" : "This line used the flat voice",
-          description: reason
-            ? (es ? `Gemini no habló: ${reason}` : `Gemini did not speak: ${reason}`)
-            : (es
-              ? "Gemini 2.5 no respondió, así que entró el respaldo sin risas ni acento."
-              : "Gemini 2.5 did not answer, so the backup voice spoke without laughs or accent."),
-        });
-      }, true, region);
+      const speech = streamSpeech(text, voice, language, true, region);
       streamRef.current = speech;
       await speech.done;
       streamRef.current = null;
     } catch (error) {
       streamRef.current?.stop();
       streamRef.current = null;
-      const status = (error as { status?: number })?.status;
+      const message = error instanceof Error ? error.message : "";
       toast({
-        title: es ? "La voz de Google Cloud no está disponible" : "Google Cloud voice is unavailable",
-        description: status === 429
-          ? (es ? "Se alcanzó la cuota de Google Cloud. Puedes seguir por texto." : "The Google Cloud voice quota has been reached. You can continue by text.")
-          : (es ? "No se pudo reproducir la voz seleccionada." : "The selected voice could not play."),
+        title: es ? "Gemini 2.5 no pudo hablar" : "Gemini 2.5 could not speak",
+        description: message || (es ? "La voz no respondió." : "The voice did not answer."),
         variant: "destructive",
       });
       hangUp();

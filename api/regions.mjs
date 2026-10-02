@@ -20,11 +20,6 @@ export function speechLocale(language, region) {
   return "es-419";
 }
 
-export function chirpLocale(language, region) {
-  if (language === "en") return "en-US";
-  return REGIONS[normalizeRegion(region)].locale;
-}
-
 export function slangInstruction(language, region) {
   if (language !== "es") return "";
   const item = REGIONS[normalizeRegion(region)];
