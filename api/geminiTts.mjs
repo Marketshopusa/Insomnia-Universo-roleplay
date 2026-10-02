@@ -1,6 +1,6 @@
 import { ExternalAccountClient, GoogleAuth } from "google-auth-library";
 import { getVercelOidcToken } from "@vercel/oidc";
-import { accentHint, normalizeRegion } from "./regions.mjs";
+import { accentHint } from "./regions.mjs";
 
 const GEMINI_VOICES = [
   "Aoede", "Zephyr", "Leda", "Kore", "Achernar", "Autonoe", "Callirrhoe",
@@ -33,21 +33,33 @@ export function previewVoice(preset) {
   return aliases[preset] || "Aoede";
 }
 
-export function cloudGeminiVoiceFor(preset, language, region) {
-  const id = normalizeRegion(region);
-  const locale = language === "en" ? "en-US" : id === "es" ? "es-ES" : id === "mx" ? "es-MX" : "es-419";
+export function cloudGeminiVoiceFor(preset, language) {
   return {
-    languageCode: locale,
+    languageCode: language === "en" ? "en-US" : "es-ES",
     name: previewVoice(preset),
     modelName: MODEL,
     model_name: MODEL,
   };
 }
 
-function geminiLocales(language, region) {
-  const first = cloudGeminiVoiceFor("Aoede", language, region).languageCode;
-  if (language === "en" || first === "es-ES") return [first];
-  return [first, "es-ES"];
+/** The opening piece stays short so the first sound is back within a few seconds. */
+export function speechPieces(text) {
+  const clean = text.replace(/\s+/g, " ").trim();
+  if (!clean) return [];
+  const chunks = [];
+  let current = "";
+  for (const word of clean.split(" ")) {
+    if (!word) continue;
+    const limit = chunks.length === 0 ? 80 : 220;
+    if (current && `${current} ${word}`.length > limit) {
+      chunks.push(current);
+      current = word;
+    } else {
+      current = current ? `${current} ${word}` : word;
+    }
+  }
+  if (current) chunks.push(current);
+  return chunks;
 }
 
 export function quotaProjectId() {
@@ -140,6 +152,10 @@ export function explainGeminiFailure(status, detail = "") {
 
 function agentPlatformDisabled(detail) {
   return /Agent Platform API has not been used|aiplatform\.googleapis\.com/i.test(detail || "");
+}
+
+export async function getGeminiAccessToken() {
+  return getCredentials();
 }
 
 async function getCredentials() {
@@ -246,7 +262,7 @@ export async function synthesizeGemini(text, preset, language, { performance = "
   const speaker = previewVoice(preset);
   const attempt = async () => {
     let failure = { status: 502, detail: "" };
-    for (const languageCode of geminiLocales(language, region)) {
+    for (const languageCode of [cloudGeminiVoiceFor(preset, language).languageCode]) {
       for (const relaxSafety of [true, false]) {
         const response = await request({
           languageCode,

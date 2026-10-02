@@ -33,47 +33,6 @@ async function requestSpeech(text: string, voice: string, language: string, regi
   });
 }
 
-function splitSpeechText(text: string, maximumLength = 700): string[] {
-  const clean = text.replace(/[*_#`]/g, "").replace(/\s+/g, " ").trim();
-  if (!clean) return [];
-  const sentences = clean.match(/[^.!?…]+(?:\.{3}|[.!?…]+)|[^.!?…]+$/g) ?? [clean];
-  const chunks: string[] = [];
-  let current = "";
-
-  const pushCurrent = () => {
-    const value = current.trim();
-    if (value) chunks.push(value);
-    current = "";
-  };
-
-  for (const sentence of sentences) {
-    const trimmed = sentence.trim();
-    if (!trimmed) continue;
-    if (trimmed.length > maximumLength) {
-      pushCurrent();
-      const clauses = trimmed.split(/(?<=[,;:])\s+/);
-      for (const clause of clauses) {
-        if (clause.length <= maximumLength) {
-          if (current && `${current} ${clause}`.length > maximumLength) pushCurrent();
-          current = current ? `${current} ${clause}` : clause;
-          continue;
-        }
-        const words = clause.split(/\s+/);
-        for (const word of words) {
-          if (current && `${current} ${word}`.length > maximumLength) pushCurrent();
-          current = current ? `${current} ${word}` : word;
-        }
-      }
-      pushCurrent();
-      continue;
-    }
-    if (current && `${current} ${trimmed}`.length > maximumLength) pushCurrent();
-    current = current ? `${current} ${trimmed}` : trimmed;
-  }
-  pushCurrent();
-  return chunks;
-}
-
 export function roleplaySpeechText(text: string): string {
   const performance = roleplayPerformance(text);
   // Pleasure and pain stay in the prompt. Gemini speaks the other tags as sounds.
@@ -154,9 +113,7 @@ async function receivePcmOnce(text: string, voice: string, language: string, reg
     reader.releaseLock();
   }
   if (!receivedDone || byteCarry.length > 0 || totalBytes === 0) throw new Error("tts_stream_incomplete");
-  const audioSeconds = totalBytes / 2 / PCM_SAMPLE_RATE;
-  const spokenWords = text.match(/[\p{L}\p{N}]+/gu)?.length ?? 0;
-  if (audioSeconds < Math.max(0.8, spokenWords * 0.19)) throw new Error("tts_audio_too_short");
+  if (totalBytes / 2 / PCM_SAMPLE_RATE < 0.35) throw new Error("tts_audio_too_short");
 }
 
 async function receivePcm(text: string, voice: string, language: string, region: string, performance: Performance, roleplay: boolean, signal: AbortSignal, onChunk: (bytes: Uint8Array) => void) {
@@ -245,13 +202,9 @@ export function streamSpeech(text: string, voice: string, language = "es", rolep
       if (context.state === "suspended") await context.resume();
       if (stopped || !context) return;
       const playbackEnded = new Promise<void>((resolve) => { finishPlayback = resolve; });
-      const textChunks = splitSpeechText(roleplay ? roleplaySpeechText(text) : text, roleplay ? 900 : 700);
+      const spoken = (roleplay ? roleplaySpeechText(text) : text).replace(/[*_#`]/g, "").replace(/\s+/g, " ").trim();
       const performance = roleplay ? roleplayPerformance(text) : "neutral";
-      if (textChunks.length === 0) { stop(); return; }
-      if (!roleplay && textChunks[0].length > 220) {
-        const firstParts = splitSpeechText(textChunks[0], 180);
-        if (firstParts.length > 1) textChunks.splice(0, 1, firstParts[0], firstParts.slice(1).join(" "));
-      }
+      if (!spoken) { stop(); return; }
       let scheduledAt = context.currentTime;
 
       const schedule = (bytes: Uint8Array) => {
@@ -275,10 +228,7 @@ export function streamSpeech(text: string, voice: string, language = "es", rolep
         scheduledAt = startAt + buffer.duration;
         if (sources.size === 1) reportFirstPlayback();
       };
-      for (const chunk of textChunks) {
-        if (stopped) return;
-        await receivePcm(chunk, voice, language, region, performance, roleplay, controller.signal, schedule);
-      }
+      await receivePcm(spoken, voice, language, region, performance, roleplay, controller.signal, schedule);
       schedulingComplete = true;
       if (sources.size === 0) finishPlayback();
       await playbackEnded;
