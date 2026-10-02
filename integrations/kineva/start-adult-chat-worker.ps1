@@ -30,6 +30,13 @@ $exe = Join-Path $env:LOCALAPPDATA 'Microsoft\WinGet\Packages\ggml.llamacpp_Micr
 $model = Join-Path $env:LOCALAPPDATA 'Comfy-Desktop\ComfyUI-Shared\models\LLM\magnum-v4-12b\magnum-v4-12b-Q4_K_M.gguf'
 $env:SUPABASE_URL = 'https://cexzmelshvbgabihtfvx.supabase.co'
 Set-Location $repo
+$videoScript = Join-Path $PSScriptRoot 'start-video-worker.ps1'
+$videoWorker = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+  Where-Object { $_.CommandLine -and $_.CommandLine -like '*worker.py*' -and $_.CommandLine -notlike '*image_worker.py*' -and $_.CommandLine -notlike '*adult_chat_worker.py*' }
+if (-not $videoWorker) {
+  Start-Process powershell.exe -ArgumentList ('-NoExit -ExecutionPolicy Bypass -File "' + $videoScript + '"') -WorkingDirectory $repo
+  Write-Host 'Iniciando el video de novelas y series en ComfyUI...'
+}
 $imageScript = Join-Path $PSScriptRoot 'start-image-worker.ps1'
 $imageWorker = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
   Where-Object { $_.CommandLine -and $_.CommandLine -like '*image_worker.py*' }

@@ -453,8 +453,8 @@ export default async function handler(req, res) {
       const idea = String(body.premise || "").trim().slice(0, 1000);
       if (idea.length < 8) return send(res, 400, { error: "premise_too_short" });
       const count = Math.min(6, Math.max(1, Number(body.episodes) || 3));
-      const prompt = "Crea una miniserie original y coherente de " + count + " episodios para un usuario que dio esta idea: " + idea + ". Idioma espaÃ±ol. Devuelve solo JSON: " + JSON.stringify({ title: "", logline: "", episodes: [{ number: 1, title: "", script: "Guion hablado breve, menos de 320 caracteres", video_prompt: "English description of vertical cinematic scene 9:16, 15 seconds, no captions" }] }) + ". Identidad, vestuario y voz consistentes. Cada episodio con acciones y ambiente distintos. Exactamente " + count + " episodios.";
-      const raw = await generate("gemini-3.5-flash-lite", [{ text: prompt }], { responseMimeType: "application/json", maxOutputTokens: 6000 });
+      const prompt = "Escribe UNA novela en español, no una historia distinta. La idea es la única trama: mismas personas, mismo lugar y el mismo suceso en todos los capítulos. No inventes una edad, un parentesco ni un lugar que no estén en la idea. Devuelve solo JSON: " + JSON.stringify({ title: "", logline: "", episodes: [{ number: 1, title: "", script: "capítulo completo en prosa, continuación del anterior", video_prompt: "English visual description of this same chapter, 9:16, no captions" }] }) + ". Exactamente " + count + " capítulos en orden. Cada script tiene entre 500 y 1200 caracteres y continúa el capítulo anterior. Idea: " + idea;
+      const raw = await generate("gemini-2.5-flash", [{ text: prompt }], { responseMimeType: "application/json", maxOutputTokens: 8000, temperature: 0.4 }, { fallbackModels: [] });
       const parsed = JSON.parse(raw);
       if (!parsed.title || !Array.isArray(parsed.episodes) || parsed.episodes.length !== count) throw Object.assign(new Error("Miniserie incompleta; intenta otra vez."), { status: 502 });
       const token = String(req.headers.authorization).replace(/^Bearer\s+/i, "");
@@ -476,7 +476,7 @@ export default async function handler(req, res) {
       if (seriesError) throw Object.assign(new Error(seriesError.message), { status: 500 });
       const rows = parsed.episodes.map((ep, i) => ({
         series_id: series.id, episode_number: i + 1, title: String(ep.title || "Episodio " + (i + 1)).slice(0, 120),
-        script: String(ep.script || "").slice(0, 400), video_prompt: String(ep.video_prompt || "").slice(0, 900), status: "pending",
+        script: String(ep.script || ep.content || "").slice(0, 8000), video_prompt: String(ep.video_prompt || "").slice(0, 900), status: "pending",
       }));
       const { data: episodes, error: episodeError } = await userClient.from("shorts_episodes").insert(rows).select();
       if (episodeError) throw Object.assign(new Error(episodeError.message), { status: 500 });
@@ -486,10 +486,13 @@ export default async function handler(req, res) {
       const idea = String(body.description || "").trim().slice(0, 3500);
       if (idea.length < 10) return send(res, 400, { error: "description_too_short" });
       const count = Math.min(20, Math.max(3, Number(body.chapterCount) || 7));
-      const prompt = "Eres guionista de miniseries. Crea " + count + " capÃ­tulos coherentes en " + String(body.language || "espaÃ±ol").slice(0, 40) + ". Devuelve solo JSON: " + JSON.stringify({ title: "", logline: "", characters: [{ name: "", age: "adulto", role: "", appearance: "", wardrobe: "", personality: "", voice: "", visual_prompt: "" }], setting: { place: "", time: "", visual_style: "" }, outline: "", chapters: [{ number: 1, title: "", summary: "", characters_present: [""], content: "capÃ­tulo con diÃ¡logos", video_prompt: "descripciÃ³n visual 9:16 sin subtÃ­tulos" }] }) + ". Conserva identidad y voces. Exactamente " + count + " capÃ­tulos. Idea: " + idea;
-      const raw = await generate("gemini-3.5-flash-lite", [{ text: prompt }], { responseMimeType: "application/json", maxOutputTokens: 12000 });
+      const prompt = "Escribe UNA novela en " + String(body.language || "español").slice(0, 40) + ". No es una historia nueva: sigue la idea al pie de la letra, con las mismas personas, el mismo lugar y el mismo suceso en cada capítulo. No inventes una edad ni un lugar que la idea no diga. Si la idea no habla de un menor, nadie es menor. Devuelve solo JSON: " + JSON.stringify({ title: "", logline: "", characters: [{ name: "", role: "", appearance: "", wardrobe: "", personality: "", voice: "", visual_prompt: "" }], setting: { place: "", time: "", visual_style: "" }, outline: "", chapters: [{ number: 1, title: "", summary: "", characters_present: [""], content: "capítulo completo que continúa el anterior", video_prompt: "visual description of this same chapter, 9:16, no captions" }] }) + ". Exactamente " + count + " capítulos. Cada content tiene entre 500 y 1200 caracteres. Idea: " + idea;
+      const raw = await generate("gemini-2.5-flash", [{ text: prompt }], { responseMimeType: "application/json", maxOutputTokens: 12000, temperature: 0.4 }, { fallbackModels: [] });
       const novel = JSON.parse(raw);
-      if (!Array.isArray(novel.chapters) || !novel.title) throw Object.assign(new Error("Proyecto incompleto; intenta otra vez."), { status: 502 });
+      if (!novel.title || !Array.isArray(novel.chapters) || novel.chapters.length !== count) throw Object.assign(new Error("Proyecto incompleto; intenta otra vez."), { status: 502 });
+      if (!mentionsMinor(idea) && mentionsMinor(JSON.stringify(novel.chapters))) {
+        throw Object.assign(new Error("La novela inventó un menor que no está en tu idea. Vuelve a generarla."), { status: 502, code: "off_role" });
+      }
       return send(res, 200, { novel });
     }
     return send(res, 404, { error: "feature_not_configured", message: "Esta funciÃ³n todavÃ­a no estÃ¡ conectada a Kineva." });

@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
+import { publishLocalChapters } from "@/lib/chapterVideo";
+import { createLocalJob, encodeLocalImage, fetchLocalJob, loopbackInit, probeLocalKineva } from "@/lib/kinevaLocal";
 import { episodeStatusLabel } from "@/lib/shortsCatalog";
 import { Loader2, Play, Sparkles, Volume2, VolumeX } from "lucide-react";
 import { toast } from "sonner";
@@ -27,6 +29,7 @@ export const ShortEpisodeCard = ({
   const renderFunction = kineva ? "kineva-video" : "shorts-video";
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [generating, setGenerating] = useState(["generating", "assembling"].includes(episode.status));
+  const [localBusy, setLocalBusy] = useState(false);
   const [shotNumber, setShotNumber] = useState(1);
   const [progress, setProgress] = useState("");
   const [reviewWarning, setReviewWarning] = useState(false);
@@ -80,7 +83,77 @@ export const ShortEpisodeCard = ({
     }, 7000);
   };
 
+  const produceOnThisPc = async () => {
+    const probe = await probeLocalKineva();
+    if (probe.status !== "ready") {
+      toast.error(probe.status === "missing-comfy"
+        ? "Falta ComfyUI en esta PC (127.0.0.1:8188). El capítulo sigue escrito; el video queda en cola."
+        : probe.status === "missing-template"
+          ? "Falta la plantilla de Kineva en esta PC. El capítulo sigue escrito."
+          : "Kineva no está encendido en esta PC. Abre start-local-studio.ps1. El capítulo sigue escrito y el video queda en cola.");
+      return "queue";
+    }
+    setLocalBusy(true);
+    setProgress("ComfyUI en esta PC está filmando este capítulo…");
+    try {
+      let image: string | null = null;
+      if (series.kineva_reference_image_path) {
+        try {
+          const signed = await supabase.storage.from("kineva-references").createSignedUrl(series.kineva_reference_image_path, 600);
+          if (signed.data?.signedUrl) {
+            const fileResponse = await fetch(signed.data.signedUrl);
+            const blob = await fileResponse.blob();
+            image = await encodeLocalImage(new File([blob], "referencia.png", { type: blob.type || "image/png" }));
+          }
+        } catch {
+          image = null;
+        }
+      }
+      await publishLocalChapters({
+        chapters: [episode.script || episode.video_prompt || episode.title],
+        episodeIds: [episode.id],
+        image,
+        onJob: (job) => {
+          if (job.state === "rendering") setProgress("Filmando este capítulo en ComfyUI…");
+        },
+        createJob: createLocalJob,
+        fetchJob: fetchLocalJob,
+        fetchVideo: async (url) => {
+          const response = await fetch(url, loopbackInit());
+          if (!response.ok) throw new Error("No se pudo leer el video que creó ComfyUI.");
+          return response.blob();
+        },
+        upload: async (episodeId, blob) => {
+          const path = "episodes/" + episodeId + "/local/" + crypto.randomUUID() + ".mp4";
+          const { error } = await supabase.storage.from("shorts-media").upload(path, blob, {
+            contentType: "video/mp4", upsert: false,
+          });
+          if (error) throw new Error(error.message);
+          return path;
+        },
+        markReady: async (episodeId, path) => {
+          const { error } = await supabase.from("shorts_episodes").update({
+            status: "ready", video_url: path, error_message: null,
+          }).eq("id", episodeId);
+          if (error) throw new Error(error.message);
+        },
+      });
+      toast.success("Capítulo filmado y guardado en esta novela.");
+      onUpdated();
+      return "done";
+    } catch (failure) {
+      toast.error(failure instanceof Error ? failure.message : "ComfyUI no pudo filmar este capítulo.");
+      return "failed";
+    } finally {
+      setLocalBusy(false);
+    }
+  };
+
   const handleGenerate = async (action: "create" | "repair" = "create") => {
+    if (action === "create") {
+      const filmed = await produceOnThisPc();
+      if (filmed !== "queue") return;
+    }
     setGenerating(true);
     const { data, error } = await supabase.functions.invoke(renderFunction, {
       body: { action, episodeId: episode.id, shot: shotNumber },
@@ -179,7 +252,7 @@ export const ShortEpisodeCard = ({
             Capítulo {String(episode.episode_number).padStart(2, "0")}
           </p>
           <h3 className="mt-1 font-display text-xl">{episode.title}</h3>
-          {episode.script && <p className="mt-2 line-clamp-4 text-sm text-muted-foreground">{episode.script}</p>}
+          {episode.script && <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">{episode.script}</p>}
         </div>
         {episode.error_message && (
           <p className="text-sm text-destructive">{episode.error_message}</p>
@@ -198,11 +271,11 @@ export const ShortEpisodeCard = ({
           </Button>
         )}
         {!videoUrl && series.created_by === user?.id && (
-          <Button className="w-full rounded-none" onClick={() => handleGenerate()} disabled={generating}>
-            {generating ? (
-              <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Produciendo capítulo…</>
+          <Button className="w-full rounded-none" onClick={() => handleGenerate()} disabled={localBusy}>
+            {localBusy ? (
+              <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Filmando en esta PC…</>
             ) : (
-              <><Sparkles className="mr-2 h-4 w-4" /> Producir este capítulo</>
+              <><Sparkles className="mr-2 h-4 w-4" /> Producir este capítulo en esta PC</>
             )}
           </Button>
         )}

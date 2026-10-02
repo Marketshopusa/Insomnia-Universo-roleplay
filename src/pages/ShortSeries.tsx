@@ -2,16 +2,13 @@ import { seriesStatus } from "@/lib/shortsCatalog";
 import { Link, useParams } from "react-router-dom";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Loader2 } from "lucide-react";
-import { useAdultMode } from "@/contexts/AdultModeContext";
-import { useShorts } from "@/hooks/useShorts";
+import { useShortSeries } from "@/hooks/useShorts";
 import { ShortEpisodeCard } from "@/components/shorts/ShortEpisodeCard";
 import { SeriesCover } from "@/components/shorts/SeriesCover";
 
 const ShortSeries = () => {
   const { seriesId = "" } = useParams();
-  const { enabled: adultEnabled } = useAdultMode();
-  const { series, loading, reload } = useShorts(adultEnabled);
-  const current = series.find((item) => item.id === seriesId);
+  const { series: current, loading, reload } = useShortSeries(seriesId);
 
   return (
     <MainLayout>
@@ -37,10 +34,12 @@ const ShortSeries = () => {
                 <h1 className="mt-1 font-display text-3xl md:text-4xl">{current.title}</h1>
                 {current.premise && <p className="mt-3 max-w-2xl text-sm text-muted-foreground">{current.premise}</p>}
                 <p className="mt-3 text-sm">
-                  {current.episodes.length} {current.episodes.length === 1 ? "capítulo" : "capítulos"} en orden.
-                  {seriesStatus(current.episodes).key === "written" && " El guion ya está. El video se produce capítulo por capítulo."}
-                  {seriesStatus(current.episodes).key === "producing" && " Hay un capítulo produciéndose. Quédate en esta página para ver cuándo termina."}
-                  {seriesStatus(current.episodes).key === "failed" && " Un capítulo falló. El motivo está en su tarjeta."}
+                  {current.episodes.length
+                    ? current.episodes.length + (current.episodes.length === 1 ? " capítulo" : " capítulos") + " de la misma novela, en orden."
+                    : "Esta portada no guardó capítulos."}
+                  {seriesStatus(current.episodes).key === "written" && " El texto ya está. El video se filma en ComfyUI de esta PC, capítulo por capítulo."}
+                  {seriesStatus(current.episodes).key === "producing" && " Si un capítulo se quedó en producción, vuelve a pedirlo: ComfyUI de esta PC lo filma y lo guarda aquí."}
+                  {seriesStatus(current.episodes).key === "failed" && " Un capítulo falló. El motivo está debajo de su texto."}
                 </p>
               </div>
             </div>

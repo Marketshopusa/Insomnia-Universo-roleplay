@@ -72,3 +72,39 @@ export const useShorts = (adultEnabled: boolean) => {
 
   return { series, loading, reload: load };
 };
+
+/** Opens one cover by id, including a series hidden by the 18+ switch. */
+export const useShortSeries = (seriesId: string) => {
+  const [series, setSeries] = useState<SeriesWithEpisodes | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    if (!seriesId) {
+      setSeries(null);
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    const { data, error } = await supabase
+      .from("shorts_series")
+      .select("*, episodes:shorts_episodes(*)")
+      .eq("id", seriesId)
+      .maybeSingle();
+    if (!error && data) {
+      const item = data as unknown as SeriesWithEpisodes;
+      setSeries({
+        ...item,
+        episodes: [...(item.episodes ?? [])].sort((a, b) => a.episode_number - b.episode_number),
+      });
+    } else {
+      setSeries(null);
+    }
+    setLoading(false);
+  }, [seriesId]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  return { series, loading, reload: load };
+};

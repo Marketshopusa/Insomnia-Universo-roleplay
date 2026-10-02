@@ -6,6 +6,18 @@ const send = (res, status, data) => res.status(status).json(data);
 
 export const maxDuration = 60;
 
+export function sceneJobRow(userId, body) {
+  const source = body.source === "novel" ? "novel" : "story";
+  const sceneKey = String(body.sceneKey || "escena").trim().slice(0, 120) || "escena";
+  return {
+    owner_id: userId,
+    source,
+    scene_key: sceneKey,
+    prompt: scenePrompt(body),
+    status: "queued",
+  };
+}
+
 export function scenePrompt(body) {
   const focus = String(body.focusText || "").trim().slice(0, 1800);
   if (focus.length < 8) {
@@ -105,6 +117,13 @@ export default async function handler(req, res) {
       }
       return send(res, 200, { status: job.status,
         ...(job.status === "failed" ? { error: "render_failed", message: job.error_message || "La imagen no se pudo crear." } : {}) });
+    }
+
+    if (body.engine === "comfy") {
+      const row = sceneJobRow(user.id, body);
+      const { data, error } = await client.from("kineva_scene_jobs").insert(row).select("id").single();
+      if (error) throw Object.assign(new Error(error.message), { status: 500, code: "scene_queue_failed" });
+      return send(res, 200, { status: "queued", jobId: data.id });
     }
 
     const prompt = scenePrompt(body);

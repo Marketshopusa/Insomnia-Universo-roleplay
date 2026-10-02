@@ -119,7 +119,27 @@ def build_graph(template, image_name, manifest_path, idea, job_id, episode, tota
     one(graph, "KinevaRunManifest")[1]["inputs"]["project_name"] = "kineva_local_" + job_id
     return graph
 
-def run_job(job_id, image, idea, count):
+def chapter_ideas(body):
+    raw = body.get("chapters")
+    if isinstance(raw, list) and raw:
+        ideas = []
+        for item in raw[:12]:
+            text = str(item or "").strip()
+            if len(text) < 5 or len(text) > 4000:
+                raise ValueError("Cada capítulo debe tener entre 5 y 4000 caracteres.")
+            ideas.append(text)
+        if not ideas:
+            raise ValueError("No hay capítulos para filmar.")
+        return ideas
+    idea = str(body.get("idea") or "").strip()
+    if len(idea) < 5 or len(idea) > 1500:
+        raise ValueError("Escribe una idea breve de 5 a 1500 caracteres.")
+    count = int(body.get("episodes", 1))
+    if count < 1 or count > 3:
+        raise ValueError("Elige entre 1 y 3 episodios.")
+    return [idea] * count
+
+def run_job(job_id, image, ideas):
     try:
         with GPU_LOCK:
             template = json.loads(TEMPLATE_PATH.read_text(encoding="utf-8"))
@@ -140,7 +160,8 @@ def run_job(job_id, image, idea, count):
             manifest_path.write_text(
                 '{"version":1,"characters":{},"locations":{}}', encoding="utf-8")
             previous = ""
-            for episode in range(1, count + 1):
+            count = len(ideas)
+            for episode, idea in enumerate(ideas, start=1):
                 update(job_id, state="rendering", current=episode)
                 graph = build_graph(
                     template, image_name, manifest_path, idea, job_id, episode, count, previous)
@@ -306,12 +327,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._reply(413, {"error": "La solicitud supera el limite permitido."})
         try:
             body = json.loads(self.rfile.read(length))
-            idea = str(body.get("idea") or "").strip()
-            if len(idea) < 5 or len(idea) > 1500:
-                raise ValueError("Escribe una idea breve de 5 a 1500 caracteres.")
-            count = int(body.get("episodes", 1))
-            if count < 1 or count > 3:
-                raise ValueError("Elige entre 1 y 3 episodios.")
+            ideas = chapter_ideas(body)
+            count = len(ideas)
             encoded = body.get("image")
             image = b""
             if encoded not in (None, ""):
@@ -329,7 +346,7 @@ class Handler(BaseHTTPRequestHandler):
                 "id": job_id, "state": "queued", "current": 0,
                 "total": count, "videos": [], "error": None,
             }
-        threading.Thread(target=run_job, args=(job_id, image, idea, count),
+        threading.Thread(target=run_job, args=(job_id, image, ideas),
                          daemon=True).start()
         return self._reply(202, public_job(job_id))
 

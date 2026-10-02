@@ -28,6 +28,13 @@ if (-not (Test-LocalEndpoint "http://127.0.0.1:8188/system_stats")) {
 if (-not (Wait-LocalEndpoint "http://127.0.0.1:8188/system_stats" 90)) {
     Write-Host "ComfyUI no respondió en el puerto 8188."
 }
+$videoScript = Join-Path $PSScriptRoot "start-video-worker.ps1"
+$videoWorker = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+    Where-Object { $_.CommandLine -and $_.CommandLine -like "*worker.py*" -and $_.CommandLine -notlike "*image_worker.py*" -and $_.CommandLine -notlike "*adult_chat_worker.py*" }
+if (-not $videoWorker) {
+    Start-Process powershell.exe -ArgumentList ('-NoExit -ExecutionPolicy Bypass -File "' + $videoScript + '"') -WorkingDirectory $project
+    Write-Host "Iniciando el worker de video (ComfyUI)..."
+}
 $imageScript = Join-Path $PSScriptRoot "start-image-worker.ps1"
 $imageWorker = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
     Where-Object { $_.CommandLine -and $_.CommandLine -like "*image_worker.py*" }

@@ -118,11 +118,17 @@ export async function encodeLocalImage(file: File) {
   return btoa(parts.join(""));
 }
 
+export const MAX_LOCAL_CHAPTERS = 12;
+
 export async function createLocalJob(
-  input: { idea: string; image?: string | null; episodes?: number },
+  input: { idea?: string; chapters?: string[]; image?: string | null; episodes?: number },
   fetchImpl: FetchLike = fetch,
 ): Promise<LocalJob> {
-  const idea = input.idea.trim().slice(0, 1500);
+  const chapters = (input.chapters || [])
+    .map((item) => item.trim().slice(0, 4000))
+    .filter((item) => item.length >= 5)
+    .slice(0, MAX_LOCAL_CHAPTERS);
+  const idea = (input.idea || chapters[0] || "").trim().slice(0, 1500);
   if (idea.length < 5) throw new Error("Escribe una idea breve de 5 a 1500 caracteres.");
   let response: Response;
   try {
@@ -131,8 +137,9 @@ export async function createLocalJob(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         idea,
+        ...(chapters.length ? { chapters } : {}),
         image: input.image || null,
-        episodes: clampLocalEpisodes(input.episodes ?? 1),
+        episodes: chapters.length || clampLocalEpisodes(input.episodes ?? 1),
       }),
     }));
   } catch {

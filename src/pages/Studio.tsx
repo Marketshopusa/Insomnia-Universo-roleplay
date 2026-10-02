@@ -1,10 +1,15 @@
 import { invokeFunctionWithRetry } from "@/lib/invokeFunction";
 import { generateSceneImage } from "@/lib/sceneImage";
+import { publishLocalChapters } from "@/lib/chapterVideo";
+import { uploadKinevaReference } from "@/lib/kinevaReference";
+import { saveNovelSeries } from "@/lib/saveNovelSeries";
+import { supabase } from "@/integrations/supabase/client";
 import {
   createLocalJob,
   encodeLocalImage,
   fetchLocalJob,
   localVideoSrc,
+  loopbackInit,
   probeLocalKineva,
   type LocalJob,
   type LocalProbe,
@@ -68,7 +73,8 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
 
   const [model, setModel] = useState("apprentice-6");
   const [referenceImage, setReferenceImage] = useState<File | null>(null);
-  const [localEpisodes, setLocalEpisodes] = useState(1);
+  const [seriesEpisodeIds, setSeriesEpisodeIds] = useState<string[]>([]);
+  const [savedSeriesId, setSavedSeriesId] = useState<string | null>(null);
   const [localHealth, setLocalHealth] = useState<LocalStudioStatus>("missing-worker");
   const [localJob, setLocalJob] = useState<LocalJob | null>(null);
   const [creativity, setCreativity] = useState("balanced");
@@ -138,25 +144,54 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
         ? "Falta la plantilla de Kineva en esta PC."
         : "Al generar el video, Chrome pregunta si puede usar Kineva en esta PC. Pulsa Permitir. El worker sigue en 127.0.0.1:8787.";
 
-  const createVideosForNovel = async (generated: any, pendingProbe?: Promise<LocalProbe>) => {
+  const storeChapterVideo = async (episodeId: string, blob: Blob) => {
+    const path = "episodes/" + episodeId + "/local/" + crypto.randomUUID() + ".mp4";
+    const { error } = await supabase.storage.from("shorts-media").upload(path, blob, {
+      contentType: "video/mp4", upsert: false,
+    });
+    if (error) throw new Error(error.message);
+    return path;
+  };
+
+  const markChapterReady = async (episodeId: string, path: string) => {
+    const { error } = await supabase.from("shorts_episodes").update({
+      status: "ready", video_url: path, error_message: null,
+    }).eq("id", episodeId);
+    if (error) throw new Error(error.message);
+  };
+
+  const filmChapters = async (chapters: string[], episodeIds: string[], pendingProbe?: Promise<LocalProbe>) => {
     const probe = await (pendingProbe ?? probeLocalKineva());
     setLocalHealth(probe.status);
-    if (probe.status === "missing-comfy") {
-      throw new Error("Falta ComfyUI en esta PC (127.0.0.1:8188).");
+    if (probe.status !== "ready") {
+      throw new Error(probe.status === "missing-comfy"
+        ? "La novela ya está guardada. Falta ComfyUI en esta PC (127.0.0.1:8188) para filmar los capítulos."
+        : probe.status === "missing-template"
+          ? "La novela ya está guardada. Falta la plantilla de Kineva en esta PC."
+          : "La novela ya está guardada. Enciende Kineva en esta PC con start-local-studio.ps1 para filmar los capítulos.");
     }
-    if (probe.status === "missing-template") {
-      throw new Error("Falta la plantilla de Kineva en esta PC.");
-    }
-    const idea = String(description || generated?.logline || generated?.title || "").trim();
     setGeneratingVideos(true);
-    setVideoProgress("Encolando el video en esta PC…");
+    setVideoProgress("ComfyUI está filmando los capítulos en esta PC…");
     const image = referenceImage ? await encodeLocalImage(referenceImage) : null;
-    const job = await createLocalJob({ idea, image, episodes: localEpisodes });
-    setLocalJob(job);
-    toast({
-      title: "Video en cola en esta PC",
-      description: `${job.total} episodio${job.total === 1 ? "" : "s"} con ComfyUI local.`,
+    await publishLocalChapters({
+      chapters: chapters.slice(0, 12),
+      episodeIds,
+      image,
+      onJob: (job) => {
+        setLocalJob(job);
+        if (job.state === "rendering") setVideoProgress("Filmando capítulo " + job.current + " de " + job.total + "…");
+      },
+      createJob: createLocalJob,
+      fetchJob: fetchLocalJob,
+      fetchVideo: async (url) => {
+        const response = await fetch(url, loopbackInit());
+        if (!response.ok) throw new Error("No se pudo leer el video que creó ComfyUI.");
+        return response.blob();
+      },
+      upload: storeChapterVideo,
+      markReady: markChapterReady,
     });
+    toast({ title: "Capítulos filmados", description: "El video de cada capítulo quedó guardado dentro de la novela." });
   };
 
   const handleGenerateProject = async () => {
@@ -173,6 +208,7 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
     setGenerating(true);
     setNovel(null);
     let generated: any = null;
+    let episodeIds: string[] = [];
     try {
       const { data, error } = await invokeFunctionWithRetry<any>("generate-novel", {
           description,
@@ -213,23 +249,52 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
         const created = await createProject.mutateAsync(payload);
         setCurrentProjectId(created.id);
       }
+      let referencePath: string | null = null;
+      if (referenceImage) {
+        try {
+          referencePath = await uploadKinevaReference(user.id, description, referenceImage);
+        } catch {
+          referencePath = null;
+        }
+      }
+      const savedSeries = await saveNovelSeries({
+        userId: user.id,
+        novel: generated,
+        description,
+        isAdult: !isSafeForWork,
+        referencePath,
+      });
+      episodeIds = savedSeries.episodeIds;
+      setSeriesEpisodeIds(savedSeries.episodeIds);
+      setSavedSeriesId(savedSeries.seriesId);
+      toast({
+        title: "Novela guardada capítulo por capítulo",
+        description: isSafeForWork
+          ? "Está en Series. Abre la portada para leer cada capítulo."
+          : "Está en Series. Si no la ves en la parrilla, activa el modo 18+ o ábrela desde el enlace de la portada.",
+      });
     } catch (e) {
       toast({
-        title: "La novela en la nube no se generó",
-        description: e instanceof Error ? e.message : "El video local se encola igual.",
+        title: "La novela no se generó",
+        description: e instanceof Error ? e.message : undefined,
         variant: "destructive",
       });
+      return;
+    } finally {
+      setGenerating(false);
     }
+    const chapterTexts = (generated.chapters ?? [])
+      .map((chapter: { content?: string }) => String(chapter.content || "").trim())
+      .filter((text: string) => text.length >= 5);
     try {
-      await createVideosForNovel(generated, loopbackProbe);
+      await filmChapters(chapterTexts, episodeIds, loopbackProbe);
     } catch (e) {
       toast({
-        title: "No se pudo encolar el video en esta PC",
+        title: "La novela está guardada, el video no",
         description: e instanceof Error ? e.message : undefined,
         variant: "destructive",
       });
     } finally {
-      setGenerating(false);
       setGeneratingVideos(false);
       setVideoProgress("");
     }
@@ -247,7 +312,22 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
 
     const loopbackProbe = probeLocalKineva();
     try {
-      await createVideosForNovel(novel, loopbackProbe);
+      let episodeIds = seriesEpisodeIds;
+      const chapterTexts = (novel?.chapters ?? [])
+        .map((chapter: { content?: string }) => String(chapter.content || "").trim())
+        .filter((text: string) => text.length >= 5);
+      if (!episodeIds.length && novel) {
+        const savedSeries = await saveNovelSeries({
+          userId: user.id,
+          novel,
+          description,
+          isAdult: !isSafeForWork,
+        });
+        episodeIds = savedSeries.episodeIds;
+        setSeriesEpisodeIds(episodeIds);
+        setSavedSeriesId(savedSeries.seriesId);
+      }
+      await filmChapters(chapterTexts.length ? chapterTexts : [String(description || novel?.logline || "")], episodeIds, loopbackProbe);
     } catch (e) {
       toast({
         title: "No se pudieron generar los videos",
@@ -481,19 +561,8 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
             <input id="kineva-reference" type="file" accept="image/png,image/jpeg,image/webp"
               onChange={(event) => setReferenceImage(event.target.files?.[0] ?? null)}
               className="block w-full text-sm" />
-            <div className="space-y-2">
-              <Label>Episodios en esta PC</Label>
-              <Select value={String(localEpisodes)} onValueChange={(value) => setLocalEpisodes(Number(value))}>
-                <SelectTrigger className="w-56"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="1">1 episodio</SelectItem>
-                  <SelectItem value="2">2 episodios</SelectItem>
-                  <SelectItem value="3">3 episodios</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
             <p className="text-xs text-muted-foreground">
-              Sube una foto para conservar su identidad o deja este campo vacío. El video se crea en ComfyUI de esta PC, no en la nube.
+              La novela se guarda completa, capítulo por capítulo, en Series. Cada capítulo se filma en ComfyUI de esta PC. Una foto opcional conserva la misma persona.
             </p>
           </Card>
 
@@ -554,7 +623,7 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
           size="lg"
           className="w-full mb-6 h-14 text-base rounded-none"
           onClick={handleGenerateProject}
-          disabled={generating}
+          disabled={generating || generatingVideos}
         >
           {generating ? (
             <>
@@ -590,6 +659,11 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
               <h2 className="font-display text-2xl">{novel.title}</h2>
+              {savedSeriesId && (
+                <Link to={"/shorts/" + savedSeriesId} className="mt-2 inline-block text-xs uppercase tracking-[0.16em] text-accent">
+                  Abrir esta novela en Series
+                </Link>
+              )}
               {novel.logline && (
                 <p className="text-sm text-muted-foreground mt-1">{novel.logline}</p>
               )}
@@ -638,9 +712,9 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
                   <Button variant="secondary" size="sm" disabled={illustratingChapter !== null}
                     onClick={() => illustrateChapter(ch, i)}>
                     {illustratingChapter === i ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Sparkles className="w-4 h-4 mr-2" />}
-                    {chapterImages[i] ? "Recrear imagen" : "Ilustrar capÃ­tulo"}
+                    {chapterImages[i] ? "Recrear imagen" : "Ilustrar capítulo"}
                   </Button>
-                  {chapterImages[i] && <img src={chapterImages[i]} alt={"Escena del capÃ­tulo " + (i + 1)}
+                  {chapterImages[i] && <img src={chapterImages[i]} alt={"Escena del capítulo " + (i + 1)}
                     className="w-full max-w-md rounded-md" />}
 
                   {ch.video_prompt && (
@@ -664,12 +738,12 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
                 </>
               ) : (
                 <>
-                  <Clapperboard className="w-5 h-5 mr-2" /> Crear video con ComfyUI en esta PC
+                  <Clapperboard className="w-5 h-5 mr-2" /> Filmar cada capítulo con ComfyUI en esta PC
                 </>
               )}
             </Button>
             <p className="text-xs text-muted-foreground text-center">
-              El video se encola en ComfyUI de esta PC: tu idea, una imagen opcional y de 1 a 3 episodios.
+              ComfyUI filma el texto de cada capítulo y el video queda guardado dentro de la novela.
             </p>
           </Card>
         )}

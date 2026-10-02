@@ -18,6 +18,7 @@ it("returns the picture drawn on the server", async () => {
   }));
   const url = await generateSceneImage({ focusText: "Ella cruza la calle de noche" }, {
     renderLocal: async () => null,
+    queueComfy: async () => null,
     invoke: invoke as never,
   });
   expect(url).toBe("data:image/png;base64,server");
@@ -31,6 +32,18 @@ it("shows the server error instead of waiting for a computer", async () => {
   }));
   await expect(generateSceneImage({ focusText: "Ella cruza la calle de noche" }, {
     renderLocal: async () => null,
+    queueComfy: async () => null,
     invoke: invoke as never,
   })).rejects.toThrow(/no entregó la imagen/);
+});
+
+it("uses the ComfyUI queue when this browser cannot draw locally", async () => {
+  const invoke = vi.fn();
+  const url = await generateSceneImage({ focusText: "Ella cruza la calle de noche" }, {
+    renderLocal: async () => null,
+    queueComfy: async () => "https://example.com/scene.png",
+    invoke: invoke as never,
+  });
+  expect(url).toBe("https://example.com/scene.png");
+  expect(invoke).not.toHaveBeenCalled();
 });
