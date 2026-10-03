@@ -28,6 +28,8 @@ it("stores the story accent beside the voice and defaults to México", () => {
   expect(getStoryRegion("story-1")).toBe("cl");
   localStorage.clear();
   expect(getStoryRegion("other")).toBe("mx");
+  expect(getStoryAccent("story-1")).toBe(false);
+  setStoryAccent("story-1", true);
   expect(getStoryAccent("story-1")).toBe(true);
   setStoryAccent("story-1", false);
   expect(getStoryAccent("story-1")).toBe(false);

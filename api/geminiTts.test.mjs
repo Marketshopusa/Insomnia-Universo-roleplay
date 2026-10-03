@@ -32,10 +32,10 @@ test("Gemini 2.5 Flash TTS speaks Aoede with the story accent", async () => {
       assert.equal(init.headers["x-goog-user-project"], "project-92a5eaa1-857a-4011-a86");
       const body = JSON.parse(init.body);
       assert.equal(body.voice.modelName, "gemini-2.5-flash-tts");
-      assert.equal(body.voice.languageCode, "es-ES");
+      assert.equal(body.voice.languageCode, "es-MX");
       assert.equal(body.voice.name, "Aoede");
       assert.equal(body.advancedVoiceOptions.safetySettings.settings[0].threshold, "BLOCK_NONE");
-      assert.match(body.input.prompt, /México/);
+      assert.match(body.input.prompt, /español latinoamericano natural/);
       return new Response(JSON.stringify({ audioContent: wav.toString("base64") }), { status: 200 });
     },
   });
@@ -51,7 +51,7 @@ test("a plain region keeps Gemini's own Spanish voice", () => {
   assert.doesNotMatch(prompt, /venezolano|mexicano|colombiano|rioplatense|chileno|castellano/);
 });
 
-test("Spanish uses one es-ES request and keeps the regional accent in the prompt", async () => {
+test("Latin American Spanish uses es-419 without forced accent imitation", async () => {
   const { wav } = sampleWav();
   const locales = [];
   const result = await synthesizeGemini("Chamo, no puede ser.", "Aoede", "es", {
@@ -60,14 +60,14 @@ test("Spanish uses one es-ES request and keeps the regional accent in the prompt
     fetchImpl: async (_url, init) => {
       const body = JSON.parse(init.body);
       locales.push(body.voice.languageCode);
-      assert.match(body.input.prompt, /venezolano/);
-      assert.match(body.input.prompt, /exactamente/);
+      assert.match(body.input.prompt, /español latinoamericano natural/);
+      assert.doesNotMatch(body.input.prompt, /venezolano|exactamente/);
       assert.doesNotMatch(body.input.prompt, /gritos|aplausos|gemidos|\[laughing\]/i);
       assert.equal(body.input.text, "Chamo, no puede ser.");
       return new Response(JSON.stringify({ audioContent: wav.toString("base64") }), { status: 200 });
     },
   });
-  assert.deepEqual(locales, ["es-ES"]);
+  assert.deepEqual(locales, ["es-419"]);
   assert.equal(result.status, 200);
   assert.equal(cloudGeminiVoiceFor("luna-sweet", "es", "ve").name, "Leda");
   assert.equal(cloudGeminiVoiceFor("Aoede", "es", "es").languageCode, "es-ES");
@@ -147,7 +147,7 @@ test("streaming speaks the whole line once and emits each audio chunk", async ()
       assert.equal(spoken.split(line).length - 1, 1);
       assert.match(spoken, /\[shouting\]/);
       assert.doesNotMatch(spoken, /gritos, aplausos, gemidos/i);
-      assert.equal(body.generation_config.speech_config.language_code, "es-ES");
+      assert.equal(body.generation_config.speech_config.language_code, "es-419");
       assert.equal(body.generation_config.speech_config.voice_config.prebuilt_voice_config.voice_name, "Aoede");
       assert.equal(body.safety_settings[0].threshold, "BLOCK_NONE");
       assert.match(geminiStreamBody(line, "Aoede", "es", "pleasure", "plain").contents.parts.text, /voz natural/);

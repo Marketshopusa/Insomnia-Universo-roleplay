@@ -22,9 +22,8 @@ export function speechLocale(language, region) {
 }
 
 export function slangInstruction(language, region) {
-  if (language !== "es" || region === "plain") return "";
-  const item = REGIONS[normalizeRegion(region)];
-  return `${item.slang} Mantén esta misma región en cada turno. No vuelvas al español neutro ni cambies de país.`;
+  // A region selection should never force stock expressions into character dialogue.
+  return "";
 }
 
 const ACCENT = {
@@ -40,5 +39,7 @@ export function accentHint(language, region) {
   if (language === "en") return "Speak American English. Keep this same voice on every line.";
   if (region === "plain") return "Habla en español con la voz natural de esta persona. No imites el acento de un país ni uses jerga regional.";
   const id = normalizeRegion(region);
-  return `Habla en español con ${ACCENT[id]}. Mantén exactamente ese acento en toda la frase. No uses español neutro de Estados Unidos ni cambies de país.`;
+  return id === "es"
+    ? "Habla en español natural de España, con la voz estable de esta persona. No fuerces modismos."
+    : "Habla en español latinoamericano natural, con la voz estable de esta persona. No fuerces modismos ni caricaturices un acento.";
 }

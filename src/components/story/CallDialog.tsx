@@ -105,7 +105,7 @@ export const CallDialog = ({
     }
   };
 
-  const askCharacter = async (userText: string) => {
+  const askCharacter = async (userText: string, priorHistory: Turn[]) => {
     const { data, error } = await invokeFunctionWithRetry<{ content?: string; error?: string; message?: string }>("story-chat", {
         story: {
           title: story?.title,
@@ -115,7 +115,7 @@ export const CallDialog = ({
           story_type: story?.story_type,
         },
         language,
-        history: historyRef.current.slice(-48),
+        history: priorHistory.slice(-48),
         userMessage: userText,
         adultMode,
         region,
@@ -133,6 +133,16 @@ export const CallDialog = ({
       return { content: "", error: data?.error, message: data?.message };
     }
     return { content: data.content, error: undefined, message: undefined };
+  };
+
+  const recoverTurn = () => {
+    if (!activeRef.current) return;
+    toast({
+      title: es ? "Se interrumpió la llamada" : "The call was interrupted",
+      description: es ? "La llamada sigue abierta. Vuelve a hablar." : "The call remains open. Speak again.",
+      variant: "destructive",
+    });
+    void listen();
   };
 
   const listen = async () => {
@@ -159,14 +169,14 @@ export const CallDialog = ({
         }
         if (heardVoice && silentFor >= SILENCE_MS) {
           window.clearInterval(meter);
-          void finishTurn();
+          void finishTurn().catch(recoverTurn);
         }
       }, 150);
       timersRef.current.push(meter);
 
       const maxTimer = window.setTimeout(() => {
         window.clearInterval(meter);
-        void finishTurn();
+        void finishTurn().catch(recoverTurn);
       }, MAX_TURN_MS);
       timersRef.current.push(maxTimer);
     } catch {
@@ -215,12 +225,13 @@ export const CallDialog = ({
       return;
     }
 
+    const priorHistory = historyRef.current.slice();
     onTurn(userText, null);
-    const replyResult = await askCharacter(userText);
+    const replyResult = await askCharacter(userText, priorHistory);
     const reply = replyResult.content;
     if (!activeRef.current) return;
     if (!reply) {
-      historyRef.current = [...historyRef.current, { role: "user", content: userText }];
+      historyRef.current = [...priorHistory, { role: "user", content: userText }];
       toast({
         title: replyResult.error === "credits_exhausted"
           ? (es ? "Se agotaron los creditos de IA" : "AI credits are exhausted")
@@ -238,7 +249,7 @@ export const CallDialog = ({
     }
 
     historyRef.current = [
-      ...historyRef.current,
+      ...priorHistory,
       { role: "user", content: userText },
       { role: "assistant", content: reply },
     ];

@@ -38,12 +38,12 @@ export const browserSpeechLocale = (language?: string | null, region?: string | 
 const keyFor = (storyId: string) => `insomnia.region.${storyId}`;
 const accentKeyFor = (storyId: string) => `insomnia.accent.${storyId}`;
 
-/** Regional accent stays on until the listener turns it off for that story. */
+/** A regional voice is opt-in; existing explicit selections remain saved. */
 export const getStoryAccent = (storyId?: string) => {
-  if (typeof window === "undefined") return true;
+  if (typeof window === "undefined") return false;
   const stored = storyId ? window.localStorage.getItem(accentKeyFor(storyId)) : null;
   const value = stored ?? window.localStorage.getItem("insomnia.accent");
-  return value !== "0";
+  return value === "1";
 };
 
 export const setStoryAccent = (storyId: string | undefined, enabled: boolean) => {

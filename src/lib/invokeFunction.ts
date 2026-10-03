@@ -14,8 +14,17 @@ type ChatReply = { status?: string; jobId?: string; content?: string; error?: st
 type PendingChat = { jobId: string; signature: string; createdAt: number };
 
 async function chatSignature(body: unknown): Promise<string> {
-  const input = body as { story?: { title?: string }; userMessage?: string };
-  const data = new TextEncoder().encode(JSON.stringify([input.story?.title, input.userMessage]));
+  const input = body as {
+    story?: { title?: string; character_role?: string; player_role?: string };
+    userMessage?: string;
+    history?: { role: string; content: string }[];
+  };
+  const prior = (input.history || []).slice();
+  if (prior.at(-1)?.role === "user" && prior.at(-1)?.content === input.userMessage) prior.pop();
+  const data = new TextEncoder().encode(JSON.stringify([
+    input.story?.title, input.story?.character_role, input.story?.player_role,
+    prior.slice(-8), input.userMessage,
+  ]));
   const digest = await crypto.subtle.digest("SHA-256", data);
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }

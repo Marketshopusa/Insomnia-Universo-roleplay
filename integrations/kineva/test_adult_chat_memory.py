@@ -80,6 +80,18 @@ class StoryMemoryTest(unittest.TestCase):
         self.assertEqual(roles[-1], "user")
         self.assertTrue(all(left != right for left, right in zip(roles[1:], roles[2:])))
 
+    def test_character_introduction_stays_in_context_with_valid_turn_order(self):
+        current = job([
+            {"role": "assistant", "content": "*Me aferro a la manta* La tormenta me asusta."},
+        ], "¿Qué haces aquí? Preciosa, estás asustadita.")
+        current["story"]["character_role"] = "Stefany"
+        current["story"]["player_role"] = "Daniel"
+        messages = conversation_messages(current)
+        self.assertEqual([turn["role"] for turn in messages], ["system", "user"])
+        self.assertIn("La tormenta me asusta", messages[0]["content"])
+        self.assertIn("'estás' se dirige a Stefany", messages[0]["content"])
+        self.assertEqual(messages[1]["content"], current["userMessage"])
+
     def test_stable_posture_can_be_reused_with_fresh_dialogue(self):
         previous = "*Me siento junto a la puerta* Estoy preocupada por el ruido."
         current = "*Me siento junto a la puerta* Ahora escucho pasos afuera."

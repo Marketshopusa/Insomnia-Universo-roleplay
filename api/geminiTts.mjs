@@ -33,9 +33,9 @@ export function previewVoice(preset) {
   return aliases[preset] || "Aoede";
 }
 
-export function cloudGeminiVoiceFor(preset, language) {
+export function cloudGeminiVoiceFor(preset, language, region = "plain") {
   return {
-    languageCode: language === "en" ? "en-US" : "es-ES",
+    languageCode: language === "en" ? "en-US" : region === "es" ? "es-ES" : region === "mx" ? "es-MX" : "es-419",
     name: previewVoice(preset),
     modelName: MODEL,
     model_name: MODEL,
@@ -209,7 +209,7 @@ const BLOCK_NONE = 4;
 const HARM = { hate: 1, dangerous: 2, harassment: 3, sexual: 4 };
 
 export function geminiStreamPlan(text, preset, language, performance = "neutral", region = "mx") {
-  const voice = cloudGeminiVoiceFor(preset, language);
+  const voice = cloudGeminiVoiceFor(preset, language, region);
   return {
     streamingConfig: {
       voice: { languageCode: voice.languageCode, name: voice.name, modelName: voice.modelName },
@@ -227,7 +227,7 @@ export function geminiStreamPlan(text, preset, language, performance = "neutral"
 }
 
 export function geminiStreamBody(text, preset, language, performance = "neutral", region = "mx") {
-  const voice = cloudGeminiVoiceFor(preset, language);
+  const voice = cloudGeminiVoiceFor(preset, language, region);
   const prompt = geminiSpeechDirection(language, performance, region);
   return {
     contents: {
@@ -394,7 +394,7 @@ export async function synthesizeGemini(text, preset, language, { performance = "
   const speaker = previewVoice(preset);
   const attempt = async () => {
     let failure = { status: 502, detail: "" };
-    for (const languageCode of [cloudGeminiVoiceFor(preset, language).languageCode]) {
+    for (const languageCode of [cloudGeminiVoiceFor(preset, language, region).languageCode]) {
       for (const relaxSafety of [true, false]) {
         const response = await request({
           languageCode,

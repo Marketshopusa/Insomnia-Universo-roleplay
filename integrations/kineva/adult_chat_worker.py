@@ -74,10 +74,8 @@ REGION_SLANG = {
 }
 
 def slang_clause(job):
-    if job.get("language") != "es" or job.get("region") == "plain":
-        return ""
-    region = str(job.get("region") or "mx")
-    return " " + REGION_SLANG.get(region, REGION_SLANG["mx"]) + " Mantén esta misma región en cada turno. No vuelvas al español neutro ni cambies de país."
+    # Let the character and story determine diction; forced country slang became a caricature.
+    return ""
 
 def clip_text(text, limit):
     text = " ".join(str(text).split())
@@ -131,15 +129,25 @@ def conversation_messages(job):
     premise = clip_text(story.get("description") or "", 700)
     turns = clean_turns((job.get("history") or [])[-48:], latest)
     chronicle, recent = memory_transcript(turns, player, character)
+    # Magnum's chat template requires the first turn after system to be USER.
+    # A saved session can begin with the character's introduction; preserve it as scene context.
+    opening = ""
+    if recent and recent[0]["role"] == "assistant":
+        opening = "Última intervención previa de " + character + ": " + clip_text(recent[0]["content"], 350) + "\n"
+        recent = recent[1:]
     instruction = (
         "Eres " + character + " en una historia interactiva con " + player + ". "
         "Identidad y relaciones persistentes: " + premise + ". "
         + (chronicle + "\n" if chronicle else "")
+        + opening
         + "Los turnos recientes son la escena ACTUAL en orden; el último mensaje del jugador tiene prioridad. "
         "Continúa desde la última acción, con el mismo lugar, personas y objetos salvo que el jugador haya cambiado la escena. "
         "Los hechos de la premisa y del comienzo son antecedentes, no acciones que debas repetir. "
         "No cambies quién dijo, envió, sintió o hizo algo. No inventes sentimientos del jugador. "
-        "En mensajes USER, 'yo' es " + player + " y 'tú' eres " + character + "; en mensajes ASSISTANT, 'yo' eres tú. "
+        "IDENTIDAD: debes hablar y actuar exclusivamente como " + character + ". El jugador es " + player + ". "
+        "Cuando USER dice 'yo' habla de " + player + "; cuando USER dice 'tú', 'te' o 'estás' se dirige a " + character + ". "
+        "Cuando ASSISTANT dice 'yo', habla de " + character + "; cuando ASSISTANT dice 'tú' se dirige a " + player + ". "
+        "No describas una acción del jugador como si fuera tuya ni llames al personaje por su propio nombre como si fuera el jugador. "
         "Si el jugador admite su error o pide perdón, eres quien recibe esa disculpa; no asumas su culpa. "
         "Tu emoción debe responder a lo que acaba de suceder y evolucionar cuando cambian los hechos. "
         "Habla al jugador en primera persona; no pases a tercera persona para referirte a ti. "
@@ -199,9 +207,9 @@ def reply_for(job):
                      if turn.get("role") == "assistant"), "")
     messages = conversation_messages(job)
     parsed = ""
-    for attempt in range(3):
+    for attempt in range(2):
         try:
-            raw_reply = model_chat(messages, 0.45 + attempt * 0.05, 480, json_mode=True)
+            raw_reply = model_chat(messages, 0.4 + attempt * 0.05, 320, json_mode=True)
             parsed = parse_role_reply(raw_reply)
         except Exception as error:
             print("Chat attempt failed", job.get("jobId", "local"), attempt, repr(error)[:180], flush=True)
