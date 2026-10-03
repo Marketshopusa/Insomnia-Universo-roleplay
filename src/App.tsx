@@ -15,6 +15,7 @@ import { AdultModeProvider } from "@/contexts/AdultModeContext";
  import Plans from "./pages/Plans";
  import StoryDetail from "./pages/StoryDetail";
 import Shorts from "./pages/Shorts";
+import ShortNovel from "./pages/ShortNovel";
 import ShortSeries from "./pages/ShortSeries";
  
  const queryClient = new QueryClient();
@@ -38,6 +39,7 @@ import ShortSeries from "./pages/ShortSeries";
                <Route path="/my-stories" element={<MyStories />} />
                <Route path="/plans" element={<Plans />} />
                <Route path="/shorts" element={<Shorts />} />
+               <Route path="/shorts/novel/:projectId" element={<ShortNovel />} />
                <Route path="/shorts/:seriesId" element={<ShortSeries />} />
                {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                <Route path="*" element={<NotFound />} />

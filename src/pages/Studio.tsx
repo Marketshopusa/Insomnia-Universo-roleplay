@@ -15,7 +15,7 @@ import {
   type LocalProbe,
   type LocalStudioStatus,
 } from "@/lib/kinevaLocal";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Clapperboard, Loader2, Sparkles } from "lucide-react";
 
  import { MainLayout } from "@/components/layout/MainLayout";
@@ -83,7 +83,6 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
   const [isSafeForWork, setIsSafeForWork] = useState(false);
   const [language, setLanguage] = useState("Spanish");
   const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
-  const [shelf, setShelf] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [generatingVideos, setGeneratingVideos] = useState(false);
   const [videoProgress, setVideoProgress] = useState("");
@@ -98,6 +97,17 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
     { value: "creative", label: t("studio.creativity.creative") },
     { value: "wild", label: t("studio.creativity.wild") },
   ];
+
+  const loadedFromUrl = useRef(false);
+  useEffect(() => {
+    if (loadedFromUrl.current || !projects?.length) return;
+    const id = new URLSearchParams(window.location.search).get("project");
+    if (!id) return;
+    const project = projects.find((item) => item.id === id);
+    if (!project) return;
+    loadedFromUrl.current = true;
+    handleLoadProject(project);
+  }, [projects]);
 
   useEffect(() => {
     let cancelled = false;
@@ -420,7 +430,6 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
      setIsSafeForWork(project.is_safe_for_work);
      const restored = novelFromProject(project);
      setNovel(restored.chapters.length ? restored : null);
-     setShelf(false);
      toast({
        title: restored.chapters.length ? t("studio.toast.loaded") : "Este proyecto no guardó los capítulos",
        description: restored.chapters.length
@@ -472,47 +481,7 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
        <div className="container mx-auto px-4 py-8 max-w-6xl">
         <h1 className="text-3xl font-display text-center mb-2">{t("studio.title")}</h1>
         <p role="status" className={`mb-6 text-center text-sm ${localHealth === "ready" ? "text-emerald-600" : "text-amber-600"}`}>{localStatusText}</p>
-
-        {shelf ? (
-        <section>
-          <div className="mb-4 flex items-end justify-between gap-3">
-            <div>
-              <h2 className="font-display text-2xl">Tus novelas</h2>
-              <p className="text-xs text-muted-foreground">Cada novela es una portada. Entra para ver los capítulos.</p>
-            </div>
-            <Button className="rounded-none" onClick={() => { setNovel(null); setCurrentProjectId(null); setShelf(false); }}>
-              <Sparkles className="mr-2 h-4 w-4" /> Nueva novela
-            </Button>
-          </div>
-          {projectsLoading ? (
-            <p className="text-sm text-muted-foreground">Cargando proyectos…</p>
-          ) : !projects?.length ? (
-            <p className="text-sm text-muted-foreground">Todavía no hay novelas guardadas. Crea una y los capítulos quedan dentro de su portada.</p>
-          ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-              {projects.map((project, index) => (
-                <button
-                  key={project.id}
-                  type="button"
-                  onClick={() => handleLoadProject(project)}
-                  className="overflow-hidden border border-border/60 bg-card text-left transition-all hover:-translate-y-1 hover:border-primary/60"
-                >
-                  <div className="relative flex aspect-[4/5] items-end bg-gradient-to-br from-primary/30 via-background to-accent/20 p-4">
-                    <p className="font-display text-xl leading-tight">{project.title}</p>
-                    <span className="absolute bottom-0 right-0 border-l border-t border-border/60 bg-background/80 px-2 py-1 font-display text-xs italic text-accent">N°{String(index + 1).padStart(2, "0")}</span>
-                  </div>
-                  <div className="space-y-1 p-3">
-                    <p className="text-[11px] uppercase tracking-[0.16em] text-accent">{project.chapter_count} capítulos</p>
-                    {!project.content && <p className="text-xs text-amber-500">Falta el texto de los capítulos.</p>}
-                  </div>
-                </button>
-              ))}
-            </div>
-          )}
-        </section>
-        ) : (
-        <>
-        <button type="button" onClick={() => setShelf(true)} className="mb-6 text-xs uppercase tracking-[0.2em] text-accent">Volver a las novelas</button>
+        <p className="mb-6 text-center text-sm text-muted-foreground">Aquí se escribe la novela. Las portadas quedan en Shorts.</p>
 
          <Card className="p-6 mb-6 space-y-2">
            <Label>Motor de video</Label>
@@ -817,8 +786,6 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
           <Button variant="outline">{t("studio.uploadProject")}</Button>
           <Button variant="outline" onClick={handleReset}>{t("studio.reset")}</Button>
          </div>
-        </>
-        )}
        </div>
      </MainLayout>
    );

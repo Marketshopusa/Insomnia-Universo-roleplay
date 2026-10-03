@@ -21,6 +21,7 @@ import { toast } from "sonner";
 import { useAdultMode } from "@/contexts/AdultModeContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { useShorts } from "@/hooks/useShorts";
+import { useNovelProjects } from "@/hooks/useNovelProjects";
 import { uploadKinevaReference } from "@/lib/kinevaReference";
 import { SeriesCover } from "@/components/shorts/SeriesCover";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -35,6 +36,7 @@ const Shorts = () => {
   const { enabled: adultEnabled } = useAdultMode();
   const { user } = useAuth();
   const { series, loading, reload } = useShorts(adultEnabled);
+  const { data: novels, isLoading: novelsLoading } = useNovelProjects();
   const [open, setOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [premise, setPremise] = useState("");
@@ -78,7 +80,7 @@ const Shorts = () => {
             <p className="text-[11px] uppercase tracking-[0.3em] text-accent">Insomnia Shorts</p>
             <h1 className="font-display text-3xl md:text-4xl mt-1">Series</h1>
             <p className="text-sm text-muted-foreground mt-2 max-w-xl">
-              Cada serie tiene su portada. Entra para ver los capítulos en orden.
+              Cada historia tiene su portada. Entra para ver los capítulos en orden.
               {!adultEnabled && " Las series 18+ aparecen al activar ese modo."}
             </p>
           </div>
@@ -147,11 +149,11 @@ const Shorts = () => {
       </div>
 
       <div className="container mx-auto px-4 py-8">
-        {loading ? (
+        {loading || novelsLoading ? (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
             {Array.from({ length: 5 }).map((_, index) => <Skeleton key={index} className="aspect-[4/5] rounded-none" />)}
           </div>
-        ) : series.length === 0 ? (
+        ) : series.length === 0 && !novels?.length ? (
           <div className="h-[50vh] flex flex-col items-center justify-center text-center gap-3 px-4">
             <p className="font-display text-2xl">Aún no hay series</p>
             <p className="text-sm text-muted-foreground max-w-sm">
@@ -160,6 +162,22 @@ const Shorts = () => {
           </div>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+            {(novels ?? []).map((project, index) => (
+              <Link key={project.id} to={`/shorts/novel/${project.id}`} className="group relative overflow-hidden border border-border/60 bg-card/60 transition-all duration-300 hover:-translate-y-1 hover:border-primary/60">
+                <div className="relative flex aspect-[4/5] items-end overflow-hidden bg-gradient-to-br from-primary/30 via-background to-accent/20 p-4">
+                  <p className="font-display text-xl leading-tight">{project.title}</p>
+                  <div className="absolute bottom-0 right-0 border-l border-t border-border/60 bg-background/80 px-2.5 py-1">
+                    <span className="font-display text-xs italic text-accent">N°{String(index + 1).padStart(2, "0")}</span>
+                  </div>
+                </div>
+                <div className="space-y-1 p-3">
+                  <h2 className="font-display text-base leading-tight line-clamp-2 group-hover:text-primary">{project.title}</h2>
+                  <p className="text-[11px] text-muted-foreground">
+                    {project.chapter_count} capítulos{project.content ? "" : " · falta el texto"}
+                  </p>
+                </div>
+              </Link>
+            ))}
             {series.map((item, index) => {
               const status = seriesStatus(item.episodes);
               return (
@@ -168,7 +186,7 @@ const Shorts = () => {
                     <SeriesCover series={item} className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-110" />
                     <div className="absolute inset-0 bg-gradient-to-t from-background via-background/20 to-transparent" />
                     <div className="absolute bottom-0 right-0 border-l border-t border-border/60 bg-background/80 px-2.5 py-1">
-                      <span className="font-display text-xs italic text-accent">N°{String(index + 1).padStart(2, "0")}</span>
+                      <span className="font-display text-xs italic text-accent">N°{String((novels?.length ?? 0) + index + 1).padStart(2, "0")}</span>
                     </div>
                     {item.is_adult && (
                       <span className="absolute top-2 left-2 text-[10px] px-2 py-1 bg-destructive/80 text-destructive-foreground">18+</span>
