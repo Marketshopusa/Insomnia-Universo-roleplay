@@ -193,6 +193,8 @@ export function geminiSpeechDirection(language, performance, region) {
   const spanish = language !== "en";
   const mood = {
     neutral: spanish ? "Voz natural acorde con la escena." : "Natural voice suited to the scene.",
+    warm: spanish ? "La sonrisa se percibe sutilmente en el tono, sin reír ni añadir sonidos." : "Let a slight smile color the voice, without laughing or adding sounds.",
+    surprised: spanish ? "Deja oír una sorpresa natural en el diálogo, sin añadir interjecciones." : "Let natural surprise color the dialogue without adding interjections.",
     amused: spanish ? "Ríe solo en el punto marcado." : "Laugh only at the marked point.",
     sad: spanish ? "Voz quebrada por el llanto, sin añadir palabras." : "Voice trembling with tears, without added words.",
     pain: spanish ? "El sonido marcado expresa dolor." : "The marked sound expresses pain.",

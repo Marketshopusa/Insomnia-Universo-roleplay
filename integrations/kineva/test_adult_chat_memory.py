@@ -1,6 +1,6 @@
 import unittest
 
-from adult_chat_worker import conversation_messages, too_similar
+from adult_chat_worker import conversation_messages, parse_role_reply, repeated_opening, too_similar
 
 
 def job(history, user_message):
@@ -91,6 +91,22 @@ class StoryMemoryTest(unittest.TestCase):
         self.assertIn("La tormenta me asusta", messages[0]["content"])
         self.assertIn("'estás' se dirige a Stefany", messages[0]["content"])
         self.assertEqual(messages[1]["content"], current["userMessage"])
+
+    def test_character_narrates_her_own_action(self):
+        with self.assertRaisesRegex(ValueError, "third person"):
+            parse_role_reply('{"gesto":"Estefani entra corriendo a la habitación", "dialogo":"Me asusté."}', "Estefani")
+        with self.assertRaisesRegex(ValueError, "third person"):
+            parse_role_reply('{"gesto":"Ella se queda mirando la puerta", "dialogo":"No sé quién llegó."}', "Estefani")
+        self.assertEqual(parse_role_reply(
+            '{"gesto":"Me quedo mirando la puerta, sorprendida", "dialogo":"No esperaba verte."}', "Estefani"),
+            "*Me quedo mirando la puerta, sorprendida* No esperaba verte.")
+
+    def test_recycled_dialogue_opening_is_detected_even_with_new_ending(self):
+        history = [{"role": "assistant", "content": "*Bajo la mirada* Ay, no puedo creer que me hayas dejado hacer esto. Volvamos a casa."}]
+        self.assertTrue(repeated_opening(
+            "*Sonrío* Ay, no puedo creer que me hayas dejado hacer esto. Ahora veo la ventana.", history))
+        self.assertFalse(repeated_opening(
+            "*Miro hacia arriba* La ventana acaba de abrirse con el viento. ¿Lo oíste?", history))
 
     def test_stable_posture_can_be_reused_with_fresh_dialogue(self):
         previous = "*Me siento junto a la puerta* Estoy preocupada por el ruido."

@@ -75,7 +75,11 @@ it("does not play a mismatched device voice when neural TTS has no quota", async
 
 it("keeps narration, reactions and dialogue in scene order without reading instructions", () => {
   expect(roleplaySpeechText("*Sonrío* Hola.")).toBe("Sonrío. Hola.");
-  expect(roleplayPerformance("*Sonrío* Hola.")).toBe("neutral");
+  expect(roleplayPerformance("*Sonrío* Hola.")).toBe("warm");
+  expect(roleplaySpeechText("*Me quedo sorprendida al verlo* No te esperaba."))
+    .toBe("Me quedo sorprendida al verlo. No te esperaba.");
+  expect(roleplayPerformance("*Me quedo sorprendida al verlo* No te esperaba.")).toBe("surprised");
+  expect(roleplayPerformance("*Río* No me lo esperaba.")).toBe("amused");
   expect(roleplaySpeechText("*Me siento ofendida y molesta* No esperaba eso."))
     .toBe("Me siento ofendida y molesta. No esperaba eso.");
   expect(roleplaySpeechText("*Ella abrió la puerta y gritó* ¡Ay, me golpeé!"))

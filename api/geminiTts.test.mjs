@@ -45,6 +45,11 @@ test("Gemini 2.5 Flash TTS speaks Aoede with the story accent", async () => {
   else process.env.GOOGLE_CLOUD_TTS_SERVICE_ACCOUNT_JSON = previousAccount;
 });
 
+test("a smile and a surprise color the delivery without inserting laughter", () => {
+  assert.match(geminiSpeechDirection("es", "warm", "plain"), /sonrisa.*sin reír/);
+  assert.match(geminiSpeechDirection("es", "surprised", "plain"), /sorpresa natural/);
+});
+
 test("a plain region keeps Gemini's own Spanish voice", () => {
   const prompt = geminiSpeechDirection("es", "neutral", "plain");
   assert.match(prompt, /voz natural/);

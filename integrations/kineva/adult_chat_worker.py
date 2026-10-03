@@ -34,8 +34,8 @@ def repeated_reply(content, history):
 
 def model_chat(messages, temperature, max_tokens, json_mode=False):
     payload = {"model": "magnum-v4-12b", "messages": messages, "max_tokens": max_tokens,
-               "temperature": temperature, "repeat_penalty": 1.08,
-               "presence_penalty": 0.1, "frequency_penalty": 0.1,
+               "temperature": temperature, "repeat_penalty": 1.13,
+               "presence_penalty": 0.2, "frequency_penalty": 0.2,
                "chat_template_kwargs": {"enable_thinking": False}}
     if json_mode:
         payload["response_format"] = {"type": "json_object"}
@@ -47,7 +47,7 @@ def model_chat(messages, temperature, max_tokens, json_mode=False):
     content = str(result["choices"][0]["message"].get("content") or "").strip()
     return re.sub(r"(?s)<think>.*?</think>", "", content).strip()
 
-def parse_role_reply(raw_reply):
+def parse_role_reply(raw_reply, character=""):
     parsed = json.loads(raw_reply)
     gesture = str(parsed.get("gesto") or "").strip().strip("*")
     dialogue = str(parsed.get("dialogo") or "").strip()
@@ -63,6 +63,12 @@ def parse_role_reply(raw_reply):
             dialogue = dialogue[:boundaries[-1]].strip()
     if not gesture or not dialogue or len(gesture) > 100 or len(dialogue) > 420:
         raise ValueError("Incomplete or overlong gesture/dialogue")
+    name = re.match(r"^[A-ZÁÉÍÓÚÑ][a-záéíóúñ]{2,}", character)
+    third_person = r"^(?:ella|él|se (?:queda|sienta|acerca|levanta|pone)|la mujer|el hombre)\b"
+    if name:
+        third_person = r"^(?:" + re.escape(name.group()) + r"|ella|él|se (?:queda|sienta|acerca|levanta|pone)|la mujer|el hombre)\b"
+    if re.search(third_person, gesture, re.I):
+        raise ValueError("Character action narrated in third person")
     return "*" + gesture + "* " + dialogue
 
 REGION_SLANG = {
@@ -153,8 +159,10 @@ def conversation_messages(job):
         "Tu emoción debe responder a lo que acaba de suceder y evolucionar cuando cambian los hechos. "
         "Habla al jugador en primera persona; no pases a tercera persona para referirte a ti. "
         "Escribe SOLO JSON con 'gesto' y 'dialogo'. "
-        "'gesto': narración breve de tu acción, postura o sensación presente, sin órdenes de producción. "
+        "'gesto': narras TU propia acción o sensación en primera persona ('Me sorprendo', 'Sonrío', 'Entro'); nunca escribas '" + character + " dijo', 'ella' o tu nombre como sujeto. "
         "'dialogo': lo que dices en voz alta al jugador, de una a tres frases; responde directamente al mensaje actual. "
+        "Varía la manera de empezar y de expresar emociones; no repitas frases ni disculpas de respuestas anteriores. "
+        "Si sonríes, ríes, te sorprendes o lloras por algo que ocurre ahora, muéstralo en gesto y deja que el diálogo suene acorde, sin añadir emociones ajenas a la escena. "
         "Si ocurre una reacción audible tuya (grito, llanto, risa, gemido), descríbela en 'gesto' justo antes del diálogo que la acompaña. "
         "No enumeres sonidos, no expliques reglas internas, no reescribas el turno anterior. "
         + ("Solo español." if spanish else "English only.")
@@ -200,6 +208,24 @@ def too_similar(content, previous):
         current == prior or (len(current) >= 50 and SequenceMatcher(None, current, prior).ratio() >= 0.82)
     ))
 
+def repeated_opening(content, history):
+    """Catch a recycled dialogue lead even when the rest of the answer is new."""
+    def words(value):
+        spoken = re.sub(r"^\*[^*]+\*\s*", "", str(value or ""))
+        return normalize_reply(spoken).split()
+
+    current = words(content)
+    if len(current) < 7:
+        return False
+    for turn in history[-24:]:
+        if turn.get("role") != "assistant":
+            continue
+        older = words(turn.get("content"))
+        if len(older) >= 7 and current[:7] == older[:7]:
+            return True
+    return False
+
+
 def free_gpu_for_chat():
     """Unload completed ComfyUI work if retained models are starving Magnum."""
     try:
@@ -221,21 +247,23 @@ def reply_for(job):
     previous = next((str(turn.get("content") or "") for turn in reversed(raw)
                      if turn.get("role") == "assistant"), "")
     messages = conversation_messages(job)
+    messages[0]["content"] += " No reutilices el comienzo de ninguna de tus seis respuestas anteriores."
+    character = str((job.get("story") or {}).get("character_role") or "")
     parsed = ""
     for attempt in range(2):
         try:
-            raw_reply = model_chat(messages, 0.4 + attempt * 0.05, 320, json_mode=True)
-            parsed = parse_role_reply(raw_reply)
+            raw_reply = model_chat(messages, 0.64 + attempt * 0.08, 320, json_mode=True)
+            parsed = parse_role_reply(raw_reply, character)
         except Exception as error:
             print("Chat attempt failed", job.get("jobId", "local"), attempt, repr(error)[:180], flush=True)
             parsed = ""
-        if parsed and not too_similar(parsed, previous) and normalize_reply(parsed) != normalize_reply(latest):
+        if parsed and not too_similar(parsed, previous) and not repeated_opening(parsed, raw) and normalize_reply(parsed) != normalize_reply(latest):
             print("Chat generation timing", job.get("jobId", "local"),
                   "total", round(time.monotonic() - started, 2),
                   "retry", attempt, flush=True)
             return parsed
         messages[0]["content"] += (
-            " La respuesta anterior repitió un hecho o una frase; avanza desde el último mensaje sin cambiar actores."
+            " La respuesta anterior repitió un hecho o una frase, o narró tu acción en tercera persona. Empieza de otro modo y habla como el personaje en primera persona."
         )
     raise RuntimeError("Local response repeated the previous turn")
 

@@ -64,7 +64,7 @@ export default async function handler(req, res) {
   const plainText = removePerformanceCues(text);
   if (!plainText) return res.status(400).json({ error: "missing_text" });
   const region = typeof req.body.region === "string" ? req.body.region : "mx";
-  const performance = ["neutral", "amused", "sad", "pain", "pleasure", "scream", "soft"].includes(req.body.performance)
+  const performance = ["neutral", "warm", "surprised", "amused", "sad", "pain", "pleasure", "scream", "soft"].includes(req.body.performance)
     ? req.body.performance : "neutral";
   const provider = "gemini-2.5-flash-tts";
   let opened = false;

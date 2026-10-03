@@ -18,7 +18,7 @@ export interface SpeechStream {
 const wait = (milliseconds: number) =>
   new Promise((resolve) => window.setTimeout(resolve, milliseconds));
 
-type Performance = "neutral" | "amused" | "sad" | "pain" | "pleasure" | "scream" | "soft";
+type Performance = "neutral" | "warm" | "surprised" | "amused" | "sad" | "pain" | "pleasure" | "scream" | "soft";
 
 async function requestSpeech(text: string, voice: string, language: string, region: string, performance: Performance, roleplay: boolean, signal: AbortSignal) {
   const { data: { session } } = await supabase.auth.getSession();
@@ -46,7 +46,11 @@ function eventFor(action: string): VocalEvent | null {
     return { tag: "[sigh]", performance: "sad" };
   if (/(?<![\p{L}\p{N}])(?:r[ií][oó]|re[ií]mos|re[ií]r|risas?)(?![\p{L}\p{N}])|carcajad|laugh/iu.test(value))
     return { tag: "[laughing]", performance: "amused" };
-  if (/(?:suspiro|suspiro|susurr|sigh|whisper)/i.test(value))
+  if (/(?:sorprend|sobresalt|asombr|surpris|startl)/i.test(value))
+    return { tag: "", performance: "surprised" };
+  if (/(?:sonr[ií]|sonris|smil)/i.test(value))
+    return { tag: "", performance: "warm" };
+  if (/(?:suspiro|susurr|sigh|whisper)/i.test(value))
     return { tag: "[sigh]", performance: "soft" };
   return null;
 }
