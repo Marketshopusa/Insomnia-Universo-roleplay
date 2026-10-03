@@ -33,8 +33,8 @@ def repeated_reply(content, history):
 
 def model_chat(messages, temperature, max_tokens, json_mode=False):
     payload = {"model": "magnum-v4-12b", "messages": messages, "max_tokens": max_tokens,
-               "temperature": temperature, "repeat_penalty": 1.18,
-               "presence_penalty": 0.6, "frequency_penalty": 0.4,
+               "temperature": temperature, "repeat_penalty": 1.08,
+               "presence_penalty": 0.1, "frequency_penalty": 0.1,
                "chat_template_kwargs": {"enable_thinking": False}}
     if json_mode:
         payload["response_format"] = {"type": "json_object"}
@@ -49,8 +49,6 @@ def model_chat(messages, temperature, max_tokens, json_mode=False):
 def parse_role_reply(raw_reply):
     parsed = json.loads(raw_reply)
     gesture = str(parsed.get("gesto") or "").strip().strip("*")
-    if not gesture:
-        gesture = "Respiro hondo"
     dialogue = str(parsed.get("dialogo") or "").strip()
     if len(gesture) > 100:
         cuts = [m.end() for m in re.finditer(r"[,.;](?=\s|$)", gesture[:100])
@@ -105,108 +103,67 @@ def clean_turns(raw, latest):
     return turns[-48:]
 
 def memory_transcript(turns, player, character):
-    """Recent beats in order. The local model only has 4096 tokens."""
-    recent_count = min(8, len(turns))
-    older, recent = turns[:-recent_count], turns[-recent_count:]
+    """Retain the original facts and the last completed beats in chronological order."""
+    recent = turns[-10:]
+    older = turns[:-10]
     if not older:
-        if recent and recent[0]["role"] == "assistant":
-            return character + ": " + clip_text(recent[0]["content"], 250), recent[1:]
         return "", recent
 
     def line(turn, limit):
         who = character if turn["role"] == "assistant" else player
         return who + ": " + clip_text(turn["content"], limit)
 
-    closed = [line(turn, 120) for turn in older[:2]]
-    chosen = []
-    budget = 1000
-    for turn in reversed(older[2:]):
-        item = line(turn, 140)
-        if budget < len(item) + 1:
-            break
-        budget -= len(item) + 1
-        chosen.append(item)
-    chosen.reverse()
-    chronicle = "Hechos ya cerrados. Siguen siendo ciertos y de quien los hizo. No los actúes otra vez: " + " | ".join(closed)
-    if chosen:
-        chronicle += "\nDespués, en orden:\n" + "\n".join(chosen)
-    if recent and recent[0]["role"] == "assistant":
-        chronicle += "\n" + line(recent[0], 250)
-        recent = recent[1:]
+    opening = [line(turn, 130) for turn in older[:2]]
+    middle = [line(turn, 125) for turn in older[-8:] if turn not in older[:2]]
+    chronicle = "Hechos del comienzo (pasado, no lugar actual): " + " | ".join(opening)
+    if middle:
+        chronicle += "\nDespués sucedió: " + " | ".join(middle)
     return chronicle, recent
 
+
 def conversation_messages(job):
-    """Every turn carries the story so far. A long user line must not wipe it."""
+    """Give Magnum stable identity, closed history and real speaker turns."""
     story = job.get("story") or {}
     spanish = job.get("language") == "es"
     character = clip_text(story.get("character_role") or "personaje presente", 400)
     player = clip_text(story.get("player_role") or "protagonista", 220)
-    latest = clip_text(job.get("userMessage") or "", 700)
+    latest = clip_text(job.get("userMessage") or "", 1000)
     premise = clip_text(story.get("description") or "", 700)
     turns = clean_turns((job.get("history") or [])[-48:], latest)
     chronicle, recent = memory_transcript(turns, player, character)
-    memory = (
-        "Memoria vigente, en orden. Esto ya ocurrió y sigue siendo cierto:\n" + chronicle
-        if chronicle else
-        "Conserva lugar, personas, relaciones y hechos de los turnos recientes. No empieces de cero."
-    )
     instruction = (
-        ("Orden fija para todo chat, nuevo o ya empezado: eres " + character + ", con identidad propia y memoria de lo que pasó. "
-         "Sigue el rumbo. No reinicies la historia, no cambies los hechos ni quién hizo cada cosa, y no disocies la conversación. "
-         "Habla con fluidez y con palabras nuevas. No repitas las mismas frases de un mensaje a otro. "
-         if spanish else
-         "Standing order for every chat, new or already underway: you are " + character + ", with your own identity and a memory of what happened. "
-         "Follow the course. Do not restart the story, do not change who did each thing, and do not break the conversation. "
-         "Speak fluently, with new wording. Do not repeat the same phrases from one message to the next. ")
-        + "Interpreta SOLO a " + character + " en un chat de rol con " + player + ". "
-        "Premisa de fondo, solo si no contradice la memoria: " + premise + ". "
-        + memory + " "
-        "El mensaje nuevo continúa esta misma escena, pero es una réplica nueva. "
-        "La memoria va en orden. No regreses al inicio ni mezcles una escena vieja con la actual. "
-        "No reinicies la historia y no respondas como si lo anterior no hubiera pasado. "
-        "Habla como " + character + " en una conversación real con " + player + ": su forma de querer, su humor, su vergüenza o su carácter. "
-        "Que se sienta una persona, no una ficha ni un contestador. "
-        "Quédate en el mismo lugar, la misma postura y la misma acción. "
-        "Si estabas abrazándolo, sigues en ese abrazo. Si estabas bajo la lluvia, sigues bajo la lluvia. "
-        "Prohibido pasar a la cocina, al baño, a la cama o a otra habitación si el mensaje no lo hizo. "
-        "La primera frase del dialogo contesta lo que " + player + " acaba de decir, con un detalle concreto de esta escena. "
-        "Si " + player + " dice que tú enviaste, dijiste o hiciste algo, esa acción es tuya. "
-        "Si te dice que el video que enviaste no era para esa persona, respondes que te equivocaste al enviarlo. No digas que tú también lo viste. "
-        "Un video, una foto o un mensaje se queda con quien lo envió. Si lo enviaste tú, no digas que es de tu pareja ni de otra persona. "
-        "No inventes que son pareja ni juntes a dos personajes. No cambies de tema. "
-        "Una disculpa nueva sí cabe cuando acaba de señalar un error tuyo. "
-        "Si pide un gemido, un grito, un llanto, una risa o un suspiro, ese sonido va en el gesto o en el dialogo, tal como lo pidió. "
-        "Si el mensaje está mal transcrito, interprétalo dentro de la escena en curso. "
-        "Lo que hizo " + player + " no lo hiciste tú. No decidas las acciones de " + player + ". "
-        "No des un sermón ni saltes a otra trama. "
-        "En 'dialogo' habla DIRECTAMENTE a " + player + " usando 'tú'. "
-        "Devuelve SOLO JSON con 'gesto' y 'dialogo'. "
-        "'gesto': la misma postura y el mismo lugar, en primera persona, máximo 80 caracteres. No cambies de habitación. "
-        "'dialogo': dos a cuatro frases dichas en voz alta, máximo 320 caracteres. "
-        + ("Gesto y diálogo SOLO en español, sin palabras inglesas." if spanish else "Everything in English.")
+        "Eres " + character + " en una historia interactiva con " + player + ". "
+        "Identidad y relaciones persistentes: " + premise + ". "
+        + (chronicle + "\n" if chronicle else "")
+        + "Los turnos recientes son la escena ACTUAL en orden; el último mensaje del jugador tiene prioridad. "
+        "Continúa desde la última acción, con el mismo lugar, personas y objetos salvo que el jugador haya cambiado la escena. "
+        "Los hechos de la premisa y del comienzo son antecedentes, no acciones que debas repetir. "
+        "No cambies quién dijo, envió, sintió o hizo algo. No inventes sentimientos del jugador. "
+        "En mensajes USER, 'yo' es " + player + " y 'tú' eres " + character + "; en mensajes ASSISTANT, 'yo' eres tú. "
+        "Si el jugador admite su error o pide perdón, eres quien recibe esa disculpa; no asumas su culpa. "
+        "Tu emoción debe responder a lo que acaba de suceder y evolucionar cuando cambian los hechos. "
+        "Habla al jugador en primera persona; no pases a tercera persona para referirte a ti. "
+        "Escribe SOLO JSON con 'gesto' y 'dialogo'. "
+        "'gesto': narración breve de tu acción, postura o sensación presente, sin órdenes de producción. "
+        "'dialogo': lo que dices en voz alta al jugador, de una a tres frases; responde directamente al mensaje actual. "
+        "Si ocurre una reacción audible tuya (grito, llanto, risa, gemido), descríbela en 'gesto' justo antes del diálogo que la acompaña. "
+        "No enumeres sonidos, no expliques reglas internas, no reescribas el turno anterior. "
+        + ("Solo español." if spanish else "English only.")
         + slang_clause(job)
     )
     messages = [{"role": "system", "content": instruction}]
     for turn in recent:
-        who = character if turn["role"] == "assistant" else player
-        content = who + ": " + clip_text(turn["content"], 240)
+        content = clip_text(turn["content"], 350)
         if messages[-1]["role"] == turn["role"]:
             messages[-1]["content"] += "\n" + content
         else:
             messages.append({"role": turn["role"], "content": content})
-    prior = next((turn["content"] for turn in reversed(turns) if turn["role"] == "assistant"), "")
-    banned = gesture_of(prior)
-    closing = (
-        latest + "\n\nContesta esa frase, como " + character + ", mirando a " + player + ". "
-        "Si te dice que tú hiciste algo, esa acción es tuya. "
-        "No la resumas. No cambies de lugar ni de postura."
-        + (" Gesto prohibido, no lo repitas: " + banned + "." if banned else "")
-    )
     if messages[-1]["role"] == "user":
-        messages[-1]["content"] += "\n" + closing
+        messages[-1]["content"] += "\n" + latest
     else:
-        messages.append({"role": "user", "content": closing})
+        messages.append({"role": "user", "content": latest})
     return trim_messages(messages)
+
 
 def trim_messages(messages, limit=6500):
     """Keep the prompt inside the 4096-token local model, or llama refuses the turn."""
@@ -227,22 +184,12 @@ def gesture_of(text):
     return normalize_reply(match.group(1) if match else "")
 
 def too_similar(content, previous):
+    """Reject copied replies, but allow the character to keep the same posture."""
     from difflib import SequenceMatcher
-    if exact_copy(content, previous):
-        return True
-    current = normalize_reply(content)
-    prior = normalize_reply(previous)
-    if not current or not prior:
-        return False
-    if SequenceMatcher(None, current, prior).ratio() >= 0.62:
-        return True
-    left, right = gesture_of(content), gesture_of(previous)
-    if left and right and (left == right or SequenceMatcher(None, left, right).ratio() >= 0.75):
-        return True
-    prior_words = prior.split()
-    current_words = current.split()
-    seen = {" ".join(prior_words[index:index + 5]) for index in range(max(0, len(prior_words) - 4))}
-    return any(" ".join(current_words[index:index + 5]) in seen for index in range(max(0, len(current_words) - 4)))
+    current, prior = normalize_reply(content), normalize_reply(previous)
+    return bool(current and prior and (
+        current == prior or (len(current) >= 50 and SequenceMatcher(None, current, prior).ratio() >= 0.82)
+    ))
 
 def reply_for(job):
     started = time.monotonic()
@@ -254,7 +201,7 @@ def reply_for(job):
     parsed = ""
     for attempt in range(3):
         try:
-            raw_reply = model_chat(messages, 0.55 + attempt * 0.05, 480, json_mode=True)
+            raw_reply = model_chat(messages, 0.45 + attempt * 0.05, 480, json_mode=True)
             parsed = parse_role_reply(raw_reply)
         except Exception as error:
             print("Chat attempt failed", job.get("jobId", "local"), attempt, repr(error)[:180], flush=True)
@@ -264,9 +211,8 @@ def reply_for(job):
                   "total", round(time.monotonic() - started, 2),
                   "retry", attempt, flush=True)
             return parsed
-        messages[-1]["content"] += (
-            " Tu intento anterior repitió las frases. Usa palabras nuevas, pero conserva "
-            "el lugar, la postura y los hechos de la memoria."
+        messages[0]["content"] += (
+            " La respuesta anterior repitió un hecho o una frase; avanza desde el último mensaje sin cambiar actores."
         )
     raise RuntimeError("Local response repeated the previous turn")
 

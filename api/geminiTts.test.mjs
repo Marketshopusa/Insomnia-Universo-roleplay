@@ -62,7 +62,7 @@ test("Spanish uses one es-ES request and keeps the regional accent in the prompt
       locales.push(body.voice.languageCode);
       assert.match(body.input.prompt, /venezolano/);
       assert.match(body.input.prompt, /exactamente/);
-      assert.match(body.input.prompt, /\[laughing\]/);
+      assert.doesNotMatch(body.input.prompt, /gritos|aplausos|gemidos|\[laughing\]/i);
       assert.equal(body.input.text, "Chamo, no puede ser.");
       return new Response(JSON.stringify({ audioContent: wav.toString("base64") }), { status: 200 });
     },
@@ -123,7 +123,7 @@ function sseAudio(chunks) {
 }
 
 test("streaming speaks the whole line once and emits each audio chunk", async () => {
-  const line = "Ella [moaning] gimió con fuerza y [shouting] gritó de placer.";
+  const line = "Ella abrió la puerta. [shouting] ¡Ay!";
   const first = Buffer.alloc(4);
   first.writeInt16LE(1000, 0);
   first.writeInt16LE(2000, 2);
@@ -145,8 +145,8 @@ test("streaming speaks the whole line once and emits each audio chunk", async ()
       const body = JSON.parse(init.body);
       const spoken = body.contents.parts.text;
       assert.equal(spoken.split(line).length - 1, 1);
-      assert.match(spoken, /\[moaning\]/);
       assert.match(spoken, /\[shouting\]/);
+      assert.doesNotMatch(spoken, /gritos, aplausos, gemidos/i);
       assert.equal(body.generation_config.speech_config.language_code, "es-ES");
       assert.equal(body.generation_config.speech_config.voice_config.prebuilt_voice_config.voice_name, "Aoede");
       assert.equal(body.safety_settings[0].threshold, "BLOCK_NONE");

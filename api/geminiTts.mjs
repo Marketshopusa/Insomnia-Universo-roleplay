@@ -190,28 +190,19 @@ async function enableAgentPlatform(token, fetchImpl) {
 }
 
 export function geminiSpeechDirection(language, performance, region) {
-  const mood = (language === "en" ? {
-    amused: "Let out a real short laugh. [laughing] is that sound, not a word.",
-    sad: "The voice breaks and crying is audible. [crying] is that sound, not a word.",
-    pain: "Where [moaning] appears, that is a sound of pain. Still say the written words.",
-    pleasure: "Where [moaning] appears, that is a real moan. Where [shouting] appears with pleasure, that is a cry of pleasure. Do not say the words moan or scream.",
-    scream: "There is a jolt of fear or anger. [gasps] and [shouting] are sounds, not words.",
-    soft: "Speak quietly, almost in a sigh. [sigh] is that sound, not a word.",
-  } : {
-    amused: "Suelta una risa breve de verdad. [laughing] es ese sonido, no una palabra.",
-    sad: "La voz se quiebra y se oye el llanto. [crying] es ese sonido, no una palabra.",
-    pain: "Donde está [moaning] se oye un quejido de dolor. Di igual las palabras escritas.",
-    pleasure: "Donde está [moaning] se oye un gemido de verdad. Donde está [shouting] junto al placer, es un grito de placer. No digas las palabras gemido ni grito.",
-    scream: "Hay un sobresalto de miedo o rabia. [gasps] y [shouting] son sonidos, no palabras.",
-    soft: "Habla bajo, casi en un suspiro. [sigh] es ese sonido, no una palabra.",
-  })[performance] || (language === "en"
-    ? "Speak like a person inside the scene, with natural emotion."
-    : "Habla como una persona en la escena, con emoción natural.");
-  const accent = accentHint(language, region);
-  const prompt = language === "en"
-    ? `Say only the text, in that order. Do not add scenes or restart the story. [laughing], [crying], [gasps], [sigh], [shouting], [moaning] and [whispering] are real sounds, not words. ${mood}`
-    : `${accent} Di exactamente el texto, en ese orden. No agregues escenas ni vuelvas a empezar la historia. [laughing], [crying], [gasps], [sigh], [shouting], [moaning] y [whispering] son sonidos reales, no palabras. ${mood}`;
-  return prompt;
+  const spanish = language !== "en";
+  const mood = {
+    neutral: spanish ? "Voz natural acorde con la escena." : "Natural voice suited to the scene.",
+    amused: spanish ? "Ríe solo en el punto marcado." : "Laugh only at the marked point.",
+    sad: spanish ? "Voz quebrada por el llanto, sin añadir palabras." : "Voice trembling with tears, without added words.",
+    pain: spanish ? "El sonido marcado expresa dolor." : "The marked sound expresses pain.",
+    pleasure: spanish ? "El sonido marcado expresa placer." : "The marked sound expresses pleasure.",
+    scream: spanish ? "Eleva la voz solo en el punto marcado." : "Raise the voice only at the marked point.",
+    soft: spanish ? "Habla en voz baja." : "Speak softly.",
+  }[performance] || (spanish ? "Voz natural." : "Natural voice.");
+  return (spanish ? accentHint(language, region) + " Interpreta esta secuencia en el orden escrito; narra las acciones y di el diálogo. " :
+    "Perform this scene in written order, narrating actions and speaking dialogue. ") + mood +
+    (spanish ? " No añadas instrucciones ni nombres de sonidos." : " Do not add instructions or sound names.");
 }
 
 const BLOCK_NONE = 4;

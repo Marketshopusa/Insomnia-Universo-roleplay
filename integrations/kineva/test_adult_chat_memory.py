@@ -54,12 +54,12 @@ class StoryMemoryTest(unittest.TestCase):
         self.assertIn("maceta", packed)
         self.assertIn("fogón", packed)
         self.assertIn("mismo lugar", packed)
-        self.assertIn("misma postura", packed)
+        self.assertIn("turnos recientes", packed)
         self.assertNotIn("acción física nueva", packed)
-        self.assertIn("Orden fija para todo chat", packed)
-        self.assertIn("no disocies", packed)
-        self.assertIn("esa acción es tuya", packed)
-        self.assertIn("te equivocaste al enviarlo", packed)
+        self.assertIn("escena ACTUAL", packed)
+        self.assertIn("último mensaje", packed)
+        self.assertIn("No cambies quién", packed)
+        self.assertNotIn("te equivocaste al enviarlo", packed)
         self.assertNotIn("no te disculpes otra vez", packed)
         self.assertLess(len(packed), 6500)
 
@@ -76,8 +76,14 @@ class StoryMemoryTest(unittest.TestCase):
         self.assertIn("Vive en Caracas", packed)
         self.assertIn("La carta está en la cocina", packed)
         self.assertIn("bajo la maceta", packed)
-        self.assertEqual(roles[0:2], ["system", "user"])
+        self.assertEqual(roles[0], "system")
+        self.assertEqual(roles[-1], "user")
         self.assertTrue(all(left != right for left, right in zip(roles[1:], roles[2:])))
+
+    def test_stable_posture_can_be_reused_with_fresh_dialogue(self):
+        previous = "*Me siento junto a la puerta* Estoy preocupada por el ruido."
+        current = "*Me siento junto a la puerta* Ahora escucho pasos afuera."
+        self.assertFalse(too_similar(current, previous))
 
     def test_a_copied_apology_is_rejected(self):
         previous = (

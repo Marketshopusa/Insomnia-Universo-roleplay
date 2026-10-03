@@ -33,53 +33,75 @@ async function requestSpeech(text: string, voice: string, language: string, regi
   });
 }
 
-const letter = String.raw`\p{L}`;
-const notLetterBefore = String.raw`(?<![\p{L}\p{N}_])`;
-const notLetterAfter = String.raw`(?![\p{L}\p{N}_])`;
-const word = (body: string) => new RegExp(`${notLetterBefore}(?:${body})${notLetterAfter}`, "giu");
+type VocalEvent = { tag: string; performance: Performance; burst?: string };
 
-const VOCAL_CUES: { pattern: RegExp; tag: string; performance: Performance }[] = [
-  { pattern: word(`(?:grit${letter}*|chill${letter}*|scream${letter}*)(?=[^.!?]{0,30}${notLetterBefore}(?:placer|pleasure|gusto)${notLetterAfter})`), tag: "[shouting]", performance: "pleasure" },
-  { pattern: word(`(?:gim${letter}*|jim${letter}*|gem(?:id${letter}*|[ií]${letter}*)|moan${letter}*|quej${letter}*)(?=[^.!?]{0,24}${notLetterBefore}(?:dolor|pain)${notLetterAfter})`), tag: "[moaning]", performance: "pain" },
-  { pattern: word(`(?:gim${letter}*|jim${letter}*|gem(?:id${letter}*|[ií]${letter}*)|moan${letter}*)`), tag: "[moaning]", performance: "pleasure" },
-  { pattern: word(`(?:llor${letter}*|solloz${letter}*|l[aá]grim${letter}*|cry(?:ing)?|sob(?:bing|bed|s)?)`), tag: "[crying]", performance: "sad" },
-  { pattern: word(`(?:r[ií]e(?:ndose|ndo)?|r[ií][oó]|re[ií](?:r|mos|s|a|an|as)?|risas?|riendo|carcajad${letter}*|sonr[ií]${letter}*|laugh${letter}*|ja(?:ja)+|je(?:je)+)`), tag: "[laughing]", performance: "amused" },
-  { pattern: word(`(?:suspir${letter}*|exhal${letter}*|sigh${letter}*)`), tag: "[sigh]", performance: "soft" },
-  { pattern: word(`(?:susurr${letter}*|whisper${letter}*)`), tag: "[whispering]", performance: "soft" },
-  { pattern: word(`(?:miedo|sust[oa]${letter}*|aterr${letter}*|p[aá]nic${letter}*|fear|scared)`), tag: "[gasps]", performance: "scream" },
-  { pattern: word(`(?:grit${letter}*|chill${letter}*|scream${letter}*)`), tag: "[shouting]", performance: "scream" },
-];
+function eventFor(action: string): VocalEvent | null {
+  const value = action.toLowerCase();
+  if (/\b(?:no|sin)\s+(?:grit|re[ií]r|llor|gem|gim)/i.test(value)) return null;
+  if (/(?:gemid|gim|jade|moan)/i.test(value))
+    return { tag: "", performance: /dolor|golpe|herid/i.test(value) ? "pain" : "pleasure", burst: /dolor|golpe|herid/i.test(value) ? "¡Ay!" : "Ah..." };
+  if (/(?:grit|chill|alarl|scream)/i.test(value))
+    return { tag: "[shouting]", performance: "scream", burst: "¡Ah!" };
+  if (/(?:solloz|llor|cry|sob)/i.test(value))
+    return { tag: "[sigh]", performance: "sad" };
+  if (/(?<![\p{L}\p{N}])(?:r[ií][oó]|re[ií]mos|re[ií]r|risas?)(?![\p{L}\p{N}])|carcajad|laugh/iu.test(value))
+    return { tag: "[laughing]", performance: "amused" };
+  if (/(?:suspiro|suspiro|susurr|sigh|whisper)/i.test(value))
+    return { tag: "[sigh]", performance: "soft" };
+  return null;
+}
 
-/** Puts a sound where the line asks for a moan, shout, cry, laugh, or sigh. */
+function cleanSceneText(value: string): string {
+  return value.replace(/\[[^\]]{1,40}\]/g, " ").replace(/[*_#`]/g, " ").replace(/\s+/g, " ").trim();
+}
+
+/** Assemble one continuous score in story order: narration, vocal reaction, dialogue. */
 export function performSpeech(text: string): { text: string; performance: Performance } {
-  const directions = [...text.matchAll(/\*([^*]+)\*/g)].map((match) => match[1]).join(" ");
-  let spoken = text
-    .replace(/\*[^*]+\*/g, " ")
-    .replace(/[*_#`]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .replace(/\ba+h{2,}\b/gi, "Ay")
-    .replace(/\bm{3,}\b/gi, "Mmm");
-  const performances = new Set<Performance>();
-  let stageTag = "";
-  for (const cue of VOCAL_CUES) {
-    if (new RegExp(cue.pattern.source, cue.pattern.flags).test(directions)) {
-      performances.add(cue.performance === "pleasure" && /dolor|pain/i.test(directions) ? "pain" : cue.performance);
-      if (!stageTag) stageTag = cue.tag;
+  const pieces = text.split(/(\*[^*]+\*)/g).filter(Boolean);
+  const score: string[] = [];
+  let performance: Performance = "neutral";
+  let pending: VocalEvent | null = null;
+  for (let index = 0; index < pieces.length; index += 1) {
+    const piece = pieces[index];
+    const stage = /^\*[^*]+\*$/.test(piece);
+    const words = cleanSceneText(stage ? piece.slice(1, -1) : piece);
+    if (!words) continue;
+    if (stage) {
+      if (pending) {
+        if (pending.tag) score.push(pending.tag);
+        if (pending.burst) score.push(pending.burst);
+      }
+      // Narration stays audible; a smile is never interpreted as laughter.
+      score.push(/[.!?…]$/.test(words) ? words : words + ".");
+      pending = eventFor(words);
+      if (pending) performance = pending.performance;
+      continue;
     }
-    const pattern = new RegExp(cue.pattern.source, cue.pattern.flags);
-    spoken = spoken.replace(pattern, (match, offset: number) => {
-      if (spoken[offset - 1] === "[") return match;
-      const before = spoken.slice(Math.max(0, offset - 16), offset);
-      if (/\[[a-z]+\]\s*$/i.test(before)) return match;
-      performances.add(cue.performance);
-      return `${cue.tag} ${match}`;
-    });
+    let spoken = words.replace(/\ba+h{2,}\b/gi, "Ay").replace(/\bm{3,}\b/gi, "Mmm");
+    // Plain narrative has no asterisks. Put an audible reaction at the event,
+    // without turning a smile or a general emotion into an unrelated laugh.
+    if (pieces.length === 1) {
+      spoken = spoken.replace(/(?<![\p{L}\p{N}])(grit[oó]|peg[oó] un grito|gimi[oó]|gime|solloz[oó]|se ech[oó] a llorar|ri[oó] a carcajadas)(?![\p{L}\p{N}])/giu,
+        (action) => {
+          const event = eventFor(action);
+          if (!event) return action;
+          performance = event.performance;
+          return [action, event.tag, event.burst].filter(Boolean).join(" ");
+        });
+    }
+    if (pending) {
+      const hasVocalAnswer = /^[¡!¿?]*\s*(?:ay|ah|oh|uff|ja)/i.test(spoken);
+      if (pending.tag) score.push(pending.tag);
+      if (pending.burst && !hasVocalAnswer) score.push(pending.burst);
+      pending = null;
+    }
+    score.push(spoken);
   }
-  if (/\b(?:angust\w*|nervios|avergonz\w*)\b/i.test(`${spoken} ${directions}`)) performances.add("sad");
-  const rank: Performance[] = ["pleasure", "pain", "scream", "sad", "amused", "soft"];
-  if (spoken && stageTag && !spoken.includes(stageTag)) spoken = `${stageTag} ${spoken}`;
-  return { text: spoken, performance: rank.find((item) => performances.has(item)) ?? "neutral" };
+  if (pending) {
+    if (pending.tag) score.push(pending.tag);
+    if (pending.burst) score.push(pending.burst);
+  }
+  return { text: score.join(" ").replace(/\s+/g, " ").replace(/([!?])\./g, "$1").trim(), performance };
 }
 
 export function roleplaySpeechText(text: string): string {
@@ -253,7 +275,7 @@ export function streamSpeech(text: string, voice: string, language = "es", rolep
         scheduledAt = startAt + buffer.duration;
         if (sources.size === 1) reportFirstPlayback();
       };
-      await receivePcm(spoken, voice, language, region, performance, roleplay, controller.signal, schedule);
+      await receivePcm(spoken, voice, language, region, performance, roleplay || performance !== "neutral", controller.signal, schedule);
       schedulingComplete = true;
       if (sources.size === 0) finishPlayback();
       await playbackEnded;
