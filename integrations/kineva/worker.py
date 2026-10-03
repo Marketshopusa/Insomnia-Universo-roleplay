@@ -37,6 +37,16 @@ class Api:
             raise RuntimeError(f"{method} {path}: HTTP {error.code}: "
                                f"{error.read()[:500]!r}") from error
 
+def release_idle_models(comfy):
+    """Return VRAM to the chat after a render, only when ComfyUI has no other job."""
+    try:
+        queue = comfy.call("GET", "/queue")
+        if not queue.get("queue_running") and not queue.get("queue_pending"):
+            comfy.call("POST", "/free", {"unload_models": True, "free_memory": True})
+    except Exception as error:
+        print("ComfyUI idle release skipped", repr(error)[:180], file=sys.stderr, flush=True)
+
+
 def one(graph, kind):
     found = [(key, node) for key, node in graph.items()
              if node["class_type"] == kind]
@@ -311,6 +321,8 @@ def run_once(cloud, comfy, template, input_dir, output_dir):
         print("Failed", job["id"], repr(error), file=sys.stderr, flush=True)
         payload = {"p_job_id": job["id"], "p_lease_token": job["lease_token"],
                    "p_success": False, "p_error": str(error)[:500]}
+    finally:
+        release_idle_models(comfy)
     done = cloud.call("POST", "/rest/v1/rpc/finish_kineva_job", payload)
     if done is not True:
         raise RuntimeError("Job lease expired; result was not published")

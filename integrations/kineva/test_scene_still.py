@@ -36,6 +36,27 @@ class SceneStillTest(unittest.TestCase):
         self.assertEqual(graph["6"]["class_type"], "EmptyFlux2LatentImage")
         self.assertEqual(graph["9"]["class_type"], "SaveImage")
 
+    def test_vram_is_released_only_when_comfy_queue_is_empty(self):
+        from worker import release_idle_models
+
+        class Comfy:
+            def __init__(self, running):
+                self.running = running
+                self.calls = []
+
+            def call(self, method, path, payload=None):
+                self.calls.append((method, path))
+                if path == "/queue":
+                    return {"queue_running": self.running, "queue_pending": []}
+                return None
+
+        busy = Comfy([["another-render"]])
+        release_idle_models(busy)
+        self.assertEqual(busy.calls, [("GET", "/queue")])
+        idle = Comfy([])
+        release_idle_models(idle)
+        self.assertEqual(idle.calls, [("GET", "/queue"), ("POST", "/free")])
+
     def test_a_short_moment_is_refused_before_comfy(self):
         with self.assertRaises(ValueError):
             image_worker.scene_prompt({"focusText": "hola"})

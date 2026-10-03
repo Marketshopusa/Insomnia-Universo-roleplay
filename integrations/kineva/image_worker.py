@@ -8,7 +8,7 @@ import sys
 import time
 from pathlib import Path
 from urllib.parse import quote
-from worker import Api
+from worker import Api, release_idle_models
 
 MODEL = "flux-2-klein-4b-fp8.safetensors"
 ENCODER = "qwen_3_4b_fp4_flux2.safetensors"
@@ -115,6 +115,8 @@ def process_one(cloud, comfy, output_dir):
     except Exception as error:
         print("Image job failed", job["id"], repr(error), file=sys.stderr, flush=True)
         result = {"status": "failed", "error_message": str(error)[:350]}
+    finally:
+        release_idle_models(comfy)
     result["finished_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     result["updated_at"] = result["finished_at"]
     cloud.call("PATCH", "/rest/v1/kineva_scene_jobs?id=eq." + quote(job["id"]) +
