@@ -4,11 +4,12 @@ import json
 from datetime import datetime, timezone, timedelta
 import os
 import re
+import subprocess
 import sys
 import time
 from urllib.parse import quote
 from urllib.request import Request, urlopen
-from worker import Api
+from worker import Api, release_idle_models
 
 BUCKET = "kineva-adult-chat"
 
@@ -199,8 +200,22 @@ def too_similar(content, previous):
         current == prior or (len(current) >= 50 and SequenceMatcher(None, current, prior).ratio() >= 0.82)
     ))
 
+def free_gpu_for_chat():
+    """Unload completed ComfyUI work if retained models are starving Magnum."""
+    try:
+        output = subprocess.check_output(
+            ["nvidia-smi", "--query-gpu=memory.used", "--format=csv,noheader,nounits"],
+            timeout=2, stderr=subprocess.DEVNULL).decode().splitlines()
+        if output and int(output[0].strip()) > 12000:
+            for port in (8188, 8189):
+                release_idle_models(Api("http://127.0.0.1:" + str(port)))
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        pass
+
+
 def reply_for(job):
     started = time.monotonic()
+    free_gpu_for_chat()
     raw = (job.get("history") or [])[-48:]
     latest = str(job.get("userMessage") or "")
     previous = next((str(turn.get("content") or "") for turn in reversed(raw)
