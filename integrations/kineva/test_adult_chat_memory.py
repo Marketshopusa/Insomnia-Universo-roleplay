@@ -61,7 +61,23 @@ class StoryMemoryTest(unittest.TestCase):
         self.assertIn("esa acción es tuya", packed)
         self.assertIn("te equivocaste al enviarlo", packed)
         self.assertNotIn("no te disculpes otra vez", packed)
-        self.assertLess(len(packed), 4200)
+        self.assertLess(len(packed), 6500)
+
+    def test_premise_and_turn_order_survive(self):
+        current = job([
+            {"role": "assistant", "content": "*Señalo el porche* La llave está bajo la maceta."},
+            {"role": "user", "content": "Ya estamos en la puerta."},
+        ], "¿Dónde está la llave?")
+        current["story"]["character_role"] = "Andrea, amiga de Daniel. " + "Recuerda el viaje. " * 12 + "Vive en Caracas."
+        current["story"]["description"] = "Llegamos a la cabaña. " + "Daniel guardó la llave. " * 12 + "La carta está en la cocina."
+        messages = conversation_messages(current)
+        roles = [item["role"] for item in messages]
+        packed = "\n".join(item["content"] for item in messages)
+        self.assertIn("Vive en Caracas", packed)
+        self.assertIn("La carta está en la cocina", packed)
+        self.assertIn("bajo la maceta", packed)
+        self.assertEqual(roles[0:2], ["system", "user"])
+        self.assertTrue(all(left != right for left, right in zip(roles[1:], roles[2:])))
 
     def test_a_copied_apology_is_rejected(self):
         previous = (

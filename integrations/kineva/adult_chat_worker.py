@@ -106,9 +106,11 @@ def clean_turns(raw, latest):
 
 def memory_transcript(turns, player, character):
     """Recent beats in order. The local model only has 4096 tokens."""
-    recent_count = min(6, len(turns))
+    recent_count = min(8, len(turns))
     older, recent = turns[:-recent_count], turns[-recent_count:]
     if not older:
+        if recent and recent[0]["role"] == "assistant":
+            return character + ": " + clip_text(recent[0]["content"], 250), recent[1:]
         return "", recent
 
     def line(turn, limit):
@@ -128,16 +130,19 @@ def memory_transcript(turns, player, character):
     chronicle = "Hechos ya cerrados. Siguen siendo ciertos y de quien los hizo. No los actúes otra vez: " + " | ".join(closed)
     if chosen:
         chronicle += "\nDespués, en orden:\n" + "\n".join(chosen)
+    if recent and recent[0]["role"] == "assistant":
+        chronicle += "\n" + line(recent[0], 250)
+        recent = recent[1:]
     return chronicle, recent
 
 def conversation_messages(job):
     """Every turn carries the story so far. A long user line must not wipe it."""
     story = job.get("story") or {}
     spanish = job.get("language") == "es"
-    character = str(story.get("character_role") or "personaje presente")[:160]
-    player = str(story.get("player_role") or "protagonista")[:160]
+    character = clip_text(story.get("character_role") or "personaje presente", 400)
+    player = clip_text(story.get("player_role") or "protagonista", 220)
     latest = clip_text(job.get("userMessage") or "", 700)
-    premise = clip_text(story.get("description") or "", 180)
+    premise = clip_text(story.get("description") or "", 700)
     turns = clean_turns((job.get("history") or [])[-48:], latest)
     chronicle, recent = memory_transcript(turns, player, character)
     memory = (
@@ -184,7 +189,11 @@ def conversation_messages(job):
     messages = [{"role": "system", "content": instruction}]
     for turn in recent:
         who = character if turn["role"] == "assistant" else player
-        messages.append({"role": turn["role"], "content": who + ": " + clip_text(turn["content"], 240)})
+        content = who + ": " + clip_text(turn["content"], 240)
+        if messages[-1]["role"] == turn["role"]:
+            messages[-1]["content"] += "\n" + content
+        else:
+            messages.append({"role": turn["role"], "content": content})
     prior = next((turn["content"] for turn in reversed(turns) if turn["role"] == "assistant"), "")
     banned = gesture_of(prior)
     closing = (
@@ -193,13 +202,16 @@ def conversation_messages(job):
         "No la resumas. No cambies de lugar ni de postura."
         + (" Gesto prohibido, no lo repitas: " + banned + "." if banned else "")
     )
-    messages.append({"role": "user", "content": closing})
+    if messages[-1]["role"] == "user":
+        messages[-1]["content"] += "\n" + closing
+    else:
+        messages.append({"role": "user", "content": closing})
     return trim_messages(messages)
 
-def trim_messages(messages, limit=4200):
+def trim_messages(messages, limit=6500):
     """Keep the prompt inside the 4096-token local model, or llama refuses the turn."""
-    while sum(len(item["content"]) for item in messages) > limit and len(messages) > 2:
-        del messages[1]
+    while sum(len(item["content"]) for item in messages) > limit and len(messages) > 3:
+        del messages[1:3]
     total = sum(len(item["content"]) for item in messages)
     if total > limit:
         messages[-1]["content"] = clip_text(messages[-1]["content"], max(180, len(messages[-1]["content"]) - (total - limit)))
@@ -252,10 +264,9 @@ def reply_for(job):
                   "total", round(time.monotonic() - started, 2),
                   "retry", attempt, flush=True)
             return parsed
-        messages = trim_messages([messages[0], messages[-1]], 2600)
-        messages[0]["content"] += (
-            " Tu intento anterior repitió las frases. Usa palabras nuevas, pero el mismo lugar y la misma postura. "
-            "Responde solo a esto: " + clip_text(latest, 240)
+        messages[-1]["content"] += (
+            " Tu intento anterior repitió las frases. Usa palabras nuevas, pero conserva "
+            "el lugar, la postura y los hechos de la memoria."
         )
     raise RuntimeError("Local response repeated the previous turn")
 

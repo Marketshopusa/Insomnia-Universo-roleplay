@@ -52,15 +52,21 @@ const VOCAL_CUES: { pattern: RegExp; tag: string; performance: Performance }[] =
 
 /** Puts a sound where the line asks for a moan, shout, cry, laugh, or sigh. */
 export function performSpeech(text: string): { text: string; performance: Performance } {
+  const directions = [...text.matchAll(/\*([^*]+)\*/g)].map((match) => match[1]).join(" ");
   let spoken = text
-    .replace(/\*([^*]+)\*/g, (_, direction: string) => ` ${direction.trim()}. `)
+    .replace(/\*[^*]+\*/g, " ")
     .replace(/[*_#`]/g, " ")
     .replace(/\s+/g, " ")
     .trim()
     .replace(/\ba+h{2,}\b/gi, "Ay")
     .replace(/\bm{3,}\b/gi, "Mmm");
   const performances = new Set<Performance>();
+  let stageTag = "";
   for (const cue of VOCAL_CUES) {
+    if (new RegExp(cue.pattern.source, cue.pattern.flags).test(directions)) {
+      performances.add(cue.performance === "pleasure" && /dolor|pain/i.test(directions) ? "pain" : cue.performance);
+      if (!stageTag) stageTag = cue.tag;
+    }
     const pattern = new RegExp(cue.pattern.source, cue.pattern.flags);
     spoken = spoken.replace(pattern, (match, offset: number) => {
       if (spoken[offset - 1] === "[") return match;
@@ -70,8 +76,9 @@ export function performSpeech(text: string): { text: string; performance: Perfor
       return `${cue.tag} ${match}`;
     });
   }
-  if (/\b(?:angust\w*|nervios|avergonz\w*)\b/i.test(spoken)) performances.add("sad");
+  if (/\b(?:angust\w*|nervios|avergonz\w*)\b/i.test(`${spoken} ${directions}`)) performances.add("sad");
   const rank: Performance[] = ["pleasure", "pain", "scream", "sad", "amused", "soft"];
+  if (spoken && stageTag && !spoken.includes(stageTag)) spoken = `${stageTag} ${spoken}`;
   return { text: spoken, performance: rank.find((item) => performances.has(item)) ?? "neutral" };
 }
 

@@ -73,13 +73,13 @@ it("does not play a mismatched device voice when neural TTS has no quota", async
   expect(deviceSpeak).not.toHaveBeenCalled();
 });
 
-it("speaks the gray narration and the dialogue, without spelling vocalizations", () => {
-  expect(roleplaySpeechText("*Me acerco a Daniel* ¿Trajiste la carta?")).toBe("Me acerco a Daniel. ¿Trajiste la carta?");
-  expect(roleplaySpeechText("*Sollozo* No puedo seguir.")).toBe("[crying] Sollozo. No puedo seguir.");
+it("speaks dialogue without reading stage directions while preserving vocal cues", () => {
+  expect(roleplaySpeechText("*Me acerco a Daniel* ¿Trajiste la carta?")).toBe("¿Trajiste la carta?");
+  expect(roleplaySpeechText("*Sollozo* No puedo seguir.")).toBe("[crying] No puedo seguir.");
   expect(roleplayPerformance("*Sollozo* No puedo seguir.")).toBe("sad");
-  expect(roleplaySpeechText("*Gimo de dolor* Ahhh, me duele.")).toBe("[moaning] Gimo de dolor. Ay, me duele.");
+  expect(roleplaySpeechText("*Gimo de dolor* Ahhh, me duele.")).toBe("[moaning] Ay, me duele.");
   expect(roleplayPerformance("*Gimo de dolor* Ahhh, me duele.")).toBe("pain");
-  expect(roleplaySpeechText("*Gimo de placer* Sí, así.")).toBe("[moaning] Gimo de placer. Sí, así.");
+  expect(roleplaySpeechText("*Gimo de placer* Sí, así.")).toBe("[moaning] Sí, así.");
   expect(roleplayPerformance("*Gimo de placer* Sí, así.")).toBe("pleasure");
   expect(roleplaySpeechText("Ella gimió con fuerza y gritó de placer.")).toBe("Ella [moaning] gimió con fuerza y [shouting] gritó de placer.");
   expect(roleplaySpeechText("Ella jimió con fuerza y gritó de placer.")).toBe("Ella [moaning] jimió con fuerza y [shouting] gritó de placer.");
@@ -87,12 +87,12 @@ it("speaks the gray narration and the dialogue, without spelling vocalizations",
   expect(roleplaySpeechText("Ella lloró y después se rió.")).toBe("Ella [crying] lloró y después se [laughing] rió.");
   expect(roleplayPerformance("*Se queda quieta, con miedo* No entres.")).toBe("scream");
   expect(roleplayPerformance("*Se cubre el rostro, angustiada* Perdón.")).toBe("sad");
-  expect(roleplaySpeechText("*Grito* ¡Basta!")).toBe("[shouting] Grito. ¡Basta!");
+  expect(roleplaySpeechText("*Grito* ¡Basta!")).toBe("[shouting] ¡Basta!");
   expect(roleplayPerformance("*Grito* ¡Basta!")).toBe("scream");
-  expect(roleplaySpeechText("*Sonrío* Hola.")).toBe("[laughing] Sonrío. Hola.");
+  expect(roleplaySpeechText("*Sonrío* Hola.")).toBe("[laughing] Hola.");
   expect(roleplayPerformance("*Sonrío* Hola.")).toBe("amused");
-  expect(roleplaySpeechText("*Río* No me lo esperaba.")).toBe("[laughing] Río. No me lo esperaba.");
-  expect(roleplaySpeechText("*Suspiro* Tenemos que hablar.")).toBe("[sigh] Suspiro. Tenemos que hablar.");
+  expect(roleplaySpeechText("*Río* No me lo esperaba.")).toBe("[laughing] No me lo esperaba.");
+  expect(roleplaySpeechText("*Suspiro* Tenemos que hablar.")).toBe("[sigh] Tenemos que hablar.");
   expect(roleplayPerformance("Jajaja, no puede ser.")).toBe("amused");
   expect(roleplaySpeechText("Jajaja, no puede ser.")).toBe("[laughing] Jajaja, no puede ser.");
 });
