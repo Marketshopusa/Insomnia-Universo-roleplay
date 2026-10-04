@@ -35,21 +35,10 @@ def list_folder(cloud, prefix):
 def normalize_reply(value):
     return re.sub(r"[^\w]+", " ", value.casefold(), flags=re.UNICODE).strip()
 
-def repeated_reply(content, history):
-    from difflib import SequenceMatcher
-    current = normalize_reply(content)
-    for turn in history:
-        if turn.get("role") != "assistant":
-            continue
-        previous = normalize_reply(str(turn.get("content") or ""))
-        if previous and (current == previous or SequenceMatcher(None, current, previous).ratio() >= 0.78):
-            return True
-    return False
-
 def model_chat(messages, temperature, max_tokens, json_mode=False):
     payload = {"model": "magnum-v4-12b", "messages": messages, "max_tokens": max_tokens,
-               "temperature": temperature, "repeat_penalty": 1.13,
-               "presence_penalty": 0.2, "frequency_penalty": 0.2,
+               "temperature": temperature, "repeat_penalty": 1.0,
+               "presence_penalty": 0.0, "frequency_penalty": 0.0,
                "chat_template_kwargs": {"enable_thinking": False}}
     if json_mode:
         payload["response_format"] = {"type": "json_object"}
@@ -145,21 +134,16 @@ def clip_text(text, limit):
     cut = text[:limit].rsplit(" ", 1)[0]
     return (cut or text[:limit]).rstrip(" ,.;") + "…"
 
-def clean_turns(raw, latest):
-    """Drop only an exact echo of the message being answered. Keep the scene."""
-    latest_norm = normalize_reply(latest)
+def clean_turns(raw):
+    """Keep every written turn, including repeated questions and recalled phrases."""
     turns = []
     for turn in raw or []:
         content = str(turn.get("content") or "").strip()
-        if not content:
-            continue
-        role = "assistant" if turn.get("role") == "assistant" else "user"
-        if role == "user" and normalize_reply(content) == latest_norm:
-            continue
-        if turns and turns[-1]["role"] == role and turns[-1]["content"] == content:
-            continue
-        turns.append({"role": role, "content": content})
+        if content:
+            role = "assistant" if turn.get("role") == "assistant" else "user"
+            turns.append({"role": role, "content": content})
     return turns[-48:]
+
 
 def memory_transcript(turns, player, character):
     """Retain the original facts and the last completed beats in chronological order."""
@@ -188,7 +172,7 @@ def conversation_messages(job):
     player = clip_text(story.get("player_role") or "protagonista", 220)
     latest = clip_text(job.get("userMessage") or "", 1000)
     premise = clip_text(story.get("description") or "", 700)
-    turns = compact_repeated_history(clean_turns((job.get("history") or [])[-48:], latest))
+    turns = clean_turns((job.get("history") or [])[-48:])
     chronicle, recent = memory_transcript(turns, player, character)
     # Magnum's chat template requires the first turn after system to be USER.
     # A saved session can begin with the character's introduction; preserve it as scene context.
@@ -204,7 +188,7 @@ def conversation_messages(job):
         + "Los turnos recientes son la escena ACTUAL en orden; el último mensaje del jugador tiene prioridad. "
         "Las acciones que el jugador cuenta en pasado YA OCURRIERON. Responde a sus consecuencias; nunca le impidas hacer algo que acaba de hacer. "
         "Continúa desde la última acción, con el mismo lugar, personas y objetos salvo que el jugador haya cambiado la escena. "
-        "Los hechos de la premisa y del comienzo son antecedentes, no acciones que debas repetir. "
+        "La premisa y el comienzo son antecedentes; si el jugador los recuerda, responde sobre ellos sin fingir que ocurren otra vez. "
         "No cambies quién dijo, envió, sintió o hizo algo. No inventes sentimientos del jugador. "
         "IDENTIDAD: debes hablar y actuar exclusivamente como " + character + ". El jugador es " + player + ". "
         "Cuando USER dice 'yo' habla de " + player + "; cuando USER dice 'tú', 'te' o 'estás' se dirige a " + character + ". "
@@ -216,10 +200,10 @@ def conversation_messages(job):
         "Escribe SOLO JSON con 'gesto' y 'dialogo'. "
         "'gesto': narras TU propia acción o sensación en primera persona ('Me sorprendo', 'Sonrío', 'Entro'); nunca escribas '" + character + " dijo', 'ella' o tu nombre como sujeto. "
         "'dialogo': lo que dices en voz alta al jugador, de una a tres frases; responde directamente al mensaje actual. "
-        "Varía la manera de empezar y de expresar emociones; no repitas frases ni disculpas de respuestas anteriores. "
+        "Responde con naturalidad al tema actual; si el jugador vuelve a una frase o tema anterior, puedes retomarlo. "
         "Si sonríes, ríes, te sorprendes o lloras por algo que ocurre ahora, muéstralo en gesto y deja que el diálogo suene acorde, sin añadir emociones ajenas a la escena. "
         "Si ocurre una reacción audible tuya (grito, llanto, risa, gemido), descríbela en 'gesto' justo antes del diálogo que la acompaña. "
-        "No enumeres sonidos, no expliques reglas internas, no reescribas el turno anterior. "
+        "No enumeres sonidos ni expliques reglas internas. Puedes citar o repetir palabras y poemas cuando el jugador lo pida. "
         + ("Escribe gesto y dialogo enteramente en español; no insertes palabras en inglés." if spanish else "English only.")
         + slang_clause(job)
     )
@@ -246,95 +230,6 @@ def trim_messages(messages, limit=6500):
         messages[-1]["content"] = clip_text(messages[-1]["content"], max(180, len(messages[-1]["content"]) - (total - limit)))
     return messages
 
-def exact_copy(content, previous):
-    current = normalize_reply(content)
-    prior = normalize_reply(previous)
-    return bool(current and prior and current == prior)
-
-def gesture_of(text):
-    match = re.search(r"\*([^*]{1,120})\*", text or "")
-    return normalize_reply(match.group(1) if match else "")
-
-def too_similar(content, previous):
-    """Reject copied replies, but allow the character to keep the same posture."""
-    from difflib import SequenceMatcher
-    current, prior = normalize_reply(content), normalize_reply(previous)
-    return bool(current and prior and (
-        current == prior or (len(current) >= 50 and SequenceMatcher(None, current, prior).ratio() >= 0.82)
-    ))
-
-def repeated_opening(content, history):
-    """Catch a recycled dialogue lead even when the rest of the answer is new."""
-    def words(value):
-        spoken = re.sub(r"^\*[^*]+\*\s*", "", str(value or ""))
-        return normalize_reply(spoken).split()
-
-    current = words(content)
-    if len(current) < 7:
-        return False
-    for turn in history[-24:]:
-        if turn.get("role") != "assistant":
-            continue
-        older = words(turn.get("content"))
-        if len(older) >= 7 and current[:7] == older[:7]:
-            return True
-    return False
-
-
-def remove_repeated_lead(content, history):
-    """Keep the new thought after a copied introduction, without inventing dialogue."""
-    if not repeated_opening(content, history):
-        return content
-    stage = re.match(r"^(\*[^*]+\*\s*)", content)
-    prefix = stage.group(1) if stage else ""
-    spoken = content[len(prefix):]
-    tokens = list(re.finditer(r"\w+", spoken, re.UNICODE))
-    if len(tokens) < 13:
-        return ""
-    best = 0
-    for turn in history[-24:]:
-        if turn.get("role") != "assistant":
-            continue
-        old_spoken = re.sub(r"^\*[^*]+\*\s*", "", str(turn.get("content") or ""))
-        old_words = [match.group().casefold() for match in re.finditer(r"\w+", old_spoken, re.UNICODE)]
-        common = 0
-        while common < min(len(tokens), len(old_words)) and tokens[common].group().casefold() == old_words[common]:
-            common += 1
-        if common >= 7:
-            best = max(best, common)
-    if not best or best >= len(tokens):
-        return ""
-    boundary = tokens[best - 1].end()
-    tail = spoken[boundary:].lstrip(" \t,;:.!?¡¿—-")
-    if len(normalize_reply(tail).split()) < 6:
-        return ""
-    # A sentence or clause break ensures that dropping the lead leaves a coherent reply.
-    if not re.search(r"[.!?…,:;]\s*$", spoken[:tokens[best].start()]):
-        return ""
-    tail = tail[0].upper() + tail[1:] if tail else tail
-    candidate = prefix + tail
-    return candidate if not repeated_opening(candidate, history) else ""
-
-
-def compact_repeated_history(turns):
-    """Remove a recycled lead from every occurrence, retaining each new fact."""
-    compact = []
-    for index, turn in enumerate(turns):
-        if turn["role"] != "assistant":
-            compact.append(turn)
-            continue
-        echo = next((other for other_index, other in enumerate(turns)
-                     if other_index != index and other["role"] == "assistant"
-                     and repeated_opening(turn["content"], [other])), None)
-        if echo:
-            fresh = remove_repeated_lead(turn["content"], [echo])
-            if fresh:
-                compact.append({"role": "assistant", "content": fresh})
-            continue
-        compact.append(turn)
-    return compact
-
-
 def free_gpu_for_chat():
     """Unload completed ComfyUI work if retained models are starving Magnum."""
     try:
@@ -351,16 +246,9 @@ def free_gpu_for_chat():
 def reply_for(job):
     started = time.monotonic()
     free_gpu_for_chat()
-    raw = (job.get("history") or [])[-48:]
-    latest = str(job.get("userMessage") or "")
-    previous = next((str(turn.get("content") or "") for turn in reversed(raw)
-                     if turn.get("role") == "assistant"), "")
     messages = conversation_messages(job)
-    messages[0]["content"] += " No reutilices el comienzo de ninguna de tus seis respuestas anteriores."
     character = str((job.get("story") or {}).get("character_role") or "")
     for attempt in range(2):
-        parsed = ""
-        raw_reply = ""
         try:
             raw_reply = model_chat(messages, 0.64 + attempt * 0.08, 240, json_mode=(attempt == 0))
             try:
@@ -378,28 +266,16 @@ def reply_for(job):
                             raw_reply, character, allow_third_person=True)
                 else:
                     raise
+            print("Chat generation timing", job.get("jobId", "local"),
+                  "total", round(time.monotonic() - started, 2),
+                  "retry", attempt, flush=True)
+            return parsed
         except Exception as error:
-            print("Chat attempt failed", job.get("jobId", "local"), attempt, repr(error)[:180], flush=True)
-        if parsed:
-            if repeated_opening(parsed, raw):
-                repaired = remove_repeated_lead(parsed, raw)
-                if repaired and not too_similar(repaired, previous):
-                    print("Chat repeated lead removed", job.get("jobId", "local"), flush=True)
-                    parsed = repaired
-            rejected = ("copy" if too_similar(parsed, previous) else
-                        "opening" if repeated_opening(parsed, raw) else
-                        "user_echo" if normalize_reply(parsed) == normalize_reply(latest) else "")
-            if not rejected:
-                print("Chat generation timing", job.get("jobId", "local"),
-                      "total", round(time.monotonic() - started, 2),
-                      "retry", attempt, flush=True)
-                return parsed
-            print("Chat response rejected", job.get("jobId", "local"),
-                  "attempt", attempt, "reason", rejected, flush=True)
-        messages[0]["content"] += (
-            " La respuesta anterior no pasó la revisión. Habla como el personaje en primera persona y continúa la última acción sin repetir el comienzo."
-        )
-    raise RuntimeError("Local response could not be validated")
+            print("Chat format attempt failed", job.get("jobId", "local"), attempt,
+                  repr(error)[:180], flush=True)
+            messages[0]["content"] += " La salida anterior estaba vacía o incompleta. Responde con contenido de personaje."
+    raise RuntimeError("Local model returned no usable reply")
+
 
 def handle(cloud, owner, name):
     job_id = name.removesuffix(".json")

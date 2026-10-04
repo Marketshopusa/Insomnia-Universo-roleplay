@@ -2,7 +2,7 @@ import unittest
 from urllib.error import URLError
 from unittest.mock import patch
 
-from adult_chat_worker import cloud_call, conversation_messages, handle, parse_role_reply, repeated_opening, reply_for, too_similar
+from adult_chat_worker import cloud_call, conversation_messages, handle, parse_role_reply, reply_for
 
 
 def job(history, user_message):
@@ -121,67 +121,47 @@ class StoryMemoryTest(unittest.TestCase):
         model.assert_called_once()
         self.assertEqual(model.call_args.args[2], 240)
 
-    def test_recycled_dialogue_opening_is_detected_even_with_new_ending(self):
-        history = [{"role": "assistant", "content": "*Bajo la mirada* Ay, no puedo creer que me hayas dejado hacer esto. Volvamos a casa."}]
-        self.assertTrue(repeated_opening(
-            "*Sonrío* Ay, no puedo creer que me hayas dejado hacer esto. Ahora veo la ventana.", history))
-        self.assertFalse(repeated_opening(
-            "*Miro hacia arriba* La ventana acaba de abrirse con el viento. ¿Lo oíste?", history))
+    def test_repeated_user_question_and_poem_remain_in_history(self):
+        poem = "Pedrito se cayó, volvió a levantarse y siguió cantando."
+        history = [
+            {"role": "user", "content": poem},
+            {"role": "assistant", "content": "*Sonrío* Me gusta ese verso."},
+            {"role": "user", "content": "¿Recuerdas cuando dije que Pedrito se cayó?"},
+            {"role": "assistant", "content": "*Asiento* Sí, lo recuerdo."},
+            {"role": "user", "content": poem},
+        ]
+        messages = conversation_messages(job(history, poem))
+        packed = "\n".join(item["content"] for item in messages)
+        self.assertEqual(packed.count(poem), 3)
+        self.assertIn("¿Recuerdas cuando dije que Pedrito se cayó?", packed)
+        self.assertIn("Sí, lo recuerdo", packed)
 
-    def test_stable_posture_can_be_reused_with_fresh_dialogue(self):
-        previous = "*Me siento junto a la puerta* Estoy preocupada por el ruido."
-        current = "*Me siento junto a la puerta* Ahora escucho pasos afuera."
-        self.assertFalse(too_similar(current, previous))
+    def test_character_may_repeat_quoted_poem_when_asked(self):
+        poem = "Pedrito se cayó, volvió a levantarse y siguió cantando."
+        prior = "*Sonrío* " + poem
+        current = job([
+            {"role": "user", "content": "Ese es el poema."},
+            {"role": "assistant", "content": prior},
+        ], "Me gustó el poema; léelo otra vez.")
+        raw = '{"gesto":"Sonrío","dialogo":"' + poem + '"}'
+        with patch("adult_chat_worker.free_gpu_for_chat"), patch(
+                "adult_chat_worker.model_chat", return_value=raw) as model:
+            reply = reply_for(current)
+        self.assertEqual(reply, prior)
+        model.assert_called_once()
 
-    def test_a_copied_apology_is_rejected(self):
-        previous = (
-            "*Se cubre el rostro con las manos, angustiada.* Willian, por favor, no me digas eso. "
-            "Tú no entiendes lo mucho que me arrepiento. No debí enviar nunca esa grabación."
-        )
-        copied = (
-            "*Se cubre el rostro con las manos, angustiada.* Willian, por favor, no me digas eso. "
-            "Tú no entiendes lo mucho que me arrepiento. No debí enviar nunca esa grabación..."
-        )
-        fresh = "*Bajo las manos y te miro* Si Daniel no se entera, entonces dejemos de hablar de eso."
-        self.assertTrue(too_similar(copied, previous))
-        self.assertFalse(too_similar(fresh, previous))
-
-    def test_repeated_first_sentence_is_removed_and_new_reply_delivered(self):
+    def test_repeated_intro_with_new_scene_detail_is_not_cut_or_rejected(self):
         previous = "*Bajo la mirada* Ay, no puedo creer que me hayas dejado hacer esto. Volvamos a casa."
         current = job([
             {"role": "assistant", "content": previous},
             {"role": "user", "content": "Vi algo moverse al lado de la ventana."},
         ], "¿Qué ves ahora junto a la ventana?")
-        raw = '{"gesto":"Miro hacia la ventana","dialogo":"Ay, no puedo creer que me hayas dejado hacer esto. Ahora veo una sombra que se mueve detrás del cristal."}'
+        raw = '{"gesto":"Miro hacia la ventana","dialogo":"Ay, no puedo creer que me hayas dejado hacer esto. Ahora veo una sombra detrás del cristal."}'
         with patch("adult_chat_worker.free_gpu_for_chat"), patch(
                 "adult_chat_worker.model_chat", return_value=raw) as model:
             reply = reply_for(current)
-        self.assertEqual(reply, "*Miro hacia la ventana* Ahora veo una sombra que se mueve detrás del cristal.")
+        self.assertEqual(reply, "*Miro hacia la ventana* Ay, no puedo creer que me hayas dejado hacer esto. Ahora veo una sombra detrás del cristal.")
         model.assert_called_once()
-
-    def test_repeated_history_stays_out_of_prompt_but_new_fact_remains(self):
-        history = [
-            {"role": "user", "content": "Vamos a la puerta."},
-            {"role": "assistant", "content": "*Me detengo* Ay, no puedo creer que me hayas dejado hacer esto. Volvamos a casa."},
-            {"role": "user", "content": "He encontrado una llave junto a la maceta."},
-            {"role": "assistant", "content": "*Miro la maceta* Ay, no puedo creer que me hayas dejado hacer esto. Ahora la llave está bajo la maceta."},
-        ]
-        messages = conversation_messages(job(history, "¿Abrimos la puerta?"))
-        packed = "\n".join(message["content"] for message in messages)
-        self.assertEqual(packed.count("Ay, no puedo creer que me hayas dejado hacer esto."), 0)
-        self.assertIn("Ahora la llave está bajo la maceta", packed)
-        self.assertIn("¿Abrimos la puerta?", messages[-1]["content"])
-
-    def test_all_copy_retries_and_uses_fresh_response(self):
-        previous = "*Me detengo* Ay, no puedo creer que me hayas dejado hacer esto. Volvamos a casa."
-        current = job([{"role": "assistant", "content": previous}], "Mira, ahora encontré una llave.")
-        copied = '{"gesto":"Me detengo","dialogo":"Ay, no puedo creer que me hayas dejado hacer esto. Volvamos a casa."}'
-        fresh = '{"gesto":"Miro la llave","dialogo":"La veo en tu mano. Quizá sirva para abrir la puerta que tenemos enfrente."}'
-        with patch("adult_chat_worker.free_gpu_for_chat"), patch(
-                "adult_chat_worker.model_chat", side_effect=[copied, fresh]) as model:
-            reply = reply_for(current)
-        self.assertEqual(reply, "*Miro la llave* La veo en tu mano. Quizá sirva para abrir la puerta que tenemos enfrente.")
-        self.assertEqual(model.call_count, 2)
 
     def test_empty_json_retry_uses_unconstrained_generation(self):
         current = job([{"role": "assistant", "content": "*Abro la ventana* Hay una sombra en el jardín."}],
