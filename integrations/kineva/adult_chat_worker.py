@@ -59,10 +59,12 @@ def parse_role_reply(raw_reply, character="", allow_third_person=False):
     if len(dialogue) > 420:
         boundaries = [match.end() for match in re.finditer(
             r"[.!?](?=\s|$)", dialogue[:420]) if match.end() >= 90]
-        if boundaries:
-            dialogue = dialogue[:boundaries[-1]].strip()
-    if not gesture or not dialogue or len(gesture) > 100 or len(dialogue) > 420:
+        dialogue = (dialogue[:boundaries[-1]].strip() if boundaries else
+                    dialogue[:419].rsplit(" ", 1)[0].rstrip(" ,.;") + "…")
+    if not dialogue or len(gesture) > 100:
         raise ValueError("Incomplete or overlong gesture/dialogue")
+    if not gesture:
+        return dialogue
     name = re.match(r"^[A-ZÁÉÍÓÚÑ][a-záéíóúñ]{2,}", character)
     third_person = r"^(?:ella|él|se (?:queda|sienta|acerca|levanta|pone)|la mujer|el hombre)\b"
     if name:

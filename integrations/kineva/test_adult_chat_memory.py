@@ -102,6 +102,11 @@ class StoryMemoryTest(unittest.TestCase):
             '{"gesto":"Me quedo mirando la puerta, sorprendida", "dialogo":"No esperaba verte."}', "Estefani"),
             "*Me quedo mirando la puerta, sorprendida* No esperaba verte.")
 
+    def test_dialogue_survives_when_model_omits_a_gesture(self):
+        self.assertEqual(parse_role_reply(
+            '{"gesto":"", "dialogo":"La sombra está junto al muro."}', "Andrea"),
+            "La sombra está junto al muro.")
+
     def test_third_person_draft_has_a_first_person_fallback(self):
         current = job([
             {"role": "assistant", "content": "*Miro la puerta* Ya encontré la llave."},

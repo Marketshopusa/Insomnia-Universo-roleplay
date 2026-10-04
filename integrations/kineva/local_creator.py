@@ -12,7 +12,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from image_worker import preflight, render, scene_prompt
-from worker import Api, find_manifest, one, wait_for_render
+from worker import Api, find_manifest, one, release_idle_models, wait_for_render
 
 HOST = "127.0.0.1"
 PORT = int(os.environ.get("KINEVA_LOCAL_PORT", "8787"))
@@ -190,6 +190,8 @@ def run_job(job_id, image, ideas):
             update(job_id, state="completed")
     except Exception as exc:
         update(job_id, state="failed", error=str(exc)[:700])
+    finally:
+        release_idle_models(COMFY)
 
 class Handler(BaseHTTPRequestHandler):
     def _origin(self):
@@ -293,6 +295,8 @@ class Handler(BaseHTTPRequestHandler):
                 png = render({"id": job_id, "prompt": prompt}, COMFY, OUTPUT, timeout=180)
         except Exception as exc:
             return self._reply(503, {"error": str(exc)[:350]})
+        finally:
+            release_idle_models(COMFY)
         return self._reply(200, {"image": base64.b64encode(png).decode("ascii")})
 
     def do_POST(self):
