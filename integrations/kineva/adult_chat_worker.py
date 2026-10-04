@@ -132,8 +132,8 @@ def clean_turns(raw, latest):
 
 def memory_transcript(turns, player, character):
     """Retain the original facts and the last completed beats in chronological order."""
-    recent = turns[-10:]
-    older = turns[:-10]
+    recent = turns[-16:]
+    older = turns[:-16]
     if not older:
         return "", recent
 

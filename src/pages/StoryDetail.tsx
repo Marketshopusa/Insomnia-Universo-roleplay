@@ -253,13 +253,16 @@ type Mode = "select" | "read" | "roleplay";
     return () => { cancelled = true; };
   }, [user, storyId]);
 
-  // Persist current session (upsert one row per user+story)
-  const saveSession = async (
+  // Preserve the order of saves: a slow earlier request must not overwrite a newer turn.
+  const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const saveSession = (
     nextMessages: Message[],
     nextNarrative: string | null,
     nextMode: Mode
-  ) => {
-    if (!user || !storyId) return;
+  ): Promise<void> => {
+    if (!user || !storyId) return Promise.resolve();
+    const userId = user.id;
+    const currentStoryId = storyId;
     const serializable = nextMessages
       .filter((m) => m.id !== "intro")
       .map((m) => ({
@@ -268,16 +271,20 @@ type Mode = "select" | "read" | "roleplay";
         content: m.content,
         timestamp: m.timestamp.toISOString(),
       }));
-    await supabase.from("story_sessions").upsert(
-      {
-        user_id: user.id,
-        story_id: storyId,
-        messages: serializable,
-        narrative: nextNarrative,
-        last_mode: nextMode,
-      },
-      { onConflict: "user_id,story_id" }
-    );
+    saveQueueRef.current = saveQueueRef.current.catch(() => {}).then(async () => {
+      const { error } = await supabase.from("story_sessions").upsert(
+        {
+          user_id: userId,
+          story_id: currentStoryId,
+          messages: serializable,
+          narrative: nextNarrative,
+          last_mode: nextMode,
+        },
+        { onConflict: "user_id,story_id" }
+      );
+      if (error) console.error("Could not save story turn:", error.message);
+    });
+    return saveQueueRef.current;
   };
 
    const scrollToBottom = () => {
