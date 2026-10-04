@@ -9,7 +9,7 @@ const pause = (milliseconds: number) => new Promise((resolve) => window.setTimeo
 export async function queueComfyStill(
   body: Record<string, unknown>,
   invoke: Invoke,
-  wait: (milliseconds: number) => Promise<void> = pause,
+  wait: (milliseconds: number) => Promise<unknown> = pause,
 ): Promise<string> {
   const created = await invoke<Reply>("illustrate-scene", { ...body, engine: "comfy" });
   const jobId = created.data?.jobId;
