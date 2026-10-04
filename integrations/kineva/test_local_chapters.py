@@ -35,3 +35,15 @@ class LocalChaptersTest(unittest.TestCase):
             "chapters": ["Capítulo %s sigue en el mismo lugar." % number for number in range(13)],
         })
         self.assertEqual(len(ideas), 12)
+
+    def test_studio_graph_uses_the_active_direct_shot_template(self):
+        import json
+        template = json.loads(creator.TEMPLATE_PATH.read_text(encoding="utf-8"))
+        graph = creator.build_graph(
+            template, "reference.png", "cast.json", "Ella saluda a cámara.",
+            "test-job", 1, 1, "")
+        self.assertEqual(creator.one(graph, "KinevaDirectShotPlan")[1]["inputs"]["prompt"],
+                         "Ella saluda a cámara.")
+        self.assertEqual(creator.one(graph, "LoadImage")[1]["inputs"]["image"],
+                         "reference.png")
+        self.assertTrue(creator.one(graph, "KinevaPlanLock")[1]["inputs"]["preserve_dialogue"])

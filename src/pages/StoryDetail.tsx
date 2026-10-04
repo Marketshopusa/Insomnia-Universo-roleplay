@@ -348,8 +348,8 @@ type Mode = "select" | "read" | "roleplay";
         variant: "destructive",
       });
       else if (code === "local_chat_failed") toast({
-        title: language === "es" ? "La respuesta repitió la escena" : "The reply repeated the scene",
-        description: language === "es" ? "Tu mensaje sigue listo para reenviar. El motor local está conectado." : "Your message is ready to resend. The local engine is connected.",
+        title: language === "es" ? "No se pudo completar la respuesta" : "Could not complete the reply",
+        description: data?.message,
         variant: "destructive",
       });
       else if (code === "chat_status_unavailable" || code === "chat_job_expired") toast({

@@ -47,7 +47,7 @@ def model_chat(messages, temperature, max_tokens, json_mode=False):
     content = str(result["choices"][0]["message"].get("content") or "").strip()
     return re.sub(r"(?s)<think>.*?</think>", "", content).strip()
 
-def parse_role_reply(raw_reply, character=""):
+def parse_role_reply(raw_reply, character="", allow_third_person=False):
     parsed = json.loads(raw_reply)
     gesture = str(parsed.get("gesto") or "").strip().strip("*")
     dialogue = str(parsed.get("dialogo") or "").strip()
@@ -68,7 +68,20 @@ def parse_role_reply(raw_reply, character=""):
     if name:
         third_person = r"^(?:" + re.escape(name.group()) + r"|ella|él|se (?:queda|sienta|acerca|levanta|pone)|la mujer|el hombre)\b"
     if re.search(third_person, gesture, re.I):
-        raise ValueError("Character action narrated in third person")
+        if not allow_third_person:
+            raise ValueError("Character action narrated in third person")
+        subject = r"^(?:" + (re.escape(name.group()) + r"|" if name else "") + r"ella|él|la mujer|el hombre)\s+"
+        gesture = re.sub(subject, "", gesture, flags=re.I)
+        for source, replacement in (
+            (r"^se queda\b", "Me quedo"), (r"^se sienta\b", "Me siento"),
+            (r"^se acerca\b", "Me acerco"), (r"^se levanta\b", "Me levanto"),
+            (r"^se pone\b", "Me pongo"), (r"^sonríe\b", "Sonrío"),
+            (r"^mira\b", "Miro"), (r"^entra\b", "Entro"),
+            (r"^asiente\b", "Asiento"), (r"^suspira\b", "Suspiro"),
+        ):
+            if re.search(source, gesture, re.I):
+                gesture = re.sub(source, replacement, gesture, count=1, flags=re.I)
+                break
     return "*" + gesture + "* " + dialogue
 
 REGION_SLANG = {
@@ -249,23 +262,34 @@ def reply_for(job):
     messages = conversation_messages(job)
     messages[0]["content"] += " No reutilices el comienzo de ninguna de tus seis respuestas anteriores."
     character = str((job.get("story") or {}).get("character_role") or "")
-    parsed = ""
+    fallback = ""
     for attempt in range(2):
+        parsed = ""
+        raw_reply = ""
         try:
             raw_reply = model_chat(messages, 0.64 + attempt * 0.08, 320, json_mode=True)
             parsed = parse_role_reply(raw_reply, character)
         except Exception as error:
+            if isinstance(error, ValueError) and "third person" in str(error):
+                try:
+                    candidate = parse_role_reply(raw_reply, character, allow_third_person=True)
+                    if not too_similar(candidate, previous) and not repeated_opening(candidate, raw):
+                        fallback = candidate
+                except ValueError:
+                    pass
             print("Chat attempt failed", job.get("jobId", "local"), attempt, repr(error)[:180], flush=True)
-            parsed = ""
         if parsed and not too_similar(parsed, previous) and not repeated_opening(parsed, raw) and normalize_reply(parsed) != normalize_reply(latest):
             print("Chat generation timing", job.get("jobId", "local"),
                   "total", round(time.monotonic() - started, 2),
                   "retry", attempt, flush=True)
             return parsed
         messages[0]["content"] += (
-            " La respuesta anterior repitió un hecho o una frase, o narró tu acción en tercera persona. Empieza de otro modo y habla como el personaje en primera persona."
+            " La respuesta anterior no pasó la revisión. Habla como el personaje en primera persona y continúa la última acción sin repetir el comienzo."
         )
-    raise RuntimeError("Local response repeated the previous turn")
+    if fallback and normalize_reply(fallback) != normalize_reply(latest):
+        print("Chat generation used third-person fallback", job.get("jobId", "local"), flush=True)
+        return fallback
+    raise RuntimeError("Local response could not be validated")
 
 def handle(cloud, owner, name):
     job_id = name.removesuffix(".json")

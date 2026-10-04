@@ -1,6 +1,7 @@
 import unittest
+from unittest.mock import patch
 
-from adult_chat_worker import conversation_messages, parse_role_reply, repeated_opening, too_similar
+from adult_chat_worker import conversation_messages, parse_role_reply, repeated_opening, reply_for, too_similar
 
 
 def job(history, user_message):
@@ -100,6 +101,17 @@ class StoryMemoryTest(unittest.TestCase):
         self.assertEqual(parse_role_reply(
             '{"gesto":"Me quedo mirando la puerta, sorprendida", "dialogo":"No esperaba verte."}', "Estefani"),
             "*Me quedo mirando la puerta, sorprendida* No esperaba verte.")
+
+    def test_third_person_draft_has_a_first_person_fallback(self):
+        current = job([
+            {"role": "assistant", "content": "*Miro la puerta* Ya encontré la llave."},
+            {"role": "user", "content": "Vamos al jardín."},
+        ], "¿Qué ves junto al muro?")
+        raw = '{"gesto":"Ella se queda mirando el muro", "dialogo":"Veo una sombra junto a las piedras."}'
+        with patch("adult_chat_worker.free_gpu_for_chat"), patch(
+                "adult_chat_worker.model_chat", return_value=raw):
+            reply = reply_for(current)
+        self.assertEqual(reply, "*Me quedo mirando el muro* Veo una sombra junto a las piedras.")
 
     def test_recycled_dialogue_opening_is_detected_even_with_new_ending(self):
         history = [{"role": "assistant", "content": "*Bajo la mirada* Ay, no puedo creer que me hayas dejado hacer esto. Volvamos a casa."}]

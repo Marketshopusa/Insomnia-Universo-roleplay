@@ -72,7 +72,7 @@ async function callAdultStoryChat<T>(body: unknown): Promise<FunctionResult<T>> 
       }
       if (result.data?.status === "failed") {
         try { if (key) localStorage.removeItem(key); } catch { /* ignore */ }
-        return fail(result.data.message || "La respuesta repitió la escena. Reintenta el turno.", 502, result.data.error || "local_chat_failed");
+        return fail(result.data.message || "No se pudo completar la respuesta. Reintenta el turno.", 502, result.data.error || "local_chat_failed");
       }
       if (result.data?.error === "job_not_found") {
         try { if (key) localStorage.removeItem(key); } catch { /* ignore */ }
