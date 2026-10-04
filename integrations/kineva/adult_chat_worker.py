@@ -202,6 +202,7 @@ def conversation_messages(job):
         + (chronicle + "\n" if chronicle else "")
         + opening
         + "Los turnos recientes son la escena ACTUAL en orden; el último mensaje del jugador tiene prioridad. "
+        "Las acciones que el jugador cuenta en pasado YA OCURRIERON. Responde a sus consecuencias; nunca le impidas hacer algo que acaba de hacer. "
         "Continúa desde la última acción, con el mismo lugar, personas y objetos salvo que el jugador haya cambiado la escena. "
         "Los hechos de la premisa y del comienzo son antecedentes, no acciones que debas repetir. "
         "No cambies quién dijo, envió, sintió o hizo algo. No inventes sentimientos del jugador. "
@@ -219,7 +220,7 @@ def conversation_messages(job):
         "Si sonríes, ríes, te sorprendes o lloras por algo que ocurre ahora, muéstralo en gesto y deja que el diálogo suene acorde, sin añadir emociones ajenas a la escena. "
         "Si ocurre una reacción audible tuya (grito, llanto, risa, gemido), descríbela en 'gesto' justo antes del diálogo que la acompaña. "
         "No enumeres sonidos, no expliques reglas internas, no reescribas el turno anterior. "
-        + ("Solo español." if spanish else "English only.")
+        + ("Escribe gesto y dialogo enteramente en español; no insertes palabras en inglés." if spanish else "English only.")
         + slang_clause(job)
     )
     messages = [{"role": "system", "content": instruction}]
