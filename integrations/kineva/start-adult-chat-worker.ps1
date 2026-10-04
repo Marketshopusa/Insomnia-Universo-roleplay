@@ -50,7 +50,7 @@ while ($true) {
     $healthy = $false
     try { $healthy = (Invoke-RestMethod -Uri 'http://127.0.0.1:8788/health' -TimeoutSec 2).status -eq 'ok' } catch { }
     if (-not $healthy) {
-      Start-Process -FilePath $exe -ArgumentList @('-m',('"' + $model + '"'),'--host','127.0.0.1','--port','8788','-c','4096','-ngl','99','--no-webui') -WindowStyle Hidden -RedirectStandardOutput $llamaLog -RedirectStandardError (Join-Path $logDir 'adult-chat-llama-error.log')
+      Start-Process -FilePath $exe -ArgumentList @('-m',('"' + $model + '"'),'--host','127.0.0.1','--port','8788','-c','4096','-ngl','99','-np','1','--no-webui') -WindowStyle Hidden -RedirectStandardOutput $llamaLog -RedirectStandardError (Join-Path $logDir 'adult-chat-llama-error.log')
       for ($i = 0; $i -lt 45; $i++) {
         Start-Sleep -Seconds 2
         try { if ((Invoke-RestMethod -Uri 'http://127.0.0.1:8788/health' -TimeoutSec 2).status -eq 'ok') { $healthy = $true; break } } catch { }

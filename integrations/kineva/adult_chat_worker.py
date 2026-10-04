@@ -42,8 +42,16 @@ def model_chat(messages, temperature, max_tokens, json_mode=False):
     request = Request(os.environ.get("KINEVA_CHAT_MODEL_URL", "http://127.0.0.1:8788/v1/chat/completions"),
                       data=json.dumps(payload).encode("utf-8"),
                       headers={"Content-Type": "application/json"}, method="POST")
+    started = time.monotonic()
     with urlopen(request, timeout=90) as response:
         result = json.loads(response.read())
+    usage = result.get("usage") or {}
+    timings = result.get("timings") or {}
+    print("Chat model metrics", "wall", round(time.monotonic() - started, 2),
+          "prompt_tokens", usage.get("prompt_tokens"),
+          "output_tokens", usage.get("completion_tokens"),
+          "output_tokens_per_second", round(timings.get("predicted_per_second") or 0, 1),
+          flush=True)
     content = str(result["choices"][0]["message"].get("content") or "").strip()
     return re.sub(r"(?s)<think>.*?</think>", "", content).strip()
 
@@ -264,33 +272,33 @@ def reply_for(job):
     messages = conversation_messages(job)
     messages[0]["content"] += " No reutilices el comienzo de ninguna de tus seis respuestas anteriores."
     character = str((job.get("story") or {}).get("character_role") or "")
-    fallback = ""
     for attempt in range(2):
         parsed = ""
         raw_reply = ""
         try:
-            raw_reply = model_chat(messages, 0.64 + attempt * 0.08, 320, json_mode=True)
-            parsed = parse_role_reply(raw_reply, character)
+            raw_reply = model_chat(messages, 0.64 + attempt * 0.08, 240, json_mode=True)
+            try:
+                parsed = parse_role_reply(raw_reply, character)
+            except ValueError as error:
+                if "third person" not in str(error):
+                    raise
+                parsed = parse_role_reply(raw_reply, character, allow_third_person=True)
         except Exception as error:
-            if isinstance(error, ValueError) and "third person" in str(error):
-                try:
-                    candidate = parse_role_reply(raw_reply, character, allow_third_person=True)
-                    if not too_similar(candidate, previous) and not repeated_opening(candidate, raw):
-                        fallback = candidate
-                except ValueError:
-                    pass
             print("Chat attempt failed", job.get("jobId", "local"), attempt, repr(error)[:180], flush=True)
-        if parsed and not too_similar(parsed, previous) and not repeated_opening(parsed, raw) and normalize_reply(parsed) != normalize_reply(latest):
-            print("Chat generation timing", job.get("jobId", "local"),
-                  "total", round(time.monotonic() - started, 2),
-                  "retry", attempt, flush=True)
-            return parsed
+        if parsed:
+            rejected = ("copy" if too_similar(parsed, previous) else
+                        "opening" if repeated_opening(parsed, raw) else
+                        "user_echo" if normalize_reply(parsed) == normalize_reply(latest) else "")
+            if not rejected:
+                print("Chat generation timing", job.get("jobId", "local"),
+                      "total", round(time.monotonic() - started, 2),
+                      "retry", attempt, flush=True)
+                return parsed
+            print("Chat response rejected", job.get("jobId", "local"),
+                  "attempt", attempt, "reason", rejected, flush=True)
         messages[0]["content"] += (
             " La respuesta anterior no pasó la revisión. Habla como el personaje en primera persona y continúa la última acción sin repetir el comienzo."
         )
-    if fallback and normalize_reply(fallback) != normalize_reply(latest):
-        print("Chat generation used third-person fallback", job.get("jobId", "local"), flush=True)
-        return fallback
     raise RuntimeError("Local response could not be validated")
 
 def handle(cloud, owner, name):

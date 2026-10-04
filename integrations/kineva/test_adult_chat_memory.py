@@ -114,9 +114,11 @@ class StoryMemoryTest(unittest.TestCase):
         ], "¿Qué ves junto al muro?")
         raw = '{"gesto":"Ella se queda mirando el muro", "dialogo":"Veo una sombra junto a las piedras."}'
         with patch("adult_chat_worker.free_gpu_for_chat"), patch(
-                "adult_chat_worker.model_chat", return_value=raw):
+                "adult_chat_worker.model_chat", return_value=raw) as model:
             reply = reply_for(current)
         self.assertEqual(reply, "*Me quedo mirando el muro* Veo una sombra junto a las piedras.")
+        model.assert_called_once()
+        self.assertEqual(model.call_args.args[2], 240)
 
     def test_recycled_dialogue_opening_is_detected_even_with_new_ending(self):
         history = [{"role": "assistant", "content": "*Bajo la mirada* Ay, no puedo creer que me hayas dejado hacer esto. Volvamos a casa."}]

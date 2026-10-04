@@ -25,8 +25,18 @@ TEMPLATE_PATH = Path(os.environ.get(
     str(HOME / "Documents/Kineva-Workflows/ACTIVE/KINEVA_MINISERIES_API_TEMPLATE.json"),
 ))
 COMFY = Api(os.environ.get("KINEVA_COMFY_URL", "http://127.0.0.1:8188"))
-JOBS = {}
+STATE_PATH = HOME / "AppData/Local/Kineva/local-studio-jobs.json"
+try:
+    JOBS = json.loads(STATE_PATH.read_text(encoding="utf-8"))
+    if not isinstance(JOBS, dict):
+        JOBS = {}
+except (OSError, ValueError):
+    JOBS = {}
+for saved_job in JOBS.values():
+    if saved_job.get("state") in ("queued", "rendering"):
+        saved_job.update(state="failed", error="El proceso local se reinició antes de terminar el vídeo.")
 JOBS_LOCK = threading.Lock()
+STATE_LOCK = threading.Lock()
 GPU_LOCK = threading.Lock()
 # The browser on the Vercel Studio calls this loopback worker. Vercel itself never reaches the GPU.
 ALLOWED_ORIGINS = re.compile(
@@ -45,16 +55,30 @@ def image_extension(data):
         return ".webp"
     raise ValueError("La foto debe ser PNG, JPEG o WebP.")
 
+def persist_jobs():
+    with STATE_LOCK:
+        with JOBS_LOCK:
+            snapshot = copy.deepcopy(JOBS)
+        STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        temporary = STATE_PATH.with_suffix(".json.tmp")
+        temporary.write_text(json.dumps(snapshot, ensure_ascii=False), encoding="utf-8")
+        temporary.replace(STATE_PATH)
+
 def update(job_id, **fields):
     with JOBS_LOCK:
         JOBS[job_id].update(fields)
+    persist_jobs()
 
 def public_job(job_id):
     with JOBS_LOCK:
-        job = JOBS.get(job_id)
-        if job is None:
-            return None
-        return {k: v for k, v in job.items() if k not in ("image", "idea")}
+        job = copy.deepcopy(JOBS.get(job_id))
+    if job is None:
+        return None
+    job.pop("image", None)
+    job.pop("idea", None)
+    job["videos"] = [{key: value for key, value in video.items() if key != "path"}
+                     for video in job.get("videos", [])]
+    return job
 
 def build_graph(template, image_name, manifest_path, idea, job_id, episode, total, previous):
     graph = copy.deepcopy(template)
@@ -167,6 +191,7 @@ def run_job(job_id, image, ideas):
                         "episode": episode, "url": "/videos/" + job_id + "/" + video_id,
                         "path": str(path),
                     })
+                persist_jobs()
                 try:
                     report = find_manifest(
                         OUTPUT, "kineva_local_" + job_id, filename)
@@ -185,6 +210,7 @@ def run_job(job_id, image, ideas):
                     ).strip()
                     with JOBS_LOCK:
                         JOBS[job_id]["videos"][-1]["script"] = script[:5000]
+                    persist_jobs()
                 except Exception:
                     previous = ""
             update(job_id, state="completed")
@@ -330,6 +356,7 @@ class Handler(BaseHTTPRequestHandler):
                 "id": job_id, "state": "queued", "current": 0,
                 "total": count, "videos": [], "error": None,
             }
+        persist_jobs()
         threading.Thread(target=run_job, args=(job_id, image, ideas),
                          daemon=True).start()
         return self._reply(202, public_job(job_id))
