@@ -30,10 +30,22 @@ sys.modules.setdefault("comfy_api", api)
 sys.modules.setdefault("comfy_api.latest", latest)
 
 lock = load_file("kineva_plan_lock", HERE / "comfy_nodes/KinevaPlanLock/nodes.py")
+direct = load_file("kineva_direct", HERE / "comfy_nodes/KinevaDirectShot/nodes.py")
 worker = load_file("kineva_worker", HERE / "worker.py")
 
 
 class DialogueContractTest(unittest.TestCase):
+    def test_direct_plan_uses_uploaded_subject_and_literal_line(self):
+        plan, _ = direct.KinevaDirectShotPlan().build(
+            "ACTION: She waves at the camera.\nDIALOGUE: Hola, buenos dias.", "")
+        self.assertEqual(len(plan["shots"]), 1)
+        self.assertEqual(plan["shots"][0]["dialogue"][0]["line"], "Hola, buenos dias.")
+        self.assertTrue(plan["cast"]["characters"][0]["seen"])
+        self.assertNotIn("DIALOGUE:", plan["shots"][0]["action"])
+        locked, _, _ = lock.KinevaPlanLock.execute(
+            plan, profile="MINISERIES", preserve_dialogue=True)
+        self.assertEqual(locked["shots"][0]["dialogue"][0]["line"], "Hola, buenos dias.")
+
     def setUp(self):
         self.plan = {
             "cast": {"characters": [{"name": "Elena", "seen": True}]},
@@ -72,7 +84,7 @@ class DialogueContractTest(unittest.TestCase):
                 self.plan, profile="TALKING_PRESENTER", exact_dialogue="")
 
     def test_worker_uses_presenter_camera_and_single_take_controls(self):
-        kinds = ("MinimaxStoryPlanner", "LoadImage", "KinevaStoryCastFromManifest",
+        kinds = ("KinevaDirectShotPlan", "LoadImage", "KinevaStoryCastFromManifest",
                  "KinevaPlanLock", "KinevaStaticBackgroundLock",
                  "KinevaVoiceRouter", "KinevaPromptTrace",
                  "KinevaProjectContext", "KinevaRunManifest")

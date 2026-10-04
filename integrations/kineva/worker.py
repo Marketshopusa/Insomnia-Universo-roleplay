@@ -70,12 +70,16 @@ def make_prompt(template, job, image_name, manifest_path):
     graph = copy.deepcopy(template)
     if not all(isinstance(node.get("inputs"), dict) for node in graph.values()):
         raise ValueError("Expected ComfyUI API workflow JSON, not UI workflow JSON")
-    one(graph, "MinimaxStoryPlanner")[1]["inputs"]["story"] = job["prompt"]
     one(graph, "LoadImage")[1]["inputs"]["image"] = image_name
     one(graph, "KinevaStoryCastFromManifest")[1]["inputs"]["manifest_path"] = str(manifest_path)
     spoken_script = str(job.get("spoken_script") or "").strip()
     if not spoken_script:
         raise ValueError("Missing exact spoken script for Kineva shot")
+    direct = one(graph, "KinevaDirectShotPlan")[1]["inputs"]
+    direct["prompt"] = job["prompt"]
+    direct["exact_dialogue"] = spoken_script
+    direct["duration_seconds"] = round(
+        min(15.08, max(5.17, len(spoken_script.split()) / 2.5 + 1)), 2)
     presenter = job["profile"] == "TALKING_PRESENTER"
     one(graph, "KinevaPlanLock")[1]["inputs"].update({
         "profile": job["profile"], "preserve_dialogue": True,
@@ -357,9 +361,9 @@ def main():
     parser.add_argument("--once", action="store_true")
     parser.add_argument("--preflight", action="store_true")
     args = parser.parse_args()
-    comfy = Api(os.environ.get("KINEVA_COMFY_URL", "http://127.0.0.1:8188"))
+    comfy = Api(os.environ.get("KINEVA_COMFY_URL", "http://127.0.0.1:8189"))
     template = json.loads(args.workflow_api.read_text(encoding="utf-8"))
-    one(template, "MinimaxStoryPlanner")
+    one(template, "KinevaDirectShotPlan")
     one(template, "KinevaMasterExport")
     validate_runtime(comfy, template, args.input_dir, args.output_dir)
     if args.preflight:

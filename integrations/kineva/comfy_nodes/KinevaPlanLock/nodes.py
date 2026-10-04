@@ -73,6 +73,8 @@ class KinevaPlanLock(io.ComfyNode):
         project_id="",
     ):
         plan = copy.deepcopy(story_plan or {})
+        if not str(exact_dialogue or "").strip():
+            exact_dialogue = str(plan.get("_kineva_direct_exact_dialogue") or "").strip()
         profile = str(profile or "MINISERIES").strip().upper()
         chars = _visible_characters(plan)
         primary = str(chars[0].get("name") or "").strip() if chars else ""
@@ -193,6 +195,12 @@ class KinevaPlanLock(io.ComfyNode):
                     shot["characters"] = [primary, *characters]
                 report["changes"].append(
                     "MINISERIES exact spoken segment restored."
+                )
+            elif preserve_dialogue:
+                for shot in shots:
+                    shot["dialogue"] = []
+                report["changes"].append(
+                    "MINISERIES: no exact dialogue supplied; spoken lines removed."
                 )
             else:
                 report["changes"].append(

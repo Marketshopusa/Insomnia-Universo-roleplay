@@ -9,6 +9,7 @@ $worker = Join-Path $PSScriptRoot 'worker.py'
 $shared = Join-Path $env:LOCALAPPDATA 'Comfy-Desktop\ComfyUI-Shared'
 $workflow = Join-Path $env:USERPROFILE 'Documents\Kineva-Workflows\ACTIVE\KINEVA_MINISERIES_API_TEMPLATE.json'
 $env:SUPABASE_URL = 'https://cexzmelshvbgabihtfvx.supabase.co'
+$env:KINEVA_COMFY_URL = 'http://127.0.0.1:8189'
 Set-Location $repo
 while ($true) {
   try {
