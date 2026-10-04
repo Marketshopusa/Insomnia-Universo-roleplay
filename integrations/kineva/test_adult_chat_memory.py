@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import patch
 
-from adult_chat_worker import conversation_messages, parse_role_reply, repeated_opening, reply_for, too_similar
+from adult_chat_worker import conversation_messages, handle, parse_role_reply, repeated_opening, reply_for, too_similar
 
 
 def job(history, user_message):
@@ -144,6 +144,13 @@ class StoryMemoryTest(unittest.TestCase):
         fresh = "*Bajo las manos y te miro* Si Daniel no se entera, entonces dejemos de hablar de eso."
         self.assertTrue(too_similar(copied, previous))
         self.assertFalse(too_similar(fresh, previous))
+    def test_removed_job_does_not_stall_the_worker(self):
+        class RemovedJob:
+            def call(self, method, path, *args, **kwargs):
+                raise RuntimeError("HTTP 400: NoSuchKey")
+
+        self.assertFalse(handle(RemovedJob(), "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+                                "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb.json"))
 
 
 if __name__ == "__main__":

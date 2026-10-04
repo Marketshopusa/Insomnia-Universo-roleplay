@@ -313,7 +313,13 @@ def handle(cloud, owner, name):
     except RuntimeError as error:
         if not any(marker in str(error) for marker in ("HTTP 404", "NoSuchKey", "not_found")):
             raise
-    raw = cloud.call("GET", "/storage/v1/object/authenticated/" + BUCKET + "/" + quote(request_path, safe="/"), raw=True)
+    try:
+        raw = cloud.call("GET", "/storage/v1/object/authenticated/" + BUCKET + "/" + quote(request_path, safe="/"), raw=True)
+    except RuntimeError as error:
+        # A listed job can disappear before download if it was already completed or removed.
+        if any(marker in str(error) for marker in ("HTTP 404", "NoSuchKey", "not_found")):
+            return False
+        raise
     job = json.loads(raw)
     if job.get("ownerId") != owner or job.get("jobId") != job_id:
         raise RuntimeError("Chat job owner mismatch")
