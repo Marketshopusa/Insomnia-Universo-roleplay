@@ -189,7 +189,7 @@ export const ShortEpisodeCard = ({
       "¿Publicar toda la serie? Revisa antes la imagen, la voz y el audio de cada episodio."
     )) return;
     setPublishing(true);
-    const { data, error } = await supabase.rpc("publish_kineva_series", {
+    const { data, error } = await (supabase.rpc as any)("publish_kineva_series", {
       p_series_id: series.id,
     });
     setPublishing(false);
