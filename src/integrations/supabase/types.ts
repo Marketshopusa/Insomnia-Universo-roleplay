@@ -120,9 +120,6 @@ export type Database = {
           error_message: string | null
           id: string
           job_id: string | null
-          kineva_shot_count: number | null
-          kineva_assembly_version: number
-          kineva_assembly_started_at: string | null
           poster_url: string | null
           script: string
           series_id: string
@@ -138,9 +135,6 @@ export type Database = {
           error_message?: string | null
           id?: string
           job_id?: string | null
-          kineva_shot_count?: number | null
-          kineva_assembly_version?: number
-          kineva_assembly_started_at?: string | null
           poster_url?: string | null
           script: string
           series_id: string
@@ -156,9 +150,6 @@ export type Database = {
           error_message?: string | null
           id?: string
           job_id?: string | null
-          kineva_shot_count?: number | null
-          kineva_assembly_version?: number
-          kineva_assembly_started_at?: string | null
           poster_url?: string | null
           script?: string
           series_id?: string
@@ -187,9 +178,6 @@ export type Database = {
           id: string
           is_adult: boolean
           is_published: boolean
-          video_provider: "gateway" | "kineva"
-          kineva_bible: Json
-          kineva_reference_image_path: string | null
           premise: string | null
           title: string
           updated_at: string
@@ -202,9 +190,6 @@ export type Database = {
           id?: string
           is_adult?: boolean
           is_published?: boolean
-          video_provider?: "gateway" | "kineva"
-          kineva_bible?: Json
-          kineva_reference_image_path?: string | null
           premise?: string | null
           title: string
           updated_at?: string
@@ -217,9 +202,6 @@ export type Database = {
           id?: string
           is_adult?: boolean
           is_published?: boolean
-          video_provider?: "gateway" | "kineva"
-          kineva_bible?: Json
-          kineva_reference_image_path?: string | null
           premise?: string | null
           title?: string
           updated_at?: string
@@ -514,10 +496,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      publish_kineva_series: {
-        Args: { p_series_id: string }
-        Returns: boolean
-      }
+      [_ in never]: never
     }
     Enums: {
       story_source: "crafted" | "custom"
