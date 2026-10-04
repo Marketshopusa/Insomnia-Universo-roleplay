@@ -9,12 +9,26 @@ import sys
 import time
 from urllib.parse import quote
 from urllib.request import Request, urlopen
+from urllib.error import URLError
 from worker import Api, release_idle_models
 
 BUCKET = "kineva-adult-chat"
 
+def cloud_call(cloud, method, path, *args, **kwargs):
+    """Retry brief Storage disconnects; these queue operations are idempotent."""
+    for attempt in range(3):
+        try:
+            return cloud.call(method, path, *args, **kwargs)
+        except (URLError, TimeoutError, ConnectionResetError, RuntimeError) as error:
+            if isinstance(error, RuntimeError) and not re.search(r"HTTP (?:429|5\d\d)", str(error)):
+                raise
+            if attempt == 2:
+                raise
+            print("Chat storage retry", method, "attempt", attempt + 1, flush=True)
+            time.sleep(0.35 * (2 ** attempt))
+
 def list_folder(cloud, prefix):
-    return cloud.call("POST", "/storage/v1/object/list/" + BUCKET,
+    return cloud_call(cloud, "POST", "/storage/v1/object/list/" + BUCKET,
                       {"prefix": prefix, "limit": 100,
                        "sortBy": {"column": "name", "order": "asc"}}) or []
 
@@ -94,6 +108,23 @@ def parse_role_reply(raw_reply, character="", allow_third_person=False):
                 break
     return "*" + gesture + "* " + dialogue
 
+def parse_freeform_reply(raw_reply, character="", allow_third_person=False):
+    """Recover the local model's ordinary roleplay format on a JSON retry."""
+    content = raw_reply.strip()
+    if not content or content.startswith("{"):
+        raise ValueError("Incomplete JSON reply")
+    stage = re.match(r"^\*([^*]{1,140})\*\s*", content)
+    gesture = stage.group(1).strip() if stage else ""
+    spoken = content[stage.end():] if stage else content
+    spoken = re.sub(r"\*[^*]*\*", " ", spoken)
+    spoken = " ".join(spoken.split())
+    if len(normalize_reply(spoken).split()) < 5:
+        raise ValueError("Incomplete freeform reply")
+    if re.search(r"(?i)^(?:system|premisa|instrucciones|gesto|dialogo)\s*:", spoken):
+        raise ValueError("Internal instruction in reply")
+    return parse_role_reply(json.dumps({"gesto": gesture, "dialogo": spoken}, ensure_ascii=False), character, allow_third_person=allow_third_person)
+
+
 REGION_SLANG = {
     "ar": "Escribe con jerga de Argentina: vos, tenés, che y dale.",
     "ve": "Escribe con jerga de Venezuela: chamo y vale.",
@@ -157,7 +188,7 @@ def conversation_messages(job):
     player = clip_text(story.get("player_role") or "protagonista", 220)
     latest = clip_text(job.get("userMessage") or "", 1000)
     premise = clip_text(story.get("description") or "", 700)
-    turns = clean_turns((job.get("history") or [])[-48:], latest)
+    turns = compact_repeated_history(clean_turns((job.get("history") or [])[-48:], latest))
     chronicle, recent = memory_transcript(turns, player, character)
     # Magnum's chat template requires the first turn after system to be USER.
     # A saved session can begin with the character's introduction; preserve it as scene context.
@@ -249,6 +280,60 @@ def repeated_opening(content, history):
     return False
 
 
+def remove_repeated_lead(content, history):
+    """Keep the new thought after a copied introduction, without inventing dialogue."""
+    if not repeated_opening(content, history):
+        return content
+    stage = re.match(r"^(\*[^*]+\*\s*)", content)
+    prefix = stage.group(1) if stage else ""
+    spoken = content[len(prefix):]
+    tokens = list(re.finditer(r"\w+", spoken, re.UNICODE))
+    if len(tokens) < 13:
+        return ""
+    best = 0
+    for turn in history[-24:]:
+        if turn.get("role") != "assistant":
+            continue
+        old_spoken = re.sub(r"^\*[^*]+\*\s*", "", str(turn.get("content") or ""))
+        old_words = [match.group().casefold() for match in re.finditer(r"\w+", old_spoken, re.UNICODE)]
+        common = 0
+        while common < min(len(tokens), len(old_words)) and tokens[common].group().casefold() == old_words[common]:
+            common += 1
+        if common >= 7:
+            best = max(best, common)
+    if not best or best >= len(tokens):
+        return ""
+    boundary = tokens[best - 1].end()
+    tail = spoken[boundary:].lstrip(" \t,;:.!?¡¿—-")
+    if len(normalize_reply(tail).split()) < 6:
+        return ""
+    # A sentence or clause break ensures that dropping the lead leaves a coherent reply.
+    if not re.search(r"[.!?…,:;]\s*$", spoken[:tokens[best].start()]):
+        return ""
+    tail = tail[0].upper() + tail[1:] if tail else tail
+    candidate = prefix + tail
+    return candidate if not repeated_opening(candidate, history) else ""
+
+
+def compact_repeated_history(turns):
+    """Remove a recycled lead from every occurrence, retaining each new fact."""
+    compact = []
+    for index, turn in enumerate(turns):
+        if turn["role"] != "assistant":
+            compact.append(turn)
+            continue
+        echo = next((other for other_index, other in enumerate(turns)
+                     if other_index != index and other["role"] == "assistant"
+                     and repeated_opening(turn["content"], [other])), None)
+        if echo:
+            fresh = remove_repeated_lead(turn["content"], [echo])
+            if fresh:
+                compact.append({"role": "assistant", "content": fresh})
+            continue
+        compact.append(turn)
+    return compact
+
+
 def free_gpu_for_chat():
     """Unload completed ComfyUI work if retained models are starving Magnum."""
     try:
@@ -276,16 +361,30 @@ def reply_for(job):
         parsed = ""
         raw_reply = ""
         try:
-            raw_reply = model_chat(messages, 0.64 + attempt * 0.08, 240, json_mode=True)
+            raw_reply = model_chat(messages, 0.64 + attempt * 0.08, 240, json_mode=(attempt == 0))
             try:
                 parsed = parse_role_reply(raw_reply, character)
             except ValueError as error:
-                if "third person" not in str(error):
+                if "third person" in str(error):
+                    parsed = parse_role_reply(raw_reply, character, allow_third_person=True)
+                elif not raw_reply.lstrip().startswith("{"):
+                    try:
+                        parsed = parse_freeform_reply(raw_reply, character)
+                    except ValueError as fallback_error:
+                        if "third person" not in str(fallback_error):
+                            raise
+                        parsed = parse_freeform_reply(
+                            raw_reply, character, allow_third_person=True)
+                else:
                     raise
-                parsed = parse_role_reply(raw_reply, character, allow_third_person=True)
         except Exception as error:
             print("Chat attempt failed", job.get("jobId", "local"), attempt, repr(error)[:180], flush=True)
         if parsed:
+            if repeated_opening(parsed, raw):
+                repaired = remove_repeated_lead(parsed, raw)
+                if repaired and not too_similar(repaired, previous):
+                    print("Chat repeated lead removed", job.get("jobId", "local"), flush=True)
+                    parsed = repaired
             rejected = ("copy" if too_similar(parsed, previous) else
                         "opening" if repeated_opening(parsed, raw) else
                         "user_echo" if normalize_reply(parsed) == normalize_reply(latest) else "")
@@ -308,13 +407,13 @@ def handle(cloud, owner, name):
     request_path = "jobs/" + owner + "/" + name
     response_path = "responses/" + owner + "/" + name
     try:
-        cloud.call("GET", "/storage/v1/object/authenticated/" + BUCKET + "/" + quote(response_path, safe="/"), raw=True)
+        cloud_call(cloud, "GET", "/storage/v1/object/authenticated/" + BUCKET + "/" + quote(response_path, safe="/"), raw=True)
         return False
     except RuntimeError as error:
         if not any(marker in str(error) for marker in ("HTTP 404", "NoSuchKey", "not_found")):
             raise
     try:
-        raw = cloud.call("GET", "/storage/v1/object/authenticated/" + BUCKET + "/" + quote(request_path, safe="/"), raw=True)
+        raw = cloud_call(cloud, "GET", "/storage/v1/object/authenticated/" + BUCKET + "/" + quote(request_path, safe="/"), raw=True)
     except RuntimeError as error:
         # A listed job can disappear before download if it was already completed or removed.
         if any(marker in str(error) for marker in ("HTTP 404", "NoSuchKey", "not_found")):
@@ -330,10 +429,10 @@ def handle(cloud, owner, name):
         print("Chat generation failed", job_id, repr(error)[:350], file=sys.stderr, flush=True)
         result = {"status": "failed", "error": "local_chat_failed",
                   "message": "El motor local no pudo responder. Reintenta este turno."}
-    cloud.call("POST", "/storage/v1/object/" + BUCKET + "/" + quote(response_path, safe="/"),
+    cloud_call(cloud, "POST", "/storage/v1/object/" + BUCKET + "/" + quote(response_path, safe="/"),
                payload=json.dumps(result).encode("utf-8"), raw=True,
                headers={"Content-Type": "application/json", "x-upsert": "true"})
-    cloud.call("DELETE", "/storage/v1/object/" + BUCKET + "/" + quote(request_path, safe="/"))
+    cloud_call(cloud, "DELETE", "/storage/v1/object/" + BUCKET + "/" + quote(request_path, safe="/"))
     print("Chat job", job_id, result["status"], flush=True)
     return True
 
@@ -349,7 +448,7 @@ def prune_old_responses(cloud):
                 continue
             if datetime.fromisoformat(updated.replace("Z", "+00:00")) < cutoff:
                 path = "responses/" + owner + "/" + item["name"]
-                cloud.call("DELETE", "/storage/v1/object/" + BUCKET + "/" + quote(path, safe="/"))
+                cloud_call(cloud, "DELETE", "/storage/v1/object/" + BUCKET + "/" + quote(path, safe="/"))
 
 def main():
     cloud = Api(os.environ["SUPABASE_URL"], os.environ["SUPABASE_SERVICE_ROLE_KEY"])
