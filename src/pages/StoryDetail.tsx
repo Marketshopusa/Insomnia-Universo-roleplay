@@ -327,7 +327,7 @@ type Mode = "select" | "read" | "roleplay";
     return `*${title}*\n\n${description}\n\n${t("story.youArePlaying")}: **${playerRole}**\n${t("story.iAmPlaying")}: **${characterRole}**\n\n*${t("story.sceneSet")}*`;
    };
  
-   const generateResponse = async (userMessage: string): Promise<string | null> => {
+   const generateResponse = async (userMessage: string, currentMessageId: string): Promise<string | null> => {
     const { data, error } = await invokeFunctionWithRetry<{ content?: string; error?: string; message?: string }>("story-chat", {
         story: {
           title: story?.title,
@@ -338,7 +338,7 @@ type Mode = "select" | "read" | "roleplay";
         },
         language,
         history: messagesRef.current
-          .filter((m) => m.id !== "intro")
+          .filter((m) => m.id !== "intro" && m.id !== currentMessageId)
           .map((m) => ({ role: m.role, content: m.content })),
         userMessage,
         adultMode: adultEnabled && consentGiven,
@@ -400,7 +400,7 @@ type Mode = "select" | "read" | "roleplay";
      setIsTyping(true);
  
  
-     const responseContent = await generateResponse(userMessage.content);
+     const responseContent = await generateResponse(userMessage.content, userMessage.id);
      if (!responseContent) {
        setMessages((previous) => previous.filter((message) => message.id !== userMessage.id));
        setInputMessage(userMessage.content);
