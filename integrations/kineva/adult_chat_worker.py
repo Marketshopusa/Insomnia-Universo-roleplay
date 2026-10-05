@@ -165,6 +165,19 @@ def memory_transcript(turns, player, character):
     return chronicle, recent
 
 
+def reading_request(text):
+    asks = re.search(r"(?i)\b(?:lee|l[eé]eme|leer|read|readme)\b", text) and re.search(
+        r"(?i)\b(?:libro|cuento|p[aá]rrafo|poema|book|story|paragraph)\b", text)
+    stops = re.search(r"(?i)\b(?:no\s+(?:me\s+)?leas?|deja\s+de\s+leer|para\s+de\s+leer|stop\s+reading)\b", text)
+    return bool(asks and not stops)
+
+
+def repetition_request(text):
+    asks = re.search(r"(?i)\b(?:repite|repetir|otra vez|de nuevo|cita|citar|repeat|again|quote)\b", text)
+    rejects = re.search(r"(?i)\b(?:no|deja de|evita|sin)\s+(?:\w+\s+){0,2}(?:repetir|repitas|repite|otra vez)\b", text)
+    return bool(asks and not rejects)
+
+
 def conversation_messages(job):
     """Give Magnum stable identity, closed history and real speaker turns."""
     story = job.get("story") or {}
@@ -172,7 +185,7 @@ def conversation_messages(job):
     character = clip_text(story.get("character_role") or "personaje presente", 400)
     player = clip_text(story.get("player_role") or "protagonista", 220)
     latest = clip_text(job.get("userMessage") or "", 1000)
-    wants_reading = bool(re.search(r"(?i)\b(?:lee|l[eé]eme|leer|read|readme)\b", latest) and re.search(r"(?i)\b(?:libro|cuento|p[aá]rrafo|poema|book|story|paragraph)\b", latest))
+    wants_reading = reading_request(latest)
     premise = clip_text("\n".join(filter(None, [story.get("description"), story.get("story_context")])), 1600)
     turns = clean_turns((job.get("history") or [])[-48:])
     chronicle, recent = memory_transcript(turns, player, character)
@@ -268,8 +281,8 @@ def reply_for(job):
     messages = conversation_messages(job)
     character = str((job.get("story") or {}).get("character_role") or "")
     latest = str(job.get("userMessage") or "")
-    wants_reading = bool(re.search(r"(?i)\b(?:lee|l[eé]eme|leer|read|readme)\b", latest) and re.search(r"(?i)\b(?:libro|cuento|p[aá]rrafo|poema|book|story|paragraph)\b", latest))
-    wants_repetition = bool(re.search(r"(?i)\b(?:repite|repetir|otra vez|de nuevo|cita|citar|repeat|again|quote)\b", latest))
+    wants_reading = reading_request(latest)
+    wants_repetition = repetition_request(latest)
     previous_replies = [normalize_reply(re.sub(r"\*[^*]*\*", "", turn["content"]))
                         for turn in clean_turns(job.get("history"))[-12:]
                         if turn["role"] == "assistant"][-4:]
