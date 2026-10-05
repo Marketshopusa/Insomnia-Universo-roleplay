@@ -61,7 +61,7 @@ Deno.serve(async (req) => {
       region: ["ar", "ve", "co", "mx", "es", "cl", "plain"].includes(body.region) ? body.region : "mx",
       story: {
         title: String(story.title ?? "").slice(0, 160),
-        description: String(story.description ?? "").slice(0, 1200),
+        description: String(story.description ?? "").slice(0, 2000),
         character_role: String(story.character_role ?? "").slice(0, 160),
         player_role: String(story.player_role ?? "").slice(0, 160),
       }, history, userMessage: latest,

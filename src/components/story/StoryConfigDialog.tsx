@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { ImagePlus, Loader2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -209,8 +210,8 @@ export const StoryConfigDialog = ({ story, open, onOpenChange, onSaved }: StoryC
                 <Input value={title} onChange={(event) => setTitle(event.target.value)} />
               </div>
               <div>
-                <Label className="mb-1 block text-xs">{es ? "Descripción corta" : "Short description"}</Label>
-                <Input value={description} onChange={(event) => setDescription(event.target.value)} />
+                <Label htmlFor="story-context" className="mb-1 block text-xs">{es ? "Historia y contexto" : "Story and context"}</Label>
+                <Textarea id="story-context" value={description} onChange={(event) => setDescription(event.target.value)} className="min-h-[180px]" placeholder={es ? "Escribe o sustituye la historia, los personajes y el contexto que debe conocer la IA." : "Write or replace the story, characters and context the AI should know."} />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>

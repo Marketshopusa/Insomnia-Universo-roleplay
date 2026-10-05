@@ -120,7 +120,6 @@ const MyStories = () => {
   const [newPlayer, setNewPlayer] = useState("hombre");
   const [newType, setNewType] = useState<"adventure" | "roleplay" | "real_sex">("roleplay");
   const [newExplicit, setNewExplicit] = useState(false);
-  const [newContent, setNewContent] = useState("");
   const [newCoverUrl, setNewCoverUrl] = useState<string | null>(null);
   const [newCoverType, setNewCoverType] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -160,7 +159,6 @@ const MyStories = () => {
     setNewPlayer("hombre");
     setNewType("roleplay");
     setNewExplicit(false);
-    setNewContent("");
     setNewCoverUrl(null);
     setNewCoverType(null);
   };
@@ -178,7 +176,6 @@ const MyStories = () => {
     setNewPlayer(story.player_role ?? "hombre");
     setNewType((story.story_type as any) ?? "roleplay");
     setNewExplicit(!!story.has_explicit_images);
-    setNewContent("");
     setNewCoverUrl(story.cover_image ?? null);
     setNewCoverType(guessMediaType(story.cover_image));
     setIsCreating(true);
@@ -194,7 +191,7 @@ const MyStories = () => {
     try {
       const payload = {
         title: newTitle.trim(),
-        description: newDescription.trim() || newContent.slice(0, 140) || "Historia personalizada",
+        description: newDescription.trim() || "Historia personalizada",
         cover_image: newCoverUrl,
         character_role: newCharacter.trim() || null,
         player_role: newPlayer || "hombre",
@@ -403,11 +400,13 @@ const MyStories = () => {
                   />
                 </div>
                 <div>
-                  <Label className="mb-1 block text-xs">Descripción corta</Label>
-                  <Input
-                    placeholder="Una línea que enganche al lector"
+                  <Label htmlFor="new-story-context" className="mb-1 block text-xs">Historia y contexto</Label>
+                  <Textarea
+                    id="new-story-context"
+                    placeholder="Describe la historia, los personajes y el contexto que debe conocer la IA."
                     value={newDescription}
                     onChange={(e) => setNewDescription(e.target.value)}
+                    className="min-h-[180px]"
                   />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
@@ -446,15 +445,6 @@ const MyStories = () => {
                     <Switch id="explicit" checked={newExplicit} onCheckedChange={setNewExplicit} />
                     <Label htmlFor="explicit" className="text-xs">+18 Contenido explícito</Label>
                   </div>
-                </div>
-                <div>
-                  <Label className="mb-1 block text-xs">Desarrollo (opcional)</Label>
-                  <Textarea
-                    placeholder={t("myStories.contentPlaceholder")}
-                    value={newContent}
-                    onChange={(e) => setNewContent(e.target.value)}
-                    className="min-h-[120px]"
-                  />
                 </div>
                 <input
                   ref={newFileRef}

@@ -171,7 +171,7 @@ def conversation_messages(job):
     character = clip_text(story.get("character_role") or "personaje presente", 400)
     player = clip_text(story.get("player_role") or "protagonista", 220)
     latest = clip_text(job.get("userMessage") or "", 1000)
-    premise = clip_text(story.get("description") or "", 700)
+    premise = clip_text(story.get("description") or "", 1600)
     turns = clean_turns((job.get("history") or [])[-48:])
     chronicle, recent = memory_transcript(turns, player, character)
     # Magnum's chat template requires the first turn after system to be USER.
