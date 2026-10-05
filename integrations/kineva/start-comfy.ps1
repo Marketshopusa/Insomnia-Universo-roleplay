@@ -63,6 +63,10 @@ try {
 }
 
 $previousLlamaServer = $env:MSB_LLAMA_SERVER
+$previousPythonIoEncoding = $env:PYTHONIOENCODING
+$previousPythonUtf8 = $env:PYTHONUTF8
+$env:PYTHONIOENCODING = "utf-8"
+$env:PYTHONUTF8 = "1"
 $env:MSB_LLAMA_SERVER = (Resolve-Path -LiteralPath $LlamaServer).Path
 $comfyArgs = @(
     "-s", ".\ComfyUI\main.py",
@@ -83,5 +87,15 @@ try {
         Remove-Item Env:\MSB_LLAMA_SERVER -ErrorAction SilentlyContinue
     } else {
         $env:MSB_LLAMA_SERVER = $previousLlamaServer
+    }
+    if ($null -eq $previousPythonIoEncoding) {
+        Remove-Item Env:\PYTHONIOENCODING -ErrorAction SilentlyContinue
+    } else {
+        $env:PYTHONIOENCODING = $previousPythonIoEncoding
+    }
+    if ($null -eq $previousPythonUtf8) {
+        Remove-Item Env:\PYTHONUTF8 -ErrorAction SilentlyContinue
+    } else {
+        $env:PYTHONUTF8 = $previousPythonUtf8
     }
 }
