@@ -287,7 +287,7 @@ export function narrativeStays(source, output) {
 export function narrativeRequest(body) {
   const story = body?.story || {};
   const spanish = body?.language !== "en";
-  const source = [story.title, story.description, story.character_role, story.player_role, body?.scene].filter(Boolean).join("\n");
+  const source = [story.title, story.description, story.story_context, story.character_role, story.player_role, body?.scene].filter(Boolean).join("\n");
   const minor = mentionsMinor(source);
   const chapters = Math.min(5, Math.max(1, Number(body?.chapters) || 3));
   const lines = [
@@ -304,7 +304,7 @@ export function narrativeRequest(body) {
     slangInstruction(body?.language, body?.region),
     "Título: " + String(story.title || "").slice(0, 200),
     "Personajes, tal como están escritos: " + [story.character_role, story.player_role].filter(Boolean).join(" / ").slice(0, 400),
-    "Premisa obligatoria: " + String(story.description || "").slice(0, 2500),
+    "Premisa obligatoria: " + [story.description, story.story_context].filter(Boolean).join("\n").slice(0, 2500),
     body?.scene ? "Escena que ya se está viviendo. Continúa esta, no otra:\n" + String(body.scene).slice(0, 4000) : "",
   ];
   return lines.filter(Boolean).join("\n");
@@ -347,7 +347,7 @@ export default async function handler(req, res) {
         return role && text ? [{ role, text }] : [];
       });
       const latest = String(body.userMessage || "").trim().slice(0, 1200);
-      const sceneContext = [story.title, story.description, story.character_role, story.player_role, ...history.map((entry) => entry.text), latest].join("\n");
+      const sceneContext = [story.title, story.description, story.story_context, story.character_role, story.player_role, ...history.map((entry) => entry.text), latest].join("\n");
       const lock = sceneLock(history, latest);
       const isOffRole = (text) => {
         const reply = String(text || "").trim();
@@ -366,7 +366,7 @@ export default async function handler(req, res) {
         ...storyContinuityLines(spanish),
         "Eres el personaje de una historia de rol en curso. Personaje o reparto: " + String(story.character_role || "personaje principal").slice(0, 200) + ".",
         "El usuario interpreta a " + String(story.player_role || "protagonista").slice(0, 150) + ". Historia: " + String(story.title || "Historia").slice(0, 200) + ".",
-        "Premisa inicial (fondo; no reinicies la escena si la memoria ya avanzÃ³): " + String(story.description || "").slice(0, 2000) + ".",
+        "Premisa inicial (fondo; no reinicies la escena si la memoria ya avanzÃ³): " + [story.description, story.story_context].filter(Boolean).join("\n").slice(0, 2000) + ".",
         "La memoria y los Ãºltimos turnos son la escena actual, en orden. ContinÃºa exactamente desde la Ãºltima intervenciÃ³n: mismo lugar, tiempo, personas presentes, relaciones y hechos. No empieces de cero, no regreses al inicio, no mezcles una escena vieja con la de ahora y no respondas como si lo anterior no hubiera pasado. Si el mensaje estÃ¡ mal transcrito, interprÃ©talo dentro de esa escena.",
         ...storyVoiceLines(story.character_role, story.player_role, spanish, locale),
         slangInstruction(body.language, body.region),
@@ -428,7 +428,7 @@ export default async function handler(req, res) {
     }
     if (action === "generate-narrative") {
       const story = body.story || {};
-      const source = [story.title, story.description, story.character_role, story.player_role, body.scene].filter(Boolean).join("\n");
+      const source = [story.title, story.description, story.story_context, story.character_role, story.player_role, body.scene].filter(Boolean).join("\n");
       const prompt = narrativeRequest(body);
       const options = {
         fastReply: true,

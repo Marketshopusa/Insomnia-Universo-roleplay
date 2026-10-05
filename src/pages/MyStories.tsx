@@ -116,6 +116,7 @@ const MyStories = () => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [newTitle, setNewTitle] = useState("");
   const [newDescription, setNewDescription] = useState("");
+  const [newContent, setNewContent] = useState("");
   const [newCharacter, setNewCharacter] = useState("");
   const [newPlayer, setNewPlayer] = useState("hombre");
   const [newType, setNewType] = useState<"adventure" | "roleplay" | "real_sex">("roleplay");
@@ -155,6 +156,7 @@ const MyStories = () => {
     setEditingId(null);
     setNewTitle("");
     setNewDescription("");
+    setNewContent("");
     setNewCharacter("");
     setNewPlayer("hombre");
     setNewType("roleplay");
@@ -172,6 +174,7 @@ const MyStories = () => {
     setEditingId(story.id);
     setNewTitle(story.title ?? "");
     setNewDescription(story.description ?? "");
+    setNewContent(story.story_context ?? "");
     setNewCharacter(story.character_role ?? "");
     setNewPlayer(story.player_role ?? "hombre");
     setNewType((story.story_type as any) ?? "roleplay");
@@ -191,7 +194,8 @@ const MyStories = () => {
     try {
       const payload = {
         title: newTitle.trim(),
-        description: newDescription.trim() || "Historia personalizada",
+        description: newDescription.trim() || null,
+        story_context: newContent.trim() || null,
         cover_image: newCoverUrl,
         character_role: newCharacter.trim() || null,
         player_role: newPlayer || "hombre",
@@ -400,14 +404,16 @@ const MyStories = () => {
                   />
                 </div>
                 <div>
-                  <Label htmlFor="new-story-context" className="mb-1 block text-xs">Historia y contexto</Label>
-                  <Textarea
-                    id="new-story-context"
-                    placeholder="Describe la historia, los personajes y el contexto que debe conocer la IA."
+                  <Label className="mb-1 block text-xs">Descripción corta de la tarjeta</Label>
+                  <Input
+                    placeholder="Una línea que enganche al lector"
                     value={newDescription}
                     onChange={(e) => setNewDescription(e.target.value)}
-                    className="min-h-[180px]"
                   />
+                </div>
+                <div>
+                  <Label htmlFor="new-story-development" className="mb-1 block text-xs">Desarrollo de la historia</Label>
+                  <Textarea id="new-story-development" value={newContent} onChange={(e) => setNewContent(e.target.value)} className="min-h-[180px]" placeholder="Contexto, personajes y hechos que debe conocer la IA." />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>

@@ -29,6 +29,7 @@ export interface ConfigurableStory {
   id: string;
   title: string;
   description?: string | null;
+  story_context?: string | null;
   cover_image?: string | null;
   character_role?: string | null;
   player_role?: string | null;
@@ -58,6 +59,7 @@ export const StoryConfigDialog = ({ story, open, onOpenChange, onSaved }: StoryC
 
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const [storyContext, setStoryContext] = useState("");
   const [character, setCharacter] = useState("");
   const [player, setPlayer] = useState("");
   const [type, setType] = useState<"adventure" | "roleplay" | "real_sex">("roleplay");
@@ -73,6 +75,7 @@ export const StoryConfigDialog = ({ story, open, onOpenChange, onSaved }: StoryC
     if (!open || !story) return;
     setTitle(story.title ?? "");
     setDescription(story.description ?? "");
+    setStoryContext(story.story_context ?? "");
     setCharacter(story.character_role ?? "");
     setPlayer(story.player_role ?? "");
     setType((story.story_type as any) ?? "roleplay");
@@ -149,6 +152,7 @@ export const StoryConfigDialog = ({ story, open, onOpenChange, onSaved }: StoryC
           .update({
             title: title.trim(),
             description: description.trim() || null,
+            story_context: storyContext.trim() || null,
             cover_image: coverUrl,
             character_role: character.trim() || null,
             player_role: player.trim() || "hombre",
@@ -210,8 +214,12 @@ export const StoryConfigDialog = ({ story, open, onOpenChange, onSaved }: StoryC
                 <Input value={title} onChange={(event) => setTitle(event.target.value)} />
               </div>
               <div>
-                <Label htmlFor="story-context" className="mb-1 block text-xs">{es ? "Historia y contexto" : "Story and context"}</Label>
-                <Textarea id="story-context" value={description} onChange={(event) => setDescription(event.target.value)} className="min-h-[180px]" placeholder={es ? "Escribe o sustituye la historia, los personajes y el contexto que debe conocer la IA." : "Write or replace the story, characters and context the AI should know."} />
+                <Label htmlFor="story-description" className="mb-1 block text-xs">{es ? "Descripción corta de la tarjeta" : "Short card description"}</Label>
+                <Input id="story-description" value={description} onChange={(event) => setDescription(event.target.value)} />
+              </div>
+              <div>
+                <Label htmlFor="story-context" className="mb-1 block text-xs">{es ? "Desarrollo de la historia" : "Story development"}</Label>
+                <Textarea id="story-context" value={storyContext} onChange={(event) => setStoryContext(event.target.value)} className="min-h-[180px]" placeholder={es ? "Contexto, personajes y hechos que debe conocer la IA." : "Context, characters and facts the AI should know."} />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>

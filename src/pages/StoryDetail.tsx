@@ -332,6 +332,7 @@ type Mode = "select" | "read" | "roleplay";
         story: {
           title: story?.title,
           description: story?.description,
+          story_context: story?.story_context,
           character_role: story?.character_role,
           player_role: story?.player_role,
           story_type: story?.story_type,
@@ -504,7 +505,7 @@ type Mode = "select" | "read" | "roleplay";
           characterRole: story.character_role,
           playerRole: story.player_role,
           storyTitle: story.title,
-          storyDescription: story.description,
+          storyDescription: [story.description, story.story_context].filter(Boolean).join("\n\n"),
           language,
         });
         setSceneImages((previous) => ({ ...previous, [key]: imageUrl }));
@@ -528,6 +529,7 @@ type Mode = "select" | "read" | "roleplay";
            story: {
              title: story.title,
              description: story.description,
+             story_context: story.story_context,
              character_role: story.character_role,
              player_role: story.player_role,
              story_type: story.story_type,
@@ -715,7 +717,7 @@ type Mode = "select" | "read" | "roleplay";
                    <h1 className="font-display text-2xl text-foreground mb-2">
                       {tTitle || story.title}
                    </h1>
-                   <p className="text-sm text-muted-foreground mb-3">
+                   <p className="text-sm text-muted-foreground mb-3 line-clamp-3">
                       {tDescription || story.description}
                    </p>
                    
