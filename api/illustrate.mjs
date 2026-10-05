@@ -13,7 +13,7 @@ export function sceneJobRow(userId, body) {
     owner_id: userId,
     source,
     scene_key: sceneKey,
-    prompt: scenePrompt(body),
+    prompt: JSON.stringify({ scene_prompt: scenePrompt(body), cover_url: body.coverImageUrl || null }),
     status: "queued",
   };
 }
@@ -30,6 +30,7 @@ export function scenePrompt(body) {
     "ONE vertical realistic photograph of ONE instant, one camera view, one continuous room.",
     "CURRENT visible action: " + visibleMoment,
     "Main character: " + String(body.characterRole || "the main character").slice(0, 120),
+    "If a reference photograph is supplied, keep the main character's face, gender, hair and clothing. Do not swap identities.",
     "Other person only if present in this instant: " + String(body.playerRole || "").slice(0, 100),
     "Current setting cues only: " + setting,
     "Natural faces and hands, consistent clothing and light. Clean image without lettering, subtitles, panels or duplicated people.",

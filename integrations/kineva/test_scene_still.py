@@ -25,7 +25,7 @@ class SceneStillTest(unittest.TestCase):
             "storyTitle": "Reencuentro",
             "characterRole": "Andrea",
         })
-        self.assertIn("LATEST MOMENT: Ella cruza la calle de noche", prompt)
+        self.assertIn("CURRENT visible action: Ella cruza la calle de noche", prompt)
         self.assertIn("Andrea", prompt)
         graph = image_worker.graph_for({
             "id": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
@@ -35,6 +35,13 @@ class SceneStillTest(unittest.TestCase):
         self.assertEqual(graph["1"]["inputs"]["unet_name"], image_worker.MODEL)
         self.assertEqual(graph["6"]["class_type"], "EmptyFlux2LatentImage")
         self.assertEqual(graph["9"]["class_type"], "SaveImage")
+        with_reference = image_worker.graph_for({
+            "id": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+            "prompt": prompt,
+            "reference_name": "character.png",
+        })
+        self.assertEqual(with_reference["10"]["inputs"]["image"], "character.png")
+        self.assertEqual(with_reference["7"]["inputs"]["positive"], ["12", 0])
 
     def test_vram_is_released_only_when_comfy_queue_is_empty(self):
         from worker import release_idle_models

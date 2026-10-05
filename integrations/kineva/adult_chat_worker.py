@@ -111,6 +111,8 @@ def parse_freeform_reply(raw_reply, character="", allow_third_person=False):
     spoken = content[stage.end():] if stage else content
     spoken = re.sub(r"\*[^*]*\*", " ", spoken)
     spoken = " ".join(spoken.split())
+    if not stage and len(spoken) > 260:
+        raise ValueError("Narration without direct character dialogue")
     if len(normalize_reply(spoken).split()) < 5:
         raise ValueError("Incomplete freeform reply")
     if re.search(r"(?i)^(?:system|premisa|instrucciones|gesto|dialogo)\s*:", spoken):
@@ -232,7 +234,7 @@ def conversation_messages(job):
         "Habla al jugador en primera persona; no pases a tercera persona para referirte a ti. "
         "Escribe SOLO JSON con 'gesto' y 'dialogo'. "
         "'gesto': narras TU propia acción o sensación en primera persona ('Me sorprendo', 'Sonrío', 'Entro'); nunca escribas '" + character + " dijo', 'ella' o tu nombre como sujeto. "
-        "'dialogo': lo que dices en voz alta al jugador, de una a tres frases; responde directamente al mensaje actual. "
+        "'dialogo': SOLO palabras que pronuncias en voz alta al jugador, una o dos frases cortas. No narres acciones ni sensaciones dentro de dialogo. Responde directamente al mensaje actual. "
         "Responde con naturalidad al tema actual; si el jugador vuelve a una frase o tema anterior, puedes retomarlo. "
         "Evita aperturas prefabricadas, muletillas y copiar frases de tus respuestas recientes. La repetición solicitada por el jugador sí está permitida. "
         "Si sonríes, ríes, te sorprendes o lloras por algo que ocurre ahora, muéstralo en gesto y deja que el diálogo suene acorde, sin añadir emociones ajenas a la escena. "
@@ -343,7 +345,7 @@ def reply_for(job):
         except Exception as error:
             print("Chat format attempt failed", job.get("jobId", "local"), attempt,
                   repr(error)[:180], flush=True)
-            messages[0]["content"] += " La salida anterior estaba vacía o incompleta. Responde con contenido de personaje."
+            messages[0]["content"] += " Tu borrador no tuvo diálogo hablado válido. Escribe JSON completo con gesto breve y dialogo de una o dos frases que el personaje diga en voz alta al jugador ahora; evita la narración larga."
     raise RuntimeError("Local model returned no usable reply")
 
 

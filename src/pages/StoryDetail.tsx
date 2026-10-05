@@ -495,7 +495,7 @@ type Mode = "select" | "read" | "roleplay";
        .join("\n");
    };
 
-   // Generate a vivid illustration of a scene; the cover is only a loose identity reference
+   // The story cover is passed to ComfyUI as the main character's image reference.
    const illustrateScene = async (text: string, key: string) => {
       if (!story || illustratingId) return;
       setIllustratingId(key);

@@ -11,14 +11,14 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from image_worker import preflight, render, scene_prompt
+from image_worker import COMFY_INPUT, preflight, render, save_cover_reference, scene_prompt
 from worker import Api, find_manifest, one, release_idle_models, wait_for_render
 
 HOST = "127.0.0.1"
 PORT = int(os.environ.get("KINEVA_LOCAL_PORT", "8787"))
 HOME = Path.home()
 SHARED = HOME / "AppData/Local/Comfy-Desktop/ComfyUI-Shared"
-INPUT = Path(os.environ.get("KINEVA_COMFY_INPUT", str(SHARED / "input")))
+INPUT = COMFY_INPUT
 OUTPUT = Path(os.environ.get("KINEVA_COMFY_OUTPUT", str(SHARED / "output")))
 TEMPLATE_PATH = Path(os.environ.get(
     "KINEVA_API_TEMPLATE",
@@ -315,13 +315,17 @@ class Handler(BaseHTTPRequestHandler):
         if not OUTPUT.is_dir():
             return self._reply(503, {"error": "No encuentro la carpeta de salida de ComfyUI."})
         job_id = str(uuid.uuid4())
+        reference_name = None
         try:
+            reference_name = save_cover_reference(body.get("coverImageUrl"), job_id)
             with GPU_LOCK:
                 preflight(COMFY)
-                png = render({"id": job_id, "prompt": prompt}, COMFY, OUTPUT, timeout=180)
+                png = render({"id": job_id, "prompt": prompt, "reference_name": reference_name}, COMFY, OUTPUT, timeout=180)
         except Exception as exc:
             return self._reply(503, {"error": str(exc)[:350]})
         finally:
+            if reference_name:
+                (COMFY_INPUT / reference_name).unlink(missing_ok=True)
             release_idle_models(COMFY)
         return self._reply(200, {"image": base64.b64encode(png).decode("ascii")})
 

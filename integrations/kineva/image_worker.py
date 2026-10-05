@@ -8,15 +8,37 @@ import struct
 import sys
 import time
 from pathlib import Path
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
+from urllib.request import urlopen
 from worker import Api, release_idle_models
 
 MODEL = "flux-2-klein-4b-fp8.safetensors"
 ENCODER = "qwen_3_4b_fp4_flux2.safetensors"
 VAE = "flux2-vae.safetensors"
+COMFY_INPUT = Path(os.environ.get("KINEVA_COMFY_INPUT", str(Path.home() / "AppData/Local/Comfy-Desktop/ComfyUI-Installs/Synthetic DL/ComfyUI/input")))
+
+
+def save_cover_reference(url, job_id):
+    if not url:
+        return None
+    parsed = urlsplit(str(url))
+    if parsed.scheme != "https" or parsed.hostname != "cexzmelshvbgabihtfvx.supabase.co" or not parsed.path.startswith("/storage/v1/object/public/"):
+        raise ValueError("La portada debe ser una imagen pública de este proyecto Supabase.")
+    with urlopen(str(url), timeout=12) as response:
+        if urlsplit(response.geturl()).hostname != parsed.hostname:
+            raise ValueError("La portada redirigió fuera del almacenamiento permitido.")
+        data = response.read(10_000_001)
+    if len(data) > 10_000_000 or not (data.startswith(b"\x89PNG\r\n\x1a\n") or data.startswith(b"\xff\xd8\xff") or (data[:4] == b"RIFF" and data[8:12] == b"WEBP")):
+        raise ValueError("La portada debe ser PNG, JPEG o WebP de hasta 10 MB.")
+    suffix = ".png" if data.startswith(b"\x89PNG") else ".jpg" if data.startswith(b"\xff\xd8") else ".webp"
+    name = "kineva_scene_reference_" + re.sub(r"[^a-f0-9]", "", job_id.lower()) + suffix
+    COMFY_INPUT.mkdir(parents=True, exist_ok=True)
+    (COMFY_INPUT / name).write_bytes(data)
+    return name
+
 
 def graph_for(job):
-    return {
+    graph = {
         "1": {"class_type": "UNETLoader", "inputs": {"unet_name": MODEL, "weight_dtype": "default"}},
         "2": {"class_type": "CLIPLoader", "inputs": {"clip_name": ENCODER, "type": "flux2", "device": "default"}},
         "3": {"class_type": "VAELoader", "inputs": {"vae_name": VAE}},
@@ -31,6 +53,12 @@ def graph_for(job):
         "9": {"class_type": "SaveImage", "inputs": {
             "images": ["8", 0], "filename_prefix": "kineva_scenes/" + job["id"].replace("-", "")}},
     }
+    if job.get("reference_name"):
+        graph["10"] = {"class_type": "LoadImage", "inputs": {"image": job["reference_name"]}}
+        graph["11"] = {"class_type": "VAEEncode", "inputs": {"pixels": ["10", 0], "vae": ["3", 0]}}
+        graph["12"] = {"class_type": "ReferenceLatent", "inputs": {"conditioning": ["4", 0], "latent": ["11", 0]}}
+        graph["7"]["inputs"]["positive"] = ["12", 0]
+    return graph
 
 def scene_prompt(body):
     source = body or {}
@@ -48,6 +76,7 @@ def scene_prompt(body):
         "ONE vertical realistic photograph of ONE instant, one camera view, one continuous room.",
         "CURRENT visible action: " + moment,
         "Main character: " + str(source.get("characterRole") or "the main character")[:120],
+        "If a reference photograph is supplied, the main character keeps the face, gender, hair and clothing shown in that photo. Do not swap character identities.",
         "Other person only if present in this instant: " + str(source.get("playerRole") or "")[:100],
         "Current setting cues only: " + context,
         "Natural faces and hands, consistent clothing and light. Clean image without lettering, subtitles, panels or duplicated people.",
@@ -109,7 +138,14 @@ def process_one(cloud, comfy, output_dir):
     job = claimed[0]
     print("Image job claimed", job["id"], flush=True)
     result = {}
+    reference_name = None
     try:
+        stored_prompt = job["prompt"]
+        if stored_prompt.startswith('{"scene_prompt":'):
+            settings = json.loads(stored_prompt)
+            job["prompt"] = settings["scene_prompt"]
+            reference_name = save_cover_reference(settings.get("cover_url"), job["id"])
+            job["reference_name"] = reference_name
         preflight(comfy)
         image = render(job, comfy, output_dir)
         path = job["owner_id"] + "/" + job["id"] + ".png"
@@ -121,6 +157,8 @@ def process_one(cloud, comfy, output_dir):
         print("Image job failed", job["id"], repr(error), file=sys.stderr, flush=True)
         result = {"status": "failed", "error_message": str(error)[:350]}
     finally:
+        if reference_name:
+            (COMFY_INPUT / reference_name).unlink(missing_ok=True)
         release_idle_models(comfy)
     result["finished_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     result["updated_at"] = result["finished_at"]
