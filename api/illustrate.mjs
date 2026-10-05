@@ -19,20 +19,25 @@ export function sceneJobRow(userId, body) {
 }
 
 export function scenePrompt(body) {
-  const focus = String(body.focusText || "").trim().slice(0, 1800);
+  const focus = String(body.focusText || "").trim().slice(-1200);
   if (focus.length < 8) {
     throw Object.assign(new Error("La escena es demasiado corta para ilustrarla."), { status: 400, code: "scene_too_short" });
   }
+  const actions = [...focus.matchAll(/\*([^*]{3,300})\*/g)];
+  const visibleMoment = actions.at(-1)?.[1]?.trim() || focus.replace(/\s+/g, " ").slice(-420);
+  const spokenMood = actions.length
+    ? focus.replace(/\*[^*]*\*/g, "").replace(/\s+/g, " ").trim().slice(0, 160)
+    : "";
   return [
-    "Create one vertical cinematic photorealistic still frame of adults. Natural anatomy and lighting.",
-    "The CURRENT action is the subject; preserve the established characters, wardrobe, location and chronology.",
-    "No captions, speech bubbles, logos or collage.",
-    "Story: " + String(body.storyTitle || "").slice(0, 160),
-    "Character identity: " + String(body.characterRole || "").slice(0, 900),
-    "Player role: " + String(body.playerRole || "").slice(0, 250),
-    "Premise: " + String(body.storyDescription || "").slice(0, 650),
-    "Recent context: " + String(body.sceneText || "").slice(-1900),
-    "LATEST MOMENT: " + focus,
+    "One vertical photorealistic still frame: a single instant in one continuous location.",
+    "Keep each adult person's face, hands, limbs, clothes, lighting and position physically consistent.",
+    "Only show people present in the current moment. First-person actions belong to the character, not the viewer. No collage, duplicate figures, extra limbs, warped anatomy, ghosting, captions or written dialogue.",
+    "Setting: " + String(body.storyDescription || "").slice(0, 280),
+    "Character identity: " + String(body.characterRole || "").slice(0, 450),
+    "Player identity: " + String(body.playerRole || "").slice(0, 180),
+    "Prior context (do not depict earlier actions): " + String(body.sceneText || "").slice(-500),
+    "LATEST MOMENT: " + visibleMoment,
+    ...(spokenMood ? ["Expression only, never render words: " + spokenMood] : []),
   ].join("\n");
 }
 

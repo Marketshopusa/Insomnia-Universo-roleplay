@@ -479,24 +479,15 @@ type Mode = "select" | "read" | "roleplay";
      toast({ title: language === "es" ? "Roleplay reiniciado. La conversación anterior se borró." : "Roleplay reset. Previous conversation deleted." });
    };
 
-   const buildIllustrationContext = (text: string, key: string) => {
+   const buildIllustrationContext = (key: string) => {
      const targetIndex = messages.findIndex((m) => m.id === key);
-     const recentMessages = targetIndex >= 0
-       ? messages.slice(Math.max(0, targetIndex - 5), targetIndex + 1)
+     const preceding = targetIndex >= 0
+       ? messages.slice(Math.max(0, targetIndex - 3), targetIndex)
        : [];
-     const recentContext = recentMessages
+     return preceding
        .filter((m) => m.id !== "intro")
-       .map((m) => `${m.role === "user" ? "Player" : "Character"}: ${m.content}`)
-       .join("\n\n");
-
-     return [
-       `Story: ${story?.title || ""}`,
-       `Premise: ${story?.description || ""}`,
-       `Character role: ${story?.character_role || ""}`,
-       `Player role: ${story?.player_role || ""}`,
-       recentContext ? `Recent roleplay context:\n${recentContext}` : "",
-       `Latest moment to illustrate:\n${text}`,
-     ].filter(Boolean).join("\n\n");
+       .map((m) => `${m.role === "user" ? "Player" : "Character"}: ${m.content.slice(-350)}`)
+       .join("\n");
    };
 
    // Generate a vivid illustration of a scene; the cover is only a loose identity reference
@@ -507,7 +498,7 @@ type Mode = "select" | "read" | "roleplay";
         const imageUrl = await generateSceneImage({
           source: "story",
           sceneKey: key,
-          sceneText: buildIllustrationContext(text, key),
+          sceneText: buildIllustrationContext(key),
           focusText: text,
           coverImageUrl: story.cover_image && !isVideoCover ? story.cover_image : undefined,
           characterRole: story.character_role,

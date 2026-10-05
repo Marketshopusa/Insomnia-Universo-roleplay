@@ -28,3 +28,16 @@ test("a scene illustration asks Gemini for the picture and returns it", async ()
   if (previous === undefined) delete process.env.GEMINI_API_KEY;
   else process.env.GEMINI_API_KEY = previous;
 });
+
+test("the illustration depicts the latest visible action once", () => {
+  const prompt = scenePrompt({
+    storyDescription: "Dos amigos investigan una cabaña.",
+    characterRole: "Andrea con chaqueta azul",
+    sceneText: "Player: William encontró la llave y abrió la puerta.",
+    focusText: "*Me inclino junto al mapa sobre la mesa* Encontraste una pista. Creo que lleva al bosque.",
+  });
+  assert.match(prompt, /LATEST MOMENT: Me inclino junto al mapa sobre la mesa/);
+  assert.equal((prompt.match(/Me inclino junto al mapa/g) || []).length, 1);
+  assert.match(prompt, /Prior context \(do not depict earlier actions\): Player: William encontró la llave/);
+  assert.doesNotMatch(prompt, /LATEST MOMENT:.*Encontraste una pista/);
+});
