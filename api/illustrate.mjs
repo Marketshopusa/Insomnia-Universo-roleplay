@@ -19,25 +19,20 @@ export function sceneJobRow(userId, body) {
 }
 
 export function scenePrompt(body) {
-  const focus = String(body.focusText || "").trim().slice(-1200);
+  const focus = String(body.focusText || "").trim();
   if (focus.length < 8) {
     throw Object.assign(new Error("La escena es demasiado corta para ilustrarla."), { status: 400, code: "scene_too_short" });
   }
-  const actions = [...focus.matchAll(/\*([^*]{3,300})\*/g)];
-  const visibleMoment = actions.at(-1)?.[1]?.trim() || focus.replace(/\s+/g, " ").slice(-420);
-  const spokenMood = actions.length
-    ? focus.replace(/\*[^*]*\*/g, "").replace(/\s+/g, " ").trim().slice(0, 160)
-    : "";
+  const actions = [...focus.matchAll(/\*([^*]{3,320})\*/g)];
+  const visibleMoment = (actions.at(-1)?.[1]?.trim() || focus.split(/[.!?](?:\s|$)/, 1)[0]).replace(/\s+/g, " ").slice(0, 380);
+  const setting = String(body.sceneText || "").replace(/\*[^*]*\*/g, " ").replace(/\s+/g, " ").trim().slice(-240);
   return [
-    "One vertical photorealistic still frame: a single instant in one continuous location.",
-    "Keep each adult person's face, hands, limbs, clothes, lighting and position physically consistent.",
-    "Only show people present in the current moment. First-person actions belong to the character, not the viewer. No collage, duplicate figures, extra limbs, warped anatomy, ghosting, captions or written dialogue.",
-    "Setting: " + String(body.storyDescription || "").slice(0, 280),
-    "Character identity: " + String(body.characterRole || "").slice(0, 450),
-    "Player identity: " + String(body.playerRole || "").slice(0, 180),
-    "Prior context (do not depict earlier actions): " + String(body.sceneText || "").slice(-500),
-    "LATEST MOMENT: " + visibleMoment,
-    ...(spokenMood ? ["Expression only, never render words: " + spokenMood] : []),
+    "ONE vertical realistic photograph of ONE instant, one camera view, one continuous room.",
+    "CURRENT visible action: " + visibleMoment,
+    "Main character: " + String(body.characterRole || "the main character").slice(0, 120),
+    "Other person only if present in this instant: " + String(body.playerRole || "").slice(0, 100),
+    "Current setting cues only: " + setting,
+    "Natural faces and hands, consistent clothing and light. Clean image without lettering, subtitles, panels or duplicated people.",
   ].join("\n");
 }
 

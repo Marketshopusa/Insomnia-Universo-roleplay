@@ -3,6 +3,7 @@
 import argparse
 import json
 import os
+import re
 import struct
 import sys
 import time
@@ -33,19 +34,23 @@ def graph_for(job):
 
 def scene_prompt(body):
     source = body or {}
-    focus = str(source.get("focusText") or "").strip()[:1800]
+    focus = str(source.get("focusText") or "").strip()
     if len(focus) < 8:
         raise ValueError("La escena es demasiado corta para ilustrarla.")
+    # Dialogue, old turns and long premises make this small image model draw a
+    # storyboard with bogus subtitles. Describe only one visible current action.
+    actions = re.findall(r"\*([^*]{3,320})\*", focus)
+    moment = actions[-1].strip() if actions else re.split(r"[.!?](?:\s|$)", focus, maxsplit=1)[0].strip()
+    moment = re.sub(r"\s+", " ", moment)[:380]
+    context = re.sub(r"\*[^*]*\*", " ", str(source.get("sceneText") or ""))
+    context = re.sub(r"\s+", " ", context).strip()[-240:]
     return "\n".join([
-        "Create one vertical cinematic photorealistic still frame. Natural anatomy and lighting.",
-        "The CURRENT action is the subject; preserve the established characters, wardrobe, location and chronology.",
-        "No captions, speech bubbles, logos or collage.",
-        "Story: " + str(source.get("storyTitle") or "")[:160],
-        "Character identity: " + str(source.get("characterRole") or "")[:900],
-        "Player role: " + str(source.get("playerRole") or "")[:250],
-        "Premise: " + str(source.get("storyDescription") or "")[:650],
-        "Recent context: " + str(source.get("sceneText") or "")[-1900:],
-        "LATEST MOMENT: " + focus,
+        "ONE vertical realistic photograph of ONE instant, one camera view, one continuous room.",
+        "CURRENT visible action: " + moment,
+        "Main character: " + str(source.get("characterRole") or "the main character")[:120],
+        "Other person only if present in this instant: " + str(source.get("playerRole") or "")[:100],
+        "Current setting cues only: " + context,
+        "Natural faces and hands, consistent clothing and light. Clean image without lettering, subtitles, panels or duplicated people.",
     ])
 
 def preflight(comfy):

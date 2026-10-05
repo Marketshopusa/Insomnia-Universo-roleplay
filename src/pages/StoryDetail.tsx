@@ -15,6 +15,7 @@ import { getStoryAccent, getStoryRegion, setStoryAccent, setStoryRegion, spokenR
 import { streamSpeech, type SpeechStream } from "@/lib/ttsStream";
 import { invokeFunctionWithRetry } from "@/lib/invokeFunction";
 import { generateSceneImage } from "@/lib/sceneImage";
+import { normalizeAssistantReply } from "@/lib/roleReply";
  import { useStory } from "@/hooks/useStories";
  import { useLanguage } from "@/contexts/LanguageContext";
 import { useTranslatedTexts, useTranslatedText } from "@/hooks/useTranslatedTexts";
@@ -235,12 +236,10 @@ type Mode = "select" | "read" | "roleplay";
       if (cancelled) return;
       if (!error && data) {
         const raw = (data.messages as any[]) || [];
-        const restored: Message[] = raw.map((m: any) => ({
-          id: m.id,
-          role: m.role,
-          content: m.content,
-          timestamp: new Date(m.timestamp),
-        }));
+        const restored: Message[] = raw.flatMap((m: any) => {
+          const content = m.role === "assistant" ? normalizeAssistantReply(m.content) : m.content;
+          return content ? [{ id: m.id, role: m.role, content, timestamp: new Date(m.timestamp) }] : [];
+        });
         if (restored.length > 0) setMessages(restored);
         if (data.narrative) setNarrative(data.narrative);
         if (data.last_mode === "read" || data.last_mode === "roleplay") {
@@ -383,7 +382,12 @@ type Mode = "select" | "read" | "roleplay";
       else toast({ title: t("mode.aiError"), variant: "destructive" });
       return null;
     }
-    return data.content as string;
+    const visibleReply = normalizeAssistantReply(data.content);
+    if (!visibleReply) {
+      toast({ title: language === "es" ? "La respuesta salió incompleta; inténtalo de nuevo" : "The reply was incomplete; try again", variant: "destructive" });
+      return null;
+    }
+    return visibleReply;
    };
  
    const handleSendMessage = async () => {

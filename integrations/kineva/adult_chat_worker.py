@@ -60,7 +60,10 @@ def model_chat(messages, temperature, max_tokens, json_mode=False):
     return re.sub(r"(?s)<think>.*?</think>", "", content).strip()
 
 def parse_role_reply(raw_reply, character="", allow_third_person=False):
+    raw_reply = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw_reply.strip(), flags=re.I).strip()
     parsed = json.loads(raw_reply)
+    if not isinstance(parsed, dict):
+        raise ValueError("Invalid role reply")
     gesture = str(parsed.get("gesto") or "").strip().strip("*")
     dialogue = str(parsed.get("dialogo") or "").strip()
     if len(gesture) > 100:
@@ -101,7 +104,7 @@ def parse_role_reply(raw_reply, character="", allow_third_person=False):
 def parse_freeform_reply(raw_reply, character="", allow_third_person=False):
     """Recover the local model's ordinary roleplay format on a JSON retry."""
     content = raw_reply.strip()
-    if not content or content.startswith("{"):
+    if not content or content.startswith(("```", "{")) or re.search(r'(?im)^\s*"(?:gesto|dialogo)"\s*:', content):
         raise ValueError("Incomplete JSON reply")
     stage = re.match(r"^\*([^*]{1,140})\*\s*", content)
     gesture = stage.group(1).strip() if stage else ""
@@ -275,6 +278,21 @@ def free_gpu_for_chat():
         pass
 
 
+def repeats_recent_clause(spoken, previous_replies):
+    """Detect a recycled character line even if the rest of the reply changes."""
+    words = re.findall(r"\w+", spoken.casefold(), re.UNICODE)
+    if len(words) < 8:
+        return False
+    for old in previous_replies:
+        prior = re.findall(r"\w+", old.casefold(), re.UNICODE)
+        if len(prior) < 8:
+            continue
+        shared = SequenceMatcher(None, words, prior, autojunk=False).find_longest_match(0, len(words), 0, len(prior))
+        if shared.size >= 8 and sum(len(word) for word in words[shared.a:shared.a + shared.size]) >= 38:
+            return True
+    return False
+
+
 def reply_for(job):
     started = time.monotonic()
     free_gpu_for_chat()
@@ -289,12 +307,13 @@ def reply_for(job):
     for attempt in range(2):
         try:
             raw_reply = model_chat(messages, 0.64 + attempt * 0.08, 300 if wants_reading else 240, json_mode=False)
+            structured_reply = bool(re.match(r"^\s*(?:```(?:json)?\s*)?\{", raw_reply, re.I)) or bool(re.search(r'(?im)^\s*"(?:gesto|dialogo)"\s*:', raw_reply))
             try:
                 parsed = parse_role_reply(raw_reply, character)
             except ValueError as error:
                 if "third person" in str(error):
                     parsed = parse_role_reply(raw_reply, character, allow_third_person=True)
-                elif not raw_reply.lstrip().startswith("{"):
+                elif not structured_reply:
                     try:
                         parsed = parse_freeform_reply(raw_reply, character)
                     except ValueError as fallback_error:
@@ -309,8 +328,10 @@ def reply_for(job):
                 print("Chat announced reading without reading; retrying", job.get("jobId", "local"), flush=True)
                 messages[0]["content"] += " Tu borrador solo anunció que iba a leer. En el diálogo lee ya un pasaje original de al menos tres frases, sin preámbulo."
                 continue
-            if attempt == 0 and not wants_repetition and len(spoken) > 65 and any(
-                SequenceMatcher(None, spoken, old).ratio() >= 0.78 for old in previous_replies if len(old) > 65
+            if attempt == 0 and not wants_repetition and (
+                (len(spoken) > 65 and any(
+                    SequenceMatcher(None, spoken, old).ratio() >= 0.78 for old in previous_replies if len(old) > 65
+                )) or repeats_recent_clause(spoken, previous_replies)
             ):
                 print("Chat repeated previous reply; retrying once", job.get("jobId", "local"), flush=True)
                 messages[0]["content"] += " Tu borrador repitió una respuesta anterior. Sigue la última petición con contenido nuevo y una acción concreta."
