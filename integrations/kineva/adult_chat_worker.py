@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Private story chat worker for the Kineva PC. Never exposes the local model."""
 import json
+from difflib import SequenceMatcher
 from datetime import datetime, timezone, timedelta
 import os
 import re
@@ -67,11 +68,11 @@ def parse_role_reply(raw_reply, character="", allow_third_person=False):
                 if m.end() >= 35]
         gesture = (gesture[:cuts[0]].rstrip(" ,.;") if cuts else
                    gesture[:100].rsplit(" ", 1)[0])
-    if len(dialogue) > 420:
+    if len(dialogue) > 700:
         boundaries = [match.end() for match in re.finditer(
-            r"[.!?](?=\s|$)", dialogue[:420]) if match.end() >= 90]
+            r"[.!?](?=\s|$)", dialogue[:700]) if match.end() >= 90]
         dialogue = (dialogue[:boundaries[-1]].strip() if boundaries else
-                    dialogue[:419].rsplit(" ", 1)[0].rstrip(" ,.;") + "…")
+                    dialogue[:699].rsplit(" ", 1)[0].rstrip(" ,.;") + "…")
     if not dialogue or len(gesture) > 100:
         raise ValueError("Incomplete or overlong gesture/dialogue")
     if not gesture:
@@ -147,8 +148,8 @@ def clean_turns(raw):
 
 def memory_transcript(turns, player, character):
     """Retain the original facts and the last completed beats in chronological order."""
-    recent = turns[-16:]
-    older = turns[:-16]
+    recent = turns[-8:]
+    older = turns[:-8]
     if not older:
         return "", recent
 
@@ -171,9 +172,22 @@ def conversation_messages(job):
     character = clip_text(story.get("character_role") or "personaje presente", 400)
     player = clip_text(story.get("player_role") or "protagonista", 220)
     latest = clip_text(job.get("userMessage") or "", 1000)
+    wants_reading = bool(re.search(r"(?i)\b(?:lee|l[eé]eme|leer|read|readme)\b", latest) and re.search(r"(?i)\b(?:libro|cuento|p[aá]rrafo|poema|book|story|paragraph)\b", latest))
     premise = clip_text("\n".join(filter(None, [story.get("description"), story.get("story_context")])), 1600)
     turns = clean_turns((job.get("history") or [])[-48:])
     chronicle, recent = memory_transcript(turns, player, character)
+    # Repeated model replies in saved history are poor examples to imitate.
+    # Keep the latest occurrence and every user turn; never reject repeated user text.
+    seen_replies = []
+    compact_recent = []
+    for turn in reversed(recent):
+        if turn["role"] == "assistant":
+            normalized = normalize_reply(turn["content"])
+            if normalized and any(SequenceMatcher(None, normalized, older).ratio() >= 0.85 for older in seen_replies):
+                continue
+            seen_replies.append(normalized)
+        compact_recent.append(turn)
+    recent = list(reversed(compact_recent))
     # Magnum's chat template requires the first turn after system to be USER.
     # A saved session can begin with the character's introduction; preserve it as scene context.
     opening = ""
@@ -184,8 +198,11 @@ def conversation_messages(job):
         "Eres " + character + " en una historia interactiva con " + player + ". "
         "Identidad y relaciones persistentes: " + premise + ". "
         + (chronicle + "\n" if chronicle else "")
+        + ("Petición actual de lectura: empieza a leer ahora un pasaje original de varias frases si no hay texto del libro en el contexto. Si el usuario proporcionó el texto, léelo sin cambiarlo. No anuncies que vas a leer; hazlo. " if wants_reading else "")
         + opening
         + "Los turnos recientes son la escena ACTUAL en orden; el último mensaje del jugador tiene prioridad. "
+        "Si pide una acción nueva o cambia de tema, responde a esa petición ahora; no vuelvas a la actividad previa. "
+        "Si pide leer un libro y no hay texto, pregunta cuál libro o lee un pasaje original breve; no repitas el diálogo anterior. "
         "Las acciones que el jugador cuenta en pasado YA OCURRIERON. Responde a sus consecuencias; nunca le impidas hacer algo que acaba de hacer. "
         "Continúa desde la última acción, con el mismo lugar, personas y objetos salvo que el jugador haya cambiado la escena. "
         "La premisa y el comienzo son antecedentes; si el jugador los recuerda, responde sobre ellos sin fingir que ocurren otra vez. "
@@ -201,6 +218,7 @@ def conversation_messages(job):
         "'gesto': narras TU propia acción o sensación en primera persona ('Me sorprendo', 'Sonrío', 'Entro'); nunca escribas '" + character + " dijo', 'ella' o tu nombre como sujeto. "
         "'dialogo': lo que dices en voz alta al jugador, de una a tres frases; responde directamente al mensaje actual. "
         "Responde con naturalidad al tema actual; si el jugador vuelve a una frase o tema anterior, puedes retomarlo. "
+        "Evita aperturas prefabricadas, muletillas y copiar frases de tus respuestas recientes. La repetición solicitada por el jugador sí está permitida. "
         "Si sonríes, ríes, te sorprendes o lloras por algo que ocurre ahora, muéstralo en gesto y deja que el diálogo suene acorde, sin añadir emociones ajenas a la escena. "
         "Si ocurre una reacción audible tuya (grito, llanto, risa, gemido), descríbela en 'gesto' justo antes del diálogo que la acompaña. "
         "No enumeres sonidos ni expliques reglas internas. Puedes citar o repetir palabras y poemas cuando el jugador lo pida. "
@@ -214,10 +232,11 @@ def conversation_messages(job):
             messages[-1]["content"] += "\n" + content
         else:
             messages.append({"role": turn["role"], "content": content})
+    current_request = "\n\nÚltimo mensaje del jugador:\n" + latest
     if messages[-1]["role"] == "user":
-        messages[-1]["content"] += "\n" + latest
+        messages[-1]["content"] += current_request
     else:
-        messages.append({"role": "user", "content": latest})
+        messages.append({"role": "user", "content": current_request.lstrip()})
     return trim_messages(messages)
 
 
@@ -248,9 +267,15 @@ def reply_for(job):
     free_gpu_for_chat()
     messages = conversation_messages(job)
     character = str((job.get("story") or {}).get("character_role") or "")
+    latest = str(job.get("userMessage") or "")
+    wants_reading = bool(re.search(r"(?i)\b(?:lee|l[eé]eme|leer|read|readme)\b", latest) and re.search(r"(?i)\b(?:libro|cuento|p[aá]rrafo|poema|book|story|paragraph)\b", latest))
+    wants_repetition = bool(re.search(r"(?i)\b(?:repite|repetir|otra vez|de nuevo|cita|citar|repeat|again|quote)\b", latest))
+    previous_replies = [normalize_reply(re.sub(r"\*[^*]*\*", "", turn["content"]))
+                        for turn in clean_turns(job.get("history"))[-12:]
+                        if turn["role"] == "assistant"][-4:]
     for attempt in range(2):
         try:
-            raw_reply = model_chat(messages, 0.64 + attempt * 0.08, 240, json_mode=(attempt == 0))
+            raw_reply = model_chat(messages, 0.64 + attempt * 0.08, 300 if wants_reading else 240, json_mode=False)
             try:
                 parsed = parse_role_reply(raw_reply, character)
             except ValueError as error:
@@ -266,6 +291,17 @@ def reply_for(job):
                             raw_reply, character, allow_third_person=True)
                 else:
                     raise
+            spoken = normalize_reply(re.sub(r"\*[^*]*\*", "", parsed))
+            if attempt == 0 and wants_reading and len(spoken) < 190:
+                print("Chat announced reading without reading; retrying", job.get("jobId", "local"), flush=True)
+                messages[0]["content"] += " Tu borrador solo anunció que iba a leer. En el diálogo lee ya un pasaje original de al menos tres frases, sin preámbulo."
+                continue
+            if attempt == 0 and not wants_repetition and len(spoken) > 65 and any(
+                SequenceMatcher(None, spoken, old).ratio() >= 0.78 for old in previous_replies if len(old) > 65
+            ):
+                print("Chat repeated previous reply; retrying once", job.get("jobId", "local"), flush=True)
+                messages[0]["content"] += " Tu borrador repitió una respuesta anterior. Sigue la última petición con contenido nuevo y una acción concreta."
+                continue
             print("Chat generation timing", job.get("jobId", "local"),
                   "total", round(time.monotonic() - started, 2),
                   "retry", attempt, flush=True)
