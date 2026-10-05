@@ -24,11 +24,16 @@ export function scenePrompt(body) {
     throw Object.assign(new Error("La escena es demasiado corta para ilustrarla."), { status: 400, code: "scene_too_short" });
   }
   const actions = [...focus.matchAll(/\*([^*]{3,320})\*/g)];
-  const visibleMoment = (actions.at(-1)?.[1]?.trim() || focus.split(/[.!?](?:\s|$)/, 1)[0]).replace(/\s+/g, " ").slice(0, 380);
+  const visibleMoment = (actions.at(-1)?.[1]?.trim() || focus.split(/[.!?](?:\s|$)/, 1)[0]).replace(/\s+/g, " ").slice(0, 260);
+  const userText = String(body.userAction || "");
+  const userActions = [...userText.matchAll(/\*([^*]{3,320})\*/g)];
+  const userMoment = (userActions.at(-1)?.[1]?.trim() || (/\b(?:abro|abre|entra|camina|toma|sujeta|entrego|coloca|mira|se levanta|me levanto)\b/i.test(userText)
+    ? userText.split(/[.!?](?:\s|$)/, 1)[0] : "")).replace(/\s+/g, " ").slice(0, 260);
   const setting = String(body.sceneText || "").replace(/\*[^*]*\*/g, " ").replace(/\s+/g, " ").trim().slice(-240);
   return [
     "ONE vertical realistic photograph of ONE instant, one camera view, one continuous room.",
-    "CURRENT visible action: " + visibleMoment,
+    "PLAYER visible action: " + (userMoment || "none described"),
+    "CHARACTER visible reaction: " + visibleMoment,
     "Main character: " + String(body.characterRole || "the main character").slice(0, 120),
     "If a reference photograph is supplied, keep the main character's face, gender, hair and clothing. Do not swap identities.",
     "Other person only if present in this instant: " + String(body.playerRole || "").slice(0, 100),

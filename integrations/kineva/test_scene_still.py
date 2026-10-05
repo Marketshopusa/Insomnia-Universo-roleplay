@@ -25,7 +25,7 @@ class SceneStillTest(unittest.TestCase):
             "storyTitle": "Reencuentro",
             "characterRole": "Andrea",
         })
-        self.assertIn("CURRENT visible action: Ella cruza la calle de noche", prompt)
+        self.assertIn("CHARACTER visible reaction: Ella cruza la calle de noche", prompt)
         self.assertIn("Andrea", prompt)
         graph = image_worker.graph_for({
             "id": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
@@ -42,6 +42,12 @@ class SceneStillTest(unittest.TestCase):
         })
         self.assertEqual(with_reference["10"]["inputs"]["image"], "character.png")
         self.assertEqual(with_reference["7"]["inputs"]["positive"], ["12", 0])
+        directed = image_worker.scene_prompt({
+            "focusText": "*Miro el libro* Ya encontré la página.",
+            "userAction": "*Abro la puerta de la biblioteca y entrego el libro*",
+        })
+        self.assertIn("PLAYER visible action: Abro la puerta de la biblioteca", directed)
+        self.assertIn("CHARACTER visible reaction: Miro el libro", directed)
 
     def test_vram_is_released_only_when_comfy_queue_is_empty(self):
         from worker import release_idle_models

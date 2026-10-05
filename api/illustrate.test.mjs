@@ -4,7 +4,7 @@ import { drawScene, sceneJobRow, scenePrompt } from "./illustrate.mjs";
 
 test("a scene illustration asks Gemini for the picture and returns it", async () => {
   const prompt = scenePrompt({ focusText: "Ella cruza la calle de noche", storyTitle: "Reencuentro" });
-  assert.match(prompt, /CURRENT visible action: Ella cruza la calle de noche/);
+  assert.match(prompt, /CHARACTER visible reaction: Ella cruza la calle de noche/);
   const previous = process.env.GEMINI_API_KEY;
   process.env.GEMINI_API_KEY = "test-key";
   let seen;
@@ -24,7 +24,7 @@ test("a scene illustration asks Gemini for the picture and returns it", async ()
   assert.equal(row.status, "queued");
   assert.equal(row.owner_id, "user-1");
   assert.equal(row.scene_key, "momento");
-  assert.match(JSON.parse(row.prompt).scene_prompt, /CURRENT visible action/);
+  assert.match(JSON.parse(row.prompt).scene_prompt, /CHARACTER visible reaction/);
   const withCover = sceneJobRow("user-1", {
     focusText: "Ella abre el libro marcado",
     coverImageUrl: "https://cexzmelshvbgabihtfvx.supabase.co/storage/v1/object/public/user-story-covers/example.png",
@@ -40,9 +40,11 @@ test("the illustration depicts the latest visible action once", () => {
     characterRole: "Andrea con chaqueta azul",
     sceneText: "Player: William encontró la llave y abrió la puerta.",
     focusText: "*Me inclino junto al mapa sobre la mesa* Encontraste una pista. Creo que lleva al bosque.",
+    userAction: "*Abro la puerta y pongo una llave sobre la mesa*",
   });
-  assert.match(prompt, /CURRENT visible action: Me inclino junto al mapa sobre la mesa/);
+  assert.match(prompt, /PLAYER visible action: Abro la puerta y pongo una llave sobre la mesa/);
+  assert.match(prompt, /CHARACTER visible reaction: Me inclino junto al mapa sobre la mesa/);
   assert.equal((prompt.match(/Me inclino junto al mapa/g) || []).length, 1);
   assert.match(prompt, /Current setting cues only: Player: William encontró la llave/);
-  assert.doesNotMatch(prompt, /CURRENT visible action:.*Encontraste una pista/);
+  assert.doesNotMatch(prompt, /CHARACTER visible reaction:.*Encontraste una pista/);
 });

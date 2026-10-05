@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 import re
+import subprocess
 import struct
 import sys
 import time
@@ -27,12 +28,30 @@ def save_cover_reference(url, job_id):
     with urlopen(str(url), timeout=12) as response:
         if urlsplit(response.geturl()).hostname != parsed.hostname:
             raise ValueError("La portada redirigió fuera del almacenamiento permitido.")
-        data = response.read(10_000_001)
-    if len(data) > 10_000_000 or not (data.startswith(b"\x89PNG\r\n\x1a\n") or data.startswith(b"\xff\xd8\xff") or (data[:4] == b"RIFF" and data[8:12] == b"WEBP")):
-        raise ValueError("La portada debe ser PNG, JPEG o WebP de hasta 10 MB.")
-    suffix = ".png" if data.startswith(b"\x89PNG") else ".jpg" if data.startswith(b"\xff\xd8") else ".webp"
-    name = "kineva_scene_reference_" + re.sub(r"[^a-f0-9]", "", job_id.lower()) + suffix
+        data = response.read(20_000_001)
+    is_png = data.startswith(b"\x89PNG\r\n\x1a\n")
+    is_jpeg = data.startswith(b"\xff\xd8\xff")
+    is_webp = data[:4] == b"RIFF" and data[8:12] == b"WEBP"
+    is_video = data[4:8] == b"ftyp" or data[:4] == b"\x1a\x45\xdf\xa3"
+    if len(data) > (20_000_000 if is_video else 10_000_000) or not (is_png or is_jpeg or is_webp or is_video):
+        raise ValueError("La portada debe ser imagen de hasta 10 MB o video de hasta 20 MB.")
+    stem = "kineva_scene_reference_" + re.sub(r"[^a-f0-9]", "", job_id.lower())
     COMFY_INPUT.mkdir(parents=True, exist_ok=True)
+    if is_video:
+        video_path = COMFY_INPUT / (stem + (".mp4" if data[4:8] == b"ftyp" else ".webm"))
+        frame_path = COMFY_INPUT / (stem + ".png")
+        try:
+            video_path.write_bytes(data)
+            subprocess.run(["ffmpeg", "-y", "-v", "error", "-i", str(video_path),
+                            "-frames:v", "1", "-vf", "scale=768:-2", str(frame_path)],
+                           check=True, timeout=25, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+            if not frame_path.is_file() or frame_path.stat().st_size < 1000:
+                raise ValueError("No se pudo extraer la imagen del video de portada.")
+            return frame_path.name
+        finally:
+            video_path.unlink(missing_ok=True)
+    suffix = ".png" if is_png else ".jpg" if is_jpeg else ".webp"
+    name = stem + suffix
     (COMFY_INPUT / name).write_bytes(data)
     return name
 
@@ -69,12 +88,19 @@ def scene_prompt(body):
     # storyboard with bogus subtitles. Describe only one visible current action.
     actions = re.findall(r"\*([^*]{3,320})\*", focus)
     moment = actions[-1].strip() if actions else re.split(r"[.!?](?:\s|$)", focus, maxsplit=1)[0].strip()
-    moment = re.sub(r"\s+", " ", moment)[:380]
+    moment = re.sub(r"\s+", " ", moment)[:260]
+    user_text = str(source.get("userAction") or "")
+    user_actions = re.findall(r"\*([^*]{3,320})\*", user_text)
+    user_moment = user_actions[-1].strip() if user_actions else ""
+    if not user_moment and re.search(r"\b(?:abro|abre|entra|camina|toma|sujeta|entrego|coloca|mira|se levanta|me levanto)\b", user_text, re.I):
+        user_moment = re.split(r"[.!?](?:\s|$)", user_text, maxsplit=1)[0].strip()
+    user_moment = re.sub(r"\s+", " ", user_moment)[:260]
     context = re.sub(r"\*[^*]*\*", " ", str(source.get("sceneText") or ""))
     context = re.sub(r"\s+", " ", context).strip()[-240:]
     return "\n".join([
         "ONE vertical realistic photograph of ONE instant, one camera view, one continuous room.",
-        "CURRENT visible action: " + moment,
+        "PLAYER visible action: " + (user_moment or "none described"),
+        "CHARACTER visible reaction: " + moment,
         "Main character: " + str(source.get("characterRole") or "the main character")[:120],
         "If a reference photograph is supplied, the main character keeps the face, gender, hair and clothing shown in that photo. Do not swap character identities.",
         "Other person only if present in this instant: " + str(source.get("playerRole") or "")[:100],
@@ -146,6 +172,7 @@ def process_one(cloud, comfy, output_dir):
             job["prompt"] = settings["scene_prompt"]
             reference_name = save_cover_reference(settings.get("cover_url"), job["id"])
             job["reference_name"] = reference_name
+            print("Image reference attached", job["id"], bool(reference_name), flush=True)
         preflight(comfy)
         image = render(job, comfy, output_dir)
         path = job["owner_id"] + "/" + job["id"] + ".png"

@@ -499,13 +499,17 @@ type Mode = "select" | "read" | "roleplay";
    const illustrateScene = async (text: string, key: string) => {
       if (!story || illustratingId) return;
       setIllustratingId(key);
+      const targetIndex = messages.findIndex((message) => message.id === key);
+      const latestUserMessage = messages.slice(0, targetIndex < 0 ? messages.length : targetIndex)
+        .reverse().find((message) => message.role === "user")?.content || "";
       try {
         const imageUrl = await generateSceneImage({
+          userAction: latestUserMessage,
           source: "story",
           sceneKey: key,
           sceneText: buildIllustrationContext(key),
           focusText: text,
-          coverImageUrl: story.cover_image && !isVideoCover ? story.cover_image : undefined,
+          coverImageUrl: story.cover_image || undefined,
           characterRole: story.character_role,
           playerRole: story.player_role,
           storyTitle: story.title,

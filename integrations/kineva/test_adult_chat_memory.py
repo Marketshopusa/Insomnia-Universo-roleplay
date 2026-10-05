@@ -92,7 +92,7 @@ class StoryMemoryTest(unittest.TestCase):
         self.assertEqual([turn["role"] for turn in messages], ["system", "user"])
         self.assertIn("La tormenta me asusta", messages[0]["content"])
         self.assertIn("'estás' se dirige a Stefany", messages[0]["content"])
-        self.assertEqual(messages[1]["content"], current["userMessage"])
+        self.assertTrue(messages[1]["content"].endswith(current["userMessage"]))
 
     def test_character_narrates_her_own_action(self):
         with self.assertRaisesRegex(ValueError, "third person"):

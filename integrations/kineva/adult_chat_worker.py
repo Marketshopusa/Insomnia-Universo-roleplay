@@ -64,7 +64,7 @@ def parse_role_reply(raw_reply, character="", allow_third_person=False):
     parsed = json.loads(raw_reply)
     if not isinstance(parsed, dict):
         raise ValueError("Invalid role reply")
-    gesture = str(parsed.get("gesto") or "").strip().strip("*")
+    gesture = str(parsed.get("gesto") or parsed.get("gestos") or "").strip().strip("*")
     dialogue = str(parsed.get("dialogo") or "").strip()
     if len(gesture) > 100:
         cuts = [m.end() for m in re.finditer(r"[,.;](?=\s|$)", gesture[:100])
@@ -220,6 +220,7 @@ def conversation_messages(job):
         + opening
         + "Los turnos recientes son la escena ACTUAL en orden; el último mensaje del jugador tiene prioridad. "
         "Si pide una acción nueva o cambia de tema, responde a esa petición ahora; no vuelvas a la actividad previa. "
+        "Si hace una pregunta directa, respóndela antes de añadir emoción o narración. Si el dato no está en la premisa o en los turnos, reconócelo naturalmente en personaje; no lo inventes. "
         "Si pide leer un libro y no hay texto, pregunta cuál libro o lee un pasaje original breve; no repitas el diálogo anterior. "
         "Las acciones que el jugador cuenta en pasado YA OCURRIERON. Responde a sus consecuencias; nunca le impidas hacer algo que acaba de hacer. "
         "Continúa desde la última acción, con el mismo lugar, personas y objetos salvo que el jugador haya cambiado la escena. "
@@ -233,7 +234,7 @@ def conversation_messages(job):
         "Tu emoción debe responder a lo que acaba de suceder y evolucionar cuando cambian los hechos. "
         "Habla al jugador en primera persona; no pases a tercera persona para referirte a ti. "
         "Escribe SOLO JSON con 'gesto' y 'dialogo'. "
-        "'gesto': narras TU propia acción o sensación en primera persona ('Me sorprendo', 'Sonrío', 'Entro'); nunca escribas '" + character + " dijo', 'ella' o tu nombre como sujeto. "
+        "'gesto': una acción o sensación propia de máximo doce palabras en primera persona ('Me sorprendo', 'Sonrío', 'Entro'); nunca escribas '" + character + " dijo', 'ella' o tu nombre como sujeto. "
         "'dialogo': SOLO palabras que pronuncias en voz alta al jugador, una o dos frases cortas. No narres acciones ni sensaciones dentro de dialogo. Responde directamente al mensaje actual. "
         "Responde con naturalidad al tema actual; si el jugador vuelve a una frase o tema anterior, puedes retomarlo. "
         "Evita aperturas prefabricadas, muletillas y copiar frases de tus respuestas recientes. La repetición solicitada por el jugador sí está permitida. "
@@ -303,12 +304,15 @@ def reply_for(job):
     latest = str(job.get("userMessage") or "")
     wants_reading = reading_request(latest)
     wants_repetition = repetition_request(latest)
-    previous_replies = [normalize_reply(re.sub(r"\*[^*]*\*", "", turn["content"]))
-                        for turn in clean_turns(job.get("history"))[-12:]
-                        if turn["role"] == "assistant"][-4:]
-    for attempt in range(2):
+    for attempt in range(3):
         try:
-            raw_reply = model_chat(messages, 0.64 + attempt * 0.08, 300 if wants_reading else 240, json_mode=False)
+            if attempt == 2:
+                # A compact last chance prevents a brittle formatter from losing the turn.
+                rescue = [{"role": "system", "content": "Eres " + character + ". Continúa la escena en español. Responde la última pregunta o acción de " + str((job.get("story") or {}).get("player_role") or "el jugador") + " con una frase hablada breve y natural. Formato JSON con gesto breve y dialogo hablado."},
+                          {"role": "user", "content": clip_text(latest, 700)}]
+                raw_reply = model_chat(rescue, 0.6, 180, json_mode=True)
+            else:
+                raw_reply = model_chat(messages, 0.64 + attempt * 0.05, 300 if wants_reading else 240, json_mode=(attempt == 0))
             structured_reply = bool(re.match(r"^\s*(?:```(?:json)?\s*)?\{", raw_reply, re.I)) or bool(re.search(r'(?im)^\s*"(?:gesto|dialogo)"\s*:', raw_reply))
             try:
                 parsed = parse_role_reply(raw_reply, character)
@@ -329,14 +333,6 @@ def reply_for(job):
             if attempt == 0 and wants_reading and len(spoken) < 190:
                 print("Chat announced reading without reading; retrying", job.get("jobId", "local"), flush=True)
                 messages[0]["content"] += " Tu borrador solo anunció que iba a leer. En el diálogo lee ya un pasaje original de al menos tres frases, sin preámbulo."
-                continue
-            if attempt == 0 and not wants_repetition and (
-                (len(spoken) > 65 and any(
-                    SequenceMatcher(None, spoken, old).ratio() >= 0.78 for old in previous_replies if len(old) > 65
-                )) or repeats_recent_clause(spoken, previous_replies)
-            ):
-                print("Chat repeated previous reply; retrying once", job.get("jobId", "local"), flush=True)
-                messages[0]["content"] += " Tu borrador repitió una respuesta anterior. Sigue la última petición con contenido nuevo y una acción concreta."
                 continue
             print("Chat generation timing", job.get("jobId", "local"),
                   "total", round(time.monotonic() - started, 2),
