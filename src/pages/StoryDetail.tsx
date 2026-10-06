@@ -500,11 +500,15 @@ type Mode = "select" | "read" | "roleplay";
       if (!story || illustratingId) return;
       setIllustratingId(key);
       const targetIndex = messages.findIndex((message) => message.id === key);
-      const latestUserMessage = messages.slice(0, targetIndex < 0 ? messages.length : targetIndex)
-        .reverse().find((message) => message.role === "user")?.content || "";
+      const precedingMessages = messages.slice(0, targetIndex < 0 ? messages.length : targetIndex);
+      const latestUserMessage = [...precedingMessages].reverse()
+        .find((message) => message.role === "user")?.content || "";
+      const recentVisualAction = [...precedingMessages].slice(-16).reverse()
+        .find((message) => message.role === "user" && /\*[^*]{3,5000}\*|\b(?:veh[ií]culo|carro|coche|autom[oó]vil|entra|sale|abre|camina|sujeta|toma|coloca)\b/i.test(message.content))?.content || "";
       try {
         const imageUrl = await generateSceneImage({
           userAction: latestUserMessage,
+          recentVisualAction,
           source: "story",
           sceneKey: key,
           sceneText: buildIllustrationContext(key),

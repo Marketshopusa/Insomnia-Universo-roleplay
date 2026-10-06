@@ -83,7 +83,20 @@ def graph_for(job):
 
 def visible_moment(text):
     compact = re.sub(r"\s+", " ", str(text or "")).strip()
-    return compact if len(compact) <= 360 else compact[:120].rstrip() + " … " + compact[-230:].lstrip()
+    return compact if len(compact) <= 500 else compact[:240].rstrip() + " … " + compact[-250:].lstrip()
+
+
+def current_location(text):
+    words = str(text or "").lower()
+    places = (
+        (r"\b(?:veh[ií]culo|autom[oó]vil|carro|coche|taxi|camioneta)\b", "inside a vehicle"),
+        (r"\b(?:habitaci[oó]n|dormitorio|cama|bedroom|bed)\b", "in a bedroom"),
+        (r"\b(?:cocina|kitchen)\b", "in a kitchen"),
+        (r"\b(?:biblioteca|library)\b", "in a library"),
+        (r"\b(?:calle|street)\b", "on a street"),
+    )
+    matches = [(m.start(), place) for pattern, place in places for m in re.finditer(pattern, words)]
+    return max(matches)[1] if matches else ""
 
 
 def scene_prompt(body):
@@ -101,18 +114,21 @@ def scene_prompt(body):
     user_moment = user_actions[-1].strip() if user_actions else ""
     if not user_moment and re.search(r"\b(?:abro|abre|entra|camina|toma|sujeta|entrego|coloca|mira|se levanta|me levanto)\b", user_text, re.I):
         user_moment = re.split(r"[.!?](?:\s|$)", user_text, maxsplit=1)[0].strip()
-    user_moment = visible_moment(user_moment)
+    recent_action = str(source.get("recentVisualAction") or "")
+    prior_actions = re.findall(r"\*([^*]{3,5000})\*", recent_action)
+    user_moment = visible_moment(user_moment or (prior_actions[-1].strip() if prior_actions else ""))
+    location = current_location(user_text) or current_location(recent_action) or current_location(focus)
     context = re.sub(r"\*[^*]*\*", " ", str(source.get("sceneText") or ""))
-    context = re.sub(r"\s+", " ", context).strip()[-120:]
+    context = location or re.sub(r"\s+", " ", context).strip()[-120:]
     return "\n".join([
-        "One realistic vertical photograph of the current moment. Frame the described action clearly in one coherent room.",
+        "One realistic vertical photograph of the current moment. Frame the described action in one coherent setting.",
+        "Current setting cues only: " + context + ". This current place overrides the background of Image 1; do not copy its room, furniture or previous scene.",
         "Show each described adult once in a distinct position. Only the participants in this moment; no bystanders, duplicate people or extra limbs.",
         "PLAYER visible action: " + (user_moment or "none described"),
         "CHARACTER visible reaction: " + moment,
         "Main character: " + str(source.get("characterRole") or "the main character")[:120],
-        "Image 1 anchors the main character's appearance. If two adults appear in the reference, keep their faces and bodies assigned to the same distinct people. Never transfer one face to the other body.",
+        "Image 1 is an appearance reference for the main character only, not a scene or pose template. If two adults appear there, keep their faces on their own bodies.",
         "Other person only if present in this instant: " + str(source.get("playerRole") or "")[:100],
-        "Current setting cues only: " + context,
         "Depict the specific visible action between the participants rather than substituting a different activity. Keep anatomy, contact, clothing and lighting coherent. No lettering, subtitles or panels.",
     ])
 

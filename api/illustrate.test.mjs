@@ -49,6 +49,29 @@ test("a long user action reaches the illustration without cropping away its subj
   assert.match(prompt, /no bystanders/);
 });
 
+test("current vehicle action overrides a bedroom reference and older context", () => {
+  const prompt = scenePrompt({
+    focusText: "*Mira al usuario y sonríe*",
+    userAction: "*Subimos al vehículo y nos sentamos en el asiento trasero*",
+    sceneText: "Antes conversaban en la cama de una habitación.",
+  });
+  assert.match(prompt, /Current setting cues only: inside a vehicle/);
+  assert.match(prompt, /PLAYER visible action: Subimos al vehículo/);
+  assert.doesNotMatch(prompt, /Antes conversaban en la cama/);
+  assert.doesNotMatch(prompt, /one coherent room/);
+});
+
+test("a recent visual action remains available after a dialogue-only turn", () => {
+  const prompt = scenePrompt({
+    focusText: "*Responde con calma* Entendido.",
+    userAction: "¿Me escuchas?",
+    recentVisualAction: "*Entro en el vehículo y cierro la puerta*",
+    sceneText: "En otra escena estaban en un dormitorio.",
+  });
+  assert.match(prompt, /PLAYER visible action: Entro en el vehículo/);
+  assert.match(prompt, /Current setting cues only: inside a vehicle/);
+});
+
 test("the illustration depicts the latest visible action once", () => {
   const prompt = scenePrompt({
     storyDescription: "Dos amigos investigan una cabaña.",

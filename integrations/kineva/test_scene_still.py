@@ -61,6 +61,25 @@ class SceneStillTest(unittest.TestCase):
         self.assertIn("Entrego la brújula a Andrea", prompt)
         self.assertNotIn("Crop before", prompt)
 
+    def test_vehicle_scene_replaces_old_bedroom_context(self):
+        prompt = image_worker.scene_prompt({
+            "focusText": "*Mira al usuario y sonríe*",
+            "userAction": "*Subimos al vehículo y nos sentamos en el asiento trasero*",
+            "sceneText": "Antes estaban en una habitación con cama.",
+        })
+        self.assertIn("Current setting cues only: inside a vehicle", prompt)
+        self.assertNotIn("Antes estaban", prompt)
+        self.assertNotIn("one coherent room", prompt)
+
+    def test_recent_action_survives_dialogue_only_turn(self):
+        prompt = image_worker.scene_prompt({
+            "focusText": "*Responde con calma* Entendido.",
+            "userAction": "¿Me escuchas?",
+            "recentVisualAction": "*Entro en el vehículo y cierro la puerta*",
+        })
+        self.assertIn("PLAYER visible action: Entro en el vehículo", prompt)
+        self.assertIn("Current setting cues only: inside a vehicle", prompt)
+
     def test_vram_is_released_only_when_comfy_queue_is_empty(self):
         from worker import release_idle_models
 

@@ -20,7 +20,20 @@ export function sceneJobRow(userId, body) {
 
 function visibleMoment(text) {
   const compact = String(text || "").replace(/\s+/g, " ").trim();
-  return compact.length <= 360 ? compact : compact.slice(0, 120).trimEnd() + " … " + compact.slice(-230).trimStart();
+  return compact.length <= 500 ? compact : compact.slice(0, 240).trimEnd() + " … " + compact.slice(-250).trimStart();
+}
+
+function currentLocation(text) {
+  const words = String(text || "").toLowerCase();
+  const places = [
+    [/\b(?:veh[ií]culo|autom[oó]vil|carro|coche|taxi|camioneta)\b/g, "inside a vehicle"],
+    [/\b(?:habitaci[oó]n|dormitorio|cama|bedroom|bed)\b/g, "in a bedroom"],
+    [/\b(?:cocina|kitchen)\b/g, "in a kitchen"],
+    [/\b(?:biblioteca|library)\b/g, "in a library"],
+    [/\b(?:calle|street)\b/g, "on a street"],
+  ];
+  const matches = places.flatMap(([pattern, place]) => [...words.matchAll(pattern)].map((match) => ({ at: match.index, place })));
+  return matches.sort((a, b) => b.at - a.at)[0]?.place || "";
 }
 
 export function scenePrompt(body) {
@@ -32,18 +45,22 @@ export function scenePrompt(body) {
   const characterMoment = visibleMoment(actions.at(-1)?.[1]?.trim() || focus.split(/[.!?](?:\s|$)/, 1)[0]);
   const userText = String(body.userAction || "");
   const userActions = [...userText.matchAll(/\*([^*]{3,5000})\*/g)];
-  const userMoment = visibleMoment(userActions.at(-1)?.[1]?.trim() || (/\b(?:abro|abre|entra|camina|toma|sujeta|entrego|coloca|mira|se levanta|me levanto)\b/i.test(userText)
-    ? userText.split(/[.!?](?:\s|$)/, 1)[0] : ""));
-  const setting = String(body.sceneText || "").replace(/\*[^*]*\*/g, " ").replace(/\s+/g, " ").trim().slice(-120);
+  const recentAction = String(body.recentVisualAction || "");
+  const earlierActions = [...recentAction.matchAll(/\*([^*]{3,5000})\*/g)];
+  const currentAction = userActions.at(-1)?.[1]?.trim() || (/\b(?:abro|abre|entra|camina|toma|sujeta|entrego|coloca|mira|se levanta|me levanto)\b/i.test(userText)
+    ? userText.split(/[.!?](?:\s|$)/, 1)[0] : "");
+  const userMoment = visibleMoment(currentAction || earlierActions.at(-1)?.[1]?.trim() || "");
+  const location = currentLocation(userText) || currentLocation(recentAction) || currentLocation(focus);
+  const setting = location || String(body.sceneText || "").replace(/\*[^*]*\*/g, " ").replace(/\s+/g, " ").trim().slice(-120);
   return [
-    "One realistic vertical photograph of the current moment. Frame the described action clearly in one coherent room.",
+    "One realistic vertical photograph of the current moment. Frame the described action in one coherent setting.",
+    "Current setting cues only: " + setting + ". This current place overrides the background of Image 1; do not copy its room, furniture or previous scene.",
     "Show each described adult once in a distinct position. Only the participants in this moment; no bystanders, duplicate people or extra limbs.",
     "PLAYER visible action: " + (userMoment || "none described"),
     "CHARACTER visible reaction: " + characterMoment,
     "Main character: " + String(body.characterRole || "the main character").slice(0, 120),
-    "Image 1 anchors the main character's appearance. If two adults appear in the reference, keep their faces and bodies assigned to the same distinct people. Never transfer one face to the other body.",
+    "Image 1 is an appearance reference for the main character only, not a scene or pose template. If two adults appear there, keep their faces on their own bodies.",
     "Other person only if present in this instant: " + String(body.playerRole || "").slice(0, 100),
-    "Current setting cues only: " + setting,
     "Depict the specific visible action between the participants rather than substituting a different activity. Keep anatomy, contact, clothing and lighting coherent. No lettering, subtitles or panels.",
   ].join("\n");
 }
