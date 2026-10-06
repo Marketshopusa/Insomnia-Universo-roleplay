@@ -42,6 +42,7 @@ class SceneStillTest(unittest.TestCase):
         })
         self.assertEqual(with_reference["10"]["inputs"]["image"], "character.png")
         self.assertEqual(with_reference["7"]["inputs"]["positive"], ["12", 0])
+        self.assertEqual(with_reference["7"]["inputs"]["negative"], ["13", 0])
         directed = image_worker.scene_prompt({
             "focusText": "*Miro el libro* Ya encontré la página.",
             "userAction": "*Abro la puerta de la biblioteca y entrego el libro*",

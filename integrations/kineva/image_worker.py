@@ -76,7 +76,9 @@ def graph_for(job):
         graph["10"] = {"class_type": "LoadImage", "inputs": {"image": job["reference_name"]}}
         graph["11"] = {"class_type": "VAEEncode", "inputs": {"pixels": ["10", 0], "vae": ["3", 0]}}
         graph["12"] = {"class_type": "ReferenceLatent", "inputs": {"conditioning": ["4", 0], "latent": ["11", 0]}}
+        graph["13"] = {"class_type": "ReferenceLatent", "inputs": {"conditioning": ["5", 0], "latent": ["11", 0]}}
         graph["7"]["inputs"]["positive"] = ["12", 0]
+        graph["7"]["inputs"]["negative"] = ["13", 0]
     return graph
 
 def scene_prompt(body):
@@ -88,24 +90,25 @@ def scene_prompt(body):
     # storyboard with bogus subtitles. Describe only one visible current action.
     actions = re.findall(r"\*([^*]{3,320})\*", focus)
     moment = actions[-1].strip() if actions else re.split(r"[.!?](?:\s|$)", focus, maxsplit=1)[0].strip()
-    moment = re.sub(r"\s+", " ", moment)[:260]
+    moment = re.sub(r"\s+", " ", moment)[:180]
     user_text = str(source.get("userAction") or "")
     user_actions = re.findall(r"\*([^*]{3,320})\*", user_text)
     user_moment = user_actions[-1].strip() if user_actions else ""
     if not user_moment and re.search(r"\b(?:abro|abre|entra|camina|toma|sujeta|entrego|coloca|mira|se levanta|me levanto)\b", user_text, re.I):
         user_moment = re.split(r"[.!?](?:\s|$)", user_text, maxsplit=1)[0].strip()
-    user_moment = re.sub(r"\s+", " ", user_moment)[:260]
+    user_moment = re.sub(r"\s+", " ", user_moment)[:180]
     context = re.sub(r"\*[^*]*\*", " ", str(source.get("sceneText") or ""))
-    context = re.sub(r"\s+", " ", context).strip()[-240:]
+    context = re.sub(r"\s+", " ", context).strip()[-120:]
     return "\n".join([
-        "ONE vertical realistic photograph of ONE instant, one camera view, one continuous room.",
+        "One realistic vertical photograph, a single moment. Medium shot at eye level, faces and upper bodies in frame. One coherent room.",
+        "Show each adult once in a distinct position. Keep heads attached to their own bodies and hands connected to their own arms. No extra person or duplicate limb.",
         "PLAYER visible action: " + (user_moment or "none described"),
         "CHARACTER visible reaction: " + moment,
         "Main character: " + str(source.get("characterRole") or "the main character")[:120],
-        "If a reference photograph is supplied, the main character keeps the face, gender, hair and clothing shown in that photo. Do not swap character identities.",
+        "Image 1 anchors the main character's appearance. If two adults appear in the reference, keep their faces and bodies assigned to the same distinct people. Never transfer one face to the other body.",
         "Other person only if present in this instant: " + str(source.get("playerRole") or "")[:100],
         "Current setting cues only: " + context,
-        "Natural faces and hands, consistent clothing and light. Clean image without lettering, subtitles, panels or duplicated people.",
+        "Prioritize faces, eye contact and one visible gesture. Crop before complex body contact or tangled limbs. Natural faces and hands, consistent clothing and light. No lettering, subtitles or panels.",
     ])
 
 def preflight(comfy):

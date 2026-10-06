@@ -24,21 +24,22 @@ export function scenePrompt(body) {
     throw Object.assign(new Error("La escena es demasiado corta para ilustrarla."), { status: 400, code: "scene_too_short" });
   }
   const actions = [...focus.matchAll(/\*([^*]{3,320})\*/g)];
-  const visibleMoment = (actions.at(-1)?.[1]?.trim() || focus.split(/[.!?](?:\s|$)/, 1)[0]).replace(/\s+/g, " ").slice(0, 260);
+  const visibleMoment = (actions.at(-1)?.[1]?.trim() || focus.split(/[.!?](?:\s|$)/, 1)[0]).replace(/\s+/g, " ").slice(0, 180);
   const userText = String(body.userAction || "");
   const userActions = [...userText.matchAll(/\*([^*]{3,320})\*/g)];
   const userMoment = (userActions.at(-1)?.[1]?.trim() || (/\b(?:abro|abre|entra|camina|toma|sujeta|entrego|coloca|mira|se levanta|me levanto)\b/i.test(userText)
-    ? userText.split(/[.!?](?:\s|$)/, 1)[0] : "")).replace(/\s+/g, " ").slice(0, 260);
-  const setting = String(body.sceneText || "").replace(/\*[^*]*\*/g, " ").replace(/\s+/g, " ").trim().slice(-240);
+    ? userText.split(/[.!?](?:\s|$)/, 1)[0] : "")).replace(/\s+/g, " ").slice(0, 180);
+  const setting = String(body.sceneText || "").replace(/\*[^*]*\*/g, " ").replace(/\s+/g, " ").trim().slice(-120);
   return [
-    "ONE vertical realistic photograph of ONE instant, one camera view, one continuous room.",
+    "One realistic vertical photograph, a single moment. Medium shot at eye level, faces and upper bodies in frame. One coherent room.",
+    "Show each adult once in a distinct position. Keep heads attached to their own bodies and hands connected to their own arms. No extra person or duplicate limb.",
     "PLAYER visible action: " + (userMoment || "none described"),
     "CHARACTER visible reaction: " + visibleMoment,
     "Main character: " + String(body.characterRole || "the main character").slice(0, 120),
-    "If a reference photograph is supplied, keep the main character's face, gender, hair and clothing. Do not swap identities.",
+    "Image 1 anchors the main character's appearance. If two adults appear in the reference, keep their faces and bodies assigned to the same distinct people. Never transfer one face to the other body.",
     "Other person only if present in this instant: " + String(body.playerRole || "").slice(0, 100),
     "Current setting cues only: " + setting,
-    "Natural faces and hands, consistent clothing and light. Clean image without lettering, subtitles, panels or duplicated people.",
+    "Prioritize faces, eye contact and one visible gesture. Crop before complex body contact or tangled limbs. Natural faces and hands, consistent clothing and light. No lettering, subtitles or panels.",
   ].join("\n");
 }
 
