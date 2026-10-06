@@ -2,7 +2,7 @@ import unittest
 from urllib.error import URLError
 from unittest.mock import patch
 
-from adult_chat_worker import cloud_call, conversation_messages, handle, parse_role_reply, reply_for
+from adult_chat_worker import cloud_call, conversation_messages, focus_latest_turn, handle, parse_role_reply, reply_for
 
 
 def job(history, user_message):
@@ -20,6 +20,16 @@ def job(history, user_message):
 
 
 class StoryMemoryTest(unittest.TestCase):
+    def test_new_action_gets_priority_without_removing_the_rest_of_the_turn(self):
+        latest = ("Hablamos del mapa y de la estación. Te envié una brújula antigua. "
+                  "La ventana del vídeo se parece a la biblioteca.")
+        self.assertEqual(focus_latest_turn(latest), "Te envié una brújula antigua.")
+        messages = conversation_messages(job([], latest))
+        self.assertIn(latest, messages[-1]["content"])
+        self.assertIn("Detalle nuevo que debes atender: Te envié una brújula antigua.", messages[-1]["content"])
+        self.assertIn("no te obliga a seducir", messages[0]["content"])
+
+
     def test_long_user_line_keeps_the_scene_just_played(self):
         history = [
             {"role": "assistant", "content": "*Se sube a la camioneta* Me siento al lado de Daniel y el viaje se pone intenso."},
@@ -92,7 +102,8 @@ class StoryMemoryTest(unittest.TestCase):
         self.assertEqual([turn["role"] for turn in messages], ["system", "user"])
         self.assertIn("La tormenta me asusta", messages[0]["content"])
         self.assertIn("'estás' se dirige a Stefany", messages[0]["content"])
-        self.assertTrue(messages[1]["content"].endswith(current["userMessage"]))
+        self.assertIn(current["userMessage"], messages[1]["content"])
+        self.assertIn("Detalle nuevo que debes atender:", messages[1]["content"])
 
     def test_character_narrates_her_own_action(self):
         with self.assertRaisesRegex(ValueError, "third person"):

@@ -38,8 +38,8 @@ def normalize_reply(value):
 
 def model_chat(messages, temperature, max_tokens, json_mode=False):
     payload = {"model": "magnum-v4-12b", "messages": messages, "max_tokens": max_tokens,
-               "temperature": temperature, "repeat_penalty": 1.0,
-               "presence_penalty": 0.0, "frequency_penalty": 0.0,
+               "temperature": temperature, "repeat_penalty": 1.08,
+               "presence_penalty": 0.12, "frequency_penalty": 0.10,
                "chat_template_kwargs": {"enable_thinking": False}}
     if json_mode:
         payload["response_format"] = {"type": "json_object"}
@@ -183,6 +183,18 @@ def repetition_request(text):
     return bool(asks and not rejects)
 
 
+def focus_latest_turn(text):
+    """Highlight a concrete recent action or question without discarding the full message."""
+    chunks = [part.strip() for part in re.split(r"(?<=[.!?])\s+|(?=¿)", text) if part.strip()]
+    questions = [part for part in chunks if "¿" in part or part.endswith("?")]
+    if questions:
+        return clip_text(questions[-1], 180)
+    actions = [part for part in chunks if re.search(
+        r"(?i)\b(?:te\s+(?:acabo\s+de\s+)?(?:envi[eé]|env[ií]o|mand[eéó]|di|doy|entregu[eé])|"
+        r"acabo\s+de|encontr[eé]|abr[ií]|abro|mira|pregunto|quiero|necesito)\b", part)]
+    return clip_text(actions[-1], 180) if actions else ""
+
+
 def conversation_messages(job):
     """Give Magnum stable identity, closed history and real speaker turns."""
     story = job.get("story") or {}
@@ -225,13 +237,15 @@ def conversation_messages(job):
         "Las acciones que el jugador cuenta en pasado YA OCURRIERON. Responde a sus consecuencias; nunca le impidas hacer algo que acaba de hacer. "
         "Continúa desde la última acción, con el mismo lugar, personas y objetos salvo que el jugador haya cambiado la escena. "
         "La premisa y el comienzo son antecedentes; si el jugador los recuerda, responde sobre ellos sin fingir que ocurren otra vez. "
-        "No cambies quién dijo, envió, sintió o hizo algo. No inventes sentimientos del jugador. "
+        "No cambies quién dijo, envió, sintió o hizo algo. No inventes sentimientos del jugador. Si el jugador dice que te envió o entregó algo, tú lo recibiste de él; responde al objeto antes de preguntar por su origen. "
         "IDENTIDAD: debes hablar y actuar exclusivamente como " + character + ". El jugador es " + player + ". "
         "Cuando USER dice 'yo' habla de " + player + "; cuando USER dice 'tú', 'te' o 'estás' se dirige a " + character + ". "
         "Cuando ASSISTANT dice 'yo', habla de " + character + "; cuando ASSISTANT dice 'tú' se dirige a " + player + ". "
         "No describas una acción del jugador como si fuera tuya ni llames al personaje por su propio nombre como si fuera el jugador. "
         "Si el jugador admite su error o pide perdón, eres quien recibe esa disculpa; no asumas su culpa. "
         "Tu emoción debe responder a lo que acaba de suceder y evolucionar cuando cambian los hechos. "
+        "El modo adulto permite temas adultos, pero no te obliga a seducir: nunca adelantes intimidad por tu cuenta ni conviertas cada tema en deseo. Reacciona a la acción concreta, objeto o pregunta nuevos antes de expresar sentimientos. "
+        "No repitas una confesión, duda, apelativo o estructura que ya dijiste en los turnos recientes; da una observación o decisión nueva. Puedes repetir algo si el jugador te lo pide. "
         "Habla al jugador en primera persona; no pases a tercera persona para referirte a ti. "
         "Escribe SOLO JSON con 'gesto' y 'dialogo'. "
         "'gesto': una acción o sensación propia de máximo doce palabras en primera persona ('Me sorprendo', 'Sonrío', 'Entro'); nunca escribas '" + character + " dijo', 'ella' o tu nombre como sujeto. "
@@ -251,7 +265,10 @@ def conversation_messages(job):
             messages[-1]["content"] += "\n" + content
         else:
             messages.append({"role": turn["role"], "content": content})
+    focus = focus_latest_turn(latest)
     current_request = "\n\nÚltimo mensaje del jugador:\n" + latest
+    if focus and focus != latest:
+        current_request += "\n\nDetalle nuevo que debes atender: " + focus
     if messages[-1]["role"] == "user":
         messages[-1]["content"] += current_request
     else:
@@ -312,7 +329,7 @@ def reply_for(job):
                           {"role": "user", "content": clip_text(latest, 700)}]
                 raw_reply = model_chat(rescue, 0.6, 180, json_mode=True)
             else:
-                raw_reply = model_chat(messages, 0.64 + attempt * 0.05, 300 if wants_reading else 240, json_mode=(attempt == 0))
+                raw_reply = model_chat(messages, 0.74 + attempt * 0.06, 300 if wants_reading else 240, json_mode=(attempt == 0))
             structured_reply = bool(re.match(r"^\s*(?:```(?:json)?\s*)?\{", raw_reply, re.I)) or bool(re.search(r'(?im)^\s*"(?:gesto|dialogo)"\s*:', raw_reply))
             try:
                 parsed = parse_role_reply(raw_reply, character)
