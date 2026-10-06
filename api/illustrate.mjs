@@ -18,28 +18,33 @@ export function sceneJobRow(userId, body) {
   };
 }
 
+function visibleMoment(text) {
+  const compact = String(text || "").replace(/\s+/g, " ").trim();
+  return compact.length <= 360 ? compact : compact.slice(0, 120).trimEnd() + " … " + compact.slice(-230).trimStart();
+}
+
 export function scenePrompt(body) {
   const focus = String(body.focusText || "").trim();
   if (focus.length < 8) {
     throw Object.assign(new Error("La escena es demasiado corta para ilustrarla."), { status: 400, code: "scene_too_short" });
   }
-  const actions = [...focus.matchAll(/\*([^*]{3,320})\*/g)];
-  const visibleMoment = (actions.at(-1)?.[1]?.trim() || focus.split(/[.!?](?:\s|$)/, 1)[0]).replace(/\s+/g, " ").slice(0, 180);
+  const actions = [...focus.matchAll(/\*([^*]{3,5000})\*/g)];
+  const characterMoment = visibleMoment(actions.at(-1)?.[1]?.trim() || focus.split(/[.!?](?:\s|$)/, 1)[0]);
   const userText = String(body.userAction || "");
-  const userActions = [...userText.matchAll(/\*([^*]{3,320})\*/g)];
-  const userMoment = (userActions.at(-1)?.[1]?.trim() || (/\b(?:abro|abre|entra|camina|toma|sujeta|entrego|coloca|mira|se levanta|me levanto)\b/i.test(userText)
-    ? userText.split(/[.!?](?:\s|$)/, 1)[0] : "")).replace(/\s+/g, " ").slice(0, 180);
+  const userActions = [...userText.matchAll(/\*([^*]{3,5000})\*/g)];
+  const userMoment = visibleMoment(userActions.at(-1)?.[1]?.trim() || (/\b(?:abro|abre|entra|camina|toma|sujeta|entrego|coloca|mira|se levanta|me levanto)\b/i.test(userText)
+    ? userText.split(/[.!?](?:\s|$)/, 1)[0] : ""));
   const setting = String(body.sceneText || "").replace(/\*[^*]*\*/g, " ").replace(/\s+/g, " ").trim().slice(-120);
   return [
-    "One realistic vertical photograph, a single moment. Medium shot at eye level, faces and upper bodies in frame. One coherent room.",
-    "Show each adult once in a distinct position. Keep heads attached to their own bodies and hands connected to their own arms. No extra person or duplicate limb.",
+    "One realistic vertical photograph of the current moment. Frame the described action clearly in one coherent room.",
+    "Show each described adult once in a distinct position. Only the participants in this moment; no bystanders, duplicate people or extra limbs.",
     "PLAYER visible action: " + (userMoment || "none described"),
-    "CHARACTER visible reaction: " + visibleMoment,
+    "CHARACTER visible reaction: " + characterMoment,
     "Main character: " + String(body.characterRole || "the main character").slice(0, 120),
     "Image 1 anchors the main character's appearance. If two adults appear in the reference, keep their faces and bodies assigned to the same distinct people. Never transfer one face to the other body.",
     "Other person only if present in this instant: " + String(body.playerRole || "").slice(0, 100),
     "Current setting cues only: " + setting,
-    "Prioritize faces, eye contact and one visible gesture. Crop before complex body contact or tangled limbs. Natural faces and hands, consistent clothing and light. No lettering, subtitles or panels.",
+    "Depict the specific visible action between the participants rather than substituting a different activity. Keep anatomy, contact, clothing and lighting coherent. No lettering, subtitles or panels.",
   ].join("\n");
 }
 

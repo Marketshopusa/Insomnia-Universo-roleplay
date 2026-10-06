@@ -2,7 +2,7 @@ import unittest
 from urllib.error import URLError
 from unittest.mock import patch
 
-from adult_chat_worker import cloud_call, conversation_messages, focus_latest_turn, handle, parse_role_reply, reply_for
+from adult_chat_worker import cloud_call, conversation_messages, focus_latest_turn, handle, parse_role_reply, reply_for, requested_vocal_only
 
 
 def job(history, user_message):
@@ -20,6 +20,16 @@ def job(history, user_message):
 
 
 class StoryMemoryTest(unittest.TestCase):
+    def test_explicit_silent_vocal_turn_does_not_make_up_dialogue(self):
+        self.assertEqual(requested_vocal_only("Deja de hablar; solo se escucha mi llanto."), "*Sollozo*")
+        self.assertEqual(requested_vocal_only("Sin hablar, solo se oye tu risa."), "*Río*")
+        self.assertIsNone(requested_vocal_only("Cuéntame qué pasó cuando lloraste."))
+        with patch("adult_chat_worker.model_chat") as model:
+            response = reply_for(job([], "Deja de hablar. Solo se escucha tu risa."))
+        self.assertEqual(response, "*Río*")
+        model.assert_not_called()
+
+
     def test_new_action_gets_priority_without_removing_the_rest_of_the_turn(self):
         latest = ("Hablamos del mapa y de la estación. Te envié una brújula antigua. "
                   "La ventana del vídeo se parece a la biblioteca.")

@@ -34,6 +34,21 @@ test("a scene illustration asks Gemini for the picture and returns it", async ()
   else process.env.GEMINI_API_KEY = previous;
 });
 
+test("a long user action reaches the illustration without cropping away its subject", () => {
+  const action = "Camino lentamente por el pasillo y observo las pinturas. ".repeat(7)
+    + "Entrego la brújula a Andrea junto a la puerta.";
+  const prompt = scenePrompt({
+    focusText: "*Andrea recibe la brújula y señala la puerta*",
+    userAction: "*" + action + "*",
+    characterRole: "Andrea",
+    playerRole: "William",
+  });
+  assert.match(prompt, /PLAYER visible action: Camino lentamente/);
+  assert.match(prompt, /Entrego la brújula a Andrea/);
+  assert.doesNotMatch(prompt, /Crop before/);
+  assert.match(prompt, /no bystanders/);
+});
+
 test("the illustration depicts the latest visible action once", () => {
   const prompt = scenePrompt({
     storyDescription: "Dos amigos investigan una cabaña.",

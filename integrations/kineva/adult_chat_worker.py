@@ -313,8 +313,31 @@ def repeats_recent_clause(spoken, previous_replies):
     return False
 
 
+def requested_vocal_only(text):
+    """Honor an explicit no-dialogue direction without asking the model to invent speech."""
+    if not re.search(r"(?i)\b(?:deja\s+de\s+hablar|sin\s+hablar|no\s+(?:habla|dice\s+nada)|"
+                     r"solo\s+se\s+escuchan?|solo\s+(?:se\s+)?oye[n]?)\b", text):
+        return None
+    if re.search(r"(?i)\b(?:no|sin)\s+(?:grit|re[ií]r|llor|gem|gim|suspir)", text):
+        return None
+    for pattern, gesture in (
+        (r"(?i)\b(?:solloz|llor|llanto)\w*", "Sollozo"),
+        (r"(?i)\b(?:r[ií]e|re[ií]r|risas?|carcajad)\w*", "Río"),
+        (r"(?i)\b(?:grit|chill)\w*", "Grito"),
+        (r"(?i)\b(?:suspiro|suspir)\w*", "Suspiro"),
+        (r"(?i)\b(?:gemid|gim|jade)\w*", "Gimo"),
+    ):
+        if re.search(pattern, text):
+            return "*" + gesture + "*"
+    return None
+
+
 def reply_for(job):
     started = time.monotonic()
+    vocal_only = requested_vocal_only(str(job.get("userMessage") or ""))
+    if vocal_only:
+        print("Chat nonverbal turn", job.get("jobId", "local"), flush=True)
+        return vocal_only
     free_gpu_for_chat()
     messages = conversation_messages(job)
     character = str((job.get("story") or {}).get("character_role") or "")

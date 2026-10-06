@@ -50,6 +50,17 @@ class SceneStillTest(unittest.TestCase):
         self.assertIn("PLAYER visible action: Abro la puerta de la biblioteca", directed)
         self.assertIn("CHARACTER visible reaction: Miro el libro", directed)
 
+    def test_long_player_action_keeps_its_last_visible_beat(self):
+        action = "Camino por el pasillo y miro los cuadros. " * 10 + "Entrego la brújula a Andrea."
+        prompt = image_worker.scene_prompt({
+            "focusText": "*Andrea toma la brújula*",
+            "userAction": "*" + action + "*",
+            "characterRole": "Andrea",
+            "playerRole": "William",
+        })
+        self.assertIn("Entrego la brújula a Andrea", prompt)
+        self.assertNotIn("Crop before", prompt)
+
     def test_vram_is_released_only_when_comfy_queue_is_empty(self):
         from worker import release_idle_models
 

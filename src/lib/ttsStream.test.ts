@@ -94,4 +94,8 @@ it("keeps narration, reactions and dialogue in scene order without reading instr
   expect(roleplayPerformance("Ella abrió la puerta y gritó.")).toBe("scream");
   expect(roleplaySpeechText("Estoy feliz de ver tu sonrisa.")).toBe("Estoy feliz de ver tu sonrisa.");
   expect(roleplaySpeechText("*No grito* Estoy tranquila.")).toBe("No grito. Estoy tranquila.");
+  expect(roleplaySpeechText("*Río*")).toBe("[laughing]");
+  expect(roleplaySpeechText("*Sollozo*")).toBe("[sigh]");
+  expect(roleplaySpeechText("*Grito*")).toBe("[shouting] ¡Ah!");
+  expect(roleplaySpeechText("*Gimo*")).toBe("Ah...");
 });

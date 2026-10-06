@@ -61,6 +61,13 @@ function cleanSceneText(value: string): string {
 
 /** Assemble one continuous score in story order: narration, vocal reaction, dialogue. */
 export function performSpeech(text: string): { text: string; performance: Performance } {
+  const vocalOnly = /^\*([^*]+)\*$/.exec(text.trim());
+  if (vocalOnly) {
+    const event = eventFor(vocalOnly[1]);
+    if (event && (event.tag || event.burst)) {
+      return { text: [event.tag, event.burst].filter(Boolean).join(" "), performance: event.performance };
+    }
+  }
   const pieces = text.split(/(\*[^*]+\*)/g).filter(Boolean);
   const score: string[] = [];
   let performance: Performance = "neutral";
@@ -163,7 +170,8 @@ async function receivePcmOnce(text: string, voice: string, language: string, reg
     reader.releaseLock();
   }
   if (!receivedDone || byteCarry.length > 0 || totalBytes === 0) throw new Error("tts_stream_incomplete");
-  if (totalBytes / 2 / PCM_SAMPLE_RATE < 0.35) throw new Error("tts_audio_too_short");
+  const onlyVocalEvent = roleplay && /^\[(?:sigh|laughing|shouting)\](?:\s+¡Ah!)?$/.test(text.trim());
+  if (totalBytes / 2 / PCM_SAMPLE_RATE < (onlyVocalEvent ? 0.1 : 0.35)) throw new Error("tts_audio_too_short");
 }
 
 async function receivePcm(text: string, voice: string, language: string, region: string, performance: Performance, roleplay: boolean, signal: AbortSignal, onChunk: (bytes: Uint8Array) => void) {

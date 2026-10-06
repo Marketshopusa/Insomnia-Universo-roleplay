@@ -81,6 +81,11 @@ def graph_for(job):
         graph["7"]["inputs"]["negative"] = ["13", 0]
     return graph
 
+def visible_moment(text):
+    compact = re.sub(r"\s+", " ", str(text or "")).strip()
+    return compact if len(compact) <= 360 else compact[:120].rstrip() + " … " + compact[-230:].lstrip()
+
+
 def scene_prompt(body):
     source = body or {}
     focus = str(source.get("focusText") or "").strip()
@@ -88,27 +93,27 @@ def scene_prompt(body):
         raise ValueError("La escena es demasiado corta para ilustrarla.")
     # Dialogue, old turns and long premises make this small image model draw a
     # storyboard with bogus subtitles. Describe only one visible current action.
-    actions = re.findall(r"\*([^*]{3,320})\*", focus)
+    actions = re.findall(r"\*([^*]{3,5000})\*", focus)
     moment = actions[-1].strip() if actions else re.split(r"[.!?](?:\s|$)", focus, maxsplit=1)[0].strip()
-    moment = re.sub(r"\s+", " ", moment)[:180]
+    moment = visible_moment(moment)
     user_text = str(source.get("userAction") or "")
-    user_actions = re.findall(r"\*([^*]{3,320})\*", user_text)
+    user_actions = re.findall(r"\*([^*]{3,5000})\*", user_text)
     user_moment = user_actions[-1].strip() if user_actions else ""
     if not user_moment and re.search(r"\b(?:abro|abre|entra|camina|toma|sujeta|entrego|coloca|mira|se levanta|me levanto)\b", user_text, re.I):
         user_moment = re.split(r"[.!?](?:\s|$)", user_text, maxsplit=1)[0].strip()
-    user_moment = re.sub(r"\s+", " ", user_moment)[:180]
+    user_moment = visible_moment(user_moment)
     context = re.sub(r"\*[^*]*\*", " ", str(source.get("sceneText") or ""))
     context = re.sub(r"\s+", " ", context).strip()[-120:]
     return "\n".join([
-        "One realistic vertical photograph, a single moment. Medium shot at eye level, faces and upper bodies in frame. One coherent room.",
-        "Show each adult once in a distinct position. Keep heads attached to their own bodies and hands connected to their own arms. No extra person or duplicate limb.",
+        "One realistic vertical photograph of the current moment. Frame the described action clearly in one coherent room.",
+        "Show each described adult once in a distinct position. Only the participants in this moment; no bystanders, duplicate people or extra limbs.",
         "PLAYER visible action: " + (user_moment or "none described"),
         "CHARACTER visible reaction: " + moment,
         "Main character: " + str(source.get("characterRole") or "the main character")[:120],
         "Image 1 anchors the main character's appearance. If two adults appear in the reference, keep their faces and bodies assigned to the same distinct people. Never transfer one face to the other body.",
         "Other person only if present in this instant: " + str(source.get("playerRole") or "")[:100],
         "Current setting cues only: " + context,
-        "Prioritize faces, eye contact and one visible gesture. Crop before complex body contact or tangled limbs. Natural faces and hands, consistent clothing and light. No lettering, subtitles or panels.",
+        "Depict the specific visible action between the participants rather than substituting a different activity. Keep anatomy, contact, clothing and lighting coherent. No lettering, subtitles or panels.",
     ])
 
 def preflight(comfy):
