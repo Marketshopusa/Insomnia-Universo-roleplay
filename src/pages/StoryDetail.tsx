@@ -48,6 +48,10 @@ type Mode = "select" | "read" | "roleplay";
    const { data: story, isLoading } = useStory(storyId || "");
    const { data: customizations } = useStoryCustomizations();
    const coverImage = resolveStoryCover(story?.cover_image, storyId ? customizations?.[storyId]?.cover_media_url : null);
+   const storyContext = story
+     ? ((story as typeof story & { story_context?: string | null }).story_context ?? null)
+     : null;
+
    
    const [messages, setMessages] = useState<Message[]>([]);
   const messagesRef = useRef<Message[]>([]);
@@ -340,7 +344,7 @@ type Mode = "select" | "read" | "roleplay";
           id: story?.id,
           title: story?.title || tTitle,
           description: story?.description || tDescription,
-          story_context: story?.story_context || tDescription,
+          story_context: storyContext || tDescription,
           character_role: story?.character_role || tCharacter,
           player_role: story?.player_role || tPlayer,
           story_type: story?.story_type,
@@ -525,7 +529,7 @@ type Mode = "select" | "read" | "roleplay";
           characterRole: story.character_role || tCharacter,
           playerRole: story.player_role || tPlayer,
           storyTitle: story.title || tTitle,
-          storyDescription: [story.description || tDescription, story.story_context].filter(Boolean).join("\n\n"),
+          storyDescription: [story.description || tDescription, storyContext].filter(Boolean).join("\n\n"),
           language,
         });
         setSceneImages((previous) => ({ ...previous, [key]: imageUrl }));
@@ -549,7 +553,7 @@ type Mode = "select" | "read" | "roleplay";
            story: {
              title: story.title,
              description: story.description,
-             story_context: story.story_context,
+             story_context: storyContext,
              character_role: story.character_role,
              player_role: story.player_role,
              story_type: story.story_type,
