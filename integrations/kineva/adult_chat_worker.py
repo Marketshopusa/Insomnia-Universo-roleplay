@@ -197,7 +197,7 @@ def conversation_messages(job):
     turns = clean_turns((job.get("history") or [])[-48:])
     chronicle, recent = memory_transcript(turns, player, character)
     recalled = []
-    for turn in (job.get("memory") or [])[:6]:
+    for turn in (job.get("memory") or [])[:8]:
         if not isinstance(turn, dict):
             continue
         who = character if turn.get("role") == "assistant" else player

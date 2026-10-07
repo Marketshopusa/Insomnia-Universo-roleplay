@@ -24,13 +24,13 @@ export function selectStoryMemory(
     return { index, overlap };
   }).filter(({ index, overlap }) => index >= 2 && overlap > 0)
     .sort((a, b) => b.overlap - a.overlap || b.index - a.index);
-  for (const item of ranked.slice(0, 4)) chosen.add(item.index);
+  for (const item of ranked.slice(0, 6)) chosen.add(item.index);
   if (chosen.size <= 2) {
     for (let index = Math.max(2, older.length - 2); index < older.length; index++) chosen.add(index);
   }
-  return [...chosen].sort((a, b) => a - b).slice(0, 6)
+  return [...chosen].sort((a, b) => a - b).slice(0, 8)
     .map((index) => ({
       role: older[index].role,
-      content: older[index].content.slice(0, 160),
+      content: older[index].content.slice(0, 240),
     }));
 }
