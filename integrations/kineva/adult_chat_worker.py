@@ -67,13 +67,8 @@ def parse_role_reply(raw_reply, character="", allow_third_person=False):
         raise ValueError("Invalid role reply")
     gesture = str(parsed.get("gesto") or parsed.get("gestos") or "").strip().strip("*")
     dialogue = str(parsed.get("dialogo") or "").strip()
-    if len(gesture) > 100:
-        cuts = [m.end() for m in re.finditer(r"[,.;](?=\s|$)", gesture[:100])
-                if m.end() >= 35]
-        gesture = (gesture[:cuts[0]].rstrip(" ,.;") if cuts else
-                   gesture[:100].rsplit(" ", 1)[0])
-    if not dialogue or len(gesture) > 100:
-        raise ValueError("Incomplete or overlong gesture/dialogue")
+    if not dialogue:
+        raise ValueError("Incomplete dialogue")
     if not gesture:
         return dialogue
     name = re.match(r"^[A-ZÁÉÍÓÚÑ][a-záéíóúñ]{2,}", character)
@@ -197,7 +192,8 @@ def conversation_messages(job):
     player = clip_text(story.get("player_role") or "protagonista", 220)
     latest = clip_text(job.get("userMessage") or "", 1000)
     wants_reading = reading_request(latest)
-    premise = clip_text("\n".join(filter(None, [story.get("description"), story.get("story_context")])), 1600)
+    premise_parts = [str(value).strip() for value in (story.get("description"), story.get("story_context")) if value]
+    premise = clip_text("\n".join(dict.fromkeys(premise_parts)), 2400)
     turns = clean_turns((job.get("history") or [])[-48:])
     chronicle, recent = memory_transcript(turns, player, character)
     recalled = []
@@ -253,7 +249,7 @@ def conversation_messages(job):
         "No repitas una confesión, duda, apelativo o estructura que ya dijiste en los turnos recientes; da una observación o decisión nueva. Puedes repetir algo si el jugador te lo pide. "
         "Habla al jugador en primera persona; no pases a tercera persona para referirte a ti. "
         "Escribe SOLO JSON con 'gesto' y 'dialogo'. "
-        "'gesto': una acción o sensación propia de máximo doce palabras en primera persona ('Me sorprendo', 'Sonrío', 'Entro'); nunca escribas '" + character + " dijo', 'ella' o tu nombre como sujeto. "
+        "'gesto': narra en primera persona solo lo que haces o sientes en esta escena; usa la extensión que necesite la acción, sin rellenar por sistema. Nunca escribas '" + character + " dijo', 'ella' o tu nombre como sujeto. "
         "'dialogo': SOLO palabras que pronuncias en voz alta al jugador. Habla con naturalidad y voz propia: desarrolla una idea si tienes algo que decir, o contesta brevemente si basta. Reacciona a la acción y a las preguntas actuales, aporta un detalle propio cuando encaje y permite que la escena avance sin copiar las palabras del jugador. No narres acciones dentro de dialogo. "
         "Responde con naturalidad al tema actual; si el jugador vuelve a una frase o tema anterior, puedes retomarlo. "
         "Evita aperturas prefabricadas, muletillas y copiar frases de tus respuestas recientes. La repetición solicitada por el jugador sí está permitida. "

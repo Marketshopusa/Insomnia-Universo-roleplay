@@ -96,6 +96,17 @@ class StoryMemoryTest(unittest.TestCase):
         reply = parse_role_reply('{"gesto":"Respiro hondo","dialogo":"' + spoken + '"}', "Andrea")
         self.assertIn("Mañana llevaré la carta a Clara.", reply)
 
+    def test_long_action_narration_is_not_cut_at_one_hundred_characters(self):
+        action = "Me detengo junto a la puerta, observo el sobre que dejaste en la mesa y noto que tiene una marca de agua en el borde."
+        reply = parse_role_reply('{"gesto":"' + action + '","dialogo":"Ahora entiendo por qué te preocupaba."}', "Andrea")
+        self.assertIn(action, reply)
+
+    def test_duplicate_description_and_context_are_not_repeated(self):
+        current = job([], "¿Qué pasó con la carta?")
+        current["story"]["story_context"] = current["story"]["description"]
+        system = conversation_messages(current)[0]["content"]
+        self.assertEqual(system.count("Andrea es la novia de Daniel"), 1)
+
     def test_premise_and_turn_order_survive(self):
         current = job([
             {"role": "assistant", "content": "*Señalo el porche* La llave está bajo la maceta."},
