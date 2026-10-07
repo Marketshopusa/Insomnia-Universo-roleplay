@@ -5,6 +5,7 @@ import copy
 import json
 import os
 import re
+import subprocess
 import threading
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -12,7 +13,8 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from image_worker import COMFY_INPUT, preflight, render, save_cover_reference, scene_prompt
-from worker import Api, find_manifest, one, release_idle_models, wait_for_render
+from worker import Api, find_manifest, one, probe_video, release_idle_models, wait_for_render
+from image_quality import review
 
 HOST = "127.0.0.1"
 PORT = int(os.environ.get("KINEVA_LOCAL_PORT", "8787"))
@@ -22,7 +24,7 @@ INPUT = COMFY_INPUT
 OUTPUT = Path(os.environ.get("KINEVA_COMFY_OUTPUT", str(SHARED / "output")))
 TEMPLATE_PATH = Path(os.environ.get(
     "KINEVA_API_TEMPLATE",
-    str(HOME / "Documents/Kineva-Workflows/ACTIVE/KINEVA_MINISERIES_API_TEMPLATE.json"),
+    str(Path(__file__).resolve().parent / "workflows/KINEVA_MINISERIES_API_TEMPLATE.json"),
 ))
 COMFY = Api(os.environ.get("KINEVA_COMFY_URL", "http://127.0.0.1:8188"))
 STATE_PATH = HOME / "AppData/Local/Kineva/local-studio-jobs.json"
@@ -55,6 +57,41 @@ def image_extension(data):
         return ".webp"
     raise ValueError("La foto debe ser PNG, JPEG o WebP.")
 
+def decode_optional_image(encoded, label):
+    if encoded in (None, ""):
+        return b""
+    if not isinstance(encoded, str):
+        raise ValueError(label + ": formato de imagen inválido.")
+    data = base64.b64decode(encoded, validate=True)
+    if not data or len(data) > MAX_IMAGE:
+        raise ValueError(label + ": la foto debe pesar hasta 10 MB.")
+    image_extension(data)
+    return data
+
+
+def cast_spec(body):
+    source = body.get("cast") or {}
+    if not isinstance(source, dict):
+        raise ValueError("Las fichas de reparto deben ser un objeto.")
+    names = {}
+    for field in ("primary_name", "primary_description", "secondary_name", "secondary_description", "location_name", "location_description"):
+        value = str(source.get(field) or "").strip()
+        if len(value) > (500 if field.endswith("_description") else 80):
+            raise ValueError("La ficha de reparto es demasiado larga.")
+        names[field] = value
+    names["secondary_image"] = decode_optional_image(source.get("secondary_image"), "Segundo personaje")
+    names["location_image"] = decode_optional_image(source.get("location_image"), "Lugar")
+    if names["secondary_image"] and not names["secondary_name"]:
+        raise ValueError("Asigna un nombre al segundo personaje.")
+    if names["secondary_name"] and not (names["secondary_image"] or names["secondary_description"]):
+        raise ValueError("Sube una referencia separada del segundo personaje o define su ficha visual.")
+    if names["location_image"] and not names["location_name"]:
+        raise ValueError("Asigna un nombre al lugar.")
+    if names["secondary_name"].casefold() == names["primary_name"].casefold() and names["secondary_name"]:
+        raise ValueError("Los personajes deben tener nombres distintos.")
+    return names
+
+
 def persist_jobs():
     with STATE_LOCK:
         with JOBS_LOCK:
@@ -80,27 +117,34 @@ def public_job(job_id):
                      for video in job.get("videos", [])]
     return job
 
-def build_graph(template, image_name, manifest_path, idea, job_id, episode, total, previous):
+def build_graph(template, image_name, manifest_path, idea, job_id, episode, total, previous, cast=None, dialogue=""):
     graph = copy.deepcopy(template)
     if not image_name:
         raise ValueError("Kineva necesita una imagen inicial para esta toma.")
+    cast = cast or {}
     story = idea.strip()
     if total > 1:
         story += f" This is episode {episode} of {total} in a connected miniseries."
         if previous:
             story += " Previous episode continuity: " + previous[:1200]
     one(graph, "KinevaDirectShotPlan")[1]["inputs"].update({
-        "prompt": story, "exact_dialogue": "",
+        "prompt": story, "exact_dialogue": dialogue,
         "duration_seconds": min(15.08, max(5.17, 5.17 + len(idea) / 80)),
+        "primary_character": cast.get("primary_name") or "the adult person in the uploaded reference image",
+        "secondary_character": cast.get("secondary_name") or "",
+        "location_name": cast.get("location_name") or "the setting in the uploaded reference image",
+        "location_description": cast.get("location_description") or "Preserve the original room, geometry, lighting and surfaces.",
     })
     cast_inputs = one(graph, "KinevaStoryCastFromManifest")[1]["inputs"]
     cast_inputs["manifest_path"] = str(manifest_path)
     one(graph, "LoadImage")[1]["inputs"]["image"] = image_name
     cast_inputs["use_reference_image"] = True
-    cast_inputs["use_reference_as_location"] = True
+    cast_inputs["use_reference_as_location"] = not bool(cast.get("location_image") or cast.get("location_description") or cast.get("secondary_name"))
+    if not dialogue:
+        one(graph, "KinevaVoiceRouter")[1]["inputs"]["mode"] = "NONE"
     one(graph, "KinevaPlanLock")[1]["inputs"].update({
         "profile": "MINISERIES", "preserve_dialogue": True,
-        "exact_dialogue": "", "force_single_take": False,
+        "exact_dialogue": dialogue, "force_single_take": False,
         "presenter_visible": False, "lock_camera": False,
         "project_id": "local_" + job_id,
     })
@@ -124,7 +168,9 @@ def chapter_ideas(body):
     raw = body.get("chapters")
     if isinstance(raw, list) and raw:
         ideas = []
-        for item in raw[:12]:
+        if len(raw) > 12:
+            raise ValueError("Kineva admite hasta 12 capítulos por proyecto local.")
+        for item in raw:
             text = str(item or "").strip()
             if len(text) < 5 or len(text) > 4000:
                 raise ValueError("Cada capítulo debe tener entre 5 y 4000 caracteres.")
@@ -138,9 +184,32 @@ def chapter_ideas(body):
     count = int(body.get("episodes", 1))
     if count < 1 or count > 3:
         raise ValueError("Elige entre 1 y 3 episodios.")
-    return [idea] * count
+    if count > 1:
+        raise ValueError("Para varios episodios envía capítulos distintos; no se repetirá la misma idea.")
+    return [idea]
 
-def run_job(job_id, image, ideas):
+def validate_video_report(report):
+    qc = report.get("qc") or {}
+    issues = qc.get("issues")
+    if not isinstance(issues, list) or not qc.get("audio_present"):
+        raise RuntimeError("Kineva no entregó un informe técnico y audio válidos.")
+    if issues:
+        raise RuntimeError("Toma rechazada por control de calidad: " + "; ".join(map(str, issues))[:350])
+
+
+def review_video_people(path, max_people):
+    duration = probe_video(path)[3]
+    positions = sorted({0.25, duration / 2, max(0.25, duration - 0.3)})
+    for second in positions:
+        frame = subprocess.run([
+            "ffmpeg", "-hide_banner", "-loglevel", "error", "-ss", f"{second:.3f}",
+            "-i", str(path), "-frames:v", "1", "-f", "image2pipe", "-vcodec", "png", "-",
+        ], capture_output=True, check=True, timeout=30).stdout
+        if not frame or not review(frame, max_people)["accepted"]:
+            raise RuntimeError("Toma rechazada: aparecen personas extra en el video; revisa las referencias.")
+
+
+def run_job(job_id, image, ideas, cast=None, dialogues=None):
     try:
         with GPU_LOCK:
             template = json.loads(TEMPLATE_PATH.read_text(encoding="utf-8"))
@@ -150,25 +219,62 @@ def run_job(job_id, image, ideas):
                 raise RuntimeError("Faltan nodos ComfyUI: " + ", ".join(sorted(missing)))
             if not INPUT.is_dir() or not OUTPUT.is_dir():
                 raise RuntimeError("No encuentro las carpetas input/output de ComfyUI.")
+            cast = cast or {}
             if not image:
                 preflight(COMFY)
+                primary_prompt = (
+                    "Single adult character portrait, one person only, neutral expression, "
+                    "face and upper body visible, realistic photographic lighting, plain backdrop. "
+                    "No text. Appearance: " + cast["primary_description"]
+                    if cast.get("primary_description")
+                    else scene_prompt({"focusText": ideas[0]})
+                )
                 image = render(
-                    {"id": job_id, "prompt": scene_prompt({"focusText": ideas[0]})},
+                    {"id": str(uuid.uuid5(uuid.UUID(job_id), "primary")),
+                     "prompt": primary_prompt},
+                    COMFY, OUTPUT, timeout=900)
+            if cast.get("secondary_name") and not cast.get("secondary_image"):
+                preflight(COMFY)
+                cast["secondary_image"] = render(
+                    {"id": str(uuid.uuid5(uuid.UUID(job_id), "secondary")),
+                     "prompt": "Single adult character portrait, one person only, neutral expression, "
+                     "face and upper body visible, realistic photographic lighting, plain backdrop. "
+                     "No text. Appearance: " + cast["secondary_description"]},
+                    COMFY, OUTPUT, timeout=900)
+            if cast.get("location_name") and cast.get("location_description") and not cast.get("location_image"):
+                preflight(COMFY)
+                cast["location_image"] = render(
+                    {"id": str(uuid.uuid5(uuid.UUID(job_id), "location")),
+                     "prompt": "Empty establishing photograph of a location, no people, no faces, "
+                     "realistic natural light, no text. Place: " + cast["location_name"] + ". "
+                     + cast["location_description"]},
                     COMFY, OUTPUT, timeout=900)
             extension = image_extension(image)
             image_name = "kineva_local/" + job_id + extension
             image_path = INPUT / image_name
             image_path.parent.mkdir(parents=True, exist_ok=True)
             image_path.write_bytes(image)
+            cast = cast or {}
             manifest_path = INPUT / "kineva_local" / (job_id + "_cast.json")
-            manifest_path.write_text(
-                '{"version":1,"characters":{},"locations":{}}', encoding="utf-8")
+            references = {"version": 1, "characters": {}, "locations": {}}
+            if cast.get("secondary_image"):
+                data = cast["secondary_image"]
+                filename = job_id + "_second" + image_extension(data)
+                (manifest_path.parent / filename).write_bytes(data)
+                references["characters"][cast["secondary_name"]] = filename
+            if cast.get("location_image"):
+                data = cast["location_image"]
+                filename = job_id + "_location" + image_extension(data)
+                (manifest_path.parent / filename).write_bytes(data)
+                references["locations"][cast["location_name"]] = filename
+            manifest_path.write_text(json.dumps(references, ensure_ascii=False), encoding="utf-8")
             previous = ""
             count = len(ideas)
             for episode, idea in enumerate(ideas, start=1):
                 update(job_id, state="rendering", current=episode)
+                dialogue = (dialogues or [])[episode - 1] if episode <= len(dialogues or []) else ""
                 graph = build_graph(
-                    template, image_name, manifest_path, idea, job_id, episode, count, previous)
+                    template, image_name, manifest_path, idea, job_id, episode, count, previous, cast, dialogue)
                 export_node = one(graph, "KinevaMasterExport")[0]
                 created = COMFY.call("POST", "/prompt", {
                     "prompt": graph, "client_id": "insomnia-local-creator",
@@ -185,34 +291,30 @@ def run_job(job_id, image, ideas):
                 path = OUTPUT / subfolder / filename
                 if not path.is_file():
                     raise RuntimeError("El vÃ­deo exportado no existe.")
+                report = find_manifest(OUTPUT, "kineva_local_" + job_id, filename)
+                validate_video_report(report)
+                if cast.get("secondary_name") or cast.get("primary_name"):
+                    review_video_people(path, 2 if cast.get("secondary_name") else 1)
+                locked = report.get("locked_plan") or {}
+                previous = json.dumps({
+                    "cast": locked.get("cast"),
+                    "scenes": locked.get("scenes"),
+                }, ensure_ascii=False)[:1200]
+                scenes = locked.get("scenes") or []
+                dialogue = [
+                    str(line.get("line") or "") for shot in locked.get("shots") or []
+                    for line in shot.get("dialogue") or []
+                ]
+                script = "\n".join(
+                    [str(scene.get("summary") or "") for scene in scenes] + dialogue
+                ).strip()
                 video_id = str(uuid.uuid4())
                 with JOBS_LOCK:
                     JOBS[job_id]["videos"].append({
                         "episode": episode, "url": "/videos/" + job_id + "/" + video_id,
-                        "path": str(path),
+                        "path": str(path), "script": script[:5000],
                     })
                 persist_jobs()
-                try:
-                    report = find_manifest(
-                        OUTPUT, "kineva_local_" + job_id, filename)
-                    locked = report.get("locked_plan") or {}
-                    previous = json.dumps({
-                        "cast": locked.get("cast"),
-                        "scenes": locked.get("scenes"),
-                    }, ensure_ascii=False)[:1200]
-                    scenes = locked.get("scenes") or []
-                    dialogue = [
-                        str(line.get("line") or "") for shot in locked.get("shots") or []
-                        for line in shot.get("dialogue") or []
-                    ]
-                    script = "\n".join(
-                        [str(scene.get("summary") or "") for scene in scenes] + dialogue
-                    ).strip()
-                    with JOBS_LOCK:
-                        JOBS[job_id]["videos"][-1]["script"] = script[:5000]
-                    persist_jobs()
-                except Exception:
-                    previous = ""
             update(job_id, state="completed")
     except Exception as exc:
         update(job_id, state="failed", error=str(exc)[:700])
@@ -337,21 +439,22 @@ class Handler(BaseHTTPRequestHandler):
         if not self._origin():
             return self._reply(403, {"error": "Abre Insomnia en esta PC."})
         length = int(self.headers.get("Content-Length", "0"))
-        if length < 1 or length > 14_000_000:
+        if length < 1 or length > 43_000_000:
             return self._reply(413, {"error": "La solicitud supera el limite permitido."})
         try:
             body = json.loads(self.rfile.read(length))
             ideas = chapter_ideas(body)
             count = len(ideas)
-            encoded = body.get("image")
-            image = b""
-            if encoded not in (None, ""):
-                if not isinstance(encoded, str):
-                    raise ValueError("La imagen opcional debe enviarse en formato valido.")
-                image = base64.b64decode(encoded, validate=True)
-                if not image or len(image) > MAX_IMAGE:
-                    raise ValueError("La foto debe pesar hasta 10 MB.")
-                image_extension(image)
+            image = decode_optional_image(body.get("image"), "Personaje principal")
+            cast = cast_spec(body)
+            raw_dialogues = body.get("dialogues") or []
+            if not isinstance(raw_dialogues, list) or len(raw_dialogues) > len(ideas):
+                raise ValueError("Las frases no corresponden a los capítulos.")
+            dialogues = [str(line or "").strip() for line in raw_dialogues]
+            if any(len(line) > 180 or len(line.split()) > 20 for line in dialogues):
+                raise ValueError("Cada toma admite una frase breve de hasta 20 palabras.")
+            if cast["secondary_name"] and not (image or cast["primary_description"]):
+                raise ValueError("Sube una referencia del personaje principal o define su ficha visual.")
         except (ValueError, TypeError, binascii.Error, json.JSONDecodeError) as exc:
             return self._reply(400, {"error": str(exc)})
         job_id = str(uuid.uuid4())
@@ -361,7 +464,7 @@ class Handler(BaseHTTPRequestHandler):
                 "total": count, "videos": [], "error": None,
             }
         persist_jobs()
-        threading.Thread(target=run_job, args=(job_id, image, ideas),
+        threading.Thread(target=run_job, args=(job_id, image, ideas, cast, dialogues),
                          daemon=True).start()
         return self._reply(202, public_job(job_id))
 

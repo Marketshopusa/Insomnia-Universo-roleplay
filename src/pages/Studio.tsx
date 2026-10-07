@@ -60,7 +60,7 @@ const languages = [
   "Portuguese", "Japanese", "Korean", "Chinese"
 ];
 
-const chapterOptions = [3, 5, 7, 10, 15, 20];
+const chapterOptions = [3, 5, 7, 10, 12];
 
  const Studio = () => {
    const { user } = useAuth();
@@ -73,6 +73,12 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
 
   const [model, setModel] = useState("apprentice-6");
   const [referenceImage, setReferenceImage] = useState<File | null>(null);
+  const [primaryName, setPrimaryName] = useState("");
+  const [secondaryName, setSecondaryName] = useState("");
+  const [secondaryImage, setSecondaryImage] = useState<File | null>(null);
+  const [locationName, setLocationName] = useState("");
+  const [locationDescription, setLocationDescription] = useState("");
+  const [locationImage, setLocationImage] = useState<File | null>(null);
   const [seriesEpisodeIds, setSeriesEpisodeIds] = useState<string[]>([]);
   const [savedSeriesId, setSavedSeriesId] = useState<string | null>(null);
   const [localHealth, setLocalHealth] = useState<LocalStudioStatus>("missing-worker");
@@ -170,7 +176,7 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
     if (error) throw new Error(error.message);
   };
 
-  const filmChapters = async (chapters: string[], episodeIds: string[], pendingProbe?: Promise<LocalProbe>) => {
+  const filmChapters = async (chapters: string[], episodeIds: string[], pendingProbe?: Promise<LocalProbe>, dialogues: string[] = [], storyPlan?: any) => {
     const probe = await (pendingProbe ?? probeLocalKineva());
     setLocalHealth(probe.status);
     if (probe.status !== "ready") {
@@ -183,10 +189,26 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
     setGeneratingVideos(true);
     setVideoProgress("ComfyUI está filmando los capítulos en esta PC…");
     const image = referenceImage ? await encodeLocalImage(referenceImage) : null;
+    const storyCharacters = Array.isArray(storyPlan?.characters) ? storyPlan.characters : [];
+    const first = storyCharacters[0] || {};
+    const second = storyCharacters[1] || {};
+    const setting = storyPlan?.setting || {};
+    const cast = {
+      primary_name: primaryName.trim() || String(first.name || "").slice(0, 80),
+      primary_description: image ? "" : String(first.visual_prompt || [first.appearance, first.wardrobe].filter(Boolean).join(". ")).slice(0, 500),
+      secondary_name: secondaryName.trim() || (secondaryImage ? "" : String(second.name || "").slice(0, 80)),
+      secondary_description: secondaryImage ? "" : String(second.visual_prompt || [second.appearance, second.wardrobe].filter(Boolean).join(". ")).slice(0, 500),
+      secondary_image: secondaryImage ? await encodeLocalImage(secondaryImage) : null,
+      location_name: locationName.trim() || String(setting.place || "").slice(0, 80),
+      location_description: locationDescription.trim() || String([setting.place, setting.time, setting.visual_style].filter(Boolean).join(". ")).slice(0, 500),
+      location_image: locationImage ? await encodeLocalImage(locationImage) : null,
+    };
     await publishLocalChapters({
-      chapters: chapters.slice(0, 12),
+      chapters,
+      dialogues,
       episodeIds,
       image,
+      cast,
       onJob: (job) => {
         setLocalJob(job);
         if (job.state === "rendering") setVideoProgress("Filmando capítulo " + job.current + " de " + job.total + "…");
@@ -201,7 +223,7 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
       upload: storeChapterVideo,
       markReady: markChapterReady,
     });
-    toast({ title: "Capítulos filmados", description: "El video de cada capítulo quedó guardado dentro de la novela." });
+    toast({ title: "Escenas creadas", description: "Hay una toma visual por capítulo. Revisa cada video antes de publicar la serie." });
   };
 
   const handleGenerateProject = async () => {
@@ -293,11 +315,15 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
     } finally {
       setGenerating(false);
     }
-    const chapterTexts = (generated.chapters ?? [])
-      .map((chapter: { content?: string }) => String(chapter.content || "").trim())
-      .filter((text: string) => text.length >= 5);
+    const chapterScenes = (generated.chapters ?? [])
+      .map((chapter: { video_prompt?: string; summary?: string; content?: string; spoken_line?: string }) => ({
+        visual: String(chapter.video_prompt || chapter.summary || chapter.content || "").trim(),
+        dialogue: String(chapter.spoken_line || "").trim(),
+      }))
+      .filter((scene: { visual: string }) => scene.visual.length >= 5);
+    const chapterTexts = chapterScenes.map((scene: { visual: string }) => scene.visual);
     try {
-      await filmChapters(chapterTexts, episodeIds, loopbackProbe);
+      await filmChapters(chapterTexts, episodeIds, loopbackProbe, chapterScenes.map((scene: { dialogue: string }) => scene.dialogue), generated);
     } catch (e) {
       toast({
         title: "La novela está guardada, el video no",
@@ -323,9 +349,12 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
     const loopbackProbe = probeLocalKineva();
     try {
       let episodeIds = seriesEpisodeIds;
-      const chapterTexts = (novel?.chapters ?? [])
-        .map((chapter: { content?: string }) => String(chapter.content || "").trim())
-        .filter((text: string) => text.length >= 5);
+      const scenes = (novel?.chapters ?? [])
+        .map((chapter: { video_prompt?: string; summary?: string; content?: string; spoken_line?: string }) => ({
+          visual: String(chapter.video_prompt || chapter.summary || chapter.content || "").trim(),
+          dialogue: String(chapter.spoken_line || "").trim(),
+        })).filter((scene: { visual: string }) => scene.visual.length >= 5);
+      const chapterTexts = scenes.map((scene: { visual: string }) => scene.visual);
       if (!episodeIds.length && novel) {
         const savedSeries = await saveNovelSeries({
           userId: user.id,
@@ -337,7 +366,7 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
         setSeriesEpisodeIds(episodeIds);
         setSavedSeriesId(savedSeries.seriesId);
       }
-      await filmChapters(chapterTexts.length ? chapterTexts : [String(description || novel?.logline || "")], episodeIds, loopbackProbe);
+      await filmChapters(chapterTexts.length ? chapterTexts : [String(description || novel?.logline || "")], episodeIds, loopbackProbe, scenes.map((scene: { dialogue: string }) => scene.dialogue), novel);
     } catch (e) {
       toast({
         title: "No se pudieron generar los videos",
@@ -526,12 +555,30 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
          </Card>
 
           <Card className="p-6 mb-6 space-y-3">
-            <Label htmlFor="kineva-reference">Imagen inicial (opcional)</Label>
+            <Label htmlFor="kineva-reference">Personaje principal: foto de referencia (opcional)</Label>
             <input id="kineva-reference" type="file" accept="image/png,image/jpeg,image/webp"
               onChange={(event) => setReferenceImage(event.target.files?.[0] ?? null)}
               className="block w-full text-sm" />
+            <input aria-label="Nombre del personaje principal" placeholder="Nombre del personaje principal" value={primaryName}
+              onChange={(event) => setPrimaryName(event.target.value)} maxLength={80}
+              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm" />
+            <Label htmlFor="kineva-second">Segundo personaje: foto separada</Label>
+            <input id="kineva-second" type="file" accept="image/png,image/jpeg,image/webp"
+              onChange={(event) => setSecondaryImage(event.target.files?.[0] ?? null)} className="block w-full text-sm" />
+            <input aria-label="Nombre del segundo personaje" placeholder="Nombre del segundo personaje" value={secondaryName}
+              onChange={(event) => setSecondaryName(event.target.value)} maxLength={80}
+              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm" />
+            <Label htmlFor="kineva-location">Lugar: foto separada (opcional)</Label>
+            <input id="kineva-location" type="file" accept="image/png,image/jpeg,image/webp"
+              onChange={(event) => setLocationImage(event.target.files?.[0] ?? null)} className="block w-full text-sm" />
+            <input aria-label="Nombre del lugar" placeholder="Nombre del lugar" value={locationName}
+              onChange={(event) => setLocationName(event.target.value)} maxLength={80}
+              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm" />
+            <input aria-label="Descripción del lugar" placeholder="Descripción del lugar y su iluminación" value={locationDescription}
+              onChange={(event) => setLocationDescription(event.target.value)} maxLength={400}
+              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm" />
             <p className="text-xs text-muted-foreground">
-              La novela se guarda completa, capítulo por capítulo, en Series. Cada capítulo se filma en ComfyUI de esta PC. Una foto opcional conserva la misma persona.
+              Estas referencias se envían a Kineva en esta PC para mantener personajes y lugar separados entre capítulos.
             </p>
           </Card>
 
@@ -612,11 +659,11 @@ const chapterOptions = [3, 5, 7, 10, 15, 20];
               {localJob.state === "queued" ? "En cola…"
                 : localJob.state === "rendering" ? `Creando video ${localJob.current} de ${localJob.total}…`
                 : localJob.state === "failed" ? `Error: ${localJob.error || "Kineva no pudo crear el video."}`
-                : "Video listo."}
+                : "Escenas listas para revisión."}
             </p>
             {localJob.videos?.map((video) => (
               <div key={video.url}>
-                <h3 className="text-sm font-medium">Episodio {video.episode}</h3>
+                <h3 className="text-sm font-medium">Escena del capítulo {video.episode}</h3>
                 <video controls className="mt-2 w-full rounded-md" src={localVideoSrc(video.url)} />
               </div>
             ))}

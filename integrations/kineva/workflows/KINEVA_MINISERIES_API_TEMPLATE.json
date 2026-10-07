@@ -1,0 +1,441 @@
+{
+    "6":  {
+              "class_type":  "KinevaStoryCastFromManifest",
+              "inputs":  {
+                             "manifest_path":  "__KINEVA_CAST_MANIFEST__",
+                             "strict":  false,
+                             "use_reference_image":  true,
+                             "story_plan":  [
+                                                "50",
+                                                0
+                                            ],
+                             "reference_image":  [
+                                                     "44",
+                                                     0
+                                                 ],
+                             "use_reference_as_location":  true
+                         }
+          },
+    "11":  {
+               "class_type":  "UNETLoader",
+               "inputs":  {
+                              "unet_name":  "minimax_h3_ref2va_pruned_int8_convrot.safetensors",
+                              "weight_dtype":  "default"
+                          }
+           },
+    "12":  {
+               "class_type":  "CLIPLoader",
+               "inputs":  {
+                              "clip_name":  "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+                              "type":  "minimax",
+                              "device":  "default"
+                          }
+           },
+    "13":  {
+               "class_type":  "VAELoader",
+               "inputs":  {
+                              "vae_name":  "minimax_h3_video_vae_fp16.safetensors"
+                          }
+           },
+    "14":  {
+               "class_type":  "VAELoader",
+               "inputs":  {
+                              "vae_name":  "minimax_h3_audio_vae_fp32.safetensors"
+                          }
+           },
+    "15":  {
+               "class_type":  "MinimaxLoRAStack",
+               "inputs":  {
+                              "lora_1":  "None",
+                              "strength_1":  1.0,
+                              "lora_2":  "None",
+                              "strength_2":  1.0,
+                              "lora_3":  "None",
+                              "strength_3":  1.0,
+                              "lora_4":  "None",
+                              "strength_4":  1.0
+                          }
+           },
+    "20":  {
+               "class_type":  "ModelPreviewOverrideKJ",
+               "inputs":  {
+                              "max_resolution":  1024,
+                              "jpeg_quality":  80,
+                              "suppress_default_preview":  true,
+                              "preview_frames":  1024,
+                              "preview_fps":  24,
+                              "tiny_vae":  "none",
+                              "model":  [
+                                            "39",
+                                            0
+                                        ]
+                          }
+           },
+    "26":  {
+               "class_type":  "MinimaxStoryFreeVRAM",
+               "inputs":  {
+                              "story_cast":  [
+                                                 "6",
+                                                 0
+                                             ]
+                          }
+           },
+    "29":  {
+               "class_type":  "ResolutionSelector",
+               "inputs":  {
+                              "aspect_ratio":  "9:16 (Portrait Widescreen)",
+                              "megapixels":  0.5,
+                              "multiple":  32
+                          }
+           },
+    "32":  {
+               "class_type":  "KinevaDirectShotPlan",
+               "inputs":  {
+                              "prompt":  "__KINEVA_JOB_PROMPT__",
+                              "exact_dialogue":  "__KINEVA_EXACT_DIALOGUE__",
+                              "style":  "photorealistic, natural lighting",
+                              "duration_seconds":  8.0,
+                              "camera":  "fixed medium shot; no zoom, cuts or reframing",
+                              "primary_character":  "the adult person in the uploaded reference image",
+                              "secondary_character":  "",
+                              "location_name":  "the setting in the uploaded reference image",
+                              "location_description":  "Preserve the original room, geometry, lighting and surfaces."
+                          },
+               "_meta":  {
+                             "title":  "KINEVA INSOMNIA - toma directa"
+                         }
+           },
+    "34":  {
+               "class_type":  "MinimaxStoryDirector",
+               "inputs":  {
+                              "width":  [
+                                            "29",
+                                            0
+                                        ],
+                              "height":  [
+                                             "29",
+                                             1
+                                         ],
+                              "steps":  14,
+                              "sampler_name":  "euler",
+                              "scheduler":  "beta",
+                              "ref_image_size":  "match",
+                              "shift_video":  12.0,
+                              "shift_audio":  3.0,
+                              "seed":  994128547692507,
+                              "mode":  "auto",
+                              "upscale_model":  "minimax_h3_latent_upscaler_3d_conv_v1_fp16.safetensors",
+                              "upscale_megapixels":  1.0,
+                              "upscale_align":  32,
+                              "upscale_keep_proportion":  true,
+                              "upscale_device":  "cuda",
+                              "upscale_precision":  "fp16",
+                              "refine_sigmas":  "(off)",
+                              "rtx_scale":  1.0,
+                              "rtx_quality":  "ULTRA",
+                              "model":  [
+                                            "46",
+                                            0
+                                        ],
+                              "clip":  [
+                                           "12",
+                                           0
+                                       ],
+                              "vae":  [
+                                          "13",
+                                          0
+                                      ],
+                              "audio_vae":  [
+                                                "14",
+                                                0
+                                            ],
+                              "story_plan":  [
+                                                 "6",
+                                                 2
+                                             ],
+                              "story_cast":  [
+                                                 "26",
+                                                 0
+                                             ],
+                              "lora_stack":  [
+                                                 "15",
+                                                 0
+                                             ],
+                              "story_voices":  [
+                                                   "53",
+                                                   0
+                                               ]
+                          }
+           },
+    "35":  {
+               "class_type":  "ModelAttentionBackend",
+               "inputs":  {
+                              "attention":  "comfy kitchen attention",
+                              "model":  [
+                                            "11",
+                                            0
+                                        ]
+                          }
+           },
+    "38":  {
+               "class_type":  "MiniMaxLowVRAMAttention",
+               "inputs":  {
+                              "head_chunks":  4,
+                              "model":  [
+                                            "35",
+                                            0
+                                        ]
+                          }
+           },
+    "39":  {
+               "class_type":  "MiniMaxChunkFeedForward",
+               "inputs":  {
+                              "chunks":  2,
+                              "seq_threshold":  4096,
+                              "model":  [
+                                            "38",
+                                            0
+                                        ]
+                          }
+           },
+    "44":  {
+               "class_type":  "LoadImage",
+               "inputs":  {
+                              "image":  "__KINEVA_REFERENCE_IMAGE__"
+                          }
+           },
+    "45":  {
+               "class_type":  "VHS_LoadVideo",
+               "inputs":  {
+                              "video":  "KINEVA_NO_MOTION_CONTROL.mp4",
+                              "force_rate":  24.0,
+                              "custom_width":  0,
+                              "custom_height":  0,
+                              "frame_load_cap":  0,
+                              "skip_first_frames":  0,
+                              "select_every_nth":  1,
+                              "format":  "AnimateDiff"
+                          }
+           },
+    "46":  {
+               "class_type":  "KinevaH3MotionControl",
+               "inputs":  {
+                              "use_motion_control":  false,
+                              "control_type":  "AUTO",
+                              "model_patch_name":  "minimax_h3_fun_controlnet_union_pruned_int8_convrot.safetensors",
+                              "strength":  0.85,
+                              "start_percent":  0.0,
+                              "end_percent":  1.0,
+                              "model":  [
+                                            "20",
+                                            0
+                                        ],
+                              "vae":  [
+                                          "13",
+                                          0
+                                      ],
+                              "control_video":  [
+                                                    "45",
+                                                    0
+                                                ]
+                          }
+           },
+    "47":  {
+               "class_type":  "KinevaPromptTrace",
+               "inputs":  {
+                              "original_prompt":  "__KINEVA_JOB_PROMPT__",
+                              "plan_json":  [
+                                                "32",
+                                                1
+                                            ],
+                              "prompt_log":  [
+                                                 "34",
+                                                 1
+                                             ],
+                              "lock_report":  [
+                                                  "50",
+                                                  1
+                                              ],
+                              "locked_plan_json":  [
+                                                       "50",
+                                                       2
+                                                   ]
+                          }
+           },
+    "50":  {
+               "class_type":  "KinevaPlanLock",
+               "inputs":  {
+                              "story_plan":  [
+                                                 "32",
+                                                 0
+                                             ],
+                              "profile":  "MINISERIES",
+                              "preserve_dialogue":  true,
+                              "force_single_take":  false,
+                              "presenter_visible":  false,
+                              "lock_camera":  false,
+                              "camera_rule":  "locked medium close-up / half-body shot, presenter visible",
+                              "exact_dialogue":  "__KINEVA_EXACT_DIALOGUE__",
+                              "dialogue_language":  "Spanish",
+                              "project_id":  "__KINEVA_PROJECT_ID__"
+                          }
+           },
+    "51":  {
+               "class_type":  "MinimaxStoryVoiceCastingH3",
+               "inputs":  {
+                              "model":  [
+                                            "20",
+                                            0
+                                        ],
+                              "clip":  [
+                                           "12",
+                                           0
+                                       ],
+                              "vae":  [
+                                          "13",
+                                          0
+                                      ],
+                              "audio_vae":  [
+                                                "14",
+                                                0
+                                            ],
+                              "story_plan":  [
+                                                 "6",
+                                                 2
+                                             ],
+                              "story_cast":  [
+                                                 "26",
+                                                 0
+                                             ],
+                              "reference_text":  "The morning train was late again, so I walked the last part of the way.",
+                              "seed":  424242,
+                              "steps":  14,
+                              "sampler_name":  "euler",
+                              "scheduler":  "beta",
+                              "lora_stack":  [
+                                                 "15",
+                                                 0
+                                             ]
+                          }
+           },
+    "53":  {
+               "class_type":  "KinevaVoiceRouter",
+               "inputs":  {
+                              "story_plan":  [
+                                                 "6",
+                                                 2
+                                             ],
+                              "mode":  "H3_DESIGNED",
+                              "character_name":  "",
+                              "designed_voices":  [
+                                                      "51",
+                                                      0
+                                                  ]
+                          }
+           },
+    "65":  {
+               "class_type":  "LoadBackgroundRemovalModel",
+               "inputs":  {
+                              "bg_removal_name":  "birefnet.safetensors"
+                          }
+           },
+    "66":  {
+               "class_type":  "RemoveBackground",
+               "inputs":  {
+                              "bg_removal_model":  [
+                                                       "65",
+                                                       0
+                                                   ],
+                              "image":  [
+                                            "44",
+                                            0
+                                        ]
+                          }
+           },
+    "54":  {
+               "class_type":  "KinevaStaticBackgroundLock",
+               "inputs":  {
+                              "video":  [
+                                            "34",
+                                            0
+                                        ],
+                              "reference_image":  [
+                                                      "44",
+                                                      0
+                                                  ],
+                              "foreground_mask":  [
+                                                      "66",
+                                                      0
+                                                  ],
+                              "enabled":  false,
+                              "center_x":  0.5,
+                              "center_y":  0.58,
+                              "region_width":  0.62,
+                              "region_height":  0.96,
+                              "feather":  0.035,
+                              "mask_expand":  0.12
+                          }
+           },
+    "55":  {
+               "class_type":  "KinevaVideoQC",
+               "inputs":  {
+                              "video":  [
+                                            "54",
+                                            0
+                                        ],
+                              "check_temporal":  true,
+                              "cut_threshold":  0.18,
+                              "sample_size":  64
+                          }
+           },
+    "67":  {
+               "class_type":  "KinevaProjectContext",
+               "inputs":  {
+                              "project_name":  "__KINEVA_PROJECT__",
+                              "episode":  1,
+                              "scene":  1,
+                              "shot":  2,
+                              "take":  1
+                          }
+           },
+    "56":  {
+               "class_type":  "KinevaMasterExport",
+               "inputs":  {
+                              "video":  [
+                                            "55",
+                                            0
+                                        ],
+                              "filename_prefix":  [
+                                                      "67",
+                                                      0
+                                                  ],
+                              "profile":  "MASTER"
+                          }
+           },
+    "57":  {
+               "class_type":  "KinevaRunManifest",
+               "inputs":  {
+                              "saved_path":  [
+                                                 "56",
+                                                 1
+                                             ],
+                              "qc_report":  [
+                                                "55",
+                                                1
+                                            ],
+                              "lock_report":  [
+                                                  "50",
+                                                  1
+                                              ],
+                              "locked_plan_json":  [
+                                                       "50",
+                                                       2
+                                                   ],
+                              "project_context":  [
+                                                      "67",
+                                                      1
+                                                  ],
+                              "project_name":  "__KINEVA_PROJECT__"
+                          }
+           }
+}

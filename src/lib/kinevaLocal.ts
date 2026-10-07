@@ -120,14 +120,25 @@ export async function encodeLocalImage(file: File) {
 
 export const MAX_LOCAL_CHAPTERS = 12;
 
+export interface LocalCastInput {
+  primary_name?: string;
+  primary_description?: string;
+  secondary_name?: string;
+  secondary_description?: string;
+  secondary_image?: string | null;
+  location_name?: string;
+  location_description?: string;
+  location_image?: string | null;
+}
+
 export async function createLocalJob(
-  input: { idea?: string; chapters?: string[]; image?: string | null; episodes?: number },
+  input: { idea?: string; chapters?: string[]; dialogues?: string[]; image?: string | null; cast?: LocalCastInput; episodes?: number },
   fetchImpl: FetchLike = fetch,
 ): Promise<LocalJob> {
   const chapters = (input.chapters || [])
     .map((item) => item.trim().slice(0, 4000))
-    .filter((item) => item.length >= 5)
-    .slice(0, MAX_LOCAL_CHAPTERS);
+    .filter((item) => item.length >= 5);
+  if (chapters.length > MAX_LOCAL_CHAPTERS) throw new Error("Kineva admite hasta 12 capítulos por proyecto local.");
   const idea = (input.idea || chapters[0] || "").trim().slice(0, 1500);
   if (idea.length < 5) throw new Error("Escribe una idea breve de 5 a 1500 caracteres.");
   let response: Response;
@@ -138,7 +149,9 @@ export async function createLocalJob(
       body: JSON.stringify({
         idea,
         ...(chapters.length ? { chapters } : {}),
+        dialogues: input.dialogues || [],
         image: input.image || null,
+        cast: input.cast || {},
         episodes: chapters.length || clampLocalEpisodes(input.episodes ?? 1),
       }),
     }));

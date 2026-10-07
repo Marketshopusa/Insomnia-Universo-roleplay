@@ -361,7 +361,7 @@ def main():
     parser.add_argument("--once", action="store_true")
     parser.add_argument("--preflight", action="store_true")
     args = parser.parse_args()
-    comfy = Api(os.environ.get("KINEVA_COMFY_URL", "http://127.0.0.1:8189"))
+    comfy = Api(os.environ.get("KINEVA_COMFY_URL", "http://127.0.0.1:8188"))
     template = json.loads(args.workflow_api.read_text(encoding="utf-8"))
     one(template, "KinevaDirectShotPlan")
     one(template, "KinevaMasterExport")

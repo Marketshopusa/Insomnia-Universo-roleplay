@@ -42,36 +42,53 @@ class KinevaDirectShotPlan:
             "style": ("STRING", {"default": "photorealistic, natural lighting"}),
             "duration_seconds": ("FLOAT", {"default": 8.0, "min": 5.17, "max": 15.08, "step": 0.1}),
             "camera": ("STRING", {"default": "fixed medium shot; no zoom, cuts or reframing"}),
+            "primary_character": ("STRING", {"default": "the adult person in the uploaded reference image"}),
+            "secondary_character": ("STRING", {"default": ""}),
+            "location_name": ("STRING", {"default": "the setting in the uploaded reference image"}),
+            "location_description": ("STRING", {"default": "Preserve the original room, geometry, lighting and surfaces."}),
         }}
 
     def build(self, prompt, exact_dialogue="", style="photorealistic, natural lighting",
-              duration_seconds=8.0, camera="fixed medium shot; no zoom, cuts or reframing"):
+              duration_seconds=8.0, camera="fixed medium shot; no zoom, cuts or reframing",
+              primary_character="the adult person in the uploaded reference image",
+              secondary_character="", location_name="the setting in the uploaded reference image",
+              location_description="Preserve the original room, geometry, lighting and surfaces."):
         action, spoken = _fields(prompt, exact_dialogue)
         frames = max(124, min(362, int(round(float(duration_seconds) * FPS))))
         frames += (5 - frames) % 17
         if frames > 362:
             frames = 362
         seconds = frames / FPS
-        sig = json.dumps([action, spoken, style, frames, camera], ensure_ascii=False)
+        person = str(primary_character or "").strip() or "the adult person in the uploaded reference image"
+        second = str(secondary_character or "").strip()
+        place = str(location_name or "").strip() or "the setting in the uploaded reference image"
+        setting = str(location_description or "").strip()
+        if second and second.casefold() == person.casefold():
+            raise ValueError("Kineva: usa nombres distintos para los dos personajes.")
+        participants = [person] + ([second] if second else [])
+        sig = json.dumps([action, spoken, style, frames, camera, participants, place, setting], ensure_ascii=False)
         digest = hashlib.sha256(sig.encode("utf-8")).hexdigest()
         seed = int(digest[:16], 16)
-        person = "the adult person in the uploaded reference image"
-        place = "the setting in the uploaded reference image"
-        visual = ("The uploaded image is the exact first frame. Preserve the subject's identity, "
-                  "clothing, spatial layout and lighting. " + action)
+        visual = (("Preserve the identity of each separately referenced adult. "
+                   "Keep each face on its own body. Set the action at " + place + ". " + setting + " " + action)
+                  if second else
+                  ("The uploaded image is the exact first frame. Preserve the subject's identity, "
+                   "clothing, spatial layout and lighting. " + action))
         dialogue = ([{"speaker": person, "language": "Spanish", "line": spoken,
                       "delivery": "natural", "off_screen": False}] if spoken else [])
         plan = {
             "cast": {"style": str(style), "mood": "", "characters": [{
                 "name": person, "identity": person, "appearance": "Preserve the uploaded appearance.",
-                "voice": "Natural adult speaking voice.", "seen": True}],
+                "voice": "Natural adult speaking voice.", "seen": True}] + ([{
+                "name": second, "identity": second, "appearance": "Use the separate cast reference.",
+                "voice": "Natural adult speaking voice.", "seen": True}] if second else []),
                 "groups": [], "locations": [{"name": place,
-                "description": "Preserve the original room, geometry, lighting and surfaces."}]},
+                "description": setting}]},
             "scenes": [{"text": visual, "summary": action, "actions": [action],
-                "location": place, "moves_to": "", "characters": [person],
+                "location": place, "moves_to": "", "characters": participants,
                 "groups": [], "time": "present", "pace": "normal", "shots": 1}],
             "shots": [{"index": 0, "seed": seed, "text": visual, "chars": len(action),
-                "frames": frames, "seconds": seconds, "characters": [person],
+                "frames": frames, "seconds": seconds, "characters": participants,
                 "groups": [], "location": place, "pov": "", "time": "present",
                 "pace": "normal", "beats": [{"start": 0.0, "end": seconds,
                     "action": action, "cut": False, "camera": "", "location": "",

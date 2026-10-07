@@ -1,4 +1,4 @@
-import { localVideoSrc, type LocalJob } from "@/lib/kinevaLocal";
+import { localVideoSrc, type LocalCastInput, type LocalJob } from "@/lib/kinevaLocal";
 
 const wait = (milliseconds: number) => new Promise((resolve) => window.setTimeout(resolve, milliseconds));
 
@@ -27,10 +27,12 @@ export async function attachFinishedVideos(
 /** Renders each written chapter on this PC and stores the file on its episode. */
 export async function publishLocalChapters(options: {
   chapters: string[];
+  dialogues?: string[];
   episodeIds: string[];
   image?: string | null;
+  cast?: LocalCastInput;
   onJob?: (job: LocalJob) => void;
-  createJob: (input: { chapters: string[]; image?: string | null }) => Promise<LocalJob>;
+  createJob: (input: { chapters: string[]; dialogues?: string[]; image?: string | null; cast?: LocalCastInput }) => Promise<LocalJob>;
   fetchJob: (id: string) => Promise<LocalJob>;
   fetchVideo: (url: string) => Promise<Blob>;
   upload: (episodeId: string, blob: Blob) => Promise<string>;
@@ -39,7 +41,7 @@ export async function publishLocalChapters(options: {
 }) {
   const pause = options.pause ?? wait;
   const attached = new Set<number>();
-  let current = await options.createJob({ chapters: options.chapters, image: options.image });
+  let current = await options.createJob({ chapters: options.chapters, dialogues: options.dialogues, image: options.image, cast: options.cast });
   options.onJob?.(current);
   for (let attempt = 0; attempt < 450; attempt += 1) {
     await attachFinishedVideos(current, options.episodeIds, attached, options);

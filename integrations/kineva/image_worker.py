@@ -17,7 +17,7 @@ from image_quality import review
 MODEL = "flux-2-klein-4b-fp8.safetensors"
 ENCODER = "qwen_3_4b_fp4_flux2.safetensors"
 VAE = "flux2-vae.safetensors"
-COMFY_INPUT = Path(os.environ.get("KINEVA_COMFY_INPUT", str(Path.home() / "AppData/Local/Comfy-Desktop/ComfyUI-Installs/Synthetic DL/ComfyUI/input")))
+COMFY_INPUT = Path(os.environ.get("KINEVA_COMFY_INPUT", str(Path.home() / "AppData/Local/Comfy-Desktop/ComfyUI-Shared/input")))
 
 
 def save_cover_reference(url, job_id):
