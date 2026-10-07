@@ -16,6 +16,8 @@ import { streamSpeech, type SpeechStream } from "@/lib/ttsStream";
 import { invokeFunctionWithRetry } from "@/lib/invokeFunction";
 import { generateSceneImage } from "@/lib/sceneImage";
 import { normalizeAssistantReply } from "@/lib/roleReply";
+import { resolveStoryCover } from "@/lib/storyCover";
+import { useStoryCustomizations } from "@/hooks/useStoryCustomizations";
  import { useStory } from "@/hooks/useStories";
  import { useLanguage } from "@/contexts/LanguageContext";
 import { useTranslatedTexts, useTranslatedText } from "@/hooks/useTranslatedTexts";
@@ -43,6 +45,8 @@ type Mode = "select" | "read" | "roleplay";
   const { enabled: adultEnabled, consentGiven, enable, grantConsent } = useAdultMode();
   const [consentOpen, setConsentOpen] = useState(false);
    const { data: story, isLoading } = useStory(storyId || "");
+   const { data: customizations } = useStoryCustomizations();
+   const coverImage = resolveStoryCover(story?.cover_image, storyId ? customizations?.[storyId]?.cover_media_url : null);
    
    const [messages, setMessages] = useState<Message[]>([]);
   const messagesRef = useRef<Message[]>([]);
@@ -513,7 +517,7 @@ type Mode = "select" | "read" | "roleplay";
           sceneKey: key,
           sceneText: buildIllustrationContext(key),
           focusText: text,
-          coverImageUrl: story.cover_image || undefined,
+          coverImageUrl: coverImage || undefined,
           characterRole: story.character_role || tCharacter,
           playerRole: story.player_role || tPlayer,
           storyTitle: story.title || tTitle,
@@ -678,7 +682,6 @@ type Mode = "select" | "read" | "roleplay";
     );
   }
  
-  const coverImage = story.cover_image;
   const isVideoCover = !!coverImage && /\.(mp4|webm|mov|m4v|ogv)(\?|$)/i.test(coverImage);
    const categories = story.story_categories?.map((sc: any) => sc.categories).filter(Boolean) || [];
  

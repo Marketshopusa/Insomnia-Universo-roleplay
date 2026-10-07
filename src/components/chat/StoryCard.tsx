@@ -2,6 +2,7 @@ import { Image as ImageIcon, ArrowUpRight, Settings } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useTranslatedTexts } from "@/hooks/useTranslatedTexts";
 import { cn } from "@/lib/utils";
+import { resolveStoryCover } from "@/lib/storyCover";
 
 interface Story {
   id: string;
@@ -26,7 +27,7 @@ interface StoryCardProps {
 
 export const StoryCard = ({ story, onClick, index, onConfigure, coverOverride }: StoryCardProps) => {
   const { t } = useLanguage();
-  const coverImage = coverOverride || story.cover_image;
+  const coverImage = resolveStoryCover(story.cover_image, coverOverride);
   const isVideoCover = !!coverImage && /\.(mp4|webm|mov|m4v|ogv)(\?|$)/i.test(coverImage);
 
   const [tTitle, tCharacter, tPlayer] = useTranslatedTexts([

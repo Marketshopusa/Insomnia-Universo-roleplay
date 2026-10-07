@@ -21,7 +21,8 @@ import { Trash2, Plus, X, ImagePlus, Loader2, MoreVertical, RotateCcw, Settings,
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { StoryCard } from "@/components/chat/StoryCard";
-import { StoryConfigDialog, type ConfigurableStory } from "@/components/story/StoryConfigDialog";
+import { StoryConfigDialog, mediaTypeOf, type ConfigurableStory } from "@/components/story/StoryConfigDialog";
+import { resolveStoryCover } from "@/lib/storyCover";
 import { useStoryCustomizations } from "@/hooks/useStoryCustomizations";
 import {
   DropdownMenu,
@@ -225,6 +226,10 @@ const MyStories = () => {
       resetForm();
       queryClient.invalidateQueries({ queryKey: ["my-custom-stories"] });
       queryClient.invalidateQueries({ queryKey: ["stories"] });
+      if (editingId) {
+        queryClient.invalidateQueries({ queryKey: ["story", editingId] });
+        queryClient.invalidateQueries({ queryKey: ["reading-history", user.id] });
+      }
     } catch (error) {
       toast({
         title: editingId ? "No se pudieron guardar los cambios" : t("myStories.toast.createError"),
@@ -337,19 +342,20 @@ const MyStories = () => {
               <h2 className="text-xl font-display">Historial</h2>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-              {history.map((item: any) => (
-                <div
+              {history.map((item: any) => {
+                const media = resolveStoryCover(item.story?.cover_image, customizations?.[item.story_id]?.cover_media_url);
+                return <div
                   key={item.id}
                   onClick={() => navigate(`/story/${item.story_id}`)}
                   className="group cursor-pointer border border-border/60 bg-card/60 overflow-hidden hover:border-primary/60 transition"
                 >
                   <div className="aspect-[4/5] relative bg-muted">
-                    {item.story?.cover_image ? (
-                      <img
-                        src={item.story.cover_image}
-                        alt={item.story.title}
-                        className="w-full h-full object-cover"
-                      />
+                    {media ? (
+                      mediaTypeOf(media) === "video" ? (
+                        <video src={media} className="w-full h-full object-cover" muted loop playsInline autoPlay />
+                      ) : (
+                        <img src={media} alt={item.story.title} className="w-full h-full object-cover" />
+                      )
                     ) : (
                       <div className="w-full h-full flex items-center justify-center text-3xl">📖</div>
                     )}
@@ -367,8 +373,8 @@ const MyStories = () => {
                       {new Date(item.updated_at).toLocaleDateString()}
                     </p>
                   </div>
-                </div>
-              ))}
+                </div>;
+              })}
             </div>
           </section>
         )}

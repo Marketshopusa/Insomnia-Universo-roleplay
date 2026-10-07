@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { ImagePlus, Loader2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -53,6 +54,7 @@ export const mediaTypeOf = (url?: string | null) => {
 /** One configuration panel shared by every story card in the app. */
 export const StoryConfigDialog = ({ story, open, onOpenChange, onSaved }: StoryConfigDialogProps) => {
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   const { language } = useLanguage();
   const es = language === "es";
   const isOwner = !!user && !!story?.created_by && story.created_by === user.id;
@@ -177,6 +179,13 @@ export const StoryConfigDialog = ({ story, open, onOpenChange, onSaved }: StoryC
       );
       if (customError) throw customError;
 
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["story", story.id] }),
+        queryClient.invalidateQueries({ queryKey: ["stories"] }),
+        queryClient.invalidateQueries({ queryKey: ["my-custom-stories"] }),
+        queryClient.invalidateQueries({ queryKey: ["reading-history", user.id] }),
+        queryClient.invalidateQueries({ queryKey: ["story-customizations", user.id] }),
+      ]);
       toast({ title: es ? "Cambios guardados" : "Changes saved" });
       onSaved?.();
       onOpenChange(false);
