@@ -109,6 +109,7 @@ export const CallDialog = ({
   const askCharacter = async (userText: string, priorHistory: Turn[]) => {
     const { data, error } = await invokeFunctionWithRetry<{ content?: string; error?: string; message?: string }>("story-chat", {
         story: {
+          id: story?.id,
           title: story?.title,
           description: story?.description,
           story_context: story?.story_context,

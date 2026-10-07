@@ -23,7 +23,7 @@ it("sends an adult scene to the local model and keeps the job if one status chec
     .mockResolvedValueOnce({ data: { status: "completed", content: "Ese video lo envié yo." }, error: null });
   const result = await invokeFunctionWithRetry<{ content: string }>("story-chat", {
     adultMode: true,
-    story: { title: "Historia" },
+    story: { id: "story-1", title: "Historia" },
     userMessage: "Continúa desde aquí",
   });
   expect(result.error).toBeNull();
@@ -34,7 +34,7 @@ it("sends an adult scene to the local model and keeps the job if one status chec
     ["adult-story-chat", "status", undefined],
     ["adult-story-chat", "status", undefined],
   ]);
-  expect(localStorage.getItem("kineva-adult-pending:test-user")).toBeNull();
+  expect(localStorage.getItem("kineva-adult-pending:test-user:story-1")).toBeNull();
   fetchMock.mockRestore();
 });
 

@@ -337,6 +337,7 @@ type Mode = "select" | "read" | "roleplay";
       .map((m) => ({ role: m.role, content: m.content }));
     const { data, error } = await invokeFunctionWithRetry<{ content?: string; error?: string; message?: string }>("story-chat", {
         story: {
+          id: story?.id,
           title: story?.title || tTitle,
           description: story?.description || tDescription,
           story_context: story?.story_context || tDescription,
