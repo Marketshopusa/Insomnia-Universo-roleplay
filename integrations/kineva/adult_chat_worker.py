@@ -37,7 +37,8 @@ def normalize_reply(value):
     return re.sub(r"[^\w]+", " ", value.casefold(), flags=re.UNICODE).strip()
 
 def model_chat(messages, temperature, max_tokens, json_mode=False):
-    payload = {"model": "magnum-v4-12b", "messages": messages, "max_tokens": max_tokens,
+    payload = {"model": os.environ.get("KINEVA_CHAT_MODEL_NAME", "qwen3-14b"),
+               "messages": messages, "max_tokens": max_tokens,
                "temperature": temperature, "repeat_penalty": 1.08,
                "presence_penalty": 0.12, "frequency_penalty": 0.10,
                "chat_template_kwargs": {"enable_thinking": False}}
@@ -206,6 +207,16 @@ def conversation_messages(job):
     premise = clip_text("\n".join(filter(None, [story.get("description"), story.get("story_context")])), 1600)
     turns = clean_turns((job.get("history") or [])[-48:])
     chronicle, recent = memory_transcript(turns, player, character)
+    recalled = []
+    for turn in (job.get("memory") or [])[:6]:
+        if not isinstance(turn, dict):
+            continue
+        who = character if turn.get("role") == "assistant" else player
+        content = clip_text(turn.get("content") or "", 160)
+        if content:
+            recalled.append(who + ": " + content)
+    earlier_memory = ("Recuerdos anteriores relacionados con la pregunta (ya ocurrieron): "
+                      + " | ".join(recalled)) if recalled else ""
     # Repeated model replies in saved history are poor examples to imitate.
     # Keep the latest occurrence and every user turn; never reject repeated user text.
     seen_replies = []
@@ -227,6 +238,7 @@ def conversation_messages(job):
     instruction = (
         "Eres " + character + " en una historia interactiva con " + player + ". "
         "Identidad y relaciones persistentes: " + premise + ". "
+        + (earlier_memory + "\n" if earlier_memory else "")
         + (chronicle + "\n" if chronicle else "")
         + ("Petición actual de lectura: empieza a leer ahora un pasaje original de varias frases si no hay texto del libro en el contexto. Si el usuario proporcionó el texto, léelo sin cambiarlo. No anuncies que vas a leer; hazlo. " if wants_reading else "")
         + opening
@@ -266,7 +278,10 @@ def conversation_messages(job):
         else:
             messages.append({"role": turn["role"], "content": content})
     focus = focus_latest_turn(latest)
-    current_request = "\n\nÚltimo mensaje del jugador:\n" + latest
+    current_request = (("\n\nHechos anteriores confirmados: si uno responde a la pregunta, di el dato "
+                        "con claridad, sin fingir duda ni agregar detalles nuevos:\n"
+                        + earlier_memory) if earlier_memory else "")
+    current_request += "\n\nÚltimo mensaje del jugador:\n" + latest
     if focus and focus != latest:
         current_request += "\n\nDetalle nuevo que debes atender: " + focus
     if messages[-1]["role"] == "user":
@@ -309,6 +324,39 @@ def repeats_recent_clause(spoken, previous_replies):
             continue
         shared = SequenceMatcher(None, words, prior, autojunk=False).find_longest_match(0, len(words), 0, len(prior))
         if shared.size >= 8 and sum(len(word) for word in words[shared.a:shared.a + shared.size]) >= 38:
+            return True
+    return False
+
+
+def unsupported_recalled_fact(reply, job):
+    """Do not turn an old fact into an invented number or family relation."""
+    if not job.get("memory") or not re.search(
+            r"(?i)\b(?:d[oó]nde|qui[eé]n|cu[aá]ndo|cu[aá]l|recuerdas|acu[eé]rdate)\b",
+            str(job.get("userMessage") or "")):
+        return False
+    story = job.get("story") or {}
+    question = normalize_reply(str(job.get("userMessage") or ""))
+    common = {"donde", "quien", "cuando", "cual", "recuerdas", "dejaste", "dejo", "dime", "esta"}
+    actors = set(re.findall(r"\w{4,}", normalize_reply(
+        str(story.get("character_role") or "") + " " + str(story.get("player_role") or ""))))
+    subject_terms = set(re.findall(r"\w{4,}", question)) - common - actors
+    related = [turn.get("content") for turn in (job.get("history") or [])
+               if isinstance(turn, dict) and any(
+                   word in normalize_reply(str(turn.get("content") or "")).split()
+                   for word in subject_terms)]
+    source = " ".join(str(part or "") for part in [
+        *story.values(), job.get("userMessage"),
+        *(turn.get("content") for turn in (job.get("memory") or []) if isinstance(turn, dict)),
+        *related,
+    ])
+    known = normalize_reply(source)
+    candidate = normalize_reply(reply)
+    for number in re.findall(r"\b\d+\b", candidate):
+        if not re.search(r"\b" + re.escape(number) + r"\b", known):
+            return True
+    relations = r"t[ií]a|t[ií]o|herman[oa]|madre|padre|hij[oa]|prim[oa]|espos[oa]|novi[oa]"
+    for match in re.finditer(r"\b(?:" + relations + r")\b", candidate):
+        if not re.search(r"\b" + re.escape(match.group()) + r"\b", known):
             return True
     return False
 
@@ -372,9 +420,17 @@ def reply_for(job):
                     raise
             spoken_text = re.sub(r"\*[^*]*\*", "", parsed).strip()
             spoken = normalize_reply(spoken_text)
-            if not wants_repetition and (
-                any(spoken == normalize_reply(old) for old in previous_replies if old.strip())
-                or repeats_recent_clause(spoken_text, previous_replies)
+            if job.get("language") == "es" and re.search(
+                    r"(?i)\b(?:exactly|actually|maybe|yeah|really|sorry|because|please)\b",
+                    spoken_text):
+                raise ValueError("Unexpected English in Spanish reply")
+            if unsupported_recalled_fact(parsed, job):
+                raise ValueError("Unsupported scene fact")
+            if not wants_repetition and any(
+                spoken == normalize_reply(old)
+                or (len(spoken) > 45 and SequenceMatcher(
+                    None, spoken, normalize_reply(old)).ratio() >= 0.88)
+                for old in previous_replies if old.strip()
             ):
                 raise ValueError("Repeated previous character dialogue")
             if attempt == 0 and wants_reading and len(spoken) < 190:
@@ -388,10 +444,15 @@ def reply_for(job):
         except Exception as error:
             print("Chat format attempt failed", job.get("jobId", "local"), attempt,
                   repr(error)[:180], flush=True)
-            messages[0]["content"] += (
-                " El borrador anterior no fue válido o repitió el diálogo reciente. "
-                "Conserva los hechos y la identidad de la escena; responde a la nueva acción "
-                "con palabras distintas. Devuelve JSON con gesto breve y diálogo hablado.")
+            if str(error) == "Unsupported scene fact":
+                messages[0]["content"] += (
+                    " Tu borrador añadió un número o parentesco no establecido. "
+                    "Responde solo con el dato que aparece en los recuerdos o reconoce que no sabes el detalle. ")
+            else:
+                messages[0]["content"] += (
+                    " El borrador anterior no fue válido o repitió el diálogo reciente. "
+                    "Conserva los hechos y la identidad de la escena; responde a la nueva acción "
+                    "con palabras distintas. Devuelve JSON con gesto breve y diálogo hablado.")
     raise RuntimeError("Local model returned no usable reply")
 
 

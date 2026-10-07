@@ -16,6 +16,7 @@ import { streamSpeech, type SpeechStream } from "@/lib/ttsStream";
 import { invokeFunctionWithRetry } from "@/lib/invokeFunction";
 import { generateSceneImage } from "@/lib/sceneImage";
 import { normalizeAssistantReply } from "@/lib/roleReply";
+import { selectStoryMemory } from "@/lib/storyMemory";
 import { resolveStoryCover } from "@/lib/storyCover";
 import { useStoryCustomizations } from "@/hooks/useStoryCustomizations";
  import { useStory } from "@/hooks/useStories";
@@ -331,6 +332,9 @@ type Mode = "select" | "read" | "roleplay";
    };
  
    const generateResponse = async (userMessage: string, currentMessageId: string): Promise<string | null> => {
+    const history = messagesRef.current
+      .filter((m) => m.id !== "intro" && m.id !== currentMessageId)
+      .map((m) => ({ role: m.role, content: m.content }));
     const { data, error } = await invokeFunctionWithRetry<{ content?: string; error?: string; message?: string }>("story-chat", {
         story: {
           title: story?.title || tTitle,
@@ -341,9 +345,8 @@ type Mode = "select" | "read" | "roleplay";
           story_type: story?.story_type,
         },
         language,
-        history: messagesRef.current
-          .filter((m) => m.id !== "intro" && m.id !== currentMessageId)
-          .map((m) => ({ role: m.role, content: m.content })),
+        history: history.slice(-48),
+        memory: selectStoryMemory(history, userMessage),
         userMessage,
         adultMode: adultEnabled && consentGiven,
         region: activeRegion(),

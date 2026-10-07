@@ -48,6 +48,12 @@ Deno.serve(async (req) => {
         role: item.role === "assistant" ? "assistant" : "user",
         content: String(item.content ?? "").slice(0, 700),
       }));
+    const memory = (Array.isArray(body.memory) ? body.memory.slice(0, 6) : [])
+      .filter((item: unknown) => typeof item === "object" && item !== null)
+      .map((item: { role?: string; content?: string }) => ({
+        role: item.role === "assistant" ? "assistant" : "user",
+        content: String(item.content ?? "").slice(0, 160),
+      }));
     const { data: pending, error: listError } = await service.storage.from(bucket)
       .list(`jobs/${auth.user.id}`, { limit: 10 });
     if (listError) throw listError;
@@ -65,7 +71,7 @@ Deno.serve(async (req) => {
         story_context: String(story.story_context ?? "").slice(0, 2000),
         character_role: String(story.character_role ?? "").slice(0, 160),
         player_role: String(story.player_role ?? "").slice(0, 160),
-      }, history, userMessage: latest,
+      }, history, memory, userMessage: latest,
     };
     const { error } = await service.storage.from(bucket).upload(requestPath,
       new Blob([JSON.stringify(payload)], { type: "application/json" }),

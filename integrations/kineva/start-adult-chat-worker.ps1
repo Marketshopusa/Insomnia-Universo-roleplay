@@ -27,7 +27,7 @@ $bunx = Join-Path $env:USERPROFILE '.bun\bin\bunx.exe'
 $python = Join-Path $env:WINDIR 'py.exe'
 $worker = Join-Path $PSScriptRoot 'adult_chat_worker.py'
 $exe = Join-Path $env:LOCALAPPDATA 'Microsoft\WinGet\Packages\ggml.llamacpp_Microsoft.Winget.Source_8wekyb3d8bbwe\llama-server.exe'
-$model = Join-Path $env:LOCALAPPDATA 'Comfy-Desktop\ComfyUI-Shared\models\LLM\magnum-v4-12b\magnum-v4-12b-Q4_K_M.gguf'
+$model = Join-Path $env:LOCALAPPDATA 'Comfy-Desktop\ComfyUI-Shared\models\LLM\Qwen3-14B-GGUF\Qwen3-14B-Q4_K_M.gguf'
 $env:SUPABASE_URL = 'https://cexzmelshvbgabihtfvx.supabase.co'
 Set-Location $repo
 $videoScript = Join-Path $PSScriptRoot 'start-video-worker.ps1'
@@ -50,7 +50,7 @@ while ($true) {
     $healthy = $false
     try { $healthy = (Invoke-RestMethod -Uri 'http://127.0.0.1:8788/health' -TimeoutSec 2).status -eq 'ok' } catch { }
     if (-not $healthy) {
-      Start-Process -FilePath $exe -ArgumentList @('-m',('"' + $model + '"'),'--host','127.0.0.1','--port','8788','-c','4096','-ngl','99','-np','1','--no-webui') -WindowStyle Hidden -RedirectStandardOutput $llamaLog -RedirectStandardError (Join-Path $logDir 'adult-chat-llama-error.log')
+      Start-Process -FilePath $exe -ArgumentList @('-m',('"' + $model + '"'),'--host','127.0.0.1','--port','8788','-c','8192','-ngl','99','-np','1','--no-webui') -WindowStyle Hidden -RedirectStandardOutput $llamaLog -RedirectStandardError (Join-Path $logDir 'adult-chat-llama-error.log')
       for ($i = 0; $i -lt 45; $i++) {
         Start-Sleep -Seconds 2
         try { if ((Invoke-RestMethod -Uri 'http://127.0.0.1:8788/health' -TimeoutSec 2).status -eq 'ok') { $healthy = $true; break } } catch { }

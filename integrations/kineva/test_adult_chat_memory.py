@@ -206,6 +206,39 @@ class StoryMemoryTest(unittest.TestCase):
         self.assertEqual(reply, "*Miro la llave y sonrío* Podemos probarla en esta cerradura. Si se abre, entraré contigo sin hacer ruido.")
         self.assertEqual(model.call_count, 2)
 
+    def test_relevant_older_memory_is_kept_as_past_with_correct_speaker(self):
+        current = job([{"role": "user", "content": "Ahora estamos en la estación."}],
+                      "¿Dónde dejó William la llave azul?")
+        current["memory"] = [{"role": "user", "content": "William dejó la llave azul bajo la maceta."}]
+        messages = conversation_messages(current)
+        self.assertIn("William: William dejó la llave azul bajo la maceta.", messages[0]["content"])
+        self.assertIn("ya ocurrieron", messages[0]["content"])
+        self.assertIn("estación", messages[-1]["content"])
+
+    def test_near_identical_reply_retries_without_losing_scene(self):
+        current = job([{"role": "assistant", "content": "*Miro la mesa* El tren va a Sevilla."}],
+                      "Ahora guardo el mapa. ¿Qué hacemos?")
+        same = '{"gesto":"Asiento","dialogo":"El tren va a Sevilla."}'
+        fresh = '{"gesto":"Guardo el mapa","dialogo":"Podemos buscar el andén juntos."}'
+        with patch("adult_chat_worker.free_gpu_for_chat"), patch(
+                "adult_chat_worker.model_chat", side_effect=[same, fresh]) as model:
+            reply = reply_for(current)
+        self.assertIn("buscar el andén", reply)
+        self.assertEqual(model.call_count, 2)
+        self.assertIn("Ahora guardo el mapa", model.call_args.args[0][-1]["content"])
+
+    def test_recalled_fact_does_not_gain_an_unsupported_number(self):
+        current = job([], "¿Dónde dejó William el mapa?")
+        current["memory"] = [{"role": "user", "content": "William dejó el mapa en la taquilla."}]
+        invented = '{"gesto":"Asiento","dialogo":"Lo dejó en la taquilla número 42."}'
+        grounded = '{"gesto":"Recuerdo","dialogo":"Lo dejó en la taquilla."}'
+        with patch("adult_chat_worker.free_gpu_for_chat"), patch(
+                "adult_chat_worker.model_chat", side_effect=[invented, grounded]) as model:
+            reply = reply_for(current)
+        self.assertIn("en la taquilla", reply)
+        self.assertNotIn("42", reply)
+        self.assertEqual(model.call_count, 2)
+
     def test_storage_connection_reset_retries_without_losing_job(self):
         class FlakyCloud:
             calls = 0

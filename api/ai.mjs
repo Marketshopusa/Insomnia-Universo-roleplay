@@ -395,6 +395,14 @@ export default async function handler(req, res) {
       if (remembered) {
         systemInstruction += "\n" + remembered;
       }
+      const recalled = (Array.isArray(body.memory) ? body.memory.slice(0, 6) : [])
+        .filter((entry) => entry && typeof entry === "object")
+        .map((entry) => (entry.role === "assistant" ? characterName : playerName)
+          + ": " + String(entry.content || "").slice(0, 160));
+      if (recalled.length) {
+        systemInstruction += "\nRecuerdos anteriores relacionados con este turno (ya ocurrieron):\n"
+          + recalled.join("\n");
+      }
       const contents = [];
       for (const entry of recent) {
         if (contents.at(-1)?.role === entry.role) contents.at(-1).parts[0].text += "\n" + entry.text;

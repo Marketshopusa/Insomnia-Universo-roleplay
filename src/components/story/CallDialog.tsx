@@ -6,6 +6,7 @@ import { toast } from "@/hooks/use-toast";
 import { startWavRecording, blobToBase64, type WavRecorder } from "@/lib/wavRecorder";
 import { streamSpeech, type SpeechStream } from "@/lib/ttsStream";
 import { invokeFunctionWithRetry } from "@/lib/invokeFunction";
+import { selectStoryMemory } from "@/lib/storyMemory";
 
 type CallState = "idle" | "listening" | "thinking" | "speaking";
 
@@ -110,12 +111,14 @@ export const CallDialog = ({
         story: {
           title: story?.title,
           description: story?.description,
+          story_context: story?.story_context,
           character_role: story?.character_role,
           player_role: story?.player_role,
           story_type: story?.story_type,
         },
         language,
         history: priorHistory.slice(-48),
+        memory: selectStoryMemory(priorHistory, userText),
         userMessage: userText,
         adultMode,
         region,
