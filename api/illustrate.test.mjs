@@ -34,6 +34,20 @@ test("a scene illustration asks Gemini for the picture and returns it", async ()
   else process.env.GEMINI_API_KEY = previous;
 });
 
+test("short scenes and long context fit the Supabase prompt constraint", () => {
+  const short = sceneJobRow("user-1", { focusText: "Sí", storyTitle: "Encuentro" });
+  assert.match(JSON.parse(short.prompt).scene_prompt, /CHARACTER visible reaction: Sí/);
+  const empty = sceneJobRow("user-1", {});
+  assert.ok(empty.prompt.length >= 8);
+  const long = sceneJobRow("user-1", {
+    focusText: "La escena continúa.",
+    sceneText: "La casa y su entorno. ".repeat(900),
+    coverImageUrl: "https://example.com/" + "x".repeat(9000),
+  });
+  assert.ok(long.prompt.length <= 8000);
+  assert.ok(JSON.parse(long.prompt).scene_prompt.includes("CHARACTER visible reaction"));
+});
+
 test("a long user action reaches the illustration without cropping away its subject", () => {
   const action = "Camino lentamente por el pasillo y observo las pinturas. ".repeat(7)
     + "Entrego la brújula a Andrea junto a la puerta.";

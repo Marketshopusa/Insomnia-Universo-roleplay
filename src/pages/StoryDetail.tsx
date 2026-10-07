@@ -329,11 +329,11 @@ type Mode = "select" | "read" | "roleplay";
    const generateResponse = async (userMessage: string, currentMessageId: string): Promise<string | null> => {
     const { data, error } = await invokeFunctionWithRetry<{ content?: string; error?: string; message?: string }>("story-chat", {
         story: {
-          title: story?.title,
-          description: story?.description,
-          story_context: story?.story_context,
-          character_role: story?.character_role,
-          player_role: story?.player_role,
+          title: story?.title || tTitle,
+          description: story?.description || tDescription,
+          story_context: story?.story_context || tDescription,
+          character_role: story?.character_role || tCharacter,
+          player_role: story?.player_role || tPlayer,
           story_type: story?.story_type,
         },
         language,
@@ -514,10 +514,10 @@ type Mode = "select" | "read" | "roleplay";
           sceneText: buildIllustrationContext(key),
           focusText: text,
           coverImageUrl: story.cover_image || undefined,
-          characterRole: story.character_role,
-          playerRole: story.player_role,
-          storyTitle: story.title,
-          storyDescription: [story.description, story.story_context].filter(Boolean).join("\n\n"),
+          characterRole: story.character_role || tCharacter,
+          playerRole: story.player_role || tPlayer,
+          storyTitle: story.title || tTitle,
+          storyDescription: [story.description || tDescription, story.story_context].filter(Boolean).join("\n\n"),
           language,
         });
         setSceneImages((previous) => ({ ...previous, [key]: imageUrl }));

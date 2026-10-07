@@ -4,15 +4,17 @@ export function normalizeAssistantReply(value: unknown): string | null {
   const original = value.trim();
   if (!original) return null;
   const unfenced = original.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
-  const structured = original.startsWith("```") || /^\{\s*["']?(?:gesto|dialogo)\b/i.test(unfenced)
-    || /^\s*["'](?:gesto|dialogo)["']\s*:/im.test(unfenced);
+  const structured = original.startsWith("```") || /^\{\s*["']?(?:gesto|gestos|dialogo|dialogue)\b/i.test(unfenced)
+    || /^\s*["'](?:gesto|gestos|dialogo|dialogue)["']\s*:/im.test(unfenced);
   if (!structured) return original;
   try {
-    const parsed = JSON.parse(unfenced) as { gesto?: unknown; dialogo?: unknown };
-    if (typeof parsed.dialogo !== "string" || !parsed.dialogo.trim()) return null;
-    const dialogue = parsed.dialogo.trim();
-    const gesture = typeof parsed.gesto === "string" ? parsed.gesto.trim().replace(/^\*|\*$/g, "") : "";
-    return gesture ? `*${gesture}* ${dialogue}` : dialogue;
+    const parsed = JSON.parse(unfenced) as { gesto?: unknown; gestos?: unknown; dialogo?: unknown; dialogue?: unknown };
+    const dialogue = parsed.dialogo ?? parsed.dialogue;
+    const gesture = parsed.gesto ?? parsed.gestos;
+    const spoken = typeof dialogue === "string" ? dialogue.trim() : "";
+    const action = typeof gesture === "string" ? gesture.trim().replace(/^\*|\*$/g, "") : "";
+    if (!spoken && !action) return null;
+    return action ? `*${action}*${spoken ? ` ${spoken}` : ""}` : spoken;
   } catch {
     return null;
   }

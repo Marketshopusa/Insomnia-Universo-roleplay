@@ -9,11 +9,19 @@ export const maxDuration = 60;
 export function sceneJobRow(userId, body) {
   const source = body.source === "novel" ? "novel" : "story";
   const sceneKey = String(body.sceneKey || "escena").trim().slice(0, 120) || "escena";
+  const coverUrl = String(body.coverImageUrl || "").slice(0, 1200) || null;
+  const fullPrompt = scenePrompt(body);
+  let serialized = JSON.stringify({ scene_prompt: fullPrompt, cover_url: coverUrl });
+  if (serialized.length > 7900) {
+    const overflow = serialized.length - 7900;
+    serialized = JSON.stringify({ scene_prompt: fullPrompt.slice(0, Math.max(100, fullPrompt.length - overflow - 16)), cover_url: coverUrl });
+  }
+  if (serialized.length < 8 || serialized.length > 8000) throw new Error("La escena excede el límite de ilustración.");
   return {
     owner_id: userId,
     source,
     scene_key: sceneKey,
-    prompt: JSON.stringify({ scene_prompt: scenePrompt(body), cover_url: body.coverImageUrl || null }),
+    prompt: serialized,
     status: "queued",
   };
 }
@@ -37,10 +45,11 @@ function currentLocation(text) {
 }
 
 export function scenePrompt(body) {
-  const focus = String(body.focusText || "").trim();
-  if (focus.length < 8) {
-    throw Object.assign(new Error("La escena es demasiado corta para ilustrarla."), { status: 400, code: "scene_too_short" });
-  }
+  const focus = String(body.focusText || "").trim()
+    || String(body.userAction || "").trim()
+    || String(body.recentVisualAction || "").trim()
+    || String(body.storyDescription || body.storyTitle || "").trim()
+    || "Un momento de la historia con sus personajes principales.";
   const actions = [...focus.matchAll(/\*([^*]{3,5000})\*/g)];
   const characterMoment = visibleMoment(actions.at(-1)?.[1]?.trim() || focus.split(/[.!?](?:\s|$)/, 1)[0]);
   const userText = String(body.userAction || "");
