@@ -140,7 +140,7 @@ class StoryMemoryTest(unittest.TestCase):
             reply = reply_for(current)
         self.assertEqual(reply, "*Me quedo mirando el muro* Veo una sombra junto a las piedras.")
         model.assert_called_once()
-        self.assertEqual(model.call_args.args[2], 240)
+        self.assertEqual(model.call_args.args[2], 320)
 
     def test_repeated_user_question_and_poem_remain_in_history(self):
         poem = "Pedrito se cayó, volvió a levantarse y siguió cantando."

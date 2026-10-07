@@ -22,7 +22,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { StoryCard } from "@/components/chat/StoryCard";
 import { StoryConfigDialog, mediaTypeOf, type ConfigurableStory } from "@/components/story/StoryConfigDialog";
-import { resolveStoryCover } from "@/lib/storyCover";
+import { MAX_STORY_COVER_BYTES, resolveStoryCover } from "@/lib/storyCover";
 import { useStoryCustomizations } from "@/hooks/useStoryCustomizations";
 import {
   DropdownMenu,
@@ -130,8 +130,8 @@ const MyStories = () => {
 
   const uploadCover = async (file: File): Promise<{ url: string; type: string } | null> => {
     if (!user) return null;
-    if (file.size > 20 * 1024 * 1024) {
-      toast({ title: "El archivo supera el límite de 20MB", variant: "destructive" });
+    if (file.size > MAX_STORY_COVER_BYTES) {
+      toast({ title: "La portada supera el límite de 50 MB. Usa un MP4 más corto o comprimido.", variant: "destructive" });
       return null;
     }
     setUploading(true);

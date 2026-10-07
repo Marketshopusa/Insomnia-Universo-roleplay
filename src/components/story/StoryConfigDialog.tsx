@@ -25,6 +25,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { toast } from "@/hooks/use-toast";
 import { STORY_VOICES, getStoryVoice, normalizeStoryVoice, setStoryVoice } from "@/lib/voices";
+import { MAX_STORY_COVER_BYTES } from "@/lib/storyCover";
 
 export interface ConfigurableStory {
   id: string;
@@ -110,9 +111,9 @@ export const StoryConfigDialog = ({ story, open, onOpenChange, onSaved }: StoryC
 
   const uploadCover = async (file: File) => {
     if (!user) return;
-    if (file.size > 20 * 1024 * 1024) {
+    if (file.size > MAX_STORY_COVER_BYTES) {
       toast({
-        title: es ? "El archivo supera el límite de 20MB" : "The file is larger than 20MB",
+        title: es ? "La portada supera el límite de 50 MB. Usa un MP4 más corto o comprimido." : "The cover exceeds 50 MB. Use a shorter or compressed MP4.",
         variant: "destructive",
       });
       return;

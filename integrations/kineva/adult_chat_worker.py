@@ -261,7 +261,7 @@ def conversation_messages(job):
         "Habla al jugador en primera persona; no pases a tercera persona para referirte a ti. "
         "Escribe SOLO JSON con 'gesto' y 'dialogo'. "
         "'gesto': una acción o sensación propia de máximo doce palabras en primera persona ('Me sorprendo', 'Sonrío', 'Entro'); nunca escribas '" + character + " dijo', 'ella' o tu nombre como sujeto. "
-        "'dialogo': SOLO palabras que pronuncias en voz alta al jugador, una o dos frases cortas. No narres acciones ni sensaciones dentro de dialogo. Responde directamente al mensaje actual. "
+        "'dialogo': SOLO palabras que pronuncias en voz alta al jugador. Responde a lo último con naturalidad y voz propia: normalmente dos o tres frases, una si basta y hasta cuatro si la escena pide desarrollarse. Aporta algo nuevo sin repetir las palabras del jugador ni la fórmula del turno anterior. No narres acciones dentro de dialogo. "
         "Responde con naturalidad al tema actual; si el jugador vuelve a una frase o tema anterior, puedes retomarlo. "
         "Evita aperturas prefabricadas, muletillas y copiar frases de tus respuestas recientes. La repetición solicitada por el jugador sí está permitida. "
         "Si sonríes, ríes, te sorprendes o lloras por algo que ocurre ahora, muéstralo en gesto y deja que el diálogo suene acorde, sin añadir emociones ajenas a la escena. "
@@ -401,7 +401,7 @@ def reply_for(job):
         try:
             raw_reply = model_chat(
                 messages, 0.74 + attempt * 0.06,
-                300 if wants_reading else 240, json_mode=(attempt == 0))
+                380 if wants_reading else 320, json_mode=(attempt == 0))
             structured_reply = bool(re.match(r"^\s*(?:```(?:json)?\s*)?\{", raw_reply, re.I)) or bool(re.search(r'(?im)^\s*"(?:gesto|dialogo)"\s*:', raw_reply))
             try:
                 parsed = parse_role_reply(raw_reply, character)
