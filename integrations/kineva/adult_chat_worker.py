@@ -344,15 +344,16 @@ def reply_for(job):
     latest = str(job.get("userMessage") or "")
     wants_reading = reading_request(latest)
     wants_repetition = repetition_request(latest)
-    for attempt in range(3):
+    previous_replies = [
+        re.sub(r"\*[^*]*\*", "", str(turn.get("content") or "")).strip()
+        for turn in (job.get("history") or [])
+        if turn.get("role") == "assistant"
+    ][-4:]
+    for attempt in range(2):
         try:
-            if attempt == 2:
-                # A compact last chance prevents a brittle formatter from losing the turn.
-                rescue = [{"role": "system", "content": "Eres " + character + ". Continúa la escena en español. Responde la última pregunta o acción de " + str((job.get("story") or {}).get("player_role") or "el jugador") + " con una frase hablada breve y natural. Formato JSON con gesto breve y dialogo hablado."},
-                          {"role": "user", "content": clip_text(latest, 700)}]
-                raw_reply = model_chat(rescue, 0.6, 180, json_mode=True)
-            else:
-                raw_reply = model_chat(messages, 0.74 + attempt * 0.06, 300 if wants_reading else 240, json_mode=(attempt == 0))
+            raw_reply = model_chat(
+                messages, 0.74 + attempt * 0.06,
+                300 if wants_reading else 240, json_mode=True)
             structured_reply = bool(re.match(r"^\s*(?:```(?:json)?\s*)?\{", raw_reply, re.I)) or bool(re.search(r'(?im)^\s*"(?:gesto|dialogo)"\s*:', raw_reply))
             try:
                 parsed = parse_role_reply(raw_reply, character)
@@ -369,7 +370,13 @@ def reply_for(job):
                             raw_reply, character, allow_third_person=True)
                 else:
                     raise
-            spoken = normalize_reply(re.sub(r"\*[^*]*\*", "", parsed))
+            spoken_text = re.sub(r"\*[^*]*\*", "", parsed).strip()
+            spoken = normalize_reply(spoken_text)
+            if not wants_repetition and (
+                any(spoken == normalize_reply(old) for old in previous_replies if old.strip())
+                or repeats_recent_clause(spoken_text, previous_replies)
+            ):
+                raise ValueError("Repeated previous character dialogue")
             if attempt == 0 and wants_reading and len(spoken) < 190:
                 print("Chat announced reading without reading; retrying", job.get("jobId", "local"), flush=True)
                 messages[0]["content"] += " Tu borrador solo anunció que iba a leer. En el diálogo lee ya un pasaje original de al menos tres frases, sin preámbulo."
@@ -381,7 +388,10 @@ def reply_for(job):
         except Exception as error:
             print("Chat format attempt failed", job.get("jobId", "local"), attempt,
                   repr(error)[:180], flush=True)
-            messages[0]["content"] += " Tu borrador no tuvo diálogo hablado válido. Escribe JSON completo con gesto breve y dialogo de una o dos frases que el personaje diga en voz alta al jugador ahora; evita la narración larga."
+            messages[0]["content"] += (
+                " El borrador anterior no fue válido o repitió el diálogo reciente. "
+                "Conserva los hechos y la identidad de la escena; responde a la nueva acción "
+                "con palabras distintas. Devuelve JSON con gesto breve y diálogo hablado.")
     raise RuntimeError("Local model returned no usable reply")
 
 
@@ -459,3 +469,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
