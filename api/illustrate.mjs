@@ -11,10 +11,11 @@ export function sceneJobRow(userId, body) {
   const sceneKey = String(body.sceneKey || "escena").trim().slice(0, 120) || "escena";
   const coverUrl = String(body.coverImageUrl || "").slice(0, 1200) || null;
   const fullPrompt = scenePrompt(body);
-  let serialized = JSON.stringify({ scene_prompt: fullPrompt, cover_url: coverUrl });
+  const maxPeople = body.source === "story" && body.characterRole && body.playerRole ? 2 : null;
+  let serialized = JSON.stringify({ scene_prompt: fullPrompt, cover_url: coverUrl, max_people: maxPeople });
   if (serialized.length > 7900) {
     const overflow = serialized.length - 7900;
-    serialized = JSON.stringify({ scene_prompt: fullPrompt.slice(0, Math.max(100, fullPrompt.length - overflow - 16)), cover_url: coverUrl });
+    serialized = JSON.stringify({ scene_prompt: fullPrompt.slice(0, Math.max(100, fullPrompt.length - overflow - 16)), cover_url: coverUrl, max_people: maxPeople });
   }
   if (serialized.length < 8 || serialized.length > 8000) throw new Error("La escena excede el límite de ilustración.");
   return {

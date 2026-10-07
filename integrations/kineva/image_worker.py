@@ -12,6 +12,7 @@ from pathlib import Path
 from urllib.parse import quote, urlsplit
 from urllib.request import urlopen
 from worker import Api, release_idle_models
+from image_quality import review
 
 MODEL = "flux-2-klein-4b-fp8.safetensors"
 ENCODER = "qwen_3_4b_fp4_flux2.safetensors"
@@ -56,7 +57,7 @@ def save_cover_reference(url, job_id):
     return name
 
 
-def graph_for(job):
+def graph_for(job, attempt=0):
     graph = {
         "1": {"class_type": "UNETLoader", "inputs": {"unet_name": MODEL, "weight_dtype": "default"}},
         "2": {"class_type": "CLIPLoader", "inputs": {"clip_name": ENCODER, "type": "flux2", "device": "default"}},
@@ -65,7 +66,7 @@ def graph_for(job):
         "5": {"class_type": "ConditioningZeroOut", "inputs": {"conditioning": ["4", 0]}},
         "6": {"class_type": "EmptyFlux2LatentImage", "inputs": {"width": 768, "height": 1024, "batch_size": 1}},
         "7": {"class_type": "KSampler", "inputs": {"model": ["1", 0],
-            "seed": int(job["id"].replace("-", "")[:12], 16), "steps": 4, "cfg": 1,
+            "seed": int(job["id"].replace("-", "")[:12], 16) + attempt, "steps": 4, "cfg": 1,
             "sampler_name": "euler", "scheduler": "simple", "positive": ["4", 0],
             "negative": ["5", 0], "latent_image": ["6", 0], "denoise": 1}},
         "8": {"class_type": "VAEDecode", "inputs": {"samples": ["7", 0], "vae": ["3", 0]}},
@@ -147,9 +148,9 @@ def preflight(comfy):
         if node not in info:
             raise RuntimeError("Falta el nodo de ComfyUI: " + node)
 
-def render(job, comfy, output_dir, timeout=600):
+def render(job, comfy, output_dir, timeout=600, attempt=0):
     created = comfy.call("POST", "/prompt", {
-        "prompt": graph_for(job), "client_id": "insomnia-kineva-scenes"})
+        "prompt": graph_for(job, attempt), "client_id": "insomnia-kineva-scenes"})
     if not created.get("prompt_id"):
         raise RuntimeError("ComfyUI rechazó la ilustración: " + str(created)[:500])
     prompt_id = created["prompt_id"]
@@ -194,11 +195,21 @@ def process_one(cloud, comfy, output_dir):
         if stored_prompt.startswith('{"scene_prompt":'):
             settings = json.loads(stored_prompt)
             job["prompt"] = settings["scene_prompt"]
+            job["max_people"] = settings.get("max_people")
             reference_name = save_cover_reference(settings.get("cover_url"), job["id"])
             job["reference_name"] = reference_name
             print("Image reference attached", job["id"], bool(reference_name), flush=True)
         preflight(comfy)
-        image = render(job, comfy, output_dir)
+        image = None
+        for attempt in range(3):
+            candidate = render(job, comfy, output_dir, attempt=attempt)
+            result_check = review(candidate, job.get("max_people"))
+            print("Image candidate", job["id"], attempt + 1, result_check, flush=True)
+            if result_check["accepted"]:
+                image = candidate
+                break
+        if image is None:
+            raise RuntimeError("La ilustración mostró más personas de las descritas tras tres intentos. Revisa la escena.")
         path = job["owner_id"] + "/" + job["id"] + ".png"
         cloud.call("POST", "/storage/v1/object/kineva-scene-images/" + quote(path, safe="/"),
                    payload=image, raw=True,

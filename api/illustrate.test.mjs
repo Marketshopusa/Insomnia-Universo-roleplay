@@ -30,6 +30,8 @@ test("a scene illustration asks Gemini for the picture and returns it", async ()
     coverImageUrl: "https://cexzmelshvbgabihtfvx.supabase.co/storage/v1/object/public/user-story-covers/example.png",
   });
   assert.match(JSON.parse(withCover.prompt).cover_url, /user-story-covers\/example\.png$/);
+  const pair = sceneJobRow("user-1", { source: "story", focusText: "Ella comparte el mapa", characterRole: "Andrea", playerRole: "William" });
+  assert.equal(JSON.parse(pair.prompt).max_people, 2);
   if (previous === undefined) delete process.env.GEMINI_API_KEY;
   else process.env.GEMINI_API_KEY = previous;
 });

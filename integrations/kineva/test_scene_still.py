@@ -80,6 +80,18 @@ class SceneStillTest(unittest.TestCase):
         self.assertIn("PLAYER visible action: Entro en el vehículo", prompt)
         self.assertIn("Current setting cues only: inside a vehicle", prompt)
 
+    def test_extra_faces_are_rejected_before_upload(self):
+        from image_quality import review
+        from unittest.mock import patch
+        with patch("image_quality.count_faces", return_value=3):
+            self.assertFalse(review(b"png", 2)["accepted"])
+        with patch("image_quality.count_faces", return_value=2):
+            self.assertTrue(review(b"png", 2)["accepted"])
+        self.assertTrue(review(b"png", None)["accepted"])
+        first = image_worker.graph_for({"id": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", "prompt": "scene"}, 0)
+        second = image_worker.graph_for({"id": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", "prompt": "scene"}, 1)
+        self.assertEqual(second["7"]["inputs"]["seed"], first["7"]["inputs"]["seed"] + 1)
+
     def test_vram_is_released_only_when_comfy_queue_is_empty(self):
         from worker import release_idle_models
 
