@@ -72,11 +72,6 @@ def parse_role_reply(raw_reply, character="", allow_third_person=False):
                 if m.end() >= 35]
         gesture = (gesture[:cuts[0]].rstrip(" ,.;") if cuts else
                    gesture[:100].rsplit(" ", 1)[0])
-    if len(dialogue) > 700:
-        boundaries = [match.end() for match in re.finditer(
-            r"[.!?](?=\s|$)", dialogue[:700]) if match.end() >= 90]
-        dialogue = (dialogue[:boundaries[-1]].strip() if boundaries else
-                    dialogue[:699].rsplit(" ", 1)[0].rstrip(" ,.;") + "…")
     if not dialogue or len(gesture) > 100:
         raise ValueError("Incomplete or overlong gesture/dialogue")
     if not gesture:
@@ -112,10 +107,8 @@ def parse_freeform_reply(raw_reply, character="", allow_third_person=False):
     spoken = content[stage.end():] if stage else content
     spoken = re.sub(r"\*[^*]*\*", " ", spoken)
     spoken = " ".join(spoken.split())
-    if not stage and len(spoken) > 260:
-        raise ValueError("Narration without direct character dialogue")
-    if len(normalize_reply(spoken).split()) < 5:
-        raise ValueError("Incomplete freeform reply")
+    if not spoken.strip():
+        raise ValueError("Empty freeform reply")
     if re.search(r"(?i)^(?:system|premisa|instrucciones|gesto|dialogo)\s*:", spoken):
         raise ValueError("Internal instruction in reply")
     return parse_role_reply(json.dumps({"gesto": gesture, "dialogo": spoken}, ensure_ascii=False), character, allow_third_person=allow_third_person)
@@ -154,8 +147,8 @@ def clean_turns(raw):
 
 def memory_transcript(turns, player, character):
     """Retain the original facts and the last completed beats in chronological order."""
-    recent = turns[-8:]
-    older = turns[:-8]
+    recent = turns[-14:]
+    older = turns[:-14]
     if not older:
         return "", recent
 
@@ -163,8 +156,8 @@ def memory_transcript(turns, player, character):
         who = character if turn["role"] == "assistant" else player
         return who + ": " + clip_text(turn["content"], limit)
 
-    opening = [line(turn, 130) for turn in older[:2]]
-    middle = [line(turn, 125) for turn in older[-8:] if turn not in older[:2]]
+    opening = [line(turn, 240) for turn in older[:2]]
+    middle = [line(turn, 200) for turn in older[-10:] if turn not in older[:2]]
     chronicle = "Hechos del comienzo (pasado, no lugar actual): " + " | ".join(opening)
     if middle:
         chronicle += "\nDespués sucedió: " + " | ".join(middle)
@@ -212,7 +205,7 @@ def conversation_messages(job):
         if not isinstance(turn, dict):
             continue
         who = character if turn.get("role") == "assistant" else player
-        content = clip_text(turn.get("content") or "", 160)
+        content = clip_text(turn.get("content") or "", 240)
         if content:
             recalled.append(who + ": " + content)
     earlier_memory = ("Recuerdos anteriores relacionados con la pregunta (ya ocurrieron): "
@@ -261,7 +254,7 @@ def conversation_messages(job):
         "Habla al jugador en primera persona; no pases a tercera persona para referirte a ti. "
         "Escribe SOLO JSON con 'gesto' y 'dialogo'. "
         "'gesto': una acción o sensación propia de máximo doce palabras en primera persona ('Me sorprendo', 'Sonrío', 'Entro'); nunca escribas '" + character + " dijo', 'ella' o tu nombre como sujeto. "
-        "'dialogo': SOLO palabras que pronuncias en voz alta al jugador. Responde a lo último con naturalidad y voz propia: normalmente dos o tres frases, una si basta y hasta cuatro si la escena pide desarrollarse. Aporta algo nuevo sin repetir las palabras del jugador ni la fórmula del turno anterior. No narres acciones dentro de dialogo. "
+        "'dialogo': SOLO palabras que pronuncias en voz alta al jugador. Habla con naturalidad y voz propia: desarrolla una idea si tienes algo que decir, o contesta brevemente si basta. Reacciona a la acción y a las preguntas actuales, aporta un detalle propio cuando encaje y permite que la escena avance sin copiar las palabras del jugador. No narres acciones dentro de dialogo. "
         "Responde con naturalidad al tema actual; si el jugador vuelve a una frase o tema anterior, puedes retomarlo. "
         "Evita aperturas prefabricadas, muletillas y copiar frases de tus respuestas recientes. La repetición solicitada por el jugador sí está permitida. "
         "Si sonríes, ríes, te sorprendes o lloras por algo que ocurre ahora, muéstralo en gesto y deja que el diálogo suene acorde, sin añadir emociones ajenas a la escena. "
@@ -272,7 +265,7 @@ def conversation_messages(job):
     )
     messages = [{"role": "system", "content": instruction}]
     for turn in recent:
-        content = clip_text(turn["content"], 350)
+        content = clip_text(turn["content"], 600)
         if messages[-1]["role"] == turn["role"]:
             messages[-1]["content"] += "\n" + content
         else:
@@ -291,8 +284,8 @@ def conversation_messages(job):
     return trim_messages(messages)
 
 
-def trim_messages(messages, limit=6500):
-    """Keep the prompt inside the 4096-token local model, or llama refuses the turn."""
+def trim_messages(messages, limit=16000):
+    """Retain recent dialogue within the local model's 8192-token context."""
     while sum(len(item["content"]) for item in messages) > limit and len(messages) > 3:
         del messages[1:3]
     total = sum(len(item["content"]) for item in messages)
@@ -401,7 +394,7 @@ def reply_for(job):
         try:
             raw_reply = model_chat(
                 messages, 0.74 + attempt * 0.06,
-                380 if wants_reading else 320, json_mode=(attempt == 0))
+                600 if wants_reading else 500, json_mode=(attempt == 0))
             structured_reply = bool(re.match(r"^\s*(?:```(?:json)?\s*)?\{", raw_reply, re.I)) or bool(re.search(r'(?im)^\s*"(?:gesto|dialogo)"\s*:', raw_reply))
             try:
                 parsed = parse_role_reply(raw_reply, character)

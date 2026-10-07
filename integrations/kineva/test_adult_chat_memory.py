@@ -83,7 +83,18 @@ class StoryMemoryTest(unittest.TestCase):
         self.assertIn("No cambies quién", packed)
         self.assertNotIn("te equivocaste al enviarlo", packed)
         self.assertNotIn("no te disculpes otra vez", packed)
-        self.assertLess(len(packed), 6500)
+        self.assertLess(len(packed), 16000)
+
+    def test_recent_story_detail_survives_without_short_turn_clipping(self):
+        detail = "Salimos a buscar la llave. " * 17 + "La carta violeta quedó bajo la maceta."
+        current = job([{"role": "user", "content": detail}], "¿Dónde quedó la carta violeta?")
+        packed = "\n".join(item["content"] for item in conversation_messages(current))
+        self.assertIn("La carta violeta quedó bajo la maceta", packed)
+
+    def test_long_dialogue_is_delivered_without_cutting_its_last_point(self):
+        spoken = "Hablemos con calma de lo que pasó. " * 28 + "Mañana llevaré la carta a Clara."
+        reply = parse_role_reply('{"gesto":"Respiro hondo","dialogo":"' + spoken + '"}', "Andrea")
+        self.assertIn("Mañana llevaré la carta a Clara.", reply)
 
     def test_premise_and_turn_order_survive(self):
         current = job([
@@ -140,7 +151,7 @@ class StoryMemoryTest(unittest.TestCase):
             reply = reply_for(current)
         self.assertEqual(reply, "*Me quedo mirando el muro* Veo una sombra junto a las piedras.")
         model.assert_called_once()
-        self.assertEqual(model.call_args.args[2], 320)
+        self.assertEqual(model.call_args.args[2], 500)
 
     def test_repeated_user_question_and_poem_remain_in_history(self):
         poem = "Pedrito se cayó, volvió a levantarse y siguió cantando."
