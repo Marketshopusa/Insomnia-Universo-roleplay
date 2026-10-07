@@ -395,10 +395,6 @@ export default async function handler(req, res) {
       if (remembered) {
         systemInstruction += "\n" + remembered;
       }
-      const namedRecent = recent.slice(-10).map(line);
-      if (namedRecent.length) {
-        systemInstruction += "\nTurnos recientes, con quién habló:\n" + namedRecent.join("\n");
-      }
       const contents = [];
       for (const entry of recent) {
         if (contents.at(-1)?.role === entry.role) contents.at(-1).parts[0].text += "\n" + entry.text;
@@ -506,3 +502,4 @@ export default async function handler(req, res) {
     return send(res, status, { error: error.code || "ai_error", message: error.message });
   }
 }
+
