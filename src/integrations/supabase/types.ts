@@ -215,7 +215,6 @@ export type Database = {
           created_at: string
           created_by: string | null
           description: string | null
-          story_context: string | null
           has_explicit_images: boolean | null
           id: string
           image_count: number | null
@@ -233,7 +232,6 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           description?: string | null
-          story_context?: string | null
           has_explicit_images?: boolean | null
           id?: string
           image_count?: number | null
@@ -251,7 +249,6 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           description?: string | null
-          story_context?: string | null
           has_explicit_images?: boolean | null
           id?: string
           image_count?: number | null
