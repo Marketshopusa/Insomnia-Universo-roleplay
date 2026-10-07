@@ -349,11 +349,11 @@ def reply_for(job):
         for turn in (job.get("history") or [])
         if turn.get("role") == "assistant"
     ][-4:]
-    for attempt in range(2):
+    for attempt in range(3):
         try:
             raw_reply = model_chat(
                 messages, 0.74 + attempt * 0.06,
-                300 if wants_reading else 240, json_mode=True)
+                300 if wants_reading else 240, json_mode=(attempt == 0))
             structured_reply = bool(re.match(r"^\s*(?:```(?:json)?\s*)?\{", raw_reply, re.I)) or bool(re.search(r'(?im)^\s*"(?:gesto|dialogo)"\s*:', raw_reply))
             try:
                 parsed = parse_role_reply(raw_reply, character)
