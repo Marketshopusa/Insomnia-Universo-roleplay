@@ -13,6 +13,7 @@ export interface LocalVideo {
   episode: number;
   url: string;
   script?: string;
+  approved?: boolean;
 }
 
 export interface LocalJob {
@@ -21,6 +22,8 @@ export interface LocalJob {
   current: number;
   total: number;
   videos: LocalVideo[];
+  references?: Record<string, string>;
+  preview?: { episode: number; shot: number; total_shots: number; url: string; script?: string } | null;
   error: string | null;
 }
 
@@ -132,7 +135,7 @@ export interface LocalCastInput {
 }
 
 export async function createLocalJob(
-  input: { idea?: string; chapters?: string[]; dialogues?: string[]; image?: string | null; cast?: LocalCastInput; episodes?: number },
+  input: { idea?: string; chapters?: string[]; dialogues?: string[]; shot_plans?: { visual: string; dialogue: string }[][]; image?: string | null; cast?: LocalCastInput; episodes?: number },
   fetchImpl: FetchLike = fetch,
 ): Promise<LocalJob> {
   const chapters = (input.chapters || [])
@@ -150,6 +153,7 @@ export async function createLocalJob(
         idea,
         ...(chapters.length ? { chapters } : {}),
         dialogues: input.dialogues || [],
+        shot_plans: input.shot_plans,
         image: input.image || null,
         cast: input.cast || {},
         episodes: chapters.length || clampLocalEpisodes(input.episodes ?? 1),
@@ -161,6 +165,14 @@ export async function createLocalJob(
   const data = await response.json().catch(() => ({})) as LocalJob & { error?: string };
   if (!response.ok) throw new Error(data.error || "No se pudo comenzar el video en esta PC.");
   return data;
+}
+
+export async function reviewLocalJob(id: string, approve: boolean, fetchImpl: FetchLike = fetch): Promise<void> {
+  const response = await fetchImpl(`${LOCAL_KINEVA_URL}/jobs/${id}/${approve ? "approve" : "reject"}`, loopbackInit({ method: "POST" }));
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({})) as { error?: string };
+    throw new Error(data.error || "No se pudo registrar la revisión.");
+  }
 }
 
 export async function fetchLocalJob(id: string, fetchImpl: FetchLike = fetch): Promise<LocalJob> {

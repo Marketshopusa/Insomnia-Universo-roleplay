@@ -15,6 +15,7 @@ from urllib.parse import urlsplit
 from image_worker import COMFY_INPUT, preflight, render, save_cover_reference, scene_prompt
 from worker import Api, find_manifest, one, probe_video, release_idle_models, wait_for_render
 from image_quality import review
+from studio_assembly import assemble_episode
 
 HOST = "127.0.0.1"
 PORT = int(os.environ.get("KINEVA_LOCAL_PORT", "8787"))
@@ -35,11 +36,31 @@ try:
 except (OSError, ValueError):
     JOBS = {}
 for saved_job in JOBS.values():
-    if saved_job.get("state") in ("queued", "rendering"):
-        saved_job.update(state="failed", error="El proceso local se reinició antes de terminar el vídeo.")
+    if saved_job.get("state") in ("queued", "rendering", "references_ready", "video_review"):
+        saved_job.update(state="failed", error="El proceso local se reinició antes de aprobar la toma. Crea un nuevo trabajo.")
 JOBS_LOCK = threading.Lock()
 STATE_LOCK = threading.Lock()
 GPU_LOCK = threading.Lock()
+REVIEW_EVENTS = {}
+REVIEW_DECISIONS = {}
+
+def await_review(job_id, stage, timeout=86400):
+    event = threading.Event()
+    with JOBS_LOCK:
+        REVIEW_EVENTS[job_id] = event
+        JOBS[job_id]["state"] = stage
+    persist_jobs()
+    try:
+        if not event.wait(timeout):
+            raise RuntimeError("La revisión caducó. Inicia un nuevo render.")
+        with JOBS_LOCK:
+            approved = REVIEW_DECISIONS.pop(job_id, False)
+        if not approved:
+            raise RuntimeError("El usuario rechazó la toma. Ajusta las referencias o la escena y vuelve a generar.")
+    finally:
+        with JOBS_LOCK:
+            REVIEW_EVENTS.pop(job_id, None)
+
 # The browser on the Vercel Studio calls this loopback worker. Vercel itself never reaches the GPU.
 ALLOWED_ORIGINS = re.compile(
     r"^(?:http://(?:localhost|127\.0\.0\.1):(?:8080|5173|5174)"
@@ -113,6 +134,9 @@ def public_job(job_id):
         return None
     job.pop("image", None)
     job.pop("idea", None)
+    job.pop("reference_paths", None)
+    if job.get("preview"):
+        job["preview"] = {key: value for key, value in job["preview"].items() if key != "path"}
     job["videos"] = [{key: value for key, value in video.items() if key != "path"}
                      for video in job.get("videos", [])]
     return job
@@ -188,6 +212,31 @@ def chapter_ideas(body):
         raise ValueError("Para varios episodios envía capítulos distintos; no se repetirá la misma idea.")
     return [idea]
 
+def chapter_shots(body, ideas):
+    raw = body.get("shot_plans")
+    if raw is None:
+        return [[{"visual": idea, "dialogue": (body.get("dialogues") or [""] * len(ideas))[index] if index < len(body.get("dialogues") or []) else ""}] for index, idea in enumerate(ideas)]
+    if not isinstance(raw, list) or len(raw) != len(ideas):
+        raise ValueError("El desglose de tomas debe corresponder a cada capítulo.")
+    result = []
+    for chapter in raw:
+        if not isinstance(chapter, list) or not (1 <= len(chapter) <= 3):
+            raise ValueError("Cada capítulo admite de una a tres tomas distintas.")
+        shots = []
+        for item in chapter:
+            if not isinstance(item, dict):
+                raise ValueError("Toma inválida.")
+            visual = str(item.get("visual") or "").strip()
+            dialogue = str(item.get("dialogue") or "").strip()
+            if not (5 <= len(visual) <= 1200) or len(dialogue) > 180 or len(dialogue.split()) > 20:
+                raise ValueError("Cada toma necesita una acción visible y una frase breve opcional.")
+            shots.append({"visual": visual, "dialogue": dialogue})
+        result.append(shots)
+    if sum(map(len, result)) > 24:
+        raise ValueError("Una serie local admite hasta 24 tomas por proyecto.")
+    return result
+
+
 def validate_video_report(report):
     qc = report.get("qc") or {}
     issues = qc.get("issues")
@@ -209,7 +258,7 @@ def review_video_people(path, max_people):
             raise RuntimeError("Toma rechazada: aparecen personas extra en el video; revisa las referencias.")
 
 
-def run_job(job_id, image, ideas, cast=None, dialogues=None):
+def run_job(job_id, image, ideas, cast=None, shot_plans=None):
     try:
         with GPU_LOCK:
             template = json.loads(TEMPLATE_PATH.read_text(encoding="utf-8"))
@@ -268,51 +317,86 @@ def run_job(job_id, image, ideas, cast=None, dialogues=None):
                 (manifest_path.parent / filename).write_bytes(data)
                 references["locations"][cast["location_name"]] = filename
             manifest_path.write_text(json.dumps(references, ensure_ascii=False), encoding="utf-8")
+            reference_paths = {"primary": str(image_path)}
+            if cast.get("secondary_image"):
+                reference_paths["secondary"] = str(manifest_path.parent / references["characters"][cast["secondary_name"]])
+            if cast.get("location_image"):
+                reference_paths["location"] = str(manifest_path.parent / references["locations"][cast["location_name"]])
+            with JOBS_LOCK:
+                JOBS[job_id]["reference_paths"] = reference_paths
+                JOBS[job_id]["references"] = {key: "/references/" + job_id + "/" + key for key in reference_paths}
+            persist_jobs()
+            await_review(job_id, "references_ready")
             previous = ""
             count = len(ideas)
-            for episode, idea in enumerate(ideas, start=1):
-                update(job_id, state="rendering", current=episode)
-                dialogue = (dialogues or [])[episode - 1] if episode <= len(dialogues or []) else ""
-                graph = build_graph(
-                    template, image_name, manifest_path, idea, job_id, episode, count, previous, cast, dialogue)
-                export_node = one(graph, "KinevaMasterExport")[0]
-                created = COMFY.call("POST", "/prompt", {
-                    "prompt": graph, "client_id": "insomnia-local-creator",
-                })
-                if created.get("error") or not created.get("prompt_id"):
-                    raise RuntimeError("ComfyUI rechazÃ³ la solicitud: " + str(created)[:400])
-                video = wait_for_render(
-                    COMFY, created["prompt_id"], export_node, interval=5, timeout=7200)
-                filename = video["filename"]
-                subfolder = Path(video.get("subfolder") or "")
-                if (video.get("type") != "output" or Path(filename).name != filename
-                        or subfolder.is_absolute() or ".." in subfolder.parts):
-                    raise RuntimeError("ComfyUI devolviÃ³ una ruta de vÃ­deo invÃ¡lida.")
-                path = OUTPUT / subfolder / filename
-                if not path.is_file():
-                    raise RuntimeError("El vÃ­deo exportado no existe.")
-                report = find_manifest(OUTPUT, "kineva_local_" + job_id, filename)
-                validate_video_report(report)
-                if cast.get("secondary_name") or cast.get("primary_name"):
-                    review_video_people(path, 2 if cast.get("secondary_name") else 1)
-                locked = report.get("locked_plan") or {}
-                previous = json.dumps({
-                    "cast": locked.get("cast"),
-                    "scenes": locked.get("scenes"),
-                }, ensure_ascii=False)[:1200]
-                scenes = locked.get("scenes") or []
-                dialogue = [
-                    str(line.get("line") or "") for shot in locked.get("shots") or []
-                    for line in shot.get("dialogue") or []
-                ]
-                script = "\n".join(
-                    [str(scene.get("summary") or "") for scene in scenes] + dialogue
-                ).strip()
+            shot_plans = shot_plans or [[{"visual": idea, "dialogue": ""}] for idea in ideas]
+            for episode, chapter in enumerate(shot_plans, start=1):
+                approved_shots = []
+                episode_scripts = []
+                for shot_index, shot in enumerate(chapter, start=1):
+                    idea = shot["visual"]
+                    update(job_id, state="rendering", current=episode)
+                    dialogue = shot["dialogue"]
+                    graph = build_graph(
+                        template, image_name, manifest_path, idea, job_id, episode, count, previous, cast, dialogue)
+                    one(graph, "KinevaProjectContext")[1]["inputs"]["shot"] = shot_index
+                    export_node = one(graph, "KinevaMasterExport")[0]
+                    created = COMFY.call("POST", "/prompt", {
+                        "prompt": graph, "client_id": "insomnia-local-creator",
+                    })
+                    if created.get("error") or not created.get("prompt_id"):
+                        raise RuntimeError("ComfyUI rechazÃ³ la solicitud: " + str(created)[:400])
+                    video = wait_for_render(
+                        COMFY, created["prompt_id"], export_node, interval=5, timeout=7200)
+                    filename = video["filename"]
+                    subfolder = Path(video.get("subfolder") or "")
+                    if (video.get("type") != "output" or Path(filename).name != filename
+                            or subfolder.is_absolute() or ".." in subfolder.parts):
+                        raise RuntimeError("ComfyUI devolviÃ³ una ruta de vÃ­deo invÃ¡lida.")
+                    path = OUTPUT / subfolder / filename
+                    if not path.is_file():
+                        raise RuntimeError("El vÃ­deo exportado no existe.")
+                    report = find_manifest(OUTPUT, "kineva_local_" + job_id, filename)
+                    validate_video_report(report)
+                    if cast.get("secondary_name") or cast.get("primary_name"):
+                        review_video_people(path, 2 if cast.get("secondary_name") else 1)
+                    locked = report.get("locked_plan") or {}
+                    previous = json.dumps({
+                        "cast": locked.get("cast"),
+                        "scenes": locked.get("scenes"),
+                    }, ensure_ascii=False)[:1200]
+                    scenes = locked.get("scenes") or []
+                    dialogue = [
+                        str(line.get("line") or "") for shot in locked.get("shots") or []
+                        for line in shot.get("dialogue") or []
+                    ]
+                    script = "\n".join(
+                        [str(scene.get("summary") or "") for scene in scenes] + dialogue
+                    ).strip()
+                    video_id = str(uuid.uuid4())
+                    with JOBS_LOCK:
+                        JOBS[job_id]["preview"] = {
+                            "episode": episode, "shot": shot_index, "total_shots": len(chapter),
+                            "url": "/videos/" + job_id + "/" + video_id,
+                            "path": str(path), "script": script[:5000],
+                        }
+                    persist_jobs()
+                    await_review(job_id, "video_review")
+                    approved_shots.append(path)
+                    episode_scripts.append(script)
+                    with JOBS_LOCK:
+                        JOBS[job_id]["preview"] = None
+                    persist_jobs()
+                if len(approved_shots) == 1:
+                    final_path = approved_shots[0]
+                else:
+                    final_path = OUTPUT / "kineva_episodes" / job_id / f"episode_{episode:02d}.mp4"
+                    assemble_episode(approved_shots, final_path)
                 video_id = str(uuid.uuid4())
                 with JOBS_LOCK:
                     JOBS[job_id]["videos"].append({
                         "episode": episode, "url": "/videos/" + job_id + "/" + video_id,
-                        "path": str(path), "script": script[:5000],
+                        "path": str(final_path), "script": "\n".join(episode_scripts)[:5000], "approved": True,
                     })
                 persist_jobs()
             update(job_id, state="completed")
@@ -365,11 +449,32 @@ class Handler(BaseHTTPRequestHandler):
         if len(parts) == 2 and parts[0] == "jobs":
             job = public_job(parts[1])
             return self._reply(200, job) if job else self._reply(404, {"error": "No existe."})
+        if len(parts) == 3 and parts[0] == "references":
+            with JOBS_LOCK:
+                source = (JOBS.get(parts[1]) or {}).get("reference_paths", {}).get(parts[2])
+            if not source:
+                return self._reply(404, {"error": "No existe."})
+            path = Path(source)
+            if not path.is_file():
+                return self._reply(404, {"error": "No existe."})
+            data = path.read_bytes()
+            self.send_response(200)
+            origin = self._origin()
+            if origin:
+                self.send_header("Access-Control-Allow-Origin", origin)
+                self.send_header("Access-Control-Allow-Private-Network", "true")
+            self.send_header("Content-Type", "image/png" if path.suffix.lower() == ".png" else "image/jpeg" if path.suffix.lower() == ".jpg" else "image/webp")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+            return
         if len(parts) == 3 and parts[0] == "videos":
             with JOBS_LOCK:
                 job = JOBS.get(parts[1])
                 found = next((v for v in job["videos"] if v["url"].endswith("/" + parts[2])),
                              None) if job else None
+                if not found and job and job.get("preview") and job["preview"]["url"].endswith("/" + parts[2]):
+                    found = job["preview"]
             if not found:
                 return self._reply(404, {"error": "No existe."})
             path = Path(found["path"])
@@ -432,6 +537,18 @@ class Handler(BaseHTTPRequestHandler):
         return self._reply(200, {"image": base64.b64encode(png).decode("ascii")})
 
     def do_POST(self):
+        match = re.fullmatch(r"/jobs/([0-9a-f-]{36})/(approve|reject)", urlsplit(self.path).path)
+        if match:
+            if not self._origin():
+                return self._reply(403, {"error": "Abre Insomnia en esta PC."})
+            with JOBS_LOCK:
+                event = REVIEW_EVENTS.get(match.group(1))
+                state = (JOBS.get(match.group(1)) or {}).get("state")
+                accepted = bool(event and not event.is_set() and state in ("references_ready", "video_review"))
+                if accepted:
+                    REVIEW_DECISIONS[match.group(1)] = match.group(2) == "approve"
+                    event.set()
+            return self._reply(200, {"accepted": True}) if accepted else self._reply(409, {"error": "Esta revisión ya no está pendiente."})
         if urlsplit(self.path).path == "/scenes":
             return self._scene()
         if urlsplit(self.path).path != "/jobs":
@@ -451,6 +568,7 @@ class Handler(BaseHTTPRequestHandler):
             if not isinstance(raw_dialogues, list) or len(raw_dialogues) > len(ideas):
                 raise ValueError("Las frases no corresponden a los capítulos.")
             dialogues = [str(line or "").strip() for line in raw_dialogues]
+            shot_plans = chapter_shots(body, ideas)
             if any(len(line) > 180 or len(line.split()) > 20 for line in dialogues):
                 raise ValueError("Cada toma admite una frase breve de hasta 20 palabras.")
             if cast["secondary_name"] and not (image or cast["primary_description"]):
@@ -464,7 +582,7 @@ class Handler(BaseHTTPRequestHandler):
                 "total": count, "videos": [], "error": None,
             }
         persist_jobs()
-        threading.Thread(target=run_job, args=(job_id, image, ideas, cast, dialogues),
+        threading.Thread(target=run_job, args=(job_id, image, ideas, cast, shot_plans),
                          daemon=True).start()
         return self._reply(202, public_job(job_id))
 

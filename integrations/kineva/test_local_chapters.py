@@ -23,6 +23,17 @@ class LocalChaptersTest(unittest.TestCase):
         })
         self.assertEqual(ideas, ["Llueve en París y él la cubre.", "Siguen bajo el mismo toldo."])
 
+    def test_storyboard_keeps_distinct_shots_in_each_episode(self):
+        ideas = ["Andrea entrega el libro en la biblioteca."]
+        shots = creator.chapter_shots({"shot_plans": [[
+            {"visual": "Andrea sostiene el libro rojo.", "dialogue": ""},
+            {"visual": "Luis toma el libro desde la mesa.", "dialogue": "Gracias, Andrea."},
+        ]]}, ideas)
+        self.assertEqual(len(shots[0]), 2)
+        self.assertNotEqual(shots[0][0]["visual"], shots[0][1]["visual"])
+        with self.assertRaisesRegex(ValueError, "corresponder"):
+            creator.chapter_shots({"shot_plans": []}, ideas)
+
     def test_a_short_idea_cannot_repeat_as_multiple_episodes(self):
         with self.assertRaisesRegex(ValueError, "capítulos distintos"):
             creator.chapter_ideas({"idea": "Ella baila", "episodes": 2})

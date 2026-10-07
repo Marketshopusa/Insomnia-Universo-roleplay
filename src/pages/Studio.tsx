@@ -11,6 +11,7 @@ import {
   localVideoSrc,
   loopbackInit,
   probeLocalKineva,
+  reviewLocalJob,
   type LocalJob,
   type LocalProbe,
   type LocalStudioStatus,
@@ -131,6 +132,10 @@ const chapterOptions = [3, 5, 7, 10, 12];
   }, []);
 
   useEffect(() => {
+    try {
+      const savedEpisodes = JSON.parse(window.sessionStorage.getItem("insomnia.studio.episodeIds") || "[]");
+      if (Array.isArray(savedEpisodes) && savedEpisodes.every((id) => typeof id === "string")) setSeriesEpisodeIds(savedEpisodes);
+    } catch { /* The saved project can be reopened without a pending video. */ }
     const savedId = window.sessionStorage.getItem("insomnia.studio.localJob");
     if (!savedId) return;
     void fetchLocalJob(savedId).then(setLocalJob).catch(() => {
@@ -176,7 +181,7 @@ const chapterOptions = [3, 5, 7, 10, 12];
     if (error) throw new Error(error.message);
   };
 
-  const filmChapters = async (chapters: string[], episodeIds: string[], pendingProbe?: Promise<LocalProbe>, dialogues: string[] = [], storyPlan?: any) => {
+  const filmChapters = async (chapters: string[], episodeIds: string[], pendingProbe?: Promise<LocalProbe>, dialogues: string[] = [], storyPlan?: any, existingJob?: LocalJob) => {
     const probe = await (pendingProbe ?? probeLocalKineva());
     setLocalHealth(probe.status);
     if (probe.status !== "ready") {
@@ -188,7 +193,7 @@ const chapterOptions = [3, 5, 7, 10, 12];
     }
     setGeneratingVideos(true);
     setVideoProgress("ComfyUI está filmando los capítulos en esta PC…");
-    const image = referenceImage ? await encodeLocalImage(referenceImage) : null;
+    const image = !existingJob && referenceImage ? await encodeLocalImage(referenceImage) : null;
     const storyCharacters = Array.isArray(storyPlan?.characters) ? storyPlan.characters : [];
     const first = storyCharacters[0] || {};
     const second = storyCharacters[1] || {};
@@ -203,8 +208,17 @@ const chapterOptions = [3, 5, 7, 10, 12];
       location_description: locationDescription.trim() || String([setting.place, setting.time, setting.visual_style].filter(Boolean).join(". ")).slice(0, 500),
       location_image: locationImage ? await encodeLocalImage(locationImage) : null,
     };
-    await publishLocalChapters({
+    const shotPlans = (storyPlan?.chapters || []).map((chapter: any, index: number) => {
+      const plans = Array.isArray(chapter.shots) ? chapter.shots.slice(0, 3).map((shot: any) => ({
+        visual: String(shot.visual || "").trim(), dialogue: String(shot.dialogue || "").trim(),
+      })).filter((shot: { visual: string }) => shot.visual.length >= 5) : [];
+      return plans.length ? plans : [{ visual: chapters[index], dialogue: dialogues[index] || "" }];
+    });
+    if (episodeIds.length) window.sessionStorage.setItem("insomnia.studio.episodeIds", JSON.stringify(episodeIds));
+    const result = await publishLocalChapters({
       chapters,
+      shotPlans: shotPlans.length === chapters.length ? shotPlans : undefined,
+      existingJob,
       dialogues,
       episodeIds,
       image,
@@ -223,7 +237,29 @@ const chapterOptions = [3, 5, 7, 10, 12];
       upload: storeChapterVideo,
       markReady: markChapterReady,
     });
-    toast({ title: "Escenas creadas", description: "Hay una toma visual por capítulo. Revisa cada video antes de publicar la serie." });
+    if (result.state === "completed") {
+      toast({ title: "Escenas aprobadas", description: "Se guardaron los videos revisados en la serie." });
+    }
+  };
+
+  const handleLocalReview = async (approve: boolean) => {
+    if (!localJob) return;
+    const current = localJob;
+    try {
+      await reviewLocalJob(current.id, approve);
+      if (!approve) {
+        setLocalJob({ ...current, state: "failed", error: "Toma rechazada. Ajusta las referencias o la escena para comenzar otra." });
+        return;
+      }
+      setLocalJob({ ...current, state: "rendering" });
+      if (!seriesEpisodeIds.length) return;
+      setGeneratingVideos(true);
+      await filmChapters([], seriesEpisodeIds, undefined, [], novel, { ...current, state: "rendering" });
+    } catch (e) {
+      toast({ title: "No se pudo continuar el video", description: e instanceof Error ? e.message : undefined, variant: "destructive" });
+    } finally {
+      setGeneratingVideos(false);
+    }
   };
 
   const handleGenerateProject = async () => {
@@ -657,16 +693,41 @@ const chapterOptions = [3, 5, 7, 10, 12];
             <h2 className="text-lg font-medium">Video en esta PC</h2>
             <p role="status">
               {localJob.state === "queued" ? "En cola…"
+                : localJob.state === "references_ready" ? "Revisa las referencias antes de generar el video."
+                : localJob.state === "video_review" ? "Revisa la toma. Solo se guardará al aprobarla."
                 : localJob.state === "rendering" ? `Creando video ${localJob.current} de ${localJob.total}…`
                 : localJob.state === "failed" ? `Error: ${localJob.error || "Kineva no pudo crear el video."}`
                 : "Escenas listas para revisión."}
             </p>
+            {localJob.references && localJob.state === "references_ready" && (
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {Object.entries(localJob.references).map(([key, url]) => (
+                  <figure key={key}><img src={localVideoSrc(url)} alt={key} className="w-full rounded-md" />
+                    <figcaption className="text-xs mt-1">{key === "primary" ? "Personaje principal" : key === "secondary" ? "Segundo personaje" : "Lugar"}</figcaption>
+                  </figure>
+                ))}
+              </div>
+            )}
+            {localJob.preview && localJob.state === "video_review" && (
+              <div>
+                <h3 className="text-sm font-medium">Capítulo {localJob.preview.episode}, toma {localJob.preview.shot} de {localJob.preview.total_shots}</h3>
+                <video controls className="mt-2 w-full rounded-md" src={localVideoSrc(localJob.preview.url)} />
+                <p className="text-sm text-amber-600">Revisa rostros, manos, movimiento y acción antes de aprobar.</p>
+              </div>
+            )}
             {localJob.videos?.map((video) => (
               <div key={video.url}>
                 <h3 className="text-sm font-medium">Escena del capítulo {video.episode}</h3>
                 <video controls className="mt-2 w-full rounded-md" src={localVideoSrc(video.url)} />
+                {video.approved === false && <p className="text-sm text-amber-600">Pendiente de aprobación visual</p>}
               </div>
             ))}
+            {["references_ready", "video_review"].includes(localJob.state) && (
+              <div className="flex gap-3">
+                <Button onClick={() => void handleLocalReview(true)}>Aprobar y continuar</Button>
+                <Button variant="secondary" onClick={() => void handleLocalReview(false)}>Rechazar</Button>
+              </div>
+            )}
           </Card>
         )}
 
