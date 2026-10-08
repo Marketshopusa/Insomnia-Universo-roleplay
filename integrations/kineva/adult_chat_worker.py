@@ -250,7 +250,7 @@ def conversation_messages(job):
         "Habla al jugador en primera persona; no pases a tercera persona para referirte a ti. "
         "Escribe SOLO JSON con 'gesto' y 'dialogo'. "
         "'gesto': narra en primera persona solo lo que haces o sientes en esta escena; usa la extensión que necesite la acción, sin rellenar por sistema. Nunca escribas '" + character + " dijo', 'ella' o tu nombre como sujeto. "
-        "'dialogo': SOLO palabras que pronuncias en voz alta al jugador. Habla con naturalidad y voz propia: desarrolla una idea si tienes algo que decir, o contesta brevemente si basta. Reacciona a la acción y a las preguntas actuales, aporta un detalle propio cuando encaje y permite que la escena avance sin copiar las palabras del jugador. No narres acciones dentro de dialogo. "
+        "'dialogo': SOLO palabras que pronuncias en voz alta al jugador. No hay un límite de dos frases: cuando el último mensaje abre varias ideas o cambia la situación, conversa y desarrolla tu reacción con detalles propios y una iniciativa coherente; si basta una respuesta sencilla, sé breve. Evita respuestas genéricas que solo repitan la pregunta. Reacciona a la acción y a las preguntas actuales y permite que la escena avance sin copiar las palabras del jugador. No narres acciones dentro de dialogo. "
         "Responde con naturalidad al tema actual; si el jugador vuelve a una frase o tema anterior, puedes retomarlo. "
         "Evita aperturas prefabricadas, muletillas y copiar frases de tus respuestas recientes. La repetición solicitada por el jugador sí está permitida. "
         "Si sonríes, ríes, te sorprendes o lloras por algo que ocurre ahora, muéstralo en gesto y deja que el diálogo suene acorde, sin añadir emociones ajenas a la escena. "
@@ -386,6 +386,8 @@ def reply_for(job):
         for turn in (job.get("history") or [])
         if turn.get("role") == "assistant"
     ][-4:]
+    best_repeated = None
+    best_similarity = float("inf")
     for attempt in range(3):
         try:
             raw_reply = model_chat(
@@ -415,12 +417,13 @@ def reply_for(job):
                 raise ValueError("Unexpected English in Spanish reply")
             if unsupported_recalled_fact(parsed, job):
                 raise ValueError("Unsupported scene fact")
-            if not wants_repetition and any(
-                spoken == normalize_reply(old)
-                or (len(spoken) > 45 and SequenceMatcher(
-                    None, spoken, normalize_reply(old)).ratio() >= 0.88)
-                for old in previous_replies if old.strip()
-            ):
+            similarities = [SequenceMatcher(None, spoken, normalize_reply(old)).ratio()
+                            for old in previous_replies if old.strip()]
+            highest_similarity = max(similarities, default=0.0)
+            if not wants_repetition and (highest_similarity == 1.0
+                                         or (len(spoken) > 45 and highest_similarity >= 0.88)):
+                if highest_similarity < best_similarity:
+                    best_repeated, best_similarity = parsed, highest_similarity
                 raise ValueError("Repeated previous character dialogue")
             if attempt == 0 and wants_reading and len(spoken) < 190:
                 print("Chat announced reading without reading; retrying", job.get("jobId", "local"), flush=True)
@@ -442,6 +445,10 @@ def reply_for(job):
                     " El borrador anterior no fue válido o repitió el diálogo reciente. "
                     "Conserva los hechos y la identidad de la escena; responde a la nueva acción "
                     "con palabras distintas. Devuelve JSON con gesto breve y diálogo hablado.")
+    if best_repeated is not None:
+        print("Chat delivered best valid draft after repetition retries", job.get("jobId", "local"),
+              "total", round(time.monotonic() - started, 2), flush=True)
+        return best_repeated
     raise RuntimeError("Local model returned no usable reply")
 
 

@@ -249,6 +249,16 @@ class StoryMemoryTest(unittest.TestCase):
         self.assertEqual(model.call_count, 2)
         self.assertIn("Ahora guardo el mapa", model.call_args.args[0][-1]["content"])
 
+    def test_repetition_retry_exhaustion_delivers_a_valid_reply_instead_of_red_error(self):
+        current = job([{"role": "assistant", "content": "*Miro el sobre* La carta está sobre la mesa."}],
+                      "¿Qué hacemos ahora con la carta?")
+        repeated = '{"gesto":"Miro el sobre","dialogo":"La carta está sobre la mesa."}'
+        with patch("adult_chat_worker.free_gpu_for_chat"), patch(
+                "adult_chat_worker.model_chat", return_value=repeated) as model:
+            reply = reply_for(current)
+        self.assertEqual(reply, "*Miro el sobre* La carta está sobre la mesa.")
+        self.assertEqual(model.call_count, 3)
+
     def test_recalled_fact_does_not_gain_an_unsupported_number(self):
         current = job([], "¿Dónde dejó William el mapa?")
         current["memory"] = [{"role": "user", "content": "William dejó el mapa en la taquilla."}]
