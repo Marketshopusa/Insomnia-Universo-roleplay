@@ -37,12 +37,11 @@ def normalize_reply(value):
     return re.sub(r"[^\w]+", " ", value.casefold(), flags=re.UNICODE).strip()
 
 def model_chat(messages, temperature, max_tokens, json_mode=False):
-    payload = {"model": os.environ.get("KINEVA_CHAT_MODEL_NAME", "qwen3-14b"),
+    payload = {"model": os.environ.get("KINEVA_CHAT_MODEL_NAME", "magnum-v4-12b"),
                "messages": messages, "max_tokens": max_tokens,
                "temperature": temperature, "top_p": 0.95,
                "repeat_penalty": 1.08, "presence_penalty": 0.20,
-               "frequency_penalty": 0.10,
-               "chat_template_kwargs": {"enable_thinking": False}}
+               "frequency_penalty": 0.10}
     if json_mode:
         payload["response_format"] = {"type": "json_object"}
     request = Request(os.environ.get("KINEVA_CHAT_MODEL_URL", "http://127.0.0.1:8788/v1/chat/completions"),
