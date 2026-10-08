@@ -1,6 +1,9 @@
-﻿import unittest
+﻿import sys
+import unittest
+from pathlib import Path
 
-from integrations.kineva.adult_chat_worker import english_drift
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from adult_chat_worker import english_drift
 
 
 class LanguageDriftTests(unittest.TestCase):
