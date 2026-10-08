@@ -361,10 +361,7 @@ def run_job(job_id, image, ideas, cast=None, shot_plans=None):
                     if cast.get("secondary_name") or cast.get("primary_name"):
                         review_video_people(path, 2 if cast.get("secondary_name") else 1)
                     locked = report.get("locked_plan") or {}
-                    previous = json.dumps({
-                        "cast": locked.get("cast"),
-                        "scenes": locked.get("scenes"),
-                    }, ensure_ascii=False)[:1200]
+                    previous = idea.strip()[:240]
                     scenes = locked.get("scenes") or []
                     dialogue = [
                         str(line.get("line") or "") for shot in locked.get("shots") or []
