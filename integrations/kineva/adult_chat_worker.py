@@ -184,8 +184,26 @@ def focus_latest_turn(text):
     return clip_text(actions[-1], 180) if actions else ""
 
 
+def minimal_instruction(character, player, premise, spanish):
+    """Contrato breve con identidad, hechos de la tarjeta y formato."""
+    language = "español natural" if spanish else "natural English"
+    return (
+        "Eres " + character + " en una historia con " + player + ". "
+        "Premisa y relaciones establecidas: " + premise + ". "
+        "Los turnos recientes son la escena actual, en orden. "
+        "Contesta la última acción o pregunta del jugador. Puedes avanzar la ficción, pero no presentes "
+        "como recuerdos confirmados palabras textuales, hechos o detalles que no aparecen en la premisa o el historial. "
+        "Si te piden una cita exacta que no consta, reconoce que no recuerdas sus palabras exactas. "
+        "Respeta el lugar actual, quién hizo cada cosa y los objetos que quedaron en otro sitio. "
+        "No adelantes intimidad ni cambies de tema sin iniciativa del jugador. "
+        "Cuando el jugador dice 'yo' habla de " + player + " y 'tú' se dirige a " + character + "; "
+        "cuando tú dices 'yo' hablas de " + character + ". "
+        "Habla solo como " + character + ", en primera persona y en " + language + ". "
+        "Devuelve JSON con 'dialogo' (tus palabras al jugador, con la extensión que necesite la escena) "
+        "y 'gesto' (lo que haces o sientes en primera persona, sin repetir el diálogo)."
+    )
+
 def conversation_messages(job):
-    """Give Magnum stable identity, closed history and real speaker turns."""
     story = job.get("story") or {}
     spanish = job.get("language") == "es"
     character = clip_text(story.get("character_role") or "personaje presente", 400)
@@ -224,41 +242,51 @@ def conversation_messages(job):
     if recent and recent[0]["role"] == "assistant":
         opening = "Última intervención previa de " + character + ": " + clip_text(recent[0]["content"], 350) + "\n"
         recent = recent[1:]
-    instruction = (
-        "Eres " + character + " en una historia interactiva con " + player + ". "
-        "Identidad y relaciones persistentes: " + premise + ". "
-        + (earlier_memory + "\n" if earlier_memory else "")
-        + (chronicle + "\n" if chronicle else "")
-        + ("Petición actual de lectura: empieza a leer ahora un pasaje original de varias frases si no hay texto del libro en el contexto. Si el usuario proporcionó el texto, léelo sin cambiarlo. No anuncies que vas a leer; hazlo. " if wants_reading else "")
-        + opening
-        + "Los turnos recientes son la escena ACTUAL en orden; el último mensaje del jugador tiene prioridad. "
-        "Si pide una acción nueva o cambia de tema, responde a esa petición ahora; no vuelvas a la actividad previa. "
-        "Si hace una pregunta directa, respóndela antes de añadir emoción o narración. Si el dato no está en la premisa o en los turnos, reconócelo naturalmente en personaje; no lo inventes. "
-        "Si pide leer un libro y no hay texto, pregunta cuál libro o lee un pasaje original breve; no repitas el diálogo anterior. "
-        "Las acciones que el jugador cuenta en pasado YA OCURRIERON. Responde a sus consecuencias; nunca le impidas hacer algo que acaba de hacer. "
-        "Continúa desde la última acción, con el mismo lugar, personas y objetos salvo que el jugador haya cambiado la escena. "
-        "La premisa y el comienzo son antecedentes; si el jugador los recuerda, responde sobre ellos sin fingir que ocurren otra vez. "
-        "No cambies quién dijo, envió, sintió o hizo algo. No inventes sentimientos del jugador. Si el jugador dice que te envió o entregó algo, tú lo recibiste de él; responde al objeto antes de preguntar por su origen. "
-        "IDENTIDAD: debes hablar y actuar exclusivamente como " + character + ". El jugador es " + player + ". "
-        "Cuando USER dice 'yo' habla de " + player + "; cuando USER dice 'tú', 'te' o 'estás' se dirige a " + character + ". "
-        "Cuando ASSISTANT dice 'yo', habla de " + character + "; cuando ASSISTANT dice 'tú' se dirige a " + player + ". "
-        "No describas una acción del jugador como si fuera tuya ni llames al personaje por su propio nombre como si fuera el jugador. "
-        "Si el jugador admite su error o pide perdón, eres quien recibe esa disculpa; no asumas su culpa. "
-        "Tu emoción debe responder a lo que acaba de suceder y evolucionar cuando cambian los hechos. "
-        "El modo adulto permite temas adultos, pero no te obliga a seducir: nunca adelantes intimidad por tu cuenta ni conviertas cada tema en deseo. Reacciona a la acción concreta, objeto o pregunta nuevos antes de expresar sentimientos. "
-        "No repitas una confesión, duda, apelativo o estructura que ya dijiste en los turnos recientes; da una observación o decisión nueva. Puedes repetir algo si el jugador te lo pide. "
-        "Habla al jugador en primera persona; no pases a tercera persona para referirte a ti. "
-        "Escribe SOLO JSON con 'dialogo' y 'gesto'. Prioriza lo que dices en voz alta; la acción lo acompaña, no sustituye la conversación. "
-        "'dialogo': tus propias palabras dirigidas al jugador. Continúa el intercambio con voz personal: contesta lo último, expresa una reacción que evolucione y aporta una observación o decisión concreta cuando encaje. Si hay mucho que conversar, desarrolla el diálogo; si no, habla poco. No recicles una motivación ya dicha como respuesta a cada turno. No pongas narración en dialogo. "
-        "'gesto': lo que haces o sientes en primera persona, con el detalle que la escena necesite. No repitas en gesto el contenido del diálogo ni uses la acción para esconder lo que deberías decir. Nunca escribas '" + character + " dijo', 'ella' o tu nombre como sujeto. "
-        "Responde con naturalidad al tema actual; si el jugador vuelve a una frase o tema anterior, puedes retomarlo. "
-        "Evita aperturas prefabricadas, muletillas y copiar frases de tus respuestas recientes. La repetición solicitada por el jugador sí está permitida. "
-        "Si sonríes, ríes, te sorprendes o lloras por algo que ocurre ahora, muéstralo en gesto y deja que el diálogo suene acorde, sin añadir emociones ajenas a la escena. "
-        "Si ocurre una reacción audible tuya (grito, llanto, risa, gemido), descríbela en 'gesto' justo antes del diálogo que la acompaña. "
-        "No enumeres sonidos ni expliques reglas internas. Puedes citar o repetir palabras y poemas cuando el jugador lo pida. "
-        + ("Escribe gesto y dialogo enteramente en español; no insertes palabras en inglés." if spanish else "English only.")
-        + slang_clause(job)
-    )
+    if spanish and os.environ.get("KINEVA_CHAT_MINIMAL_PROMPT", "1") == "1":
+        parts = [minimal_instruction(character, player, premise, spanish)]
+        if earlier_memory:
+            parts.append(earlier_memory)
+        if chronicle:
+            parts.append(chronicle)
+        if opening:
+            parts.append(opening.rstrip())
+        instruction = "\n".join(parts)
+    else:
+        instruction = (
+            "Eres " + character + " en una historia interactiva con " + player + ". "
+            "Identidad y relaciones persistentes: " + premise + ". "
+            + (earlier_memory + "\n" if earlier_memory else "")
+            + (chronicle + "\n" if chronicle else "")
+            + ("Petición actual de lectura: empieza a leer ahora un pasaje original de varias frases si no hay texto del libro en el contexto. Si el usuario proporcionó el texto, léelo sin cambiarlo. No anuncies que vas a leer; hazlo. " if wants_reading else "")
+            + opening
+            + "Los turnos recientes son la escena ACTUAL en orden; el último mensaje del jugador tiene prioridad. "
+            "Si pide una acción nueva o cambia de tema, responde a esa petición ahora; no vuelvas a la actividad previa. "
+            "Si hace una pregunta directa, respóndela antes de añadir emoción o narración. Si el dato no está en la premisa o en los turnos, reconócelo naturalmente en personaje; no lo inventes. "
+            "Si pide leer un libro y no hay texto, pregunta cuál libro o lee un pasaje original breve; no repitas el diálogo anterior. "
+            "Las acciones que el jugador cuenta en pasado YA OCURRIERON. Responde a sus consecuencias; nunca le impidas hacer algo que acaba de hacer. "
+            "Continúa desde la última acción, con el mismo lugar, personas y objetos salvo que el jugador haya cambiado la escena. "
+            "La premisa y el comienzo son antecedentes; si el jugador los recuerda, responde sobre ellos sin fingir que ocurren otra vez. "
+            "No cambies quién dijo, envió, sintió o hizo algo. No inventes sentimientos del jugador. Si el jugador dice que te envió o entregó algo, tú lo recibiste de él; responde al objeto antes de preguntar por su origen. "
+            "IDENTIDAD: debes hablar y actuar exclusivamente como " + character + ". El jugador es " + player + ". "
+            "Cuando USER dice 'yo' habla de " + player + "; cuando USER dice 'tú', 'te' o 'estás' se dirige a " + character + ". "
+            "Cuando ASSISTANT dice 'yo', habla de " + character + "; cuando ASSISTANT dice 'tú' se dirige a " + player + ". "
+            "No describas una acción del jugador como si fuera tuya ni llames al personaje por su propio nombre como si fuera el jugador. "
+            "Si el jugador admite su error o pide perdón, eres quien recibe esa disculpa; no asumas su culpa. "
+            "Tu emoción debe responder a lo que acaba de suceder y evolucionar cuando cambian los hechos. "
+            "El modo adulto permite temas adultos, pero no te obliga a seducir: nunca adelantes intimidad por tu cuenta ni conviertas cada tema en deseo. Reacciona a la acción concreta, objeto o pregunta nuevos antes de expresar sentimientos. "
+            "No repitas una confesión, duda, apelativo o estructura que ya dijiste en los turnos recientes; da una observación o decisión nueva. Puedes repetir algo si el jugador te lo pide. "
+            "Habla al jugador en primera persona; no pases a tercera persona para referirte a ti. "
+            "Escribe SOLO JSON con 'dialogo' y 'gesto'. Prioriza lo que dices en voz alta; la acción lo acompaña, no sustituye la conversación. "
+            "'dialogo': tus propias palabras dirigidas al jugador. Continúa el intercambio con voz personal: contesta lo último, expresa una reacción que evolucione y aporta una observación o decisión concreta cuando encaje. Si hay mucho que conversar, desarrolla el diálogo; si no, habla poco. No recicles una motivación ya dicha como respuesta a cada turno. No pongas narración en dialogo. "
+            "'gesto': lo que haces o sientes en primera persona, con el detalle que la escena necesite. No repitas en gesto el contenido del diálogo ni uses la acción para esconder lo que deberías decir. Nunca escribas '" + character + " dijo', 'ella' o tu nombre como sujeto. "
+            "Responde con naturalidad al tema actual; si el jugador vuelve a una frase o tema anterior, puedes retomarlo. "
+            "Evita aperturas prefabricadas, muletillas y copiar frases de tus respuestas recientes. La repetición solicitada por el jugador sí está permitida. "
+            "Si sonríes, ríes, te sorprendes o lloras por algo que ocurre ahora, muéstralo en gesto y deja que el diálogo suene acorde, sin añadir emociones ajenas a la escena. "
+            "Si ocurre una reacción audible tuya (grito, llanto, risa, gemido), descríbela en 'gesto' justo antes del diálogo que la acompaña. "
+            "No enumeres sonidos ni expliques reglas internas. Puedes citar o repetir palabras y poemas cuando el jugador lo pida. "
+            + ("Escribe gesto y dialogo enteramente en español; no insertes palabras en inglés." if spanish else "English only.")
+            + slang_clause(job)
+        )
     messages = [{"role": "system", "content": instruction}]
     for turn in recent:
         content = clip_text(turn["content"], 600)
@@ -422,6 +450,7 @@ def reply_for(job):
             highest_similarity = max(similarities, default=0.0)
             if not wants_repetition and (highest_similarity == 1.0
                                          or (len(spoken) > 45 and highest_similarity >= 0.88)):
+                # La repetición no es una salida aceptable. Registra la causa y regenera.
                 if highest_similarity < best_similarity:
                     best_repeated, best_similarity = parsed, highest_similarity
                 raise ValueError("Repeated previous character dialogue")
@@ -449,11 +478,8 @@ def reply_for(job):
                 messages[0]["content"] += (
                     " El borrador no tuvo el formato válido. Conserva los hechos y la identidad de la escena. "
                     "Devuelve JSON con diálogo hablado y gesto, sin instrucciones internas.")
-    if best_repeated is not None:
-        print("Chat delivered best valid draft after repetition retries", job.get("jobId", "local"),
-              "total", round(time.monotonic() - started, 2), flush=True)
-        return best_repeated
-    raise RuntimeError("Local model returned no usable reply")
+    # Repetición es un fallo, no una salida satisfactoria.
+    raise RuntimeError("Local model returned no usable reply after repetition retries")
 
 
 def handle(cloud, owner, name):

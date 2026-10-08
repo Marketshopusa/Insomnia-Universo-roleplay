@@ -37,7 +37,7 @@ class StoryMemoryTest(unittest.TestCase):
         messages = conversation_messages(job([], latest))
         self.assertIn(latest, messages[-1]["content"])
         self.assertIn("Detalle nuevo que debes atender: Te envié una brújula antigua.", messages[-1]["content"])
-        self.assertIn("no te obliga a seducir", messages[0]["content"])
+        self.assertIn("No adelantes intimidad", messages[0]["content"])
 
 
     def test_long_user_line_keeps_the_scene_just_played(self):
@@ -75,12 +75,11 @@ class StoryMemoryTest(unittest.TestCase):
         self.assertIn("cabaña", packed)
         self.assertIn("maceta", packed)
         self.assertIn("fogón", packed)
-        self.assertIn("mismo lugar", packed)
+        self.assertIn("Respeta el lugar actual", packed)
         self.assertIn("turnos recientes", packed)
         self.assertNotIn("acción física nueva", packed)
-        self.assertIn("escena ACTUAL", packed)
-        self.assertIn("último mensaje", packed)
-        self.assertIn("No cambies quién", packed)
+        self.assertIn("última acción o pregunta", packed)
+        self.assertIn("quién hizo cada cosa", packed)
         self.assertNotIn("te equivocaste al enviarlo", packed)
         self.assertNotIn("no te disculpes otra vez", packed)
         self.assertLess(len(packed), 16000)
@@ -133,7 +132,7 @@ class StoryMemoryTest(unittest.TestCase):
         messages = conversation_messages(current)
         self.assertEqual([turn["role"] for turn in messages], ["system", "user"])
         self.assertIn("La tormenta me asusta", messages[0]["content"])
-        self.assertIn("'estás' se dirige a Stefany", messages[0]["content"])
+        self.assertIn("'tú' se dirige a Stefany", messages[0]["content"])
         self.assertIn(current["userMessage"], messages[1]["content"])
         self.assertIn("Detalle nuevo que debes atender:", messages[1]["content"])
 
@@ -251,14 +250,15 @@ class StoryMemoryTest(unittest.TestCase):
         self.assertIn("dialogo lleve las palabras habladas", model.call_args.args[0][0]["content"])
         self.assertNotIn("gesto breve", model.call_args.args[0][0]["content"])
 
-    def test_repetition_retry_exhaustion_delivers_a_valid_reply_instead_of_red_error(self):
+    def test_repetition_retries_raise_recoverable_error_instead_of_silently_delivering_dup(self):
+        """Cuando el modelo solo repite, la respuesta NO debe entregarse como satisfactoria."""
         current = job([{"role": "assistant", "content": "*Miro el sobre* La carta está sobre la mesa."}],
                       "¿Qué hacemos ahora con la carta?")
         repeated = '{"gesto":"Miro el sobre","dialogo":"La carta está sobre la mesa."}'
         with patch("adult_chat_worker.free_gpu_for_chat"), patch(
                 "adult_chat_worker.model_chat", return_value=repeated) as model:
-            reply = reply_for(current)
-        self.assertEqual(reply, "*Miro el sobre* La carta está sobre la mesa.")
+            with self.assertRaisesRegex(RuntimeError, "no usable reply"):
+                reply_for(current)
         self.assertEqual(model.call_count, 3)
 
     def test_recalled_fact_does_not_gain_an_unsupported_number(self):

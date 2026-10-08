@@ -351,7 +351,7 @@ export default async function handler(req, res) {
       const lock = sceneLock(history, latest);
       const isOffRole = (text) => {
         const reply = String(text || "").trim();
-        if (!reply || reply.length > 720 || reply.split(/\n\s*\n/).length > 3) return true;
+        if (!reply || reply.length > 2400 || reply.split(/\n\s*\n/).length > 4) return true;
         if (replyChangesScene(reply, sceneContext)) return true;
         if (mentionsMinor(reply) && !mentionsMinor(sceneContext)) return true;
         if (/(respond as a character|under \d+ characters|brief action and natural dialogue|do not decide user actions|character .{0,80} currently|conversaci[oÃ³]n:|premise:|el usuario interpreta a|estÃ¡s interpretando a|language:|\bspanish\s*\.|\benglish\s*\.)/i.test(reply)) return true;
