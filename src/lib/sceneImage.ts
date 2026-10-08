@@ -16,19 +16,14 @@ export async function queueComfyStill(
   if (!jobId) {
     throw new Error(created.data?.message || created.error?.message || "No se pudo enviar la ilustración a ComfyUI.");
   }
-  let running = false;
   const started = Date.now();
-  while (Date.now() - started < 180000) {
-    if (!running && Date.now() - started > 45000) {
-      throw new Error("ComfyUI no tomó la ilustración. En esta PC ejecuta start-local-studio.ps1 y deja ComfyUI encendido en 127.0.0.1:8188.");
-    }
+  while (Date.now() - started < 660000) {
     await wait(2000);
     const status = await invoke<Reply>("illustrate-scene", { action: "status", jobId });
     if (status.data?.status === "ready" && status.data.imageUrl) return status.data.imageUrl;
     if (status.data?.status === "failed") {
       throw new Error(status.data.message || "ComfyUI no pudo ilustrar la escena.");
     }
-    if (status.data?.status === "running") running = true;
   }
   throw new Error("ComfyUI sigue ilustrando. Déjalo encendido y vuelve a pedir la misma escena.");
 }
@@ -41,10 +36,14 @@ export async function generateSceneImage(
     queueComfy?: ((payload: Record<string, unknown>) => Promise<string | null>) | null;
   } = {},
 ): Promise<string> {
-  const renderLocal = options.renderLocal ?? renderLocalScene;
   const invoke = options.invoke ?? invokeFunctionWithRetry;
-  const local = await renderLocal(body);
-  if (local) return local;
+  // The published app must use the durable queue: a browser-to-loopback render
+  // can be aborted by the browser while ComfyUI is still working on the image.
+  // An explicit local renderer remains available to the local development UI.
+  if (options.renderLocal) {
+    const local = await options.renderLocal(body);
+    if (local) return local;
+  }
   const queue = options.queueComfy === undefined
     ? (payload: Record<string, unknown>) => queueComfyStill(payload, invoke)
     : options.queueComfy;
