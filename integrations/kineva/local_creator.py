@@ -150,7 +150,7 @@ def build_graph(template, image_name, manifest_path, idea, job_id, episode, tota
     if total > 1:
         story += f" This is episode {episode} of {total} in a connected miniseries."
         if previous:
-            story += " Previous episode continuity: " + previous[:1200]
+            story += " Keep the same protagonist and established story prop; show only the current location and action."
     one(graph, "KinevaDirectShotPlan")[1]["inputs"].update({
         "prompt": story, "exact_dialogue": dialogue,
         "duration_seconds": min(15.08, max(5.17, 5.17 + len(idea) / 80)),
@@ -258,6 +258,42 @@ def review_video_people(path, max_people):
             raise RuntimeError("Toma rechazada: aparecen personas extra en el video; revisa las referencias.")
 
 
+def create_shot_reference(job_id, episode, shot_index, visual, cast, source_names):
+    """Make a distinct, reviewable first frame for each shot from cast references."""
+    prompt = (
+        "One coherent photorealistic cinematic film frame, one instant in one location. "
+        "Depict this visible action exactly: " + visual[:1200] + ". "
+        "Image 1 identifies the primary adult, not the location or camera pose. "
+        "Keep that person's face, age, hair and build. "
+    )
+    if cast.get("secondary_name"):
+        prompt += (
+            "Image 2 identifies the second adult separately; never merge their faces or bodies. "
+            "Primary: " + cast.get("primary_name", "primary") + ". "
+            "Second: " + cast["secondary_name"] + ". "
+        )
+    if cast.get("location_name"):
+        prompt += "Location: " + cast["location_name"] + ". " + cast.get("location_description", "")[:350] + ". "
+    prompt += "Exactly the participants in the action, distinct anatomically complete people. No duplicates, collage, captions or extra limbs."
+    seed_id = str(uuid.uuid5(uuid.UUID(job_id), f"shot-{episode}-{shot_index}"))
+    max_people = 2 if cast.get("secondary_name") else 1
+    image = None
+    for attempt in range(3):
+        candidate = render({"id": seed_id, "prompt": prompt, "reference_names": source_names},
+                           COMFY, OUTPUT, attempt=attempt, timeout=900)
+        result = review(candidate, max_people)
+        if result["accepted"] and result["face_count"] >= 1:
+            image = candidate
+            break
+    if image is None:
+        raise RuntimeError("La imagen inicial de esta toma no conservó los personajes; revisa sus fichas.")
+    name = f"kineva_local/{job_id}_ep{episode}_shot{shot_index}.png"
+    path = INPUT / name
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(image)
+    return name
+
+
 def run_job(job_id, image, ideas, cast=None, shot_plans=None):
     try:
         with GPU_LOCK:
@@ -327,6 +363,12 @@ def run_job(job_id, image, ideas, cast=None, shot_plans=None):
                 JOBS[job_id]["references"] = {key: "/references/" + job_id + "/" + key for key in reference_paths}
             persist_jobs()
             await_review(job_id, "references_ready")
+            preflight(COMFY)
+            source_names = [image_name]
+            if cast.get("secondary_image"):
+                source_names.append("kineva_local/" + references["characters"][cast["secondary_name"]])
+            if cast.get("location_image"):
+                source_names.append("kineva_local/" + references["locations"][cast["location_name"]])
             previous = ""
             count = len(ideas)
             shot_plans = shot_plans or [[{"visual": idea, "dialogue": ""}] for idea in ideas]
@@ -337,8 +379,10 @@ def run_job(job_id, image, ideas, cast=None, shot_plans=None):
                     idea = shot["visual"]
                     update(job_id, state="rendering", current=episode)
                     dialogue = shot["dialogue"]
+                    shot_image_name = create_shot_reference(
+                        job_id, episode, shot_index, idea, cast, source_names)
                     graph = build_graph(
-                        template, image_name, manifest_path, idea, job_id, episode, count, previous, cast, dialogue)
+                        template, shot_image_name, manifest_path, idea, job_id, episode, count, previous, cast, dialogue)
                     one(graph, "KinevaProjectContext")[1]["inputs"]["shot"] = shot_index
                     export_node = one(graph, "KinevaMasterExport")[0]
                     created = COMFY.call("POST", "/prompt", {

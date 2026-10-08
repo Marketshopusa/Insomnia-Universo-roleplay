@@ -84,13 +84,18 @@ def graph_for(job, attempt=0):
         "9": {"class_type": "SaveImage", "inputs": {
             "images": ["8", 0], "filename_prefix": "kineva_scenes/" + job["id"].replace("-", "")}},
     }
-    if job.get("reference_name"):
-        graph["10"] = {"class_type": "LoadImage", "inputs": {"image": job["reference_name"]}}
-        graph["11"] = {"class_type": "VAEEncode", "inputs": {"pixels": ["10", 0], "vae": ["3", 0]}}
-        graph["12"] = {"class_type": "ReferenceLatent", "inputs": {"conditioning": ["4", 0], "latent": ["11", 0]}}
-        graph["13"] = {"class_type": "ReferenceLatent", "inputs": {"conditioning": ["5", 0], "latent": ["11", 0]}}
-        graph["7"]["inputs"]["positive"] = ["12", 0]
-        graph["7"]["inputs"]["negative"] = ["13", 0]
+    references = job.get("reference_names") or ([job["reference_name"]] if job.get("reference_name") else [])
+    positive, negative = ["4", 0], ["5", 0]
+    for index, name in enumerate(references[:3]):
+        base = 10 + index * 4
+        load, encode, positive_id, negative_id = map(str, range(base, base + 4))
+        graph[load] = {"class_type": "LoadImage", "inputs": {"image": name}}
+        graph[encode] = {"class_type": "VAEEncode", "inputs": {"pixels": [load, 0], "vae": ["3", 0]}}
+        graph[positive_id] = {"class_type": "ReferenceLatent", "inputs": {"conditioning": positive, "latent": [encode, 0]}}
+        graph[negative_id] = {"class_type": "ReferenceLatent", "inputs": {"conditioning": negative, "latent": [encode, 0]}}
+        positive, negative = [positive_id, 0], [negative_id, 0]
+    graph["7"]["inputs"]["positive"] = positive
+    graph["7"]["inputs"]["negative"] = negative
     return graph
 
 def visible_moment(text):
