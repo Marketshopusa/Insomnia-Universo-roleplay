@@ -27,19 +27,17 @@ export function slangInstruction(language, region) {
 }
 
 const ACCENT = {
-  ar: "acento rioplatense de Buenos Aires, con vos y la entonación de Argentina",
-  ve: "acento venezolano de Caracas, con la cadencia de Venezuela",
-  co: "acento colombiano de Bogotá",
-  mx: "acento mexicano del centro de México",
-  es: "acento castellano de España",
-  cl: "acento chileno de Santiago",
+  ar: "rioplatense urbano de Buenos Aires, con entonación porteña suave",
+  ve: "venezolano urbano de Caracas, con cadencia caraqueña natural",
+  co: "colombiano de Bogotá, con articulación bogotana cálida y natural",
+  mx: "mexicano del centro de México, con cadencia conversacional natural",
+  es: "castellano peninsular de España, con pronunciación natural",
+  cl: "chileno urbano de Santiago, con cadencia santiaguina clara y natural",
 };
 
 export function accentHint(language, region) {
   if (language === "en") return "Speak American English. Keep this same voice on every line.";
   if (region === "plain") return "Habla en español con la voz natural de esta persona. No imites el acento de un país ni uses jerga regional.";
   const id = normalizeRegion(region);
-  return id === "es"
-    ? "Habla en español natural de España, con la voz estable de esta persona. No fuerces modismos."
-    : "Habla en español latinoamericano natural, con la voz estable de esta persona. No fuerces modismos ni caricaturices un acento.";
+  return `Habla en español con acento ${ACCENT[id]}. Conserva el timbre de la voz elegida y el texto literal. No añadas modismos, no exageres ni caricaturices el acento.`;
 }

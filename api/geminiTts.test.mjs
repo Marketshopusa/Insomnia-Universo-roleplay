@@ -35,7 +35,7 @@ test("Gemini 2.5 Flash TTS speaks Aoede with the story accent", async () => {
       assert.equal(body.voice.languageCode, "es-MX");
       assert.equal(body.voice.name, "Aoede");
       assert.equal(body.advancedVoiceOptions.safetySettings.settings[0].threshold, "BLOCK_NONE");
-      assert.match(body.input.prompt, /español latinoamericano natural/);
+      assert.match(body.input.prompt, /mexicano del centro de México/);
       return new Response(JSON.stringify({ audioContent: wav.toString("base64") }), { status: 200 });
     },
   });
@@ -56,7 +56,25 @@ test("a plain region keeps Gemini's own Spanish voice", () => {
   assert.doesNotMatch(prompt, /venezolano|mexicano|colombiano|rioplatense|chileno|castellano/);
 });
 
-test("Latin American Spanish uses es-419 without forced accent imitation", async () => {
+test("all six regional selections reach Gemini with distinct directions and supported locales", () => {
+  const cases = [
+    ["ar", "rioplatense urbano de Buenos Aires", "es-419"],
+    ["ve", "venezolano urbano de Caracas", "es-419"],
+    ["co", "colombiano de Bogotá", "es-419"],
+    ["mx", "mexicano del centro de México", "es-MX"],
+    ["es", "castellano peninsular de España", "es-ES"],
+    ["cl", "chileno urbano de Santiago", "es-419"],
+  ];
+  const prompts = cases.map(([region, hint, locale]) => {
+    const body = geminiStreamBody("Buenos días.", "Aoede", "es", "neutral", region);
+    assert.equal(body.generation_config.speech_config.language_code, locale);
+    assert.match(body.contents.parts.text, new RegExp(hint));
+    return body.contents.parts.text;
+  });
+  assert.equal(new Set(prompts).size, cases.length);
+});
+
+test("Venezuela selection sends the country-specific accent while keeping supported es-419", async () => {
   const { wav } = sampleWav();
   const locales = [];
   const result = await synthesizeGemini("Chamo, no puede ser.", "Aoede", "es", {
@@ -65,8 +83,8 @@ test("Latin American Spanish uses es-419 without forced accent imitation", async
     fetchImpl: async (_url, init) => {
       const body = JSON.parse(init.body);
       locales.push(body.voice.languageCode);
-      assert.match(body.input.prompt, /español latinoamericano natural/);
-      assert.doesNotMatch(body.input.prompt, /venezolano|exactamente/);
+      assert.match(body.input.prompt, /venezolano urbano de Caracas/);
+      assert.match(body.input.prompt, /No añadas modismos, no exageres/);
       assert.doesNotMatch(body.input.prompt, /gritos|aplausos|gemidos|\[laughing\]/i);
       assert.equal(body.input.text, "Chamo, no puede ser.");
       return new Response(JSON.stringify({ audioContent: wav.toString("base64") }), { status: 200 });
