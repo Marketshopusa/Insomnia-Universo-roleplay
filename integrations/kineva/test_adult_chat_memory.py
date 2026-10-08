@@ -248,6 +248,8 @@ class StoryMemoryTest(unittest.TestCase):
         self.assertIn("buscar el andén", reply)
         self.assertEqual(model.call_count, 2)
         self.assertIn("Ahora guardo el mapa", model.call_args.args[0][-1]["content"])
+        self.assertIn("dialogo lleve las palabras habladas", model.call_args.args[0][0]["content"])
+        self.assertNotIn("gesto breve", model.call_args.args[0][0]["content"])
 
     def test_repetition_retry_exhaustion_delivers_a_valid_reply_instead_of_red_error(self):
         current = job([{"role": "assistant", "content": "*Miro el sobre* La carta está sobre la mesa."}],

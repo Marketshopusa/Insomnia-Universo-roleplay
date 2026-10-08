@@ -248,9 +248,9 @@ def conversation_messages(job):
         "El modo adulto permite temas adultos, pero no te obliga a seducir: nunca adelantes intimidad por tu cuenta ni conviertas cada tema en deseo. Reacciona a la acción concreta, objeto o pregunta nuevos antes de expresar sentimientos. "
         "No repitas una confesión, duda, apelativo o estructura que ya dijiste en los turnos recientes; da una observación o decisión nueva. Puedes repetir algo si el jugador te lo pide. "
         "Habla al jugador en primera persona; no pases a tercera persona para referirte a ti. "
-        "Escribe SOLO JSON con 'gesto' y 'dialogo'. "
-        "'gesto': narra en primera persona solo lo que haces o sientes en esta escena; usa la extensión que necesite la acción, sin rellenar por sistema. Nunca escribas '" + character + " dijo', 'ella' o tu nombre como sujeto. "
-        "'dialogo': SOLO palabras que pronuncias en voz alta al jugador. No hay un límite de dos frases: cuando el último mensaje abre varias ideas o cambia la situación, conversa y desarrolla tu reacción con detalles propios y una iniciativa coherente; si basta una respuesta sencilla, sé breve. Evita respuestas genéricas que solo repitan la pregunta. Reacciona a la acción y a las preguntas actuales y permite que la escena avance sin copiar las palabras del jugador. No narres acciones dentro de dialogo. "
+        "Escribe SOLO JSON con 'dialogo' y 'gesto'. Prioriza lo que dices en voz alta; la acción lo acompaña, no sustituye la conversación. "
+        "'dialogo': tus propias palabras dirigidas al jugador. Continúa el intercambio con voz personal: contesta lo último, expresa una reacción que evolucione y aporta una observación o decisión concreta cuando encaje. Si hay mucho que conversar, desarrolla el diálogo; si no, habla poco. No recicles una motivación ya dicha como respuesta a cada turno. No pongas narración en dialogo. "
+        "'gesto': lo que haces o sientes en primera persona, con el detalle que la escena necesite. No repitas en gesto el contenido del diálogo ni uses la acción para esconder lo que deberías decir. Nunca escribas '" + character + " dijo', 'ella' o tu nombre como sujeto. "
         "Responde con naturalidad al tema actual; si el jugador vuelve a una frase o tema anterior, puedes retomarlo. "
         "Evita aperturas prefabricadas, muletillas y copiar frases de tus respuestas recientes. La repetición solicitada por el jugador sí está permitida. "
         "Si sonríes, ríes, te sorprendes o lloras por algo que ocurre ahora, muéstralo en gesto y deja que el diálogo suene acorde, sin añadir emociones ajenas a la escena. "
@@ -440,11 +440,15 @@ def reply_for(job):
                 messages[0]["content"] += (
                     " Tu borrador añadió un número o parentesco no establecido. "
                     "Responde solo con el dato que aparece en los recuerdos o reconoce que no sabes el detalle. ")
+            elif str(error) == "Repeated previous character dialogue":
+                messages[0]["content"] += (
+                    " La respuesta anterior volvió a una idea ya dicha. Atiende lo que acaba de cambiar "
+                    "en el último turno y continúa la conversación con una reacción propia, no con la misma motivación. "
+                    "Deja que dialogo lleve las palabras habladas y gesto solo la acción que las acompaña.")
             else:
                 messages[0]["content"] += (
-                    " El borrador anterior no fue válido o repitió el diálogo reciente. "
-                    "Conserva los hechos y la identidad de la escena; responde a la nueva acción "
-                    "con palabras distintas. Devuelve JSON con gesto breve y diálogo hablado.")
+                    " El borrador no tuvo el formato válido. Conserva los hechos y la identidad de la escena. "
+                    "Devuelve JSON con diálogo hablado y gesto, sin instrucciones internas.")
     if best_repeated is not None:
         print("Chat delivered best valid draft after repetition retries", job.get("jobId", "local"),
               "total", round(time.monotonic() - started, 2), flush=True)
