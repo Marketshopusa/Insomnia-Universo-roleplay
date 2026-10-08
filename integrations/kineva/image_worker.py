@@ -8,7 +8,9 @@ import subprocess
 import struct
 import sys
 import time
+from io import BytesIO
 from pathlib import Path
+from PIL import Image, ImageOps, UnidentifiedImageError
 from urllib.parse import quote, urlsplit
 from urllib.request import urlopen
 from worker import Api, release_idle_models
@@ -29,13 +31,13 @@ def save_cover_reference(url, job_id):
     with urlopen(str(url), timeout=12) as response:
         if urlsplit(response.geturl()).hostname != parsed.hostname:
             raise ValueError("La portada redirigió fuera del almacenamiento permitido.")
-        data = response.read(20_000_001)
+        data = response.read(40_000_001)
     is_png = data.startswith(b"\x89PNG\r\n\x1a\n")
     is_jpeg = data.startswith(b"\xff\xd8\xff")
     is_webp = data[:4] == b"RIFF" and data[8:12] == b"WEBP"
     is_video = data[4:8] == b"ftyp" or data[:4] == b"\x1a\x45\xdf\xa3"
-    if len(data) > (20_000_000 if is_video else 10_000_000) or not (is_png or is_jpeg or is_webp or is_video):
-        raise ValueError("La portada debe ser imagen de hasta 10 MB o video de hasta 20 MB.")
+    if len(data) > (20_000_000 if is_video else 40_000_000) or not (is_png or is_jpeg or is_webp or is_video):
+        raise ValueError("La portada debe ser imagen de hasta 40 MB o video de hasta 20 MB.")
     stem = "kineva_scene_reference_" + re.sub(r"[^a-f0-9]", "", job_id.lower())
     COMFY_INPUT.mkdir(parents=True, exist_ok=True)
     if is_video:
@@ -51,9 +53,18 @@ def save_cover_reference(url, job_id):
             return frame_path.name
         finally:
             video_path.unlink(missing_ok=True)
-    suffix = ".png" if is_png else ".jpg" if is_jpeg else ".webp"
-    name = stem + suffix
-    (COMFY_INPUT / name).write_bytes(data)
+    # The cover may be a large original; Comfy only needs a bounded reference.
+    # Decode and orient it before resampling, so large PNGs and phone photos work.
+    name = stem + ".jpg"
+    try:
+        Image.MAX_IMAGE_PIXELS = 40_000_000
+        with Image.open(BytesIO(data)) as source:
+            source.load()
+            reference = ImageOps.exif_transpose(source).convert("RGB")
+            reference.thumbnail((1024, 1536), Image.Resampling.LANCZOS)
+            reference.save(COMFY_INPUT / name, "JPEG", quality=91, optimize=True)
+    except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError) as error:
+        raise ValueError("No se pudo leer la portada como imagen.") from error
     return name
 
 
