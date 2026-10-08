@@ -40,7 +40,7 @@ def model_chat(messages, temperature, max_tokens, json_mode=False):
     payload = {"model": os.environ.get("KINEVA_CHAT_MODEL_NAME", "magnum-v4-12b"),
                "messages": messages, "max_tokens": max_tokens,
                "temperature": temperature, "top_p": 0.95,
-               "repeat_penalty": 1.08, "presence_penalty": 0.20,
+               "repeat_penalty": 1.08, "presence_penalty": 0.8,
                "frequency_penalty": 0.10}
     if json_mode:
         payload["response_format"] = {"type": "json_object"}
@@ -69,6 +69,10 @@ def parse_role_reply(raw_reply, character="", allow_third_person=False):
     dialogue = str(parsed.get("dialogo") or "").strip()
     if not dialogue:
         raise ValueError("Incomplete dialogue")
+    speaker = re.match(r"^[A-ZÁÉÍÓÚÑ][a-záéíóúñ]{2,}", character)
+    if (re.search(r"(?i)\b(?:gesto|gestos|di[aá]logo|dialogue)\s*:", dialogue)
+            or (speaker and re.match(r"^\s*" + re.escape(speaker.group()) + r"\s*:", dialogue, re.I))):
+        raise ValueError("Narrator leaked into dialogue")
     if not gesture:
         return dialogue
     name = re.match(r"^[A-ZÁÉÍÓÚÑ][a-záéíóúñ]{2,}", character)
@@ -95,8 +99,10 @@ def parse_role_reply(raw_reply, character="", allow_third_person=False):
 def parse_freeform_reply(raw_reply, character="", allow_third_person=False):
     """Recover the local model's ordinary roleplay format on a JSON retry."""
     content = raw_reply.strip()
-    if not content or content.startswith(("```", "{")) or re.search(r'(?im)^\s*"(?:gesto|dialogo)"\s*:', content):
-        raise ValueError("Incomplete JSON reply")
+    if (not content or content.startswith(("```", "{"))
+            or re.search(r'(?i)\b(?:gesto|gestos|di[aá]logo|dialogue)\s*:', content)
+            or re.match(r"^[A-ZÁÉÍÓÚÑ][\wÁÉÍÓÚÑáéíóúñ -]{1,60}:\s", content)):
+        raise ValueError("Narrator or incomplete JSON reply")
     stage = re.match(r"^\*([^*]{1,140})\*\s*", content)
     gesture = stage.group(1).strip() if stage else ""
     spoken = content[stage.end():] if stage else content
@@ -202,11 +208,13 @@ def minimal_instruction(character, player, premise, spanish):
         "cuando tú dices 'yo' hablas de " + character + ". "
         "Dirígete al jugador como 'tú'; no lo describas en tercera persona ni como si fuera otra persona. "
         "Habla solo como " + character + ", en primera persona y en " + language + ". "
-        "Devuelve JSON con 'dialogo' (tus palabras al jugador, con la extensión que necesite la escena) "
-        "y 'gesto' (lo que haces o sientes en primera persona, sin repetir el diálogo). "
-        "Responde con una reacción nueva a lo último que hizo o preguntó el jugador, sin limitarte a parafrasearlo. "
-        "Cuando la escena requiere conversación, desarrolla el diálogo con naturalidad; cuando requiere silencio, "
-        "deja que la acción exprese el momento. No narres de nuevo la acción que ya describió el jugador."
+        "Devuelve solo JSON con 'dialogo' (tus palabras pronunciadas al jugador) y 'gesto' "
+        "(una acción breve tuya en primera persona). La conversación debe llevar el turno: "
+        "aproximadamente 60% o más de diálogo y 30% o menos de gesto cuando hablas. "
+        "No escribas un narrador, el nombre del personaje seguido de dos puntos, ni una recapitulación "
+        "de los hechos. Reacciona directamente a la última acción o pregunta con palabras nuevas; "
+        "no parafrasees ni repitas el mensaje del jugador. Si la escena requiere conversación, "
+        "desarrolla el diálogo con naturalidad; si pide silencio, deja la acción expresar el momento."
     )
 
 def conversation_messages(job):
@@ -423,8 +431,8 @@ def reply_for(job):
     for attempt in range(3):
         try:
             raw_reply = model_chat(
-                messages, 0.78 + attempt * 0.05,
-                600 if wants_reading else 500, json_mode=(attempt == 0))
+                messages, 0.90 + attempt * 0.05,
+                400, json_mode=(attempt == 0))
             structured_reply = bool(re.match(r"^\s*(?:```(?:json)?\s*)?\{", raw_reply, re.I)) or bool(re.search(r'(?im)^\s*"(?:gesto|dialogo)"\s*:', raw_reply))
             try:
                 parsed = parse_role_reply(raw_reply, character)

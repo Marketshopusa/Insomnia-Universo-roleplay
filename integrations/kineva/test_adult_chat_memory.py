@@ -161,7 +161,7 @@ class StoryMemoryTest(unittest.TestCase):
             reply = reply_for(current)
         self.assertEqual(reply, "*Me quedo mirando el muro* Veo una sombra junto a las piedras.")
         model.assert_called_once()
-        self.assertEqual(model.call_args.args[2], 500)
+        self.assertEqual(model.call_args.args[2], 400)
 
     def test_repeated_user_question_and_poem_remain_in_history(self):
         poem = "Pedrito se cayó, volvió a levantarse y siguió cantando."
@@ -226,6 +226,16 @@ class StoryMemoryTest(unittest.TestCase):
                 "adult_chat_worker.model_chat", side_effect=['{"gesto":"","dialogo":""}', plain]) as model:
             reply = reply_for(current)
         self.assertEqual(reply, "*Miro la llave y sonrío* Podemos probarla en esta cerradura. Si se abre, entraré contigo sin hacer ruido.")
+        self.assertEqual(model.call_count, 2)
+
+    def test_narrator_with_leaked_dialogue_label_is_retried(self):
+        current = job([], "Te entrego la carta. ¿La recibiste?")
+        narrated = "Andrea: William le entrega la carta y ella se sorprende. dialogo: Sí, la tengo."
+        fresh = '{"gesto":"Tomo la carta","dialogo":"Sí, la recibí. Gracias por traerla."}'
+        with patch("adult_chat_worker.free_gpu_for_chat"), patch(
+                "adult_chat_worker.model_chat", side_effect=[narrated, fresh]) as model:
+            reply = reply_for(current)
+        self.assertEqual(reply, "*Tomo la carta* Sí, la recibí. Gracias por traerla.")
         self.assertEqual(model.call_count, 2)
 
     def test_relevant_older_memory_is_kept_as_past_with_correct_speaker(self):
