@@ -1,6 +1,6 @@
 ﻿import unittest
 
-from adult_chat_worker import english_drift
+from integrations.kineva.adult_chat_worker import english_drift
 
 
 class LanguageDriftTests(unittest.TestCase):
