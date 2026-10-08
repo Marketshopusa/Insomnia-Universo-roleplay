@@ -39,8 +39,9 @@ def normalize_reply(value):
 def model_chat(messages, temperature, max_tokens, json_mode=False):
     payload = {"model": os.environ.get("KINEVA_CHAT_MODEL_NAME", "qwen3-14b"),
                "messages": messages, "max_tokens": max_tokens,
-               "temperature": temperature, "repeat_penalty": 1.08,
-               "presence_penalty": 0.12, "frequency_penalty": 0.10,
+               "temperature": temperature, "top_p": 0.95,
+               "repeat_penalty": 1.08, "presence_penalty": 0.20,
+               "frequency_penalty": 0.10,
                "chat_template_kwargs": {"enable_thinking": False}}
     if json_mode:
         payload["response_format"] = {"type": "json_object"}
@@ -190,7 +191,9 @@ def minimal_instruction(character, player, premise, spanish):
     return (
         "Eres " + character + " en una historia con " + player + ". "
         "Premisa y relaciones establecidas: " + premise + ". "
-        "Los turnos recientes son la escena actual, en orden. "
+        "Los turnos recientes son la escena actual, en orden. Las acciones recientes del jugador ya ocurrieron: "
+        "si pregunta quién hizo o entregó algo, comprueba esos turnos antes de responder. "
+        "Si el jugador cambia de lugar, continúa desde el nuevo lugar. "
         "Contesta la última acción o pregunta del jugador. Puedes avanzar la ficción, pero no presentes "
         "como recuerdos confirmados palabras textuales, hechos o detalles que no aparecen en la premisa o el historial. "
         "Si te piden una cita exacta que no consta, reconoce que no recuerdas sus palabras exactas. "
@@ -198,9 +201,13 @@ def minimal_instruction(character, player, premise, spanish):
         "No adelantes intimidad ni cambies de tema sin iniciativa del jugador. "
         "Cuando el jugador dice 'yo' habla de " + player + " y 'tú' se dirige a " + character + "; "
         "cuando tú dices 'yo' hablas de " + character + ". "
+        "Dirígete al jugador como 'tú'; no lo describas en tercera persona ni como si fuera otra persona. "
         "Habla solo como " + character + ", en primera persona y en " + language + ". "
         "Devuelve JSON con 'dialogo' (tus palabras al jugador, con la extensión que necesite la escena) "
-        "y 'gesto' (lo que haces o sientes en primera persona, sin repetir el diálogo)."
+        "y 'gesto' (lo que haces o sientes en primera persona, sin repetir el diálogo). "
+        "Responde con una reacción nueva a lo último que hizo o preguntó el jugador, sin limitarte a parafrasearlo. "
+        "Cuando la escena requiere conversación, desarrolla el diálogo con naturalidad; cuando requiere silencio, "
+        "deja que la acción exprese el momento. No narres de nuevo la acción que ya describió el jugador."
     )
 
 def conversation_messages(job):
@@ -414,12 +421,10 @@ def reply_for(job):
         for turn in (job.get("history") or [])
         if turn.get("role") == "assistant"
     ][-4:]
-    best_repeated = None
-    best_similarity = float("inf")
     for attempt in range(3):
         try:
             raw_reply = model_chat(
-                messages, 0.74 + attempt * 0.06,
+                messages, 0.78 + attempt * 0.05,
                 600 if wants_reading else 500, json_mode=(attempt == 0))
             structured_reply = bool(re.match(r"^\s*(?:```(?:json)?\s*)?\{", raw_reply, re.I)) or bool(re.search(r'(?im)^\s*"(?:gesto|dialogo)"\s*:', raw_reply))
             try:
@@ -445,15 +450,16 @@ def reply_for(job):
                 raise ValueError("Unexpected English in Spanish reply")
             if unsupported_recalled_fact(parsed, job):
                 raise ValueError("Unsupported scene fact")
+            # Solo rechaza un fragmento largo que el personaje repite por sí mismo.
+            # El jugador siempre puede pedir de nuevo una cita o una frase.
             similarities = [SequenceMatcher(None, spoken, normalize_reply(old)).ratio()
                             for old in previous_replies if old.strip()]
             highest_similarity = max(similarities, default=0.0)
             if not wants_repetition and (highest_similarity == 1.0
                                          or (len(spoken) > 45 and highest_similarity >= 0.88)):
-                # La repetición no es una salida aceptable. Registra la causa y regenera.
-                if highest_similarity < best_similarity:
-                    best_repeated, best_similarity = parsed, highest_similarity
                 raise ValueError("Repeated previous character dialogue")
+            if not wants_repetition and repeats_recent_clause(spoken_text, previous_replies):
+                raise ValueError("Reused a clause from a recent reply")
             if attempt == 0 and wants_reading and len(spoken) < 190:
                 print("Chat announced reading without reading; retrying", job.get("jobId", "local"), flush=True)
                 messages[0]["content"] += " Tu borrador solo anunció que iba a leer. En el diálogo lee ya un pasaje original de al menos tres frases, sin preámbulo."
@@ -469,10 +475,12 @@ def reply_for(job):
                 messages[0]["content"] += (
                     " Tu borrador añadió un número o parentesco no establecido. "
                     "Responde solo con el dato que aparece en los recuerdos o reconoce que no sabes el detalle. ")
-            elif str(error) == "Repeated previous character dialogue":
+            elif (str(error) == "Repeated previous character dialogue"
+                    or str(error) == "Reused a clause from a recent reply"):
                 messages[0]["content"] += (
-                    " La respuesta anterior volvió a una idea ya dicha. Atiende lo que acaba de cambiar "
-                    "en el último turno y continúa la conversación con una reacción propia, no con la misma motivación. "
+                    " El borrador anterior volvió a una frase que ya dijiste en esta escena. "
+                    "Contesta el último mensaje del jugador con otras palabras: una reacción, un detalle "
+                    "nuevo o una decisión concreta. Evitar repetir las mismas acciones y gestos. "
                     "Deja que dialogo lleve las palabras habladas y gesto solo la acción que las acompaña.")
             else:
                 messages[0]["content"] += (

@@ -192,18 +192,19 @@ class StoryMemoryTest(unittest.TestCase):
         self.assertEqual(reply, prior)
         model.assert_called_once()
 
-    def test_repeated_intro_with_new_scene_detail_is_not_cut_or_rejected(self):
+    def test_recycled_clause_regenerates_when_user_changes_scene(self):
         previous = "*Bajo la mirada* Ay, no puedo creer que me hayas dejado hacer esto. Volvamos a casa."
         current = job([
             {"role": "assistant", "content": previous},
             {"role": "user", "content": "Vi algo moverse al lado de la ventana."},
         ], "¿Qué ves ahora junto a la ventana?")
-        raw = '{"gesto":"Miro hacia la ventana","dialogo":"Ay, no puedo creer que me hayas dejado hacer esto. Ahora veo una sombra detrás del cristal."}'
+        repeated = '{"gesto":"Miro hacia la ventana","dialogo":"Ay, no puedo creer que me hayas dejado hacer esto. Ahora veo una sombra detrás del cristal."}'
+        fresh = '{"gesto":"Me acerco a la ventana","dialogo":"Veo una sombra detrás del cristal. Espera aquí mientras miro mejor."}'
         with patch("adult_chat_worker.free_gpu_for_chat"), patch(
-                "adult_chat_worker.model_chat", return_value=raw) as model:
+                "adult_chat_worker.model_chat", side_effect=[repeated, fresh]) as model:
             reply = reply_for(current)
-        self.assertEqual(reply, "*Miro hacia la ventana* Ay, no puedo creer que me hayas dejado hacer esto. Ahora veo una sombra detrás del cristal.")
-        model.assert_called_once()
+        self.assertEqual(reply, "*Me acerco a la ventana* Veo una sombra detrás del cristal. Espera aquí mientras miro mejor.")
+        self.assertEqual(model.call_count, 2)
 
     def test_empty_json_retry_uses_unconstrained_generation(self):
         current = job([{"role": "assistant", "content": "*Abro la ventana* Hay una sombra en el jardín."}],
