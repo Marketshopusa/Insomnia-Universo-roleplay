@@ -86,6 +86,9 @@ const chapterOptions = [3, 5, 7, 10, 12];
   const [localJob, setLocalJob] = useState<LocalJob | null>(null);
   const [creativity, setCreativity] = useState("balanced");
   const [description, setDescription] = useState("");
+  const [manualTitle, setManualTitle] = useState("");
+  const [manualScenes, setManualScenes] = useState(["", "", ""]);
+  const [manualLines, setManualLines] = useState(["", "", ""]);
   const [chapterCount, setChapterCount] = useState(7);
   const [isSafeForWork, setIsSafeForWork] = useState(false);
   const [language, setLanguage] = useState("Spanish");
@@ -164,6 +167,23 @@ const chapterOptions = [3, 5, 7, 10, 12];
       : localHealth === "missing-template"
         ? "Falta la plantilla de Kineva en esta PC."
         : "Al generar el video, Chrome pregunta si puede usar Kineva en esta PC. Pulsa Permitir. El worker sigue en 127.0.0.1:8787.";
+
+  const downloadLocalChapter = async (url: string, episode: number) => {
+    try {
+      const response = await fetch(localVideoSrc(url), loopbackInit());
+      if (!response.ok) throw new Error("El video no está disponible en esta PC.");
+      const objectUrl = URL.createObjectURL(await response.blob());
+      const link = document.createElement("a");
+      link.href = objectUrl;
+      link.download = `kineva-capitulo-${episode}.mp4`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 10000);
+    } catch (error) {
+      toast({ title: "No se pudo descargar el capítulo", description: error instanceof Error ? error.message : undefined, variant: "destructive" });
+    }
+  };
 
   const storeChapterVideo = async (episodeId: string, blob: Blob) => {
     const path = "episodes/" + episodeId + "/local/" + crypto.randomUUID() + ".mp4";
@@ -257,6 +277,69 @@ const chapterOptions = [3, 5, 7, 10, 12];
       await filmChapters([], seriesEpisodeIds, undefined, [], novel, { ...current, state: "rendering" });
     } catch (e) {
       toast({ title: "No se pudo continuar el video", description: e instanceof Error ? e.message : undefined, variant: "destructive" });
+    } finally {
+      setGeneratingVideos(false);
+    }
+  };
+
+  const handleManualSeries = async () => {
+    if (!user) {
+      toast({ title: "Inicia sesión para guardar la serie.", variant: "destructive" });
+      return;
+    }
+    const title = manualTitle.trim();
+    const scenes = manualScenes.map((text) => text.trim());
+    const lines = manualLines.map((text) => text.trim());
+    if (!title || scenes.some((text) => text.length < 5) || lines.some((text) => !text || text.length > 180 || text.split(/\s+/).length > 20)) {
+      toast({ title: "Completa el título, las tres acciones y una frase breve por capítulo.", variant: "destructive" });
+      return;
+    }
+    if (!referenceImage) {
+      toast({ title: "Sube una foto del personaje principal para mantener su identidad.", variant: "destructive" });
+      return;
+    }
+    if (localJob && !["completed", "failed"].includes(localJob.state)) {
+      toast({ title: "Termina o rechaza la serie que está en curso antes de comenzar otra.", variant: "destructive" });
+      return;
+    }
+    setGeneratingVideos(true);
+    const chapters = scenes.map((visual, index) => ({
+      number: index + 1,
+      title: "Capítulo " + (index + 1),
+      content: visual + "\n" + lines[index],
+      video_prompt: visual,
+      spoken_line: lines[index],
+      shots: [{ visual, dialogue: lines[index] }],
+    }));
+    const draft = { title, logline: description.trim() || scenes[0], chapters };
+    try {
+      const probe = await probeLocalKineva();
+      if (probe.status !== "ready") throw new Error("Enciende ComfyUI y Kineva en esta PC antes de crear la serie.");
+      let referencePath: string | null = null;
+      try {
+        referencePath = await uploadKinevaReference(user.id, title, referenceImage);
+      } catch {
+        // The local photo remains usable even when the optional cloud cover upload fails.
+      }
+      const saved = await saveNovelSeries({
+        userId: user.id,
+        novel: draft,
+        description: draft.logline,
+        isAdult: !isSafeForWork,
+        referencePath,
+      });
+      setNovel(draft);
+      setSeriesEpisodeIds(saved.episodeIds);
+      setSavedSeriesId(saved.seriesId);
+      setLocalJob(null);
+      toast({ title: "Serie de tres capítulos guardada", description: "Revisa las referencias y cada toma antes de aprobarla." });
+      await filmChapters(scenes, saved.episodeIds, probe, lines, draft);
+    } catch (error) {
+      toast({
+        title: "La serie no pudo completar sus videos",
+        description: error instanceof Error ? error.message : undefined,
+        variant: "destructive",
+      });
     } finally {
       setGeneratingVideos(false);
     }
@@ -670,6 +753,29 @@ const chapterOptions = [3, 5, 7, 10, 12];
            </div>
          </Card>
 
+        <Card className="p-6 mb-6 space-y-4">
+          <h2 className="text-lg font-medium">Mi miniserie de tres capítulos</h2>
+          <p className="text-sm text-muted-foreground">Sube arriba la foto del personaje. Escribe una acción y una frase por capítulo; Kineva conservará la referencia entre tomas.</p>
+          <input aria-label="Título de la miniserie" placeholder="Título de la miniserie" value={manualTitle}
+            onChange={(event) => setManualTitle(event.target.value)} maxLength={120}
+            className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm" />
+          {manualScenes.map((scene, index) => (
+            <div key={index} className="space-y-2 border-t border-border pt-3">
+              <Label htmlFor={"manual-scene-" + index}>Capítulo {index + 1}: ¿qué sucede?</Label>
+              <Textarea id={"manual-scene-" + index} value={scene} placeholder="Describe la acción en una frase"
+                onChange={(event) => setManualScenes((current) => current.map((value, i) => i === index ? event.target.value : value))}
+                className="min-h-[70px]" maxLength={1200} />
+              <input aria-label={"Frase del capítulo " + (index + 1)} value={manualLines[index]}
+                placeholder="Frase exacta que dirá el personaje (máximo 20 palabras)"
+                onChange={(event) => setManualLines((current) => current.map((value, i) => i === index ? event.target.value : value))}
+                className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm" maxLength={180} />
+            </div>
+          ))}
+          <Button type="button" onClick={() => void handleManualSeries()} disabled={generating || generatingVideos}>
+            {generatingVideos ? "Preparando la serie…" : "Crear y filmar tres capítulos"}
+          </Button>
+        </Card>
+
         {/* Generar proyecto completo */}
         <Button
           size="lg"
@@ -719,6 +825,8 @@ const chapterOptions = [3, 5, 7, 10, 12];
               <div key={video.url}>
                 <h3 className="text-sm font-medium">Escena del capítulo {video.episode}</h3>
                 <video controls className="mt-2 w-full rounded-md" src={localVideoSrc(video.url)} />
+                <Button type="button" variant="outline" size="sm" className="mt-2"
+                  onClick={() => void downloadLocalChapter(video.url, video.episode)}>Descargar MP4</Button>
                 {video.approved === false && <p className="text-sm text-amber-600">Pendiente de aprobación visual</p>}
               </div>
             ))}
