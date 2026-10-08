@@ -486,6 +486,29 @@ export default async function handler(req, res) {
       if (episodeError) throw Object.assign(new Error(episodeError.message), { status: 500 });
       return send(res, 200, { series, episodes });
     }
+    if (action === "generate-studio-draft") {
+      const idea = String(body.description || "").trim().slice(0, 1500);
+      if (idea.length < 10) return send(res, 400, { error: "description_too_short" });
+      const language = body.language === "English" ? "English" : "español";
+      const prompt = "Crea un guion breve y coherente de exactamente tres capítulos a partir de una idea sencilla. "
+        + "Entrega solo JSON con esta estructura: "
+        + JSON.stringify({ title: "", chapters: [
+          { visual: "Una acción visual concreta en un lugar", dialogue: "Frase breve pronunciada por el protagonista" },
+          { visual: "", dialogue: "" }, { visual: "", dialogue: "" },
+        ] })
+        + ". Cada visual muestra una acción distinta y conserva el reparto y los hechos entre capítulos. "
+        + "Cada diálogo tiene hasta 20 palabras, puede quedar vacío y no contiene instrucciones técnicas. "
+        + "No inventes personajes adicionales ni sustituyas la idea. Idioma: " + language + ". Idea: " + idea;
+      const raw = await generate("gemini-2.5-flash", [{ text: prompt }],
+        { responseMimeType: "application/json", maxOutputTokens: 1800, temperature: 0.5 },
+        { fastReply: true, fallbackModels: ["gemini-3.5-flash-lite"] });
+      const draft = JSON.parse(raw);
+      if (!draft.title || !Array.isArray(draft.chapters) || draft.chapters.length !== 3
+          || draft.chapters.some((chapter) => String(chapter.visual || "").trim().length < 5)) {
+        throw Object.assign(new Error("El guion no trajo tres escenas completas."), { status: 502 });
+      }
+      return send(res, 200, { draft });
+    }
     if (action === "generate-novel") {
       const idea = String(body.description || "").trim().slice(0, 3500);
       if (idea.length < 10) return send(res, 400, { error: "description_too_short" });

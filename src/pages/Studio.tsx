@@ -2,6 +2,8 @@ import { invokeFunctionWithRetry } from "@/lib/invokeFunction";
 import { generateSceneImage } from "@/lib/sceneImage";
 import { publishLocalChapters } from "@/lib/chapterVideo";
 import { uploadKinevaReference } from "@/lib/kinevaReference";
+import { splitKinevaDialogue } from "@/lib/kinevaDialogue";
+import { CastGallery } from "@/components/studio/CastGallery";
 import { saveNovelSeries } from "@/lib/saveNovelSeries";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -89,6 +91,8 @@ const chapterOptions = [3, 5, 7, 10, 12];
   const [manualTitle, setManualTitle] = useState("");
   const [manualScenes, setManualScenes] = useState(["", "", ""]);
   const [manualLines, setManualLines] = useState(["", "", ""]);
+  const [draftingThree, setDraftingThree] = useState(false);
+  const [showManualEditor, setShowManualEditor] = useState(false);
   const [chapterCount, setChapterCount] = useState(7);
   const [isSafeForWork, setIsSafeForWork] = useState(false);
   const [language, setLanguage] = useState("Spanish");
@@ -282,6 +286,32 @@ const chapterOptions = [3, 5, 7, 10, 12];
     }
   };
 
+  const draftThreeChapters = async () => {
+    const idea = description.trim();
+    if (idea.length < 10) {
+      toast({ title: "Escribe una idea breve para que la IA prepare los capítulos.", variant: "destructive" });
+      return;
+    }
+    setDraftingThree(true);
+    try {
+      const { data, error } = await invokeFunctionWithRetry<{ draft?: { title: string; chapters: { visual: string; dialogue: string }[] } }>("generate-studio-draft", {
+        description: idea, language,
+      });
+      if (error || !data?.draft?.chapters || data.draft.chapters.length !== 3) {
+        throw new Error(error?.message || "La IA no entregó los tres capítulos.");
+      }
+      setManualTitle(String(data.draft.title || manualTitle || "Mi miniserie").slice(0, 120));
+      setManualScenes(data.draft.chapters.map((chapter) => String(chapter.visual || "").slice(0, 1200)));
+      setManualLines(data.draft.chapters.map((chapter) => String(chapter.dialogue || "").slice(0, 400)));
+      setShowManualEditor(true);
+      toast({ title: "Guion preparado", description: "Revisa las tres escenas antes de filmarlas." });
+    } catch (error) {
+      toast({ title: "No pude preparar el guion", description: error instanceof Error ? error.message : undefined, variant: "destructive" });
+    } finally {
+      setDraftingThree(false);
+    }
+  };
+
   const handleManualSeries = async () => {
     if (!user) {
       toast({ title: "Inicia sesión para guardar la serie.", variant: "destructive" });
@@ -290,8 +320,18 @@ const chapterOptions = [3, 5, 7, 10, 12];
     const title = manualTitle.trim();
     const scenes = manualScenes.map((text) => text.trim());
     const lines = manualLines.map((text) => text.trim());
-    if (!title || scenes.some((text) => text.length < 5) || lines.some((text) => !text || text.length > 180 || text.split(/\s+/).length > 20)) {
-      toast({ title: "Completa el título, las tres acciones y una frase breve por capítulo.", variant: "destructive" });
+    if (!title) {
+      toast({ title: "Escribe el título de la miniserie.", variant: "destructive" });
+      return;
+    }
+    const missingScene = scenes.findIndex((text) => text.length < 5);
+    if (missingScene !== -1) {
+      toast({ title: `Describe qué ocurre en el capítulo ${missingScene + 1} (al menos cinco caracteres).`, variant: "destructive" });
+      return;
+    }
+    const longLine = lines.findIndex((text) => splitKinevaDialogue(text).length > 3);
+    if (longLine !== -1) {
+      toast({ title: `El diálogo del capítulo ${longLine + 1} supera tres tomas. Acórtalo o divídelo en otra escena.`, variant: "destructive" });
       return;
     }
     if (!referenceImage) {
@@ -303,13 +343,14 @@ const chapterOptions = [3, 5, 7, 10, 12];
       return;
     }
     setGeneratingVideos(true);
+    const spokenShots = lines.map((line) => splitKinevaDialogue(line));
     const chapters = scenes.map((visual, index) => ({
       number: index + 1,
       title: "Capítulo " + (index + 1),
-      content: visual + "\n" + lines[index],
+      content: visual + (lines[index] ? "\n" + lines[index] : ""),
       video_prompt: visual,
-      spoken_line: lines[index],
-      shots: [{ visual, dialogue: lines[index] }],
+      spoken_line: spokenShots[index][0],
+      shots: spokenShots[index].map((dialogue) => ({ visual, dialogue })),
     }));
     const draft = { title, logline: description.trim() || scenes[0], chapters };
     try {
@@ -333,7 +374,7 @@ const chapterOptions = [3, 5, 7, 10, 12];
       setSavedSeriesId(saved.seriesId);
       setLocalJob(null);
       toast({ title: "Serie de tres capítulos guardada", description: "Revisa las referencias y cada toma antes de aprobarla." });
-      await filmChapters(scenes, saved.episodeIds, probe, lines, draft);
+      await filmChapters(scenes, saved.episodeIds, probe, spokenShots.map((shots) => shots[0]), draft);
     } catch (error) {
       toast({
         title: "La serie no pudo completar sus videos",
@@ -674,14 +715,19 @@ const chapterOptions = [3, 5, 7, 10, 12];
          </Card>
 
           <Card className="p-6 mb-6 space-y-3">
-            <Label htmlFor="kineva-reference">Personaje principal: foto de referencia (opcional)</Label>
+            <CastGallery userId={user.id}
+              onPrimary={(file, name) => { setReferenceImage(file); setPrimaryName(name); }}
+              onSecondary={(file, name) => { setSecondaryImage(file); setSecondaryName(name); }} />
+            <div className="border-t border-border pt-3">
+              <Label htmlFor="kineva-reference">Protagonista para esta serie: elige de la galería o sube una foto temporal</Label>
+            </div>
             <input id="kineva-reference" type="file" accept="image/png,image/jpeg,image/webp"
               onChange={(event) => setReferenceImage(event.target.files?.[0] ?? null)}
               className="block w-full text-sm" />
             <input aria-label="Nombre del personaje principal" placeholder="Nombre del personaje principal" value={primaryName}
               onChange={(event) => setPrimaryName(event.target.value)} maxLength={80}
               className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm" />
-            <Label htmlFor="kineva-second">Segundo personaje: foto separada</Label>
+            <Label htmlFor="kineva-second">Segundo protagonista para esta serie (opcional)</Label>
             <input id="kineva-second" type="file" accept="image/png,image/jpeg,image/webp"
               onChange={(event) => setSecondaryImage(event.target.files?.[0] ?? null)} className="block w-full text-sm" />
             <input aria-label="Nombre del segundo personaje" placeholder="Nombre del segundo personaje" value={secondaryName}
@@ -697,7 +743,7 @@ const chapterOptions = [3, 5, 7, 10, 12];
               onChange={(event) => setLocationDescription(event.target.value)} maxLength={400}
               className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm" />
             <p className="text-xs text-muted-foreground">
-              Estas referencias se envían a Kineva en esta PC para mantener personajes y lugar separados entre capítulos.
+              Kineva usa las fotos seleccionadas en esta serie. Otros actores guardados quedan disponibles para elegirlos en la siguiente; aún no aparecen automáticamente en una toma.
             </p>
           </Card>
 
@@ -755,7 +801,18 @@ const chapterOptions = [3, 5, 7, 10, 12];
 
         <Card className="p-6 mb-6 space-y-4">
           <h2 className="text-lg font-medium">Mi miniserie de tres capítulos</h2>
-          <p className="text-sm text-muted-foreground">Sube arriba la foto del personaje. Escribe una acción y una frase por capítulo; Kineva conservará la referencia entre tomas.</p>
+          <p className="text-sm text-muted-foreground">Escribe una idea sencilla. La IA prepara las tres escenas y el diálogo; puedes revisarlos antes de filmar.</p>
+          <Textarea aria-label="Idea de la miniserie" placeholder="Ejemplo: una emprendedora presenta su negocio en tres lugares distintos" value={description}
+            onChange={(event) => setDescription(event.target.value)} className="min-h-[80px]" />
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" variant="secondary" onClick={() => void draftThreeChapters()} disabled={draftingThree || generatingVideos}>
+              {draftingThree ? "Preparando guion…" : "Preparar tres capítulos con IA"}
+            </Button>
+            <Button type="button" variant="outline" onClick={() => setShowManualEditor((value) => !value)}>
+              {showManualEditor ? "Ocultar edición" : "Escribir o editar las escenas"}
+            </Button>
+          </div>
+          {showManualEditor && <>
           <input aria-label="Título de la miniserie" placeholder="Título de la miniserie" value={manualTitle}
             onChange={(event) => setManualTitle(event.target.value)} maxLength={120}
             className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm" />
@@ -766,13 +823,14 @@ const chapterOptions = [3, 5, 7, 10, 12];
                 onChange={(event) => setManualScenes((current) => current.map((value, i) => i === index ? event.target.value : value))}
                 className="min-h-[70px]" maxLength={1200} />
               <input aria-label={"Frase del capítulo " + (index + 1)} value={manualLines[index]}
-                placeholder="Frase exacta que dirá el personaje (máximo 20 palabras)"
+                placeholder="Lo que dirá el personaje (opcional; la app lo dividirá en tomas)"
                 onChange={(event) => setManualLines((current) => current.map((value, i) => i === index ? event.target.value : value))}
-                className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm" maxLength={180} />
+                className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm" maxLength={400} />
             </div>
           ))}
-          <Button type="button" onClick={() => void handleManualSeries()} disabled={generating || generatingVideos}>
-            {generatingVideos ? "Preparando la serie…" : "Crear y filmar tres capítulos"}
+          </>}
+          <Button type="button" onClick={() => void handleManualSeries()} disabled={generating || generatingVideos || draftingThree || !showManualEditor}>
+            {generatingVideos ? "Preparando la serie…" : showManualEditor ? "Crear y filmar tres capítulos" : "Prepara o escribe los capítulos primero"}
           </Button>
         </Card>
 

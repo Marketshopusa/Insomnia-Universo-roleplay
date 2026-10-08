@@ -89,7 +89,7 @@ async function callAdultStoryChat<T>(body: unknown): Promise<FunctionResult<T>> 
     return fail("No se pudo contactar con tu modelo local. Tu mensaje sigue disponible para reenviar.", 503);
   }
 }
-const ownAi = new Set(["story-chat", "translate", "speech-to-text", "generate-narrative", "generate-novel", "generate-shorts-series", "illustrate-scene"]);
+const ownAi = new Set(["story-chat", "translate", "speech-to-text", "generate-narrative", "generate-novel", "generate-studio-draft", "generate-shorts-series", "illustrate-scene"]);
 async function callOwnAi<T>(name: string, body: unknown): Promise<FunctionResult<T>> {
   const { data: { session } } = await supabase.auth.getSession();
   const response = await fetch(name === "illustrate-scene" ? "/api/illustrate" : "/api/ai", {

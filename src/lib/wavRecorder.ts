@@ -71,6 +71,7 @@ export async function startWavRecording(): Promise<WavRecorder> {
   const chunks: Float32Array[] = [];
   let level = 0;
   let spoke = false;
+  let voiceFrames = 0;
 
   processor.onaudioprocess = (e) => {
     const data = e.inputBuffer.getChannelData(0);
@@ -82,7 +83,10 @@ export async function startWavRecording(): Promise<WavRecorder> {
       count += 1;
     }
     level = Math.sqrt(sum / Math.max(1, count));
-    if (level > 0.03) spoke = true;
+    // The call meter begins counting at 0.012; accept two consecutive frames
+    // at the same threshold so a soft voice is not silently discarded.
+    voiceFrames = level > 0.012 ? voiceFrames + 1 : 0;
+    if (voiceFrames >= 2) spoke = true;
   };
   source.connect(processor);
   processor.connect(silence);

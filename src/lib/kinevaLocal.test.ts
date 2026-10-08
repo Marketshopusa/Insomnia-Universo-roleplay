@@ -29,7 +29,7 @@ it("reads worker health as ready, missing ComfyUI, or missing worker", async () 
 it("enqueues a local job on 127.0.0.1:8787 and never calls a cloud video function", async () => {
   const fetchImpl = vi.fn(async (_url: string, init?: RequestInit) => {
     const body = JSON.parse(String(init?.body));
-    expect(body).toEqual({ idea: "Me levanto y bailo", image: null, episodes: 2 });
+    expect(body).toEqual({ idea: "Me levanto y bailo", image: null, episodes: 2, dialogues: [], cast: {} });
     return new Response(JSON.stringify({
       id: "job-1", state: "queued", current: 0, total: 2, videos: [], error: null,
     }), { status: 202 });
