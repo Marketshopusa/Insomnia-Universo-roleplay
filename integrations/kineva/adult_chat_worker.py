@@ -190,6 +190,24 @@ def focus_latest_turn(text):
     return clip_text(actions[-1], 180) if actions else ""
 
 
+_ENGLISH_FUNCTION_WORDS = frozenset({
+    "the", "and", "with", "this", "that", "you", "your", "you're", "it's",
+    "we", "are", "were", "here", "there", "under", "just", "another",
+    "without", "what", "when", "while", "from", "into", "would", "could",
+    "should", "those", "these", "about", "because", "feels", "like", "such",
+    "really", "right", "yes", "but", "also", "have", "has", "been", "will",
+})
+
+
+def english_drift(text):
+    """Catch sustained English in a Spanish turn without rejecting names or loanwords."""
+    words = re.findall(r"[a-zA-ZáéíóúüñÁÉÍÓÚÜÑ]+(?:'[a-zA-Z]+)?", text.lower())
+    if len(words) < 5:
+        return False
+    matches = sum(word in _ENGLISH_FUNCTION_WORDS for word in words)
+    return matches >= 3 and matches / len(words) >= 0.16
+
+
 def minimal_instruction(character, player, premise, spanish):
     """Contrato breve con identidad, hechos de la tarjeta y formato."""
     language = "español natural" if spanish else "natural English"
@@ -451,9 +469,8 @@ def reply_for(job):
                     raise
             spoken_text = re.sub(r"\*[^*]*\*", "", parsed).strip()
             spoken = normalize_reply(spoken_text)
-            if job.get("language") == "es" and re.search(
-                    r"(?i)\b(?:exactly|actually|maybe|yeah|really|sorry|because|please)\b",
-                    spoken_text):
+            if job.get("language") == "es" and (english_drift(spoken_text) or any(
+                    english_drift(action) for action in re.findall(r"\*([^*]+)\*", parsed))):
                 raise ValueError("Unexpected English in Spanish reply")
             if unsupported_recalled_fact(parsed, job):
                 raise ValueError("Unsupported scene fact")
@@ -478,7 +495,12 @@ def reply_for(job):
         except Exception as error:
             print("Chat format attempt failed", job.get("jobId", "local"), attempt,
                   repr(error)[:180], flush=True)
-            if str(error) == "Unsupported scene fact":
+            if str(error) == "Unexpected English in Spanish reply":
+                messages[0]["content"] += (
+                    " El borrador cambió al inglés. Reescribe la respuesta desde cero solo en español "
+                    "natural, incluidos diálogo y gesto. Conserva la acción y los hechos; "
+                    "no expliques ni menciones el cambio de idioma.")
+            elif str(error) == "Unsupported scene fact":
                 messages[0]["content"] += (
                     " Tu borrador añadió un número o parentesco no establecido. "
                     "Responde solo con el dato que aparece en los recuerdos o reconoce que no sabes el detalle. ")
