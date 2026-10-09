@@ -483,7 +483,8 @@ def reply_for(job):
                                          or (len(spoken) > 45 and highest_similarity >= 0.88)):
                 raise ValueError("Repeated previous character dialogue")
             if not wants_repetition and repeats_recent_clause(spoken_text, previous_replies):
-                raise ValueError("Reused a clause from a recent reply")
+                if attempt < 2:
+                    raise ValueError("Reused a clause from a recent reply")
             if attempt == 0 and wants_reading and len(spoken) < 190:
                 print("Chat announced reading without reading; retrying", job.get("jobId", "local"), flush=True)
                 messages[0]["content"] += " Tu borrador solo anunció que iba a leer. En el diálogo lee ya un pasaje original de al menos tres frases, sin preámbulo."
@@ -515,7 +516,7 @@ def reply_for(job):
                 messages[0]["content"] += (
                     " El borrador no tuvo el formato válido. Conserva los hechos y la identidad de la escena. "
                     "Devuelve JSON con diálogo hablado y gesto, sin instrucciones internas.")
-    # Repetición es un fallo, no una salida satisfactoria.
+    # Repetición completa es un fallo, no una salida satisfactoria.
     raise RuntimeError("Local model returned no usable reply after repetition retries")
 
 
