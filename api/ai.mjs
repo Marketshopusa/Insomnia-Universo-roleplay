@@ -53,7 +53,7 @@ export async function generate(model, parts, settings = {}, options = {}) {
             status: response.status, code: response.status === 429 ? "rate_limited" : "ai_unavailable",
           });
           const retryAnotherModel = [404, 429, 500, 502, 503, 504].includes(response.status)
-            || (options.allowEmpty && response.status === 400);
+            || ((options.allowEmpty || options.retryBadRequest) && response.status === 400);
           if (retryAnotherModel) break;
           throw lastError;
         }
@@ -501,7 +501,7 @@ export default async function handler(req, res) {
         + "No inventes personajes adicionales ni sustituyas la idea. Idioma: " + language + ". Idea: " + idea;
       const raw = await generate("gemini-3.5-flash-lite", [{ text: prompt }],
         { responseMimeType: "application/json", maxOutputTokens: 1800, temperature: 0.5 },
-        { fallbackModels: ["gemini-3.1-flash-lite", "gemini-3.8-flash"] });
+        { fallbackModels: ["gemini-3.1-flash-lite", "gemini-3.8-flash"], retryBadRequest: true });
       const draft = JSON.parse(raw);
       if (!draft.title || !Array.isArray(draft.chapters) || draft.chapters.length !== 3
           || draft.chapters.some((chapter) => String(chapter.visual || "").trim().length < 5)) {
