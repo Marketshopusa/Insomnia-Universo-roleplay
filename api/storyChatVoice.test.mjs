@@ -95,6 +95,30 @@ test("story chat turns thinking off and retries when Gemini rejects that setting
   else process.env.GEMINI_API_KEY = previous;
 });
 
+test("Gemini 3.x uses thinking level and recovers from a generic invalid argument", async () => {
+  assert.deepEqual(generationConfigFor("gemini-3.5-flash-lite", { responseMimeType: "application/json" }, { fastReply: true }).thinkingConfig, { thinkingLevel: "low" });
+  const previous = process.env.GEMINI_API_KEY;
+  process.env.GEMINI_API_KEY = "test-key";
+  try {
+    const bodies = [];
+    const output = await generate("gemini-3.5-flash-lite", [{ text: "Tres capítulos" }], { responseMimeType: "application/json" }, {
+      fastReply: true, fallbackModels: [],
+      fetchImpl: async (_url, init) => {
+        bodies.push(JSON.parse(init.body).generationConfig);
+        return bodies.length === 1
+          ? new Response(JSON.stringify({ error: { message: "Request contains an invalid argument." } }), { status: 400 })
+          : new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: '{"title":"Prueba"}' }] } }] }), { status: 200 });
+      },
+    });
+    assert.equal(JSON.parse(output).title, "Prueba");
+    assert.deepEqual(bodies[0].thinkingConfig, { thinkingLevel: "low" });
+    assert.equal(bodies[1].thinkingConfig, undefined);
+  } finally {
+    if (previous === undefined) delete process.env.GEMINI_API_KEY;
+    else process.env.GEMINI_API_KEY = previous;
+  }
+});
+
 test("a call sends the microphone file to the transcriber and never asks a chat model to greet", async () => {
   const body = speechToTextBody("files/mic", "audio/wav", "es-MX");
   assert.deepEqual(body.contents[0].parts, [{ fileData: { fileUri: "files/mic", mimeType: "audio/wav" } }]);

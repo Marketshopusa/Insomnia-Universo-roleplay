@@ -13,7 +13,7 @@ async function authenticated(req) {
 }
 export function generationConfigFor(candidate, settings, options = {}, thinking = true) {
   if (!thinking || !options.fastReply) return settings;
-  if (candidate === "gemini-3.8-flash") return { ...settings, thinkingConfig: { thinkingLevel: "low" } };
+  if (candidate.startsWith("gemini-3.")) return { ...settings, thinkingConfig: { thinkingLevel: "low" } };
   return { ...settings, thinkingConfig: { thinkingBudget: 0 } };
 }
 
@@ -45,7 +45,7 @@ export async function generate(model, parts, settings = {}, options = {}) {
         if (!response.ok) {
           console.warn("Insomnia AI upstream", candidate, response.status, data?.error?.status);
           const message = data?.error?.message || "";
-          if (allowThinking && response.status === 400 && generationConfig.thinkingConfig && /thinking/i.test(message)) {
+          if (allowThinking && response.status === 400 && generationConfig.thinkingConfig) {
             allowThinking = false;
             continue;
           }
@@ -499,9 +499,9 @@ export default async function handler(req, res) {
         + ". Cada visual muestra una acción distinta y conserva el reparto y los hechos entre capítulos. "
         + "Cada diálogo tiene hasta 20 palabras, puede quedar vacío y no contiene instrucciones técnicas. "
         + "No inventes personajes adicionales ni sustituyas la idea. Idioma: " + language + ". Idea: " + idea;
-      const raw = await generate("gemini-2.5-flash", [{ text: prompt }],
+      const raw = await generate("gemini-3.5-flash-lite", [{ text: prompt }],
         { responseMimeType: "application/json", maxOutputTokens: 1800, temperature: 0.5 },
-        { fastReply: true, fallbackModels: ["gemini-3.5-flash-lite"] });
+        { fallbackModels: ["gemini-3.1-flash-lite", "gemini-3.8-flash"] });
       const draft = JSON.parse(raw);
       if (!draft.title || !Array.isArray(draft.chapters) || draft.chapters.length !== 3
           || draft.chapters.some((chapter) => String(chapter.visual || "").trim().length < 5)) {
