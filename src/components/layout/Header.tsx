@@ -49,8 +49,8 @@ import { AdultConsentDialog } from "@/components/adult/AdultConsentDialog";
       { href: "/shorts", label: "Shorts" },
       { href: "/studio", label: t("nav.novelStudio") },
       { href: "/my-stories", label: t("nav.myStories") },
+      { href: "/history", label: "Historial" },
       { href: "/plans", label: t("nav.plans") },
-      { href: "/my-stories#historial", label: "Historial" },
    ];
    const linkActive = (href: string) => {
      if (href === "/") return location.pathname === "/";

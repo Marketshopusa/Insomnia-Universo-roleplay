@@ -4,6 +4,8 @@ import { useTranslatedTexts } from "@/hooks/useTranslatedTexts";
 import { cn } from "@/lib/utils";
 import { resolveStoryCover } from "@/lib/storyCover";
 
+import { Trash2 } from "lucide-react";
+
 interface Story {
   id: string;
   title: string;
@@ -12,7 +14,8 @@ interface Story {
   character_role?: string | null;
   video_count: number;
   image_count: number;
-  has_explicit_images: boolean;
+  has_explicit_images?: boolean;
+  story_type?: string | null;
 }
 
 interface StoryCardProps {
@@ -21,6 +24,8 @@ interface StoryCardProps {
   index?: number;
   /** Shows the configuration button on the card when provided. */
   onConfigure?: () => void;
+  /** Shows delete trash button on the card when provided. */
+  onDelete?: () => void;
   /** Personal cover (image, gif or video) chosen by the signed-in user. */
   coverOverride?: string | null;
 }
@@ -84,30 +89,60 @@ export const StoryCard = ({ story, onClick, index, onConfigure, coverOverride }:
           </div>
         )}
 
-        {/* Configuration button — same model on every story card */}
-        {onConfigure && (
-          <button
-            type="button"
-            data-testid="story-configure"
-            aria-label="Configurar"
-            title="Configurar"
-            onClick={(event) => {
-              event.stopPropagation();
-              onConfigure();
-            }}
-            className="absolute top-0 right-0 z-10 flex h-8 w-8 items-center justify-center border-l border-b border-border/60 bg-background/85 text-muted-foreground backdrop-blur transition-colors hover:bg-primary hover:text-primary-foreground"
-          >
-            <Settings className="h-3.5 w-3.5" />
-          </button>
-        )}
+        {/* Action buttons (Config + Delete) */}
+        <div className="absolute top-0 right-0 z-10 flex">
+          {onDelete && (
+            <button
+              type="button"
+              data-testid="story-delete"
+              aria-label="Eliminar historia"
+              title="Eliminar historia"
+              onClick={(event) => {
+                event.stopPropagation();
+                onDelete();
+              }}
+              className="flex h-8 w-8 items-center justify-center border-l border-b border-border/60 bg-background/85 text-destructive backdrop-blur transition-colors hover:bg-destructive hover:text-destructive-foreground"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          )}
+          {onConfigure && (
+            <button
+              type="button"
+              data-testid="story-configure"
+              aria-label="Configurar"
+              title="Configurar"
+              onClick={(event) => {
+                event.stopPropagation();
+                onConfigure();
+              }}
+              className="flex h-8 w-8 items-center justify-center border-l border-b border-border/60 bg-background/85 text-muted-foreground backdrop-blur transition-colors hover:bg-primary hover:text-primary-foreground"
+            >
+              <Settings className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
 
-        {/* Media chip — only when the story really has generated images */}
-        {story.image_count > 0 && (
-          <div className="absolute top-2 left-2 flex items-center gap-1 px-2 py-0.5 bg-primary/90 text-primary-foreground text-[10px] font-medium uppercase tracking-wider">
-            <ImageIcon className="w-3 h-3" />
-            <span>{story.image_count}</span>
-          </div>
-        )}
+        {/* Classification badge: +18 vs SFW */}
+        <div className="absolute top-2 left-2 flex items-center gap-1.5 z-10">
+          {story.story_type === "real_sex" || story.has_explicit_images ? (
+            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold tracking-wider bg-destructive/90 text-destructive-foreground uppercase shadow-sm">
+              +18
+            </span>
+          ) : (
+            <span className="px-1.5 py-0.5 rounded text-[10px] font-medium tracking-wider bg-background/80 text-foreground/80 border border-border/60 uppercase shadow-sm">
+              SFW
+            </span>
+          )}
+
+          {/* Media chip — only when the story really has generated images */}
+          {story.image_count > 0 && (
+            <div className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-primary/90 text-primary-foreground text-[10px] font-medium uppercase tracking-wider shadow-sm">
+              <ImageIcon className="w-3 h-3" />
+              <span>{story.image_count}</span>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Footer info — fuera de la imagen, no overlay */}

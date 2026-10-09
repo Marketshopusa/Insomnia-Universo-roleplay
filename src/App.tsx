@@ -14,9 +14,10 @@ import { AdultModeProvider } from "@/contexts/AdultModeContext";
  import MyStories from "./pages/MyStories";
  import Plans from "./pages/Plans";
  import StoryDetail from "./pages/StoryDetail";
-import Shorts from "./pages/Shorts";
+ import Shorts from "./pages/Shorts";
 import ShortNovel from "./pages/ShortNovel";
 import ShortSeries from "./pages/ShortSeries";
+import ReadingHistory from "./pages/ReadingHistory";
  
  const queryClient = new QueryClient();
  
@@ -37,6 +38,7 @@ import ShortSeries from "./pages/ShortSeries";
                <Route path="/studio" element={<Studio />} />
                <Route path="/studio/kineva-local" element={<Navigate to="/studio" replace />} />
                <Route path="/my-stories" element={<MyStories />} />
+               <Route path="/history" element={<ReadingHistory />} />
                <Route path="/plans" element={<Plans />} />
                <Route path="/shorts" element={<Shorts />} />
                <Route path="/shorts/novel/:projectId" element={<ShortNovel />} />
