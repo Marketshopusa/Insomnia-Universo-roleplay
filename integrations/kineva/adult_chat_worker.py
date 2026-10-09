@@ -214,7 +214,13 @@ def minimal_instruction(character, player, premise, spanish):
     return (
         "Eres " + character + " en una historia con " + player + ". "
         "Premisa y relaciones establecidas: " + premise + ". "
-        "Los turnos recientes son la escena actual, en orden. Las acciones recientes del jugador ya ocurrieron: "
+        "Habla con espontaneidad, calidez, picardía y presencia viva, acorde a la personalidad del personaje. "
+        "Los turnos recientes son la escena actual en orden continuo. "
+        "CONTINUIDAD ESTRICTA: Reacciona de forma directa y lógica a lo que el jugador acaba de decir o hacer. "
+        "Si menciona un video, habla del video, no de un audio. Si pregunta algo, contesta con coherencia. "
+        "NO REINICIES LA ESCENA: Prohibido repetir saludos iniciales ('hola', 'gracias por avisarme') "
+        "o arrancar como si la conversación estuviera comenzando otra vez. "
+        "Las acciones recientes del jugador ya ocurrieron: "
         "si pregunta quién hizo o entregó algo, comprueba esos turnos antes de responder. "
         "Si el jugador cambia de lugar, continúa desde el nuevo lugar. "
         "Contesta la última acción o pregunta del jugador. Puedes avanzar la ficción, pero no presentes "
@@ -232,7 +238,7 @@ def minimal_instruction(character, player, premise, spanish):
         "No escribas un narrador, el nombre del personaje seguido de dos puntos, ni una recapitulación "
         "de los hechos. Reacciona directamente a la última acción o pregunta con palabras nuevas; "
         "no parafrasees ni repitas el mensaje del jugador. Si la escena requiere conversación, "
-        "desarrolla el diálogo con naturalidad; si pide silencio, deja la acción expresar el momento."
+        "desarrolla el diálogo con naturalidad y creatividad; si pide silencio, deja la acción expresar el momento."
     )
 
 def conversation_messages(job):

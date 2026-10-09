@@ -323,10 +323,12 @@ export function storyVoiceLines(character, player, spanish, locale) {
     ];
   }
   return [
-    "Eres " + name + " y hablas con " + other + ". Responde solo como " + name + ", en " + locale + ".",
-    "Habla como esa persona en una conversación real: con su forma de querer, su humor, su vergüenza o su carácter, según esta historia. Dos a cuatro frases dichas en voz alta. Contesta lo que acaban de decirte sin mover la escena. Que se sienta alguien al otro lado, no una ficha ni un contestador.",
-    "Si " + other + " dice que tú enviaste, dijiste o hiciste algo, conserva esa acción como tuya y contesta desde tu punto de vista. Mantén las acciones y sentimientos de cada persona en su lugar; no decidas lo que " + other + " hizo después.",
-    "Una disculpa nueva sí cabe cuando acaba de señalar un error tuyo. Prohibido repetir el gesto o las mismas frases del turno anterior.",
+    "Eres " + name + " y hablas directamente con " + other + ". Responde siempre como " + name + ", en " + locale + ".",
+    "Habla con total espontaneidad, picardía, calidez o temperamento según la personalidad del personaje. Sé una persona viva, no un asistente ni un contestador robótico.",
+    "CONTINUIDAD ESTRICTA: Reacciona de forma inmediata y lógica al contenido específico que acaba de decir " + other + " (si menciona un video, responde sobre el video y lo que muestra, no inventes audios o temas ajenos).",
+    "NO REINICIES LA CONVERSACIÓN: Prohibido repetir saludos iniciales, agradecimientos genéricos ('gracias por avisarme', 'hola', etc.) o frases de apertura de turnos pasados como si la charla estuviera empezando otra vez. La conversación ya está en marcha.",
+    "Si " + other + " dice que tú hiciste, dijiste o enviaste algo, asúmelo como tuyo y responde desde tu perspectiva con naturalidad y coherencia.",
+    "Mantén la escena viva: aporta detalles concretos, preguntas con complicidad, bromas, tensión o comentarios que hagan avanzar el diálogo orgánicamente.",
     "Si pide un gemido, un grito, un llanto, una risa o un suspiro, esa reacción va en la respuesta, tal como la pidió.",
   ];
 }
@@ -490,15 +492,20 @@ export default async function handler(req, res) {
       const idea = String(body.description || "").trim().slice(0, 1500);
       if (idea.length < 10) return send(res, 400, { error: "description_too_short" });
       const language = body.language === "English" ? "English" : "español";
+      const castNames = Array.isArray(body.cast_names) ? body.cast_names.slice(0, 20)
+        .map((name) => String(name || "").trim().slice(0, 80)).filter(Boolean) : [];
       const prompt = "Crea un guion breve y coherente de exactamente tres capítulos a partir de una idea sencilla. "
         + "Entrega solo JSON con esta estructura: "
-        + JSON.stringify({ title: "", chapters: [
+        + JSON.stringify({ title: "", cast_roles: [{ name: "Nombre del elenco", role: "Papel en esta historia" }], chapters: [
           { visual: "Una acción visual concreta en un lugar", dialogue: "Frase breve pronunciada por el protagonista" },
           { visual: "", dialogue: "" }, { visual: "", dialogue: "" },
         ] })
         + ". Cada visual muestra una acción distinta y conserva el reparto y los hechos entre capítulos. "
         + "Cada diálogo tiene hasta 20 palabras, puede quedar vacío y no contiene instrucciones técnicas. "
-        + "No inventes personajes adicionales ni sustituyas la idea. Idioma: " + language + ". Idea: " + idea;
+        + "Usa los nombres literales de actores presentes en cada visual, con máximo dos personas por toma; "
+        + "asigna a cada actor elegido un papel coherente en cast_roles, sin forzar a los 20 en los tres capítulos. "
+        + "No inventes personajes adicionales ni sustituyas la idea. Idioma: " + language
+        + ". Elenco disponible: " + JSON.stringify(castNames) + ". Idea: " + idea;
       const raw = await generate("gemini-3.5-flash-lite", [{ text: prompt }],
         { responseMimeType: "application/json", maxOutputTokens: 1800, temperature: 0.5 },
         { fallbackModels: ["gemini-3.1-flash-lite", "gemini-3.8-flash"], retryBadRequest: true });
