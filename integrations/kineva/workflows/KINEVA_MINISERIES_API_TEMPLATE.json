@@ -116,7 +116,7 @@
                                              "29",
                                              1
                                          ],
-                              "steps":  14,
+                              "steps":  18,
                               "sampler_name":  "euler",
                               "scheduler":  "beta",
                               "ref_image_size":  "match",
@@ -130,7 +130,7 @@
                               "upscale_keep_proportion":  true,
                               "upscale_device":  "cuda",
                               "upscale_precision":  "fp16",
-                              "refine_sigmas":  "(off)",
+                              "refine_sigmas":  "0.9035, 0.6316, 0.3158, 0.0000",
                               "rtx_scale":  1.0,
                               "rtx_quality":  "ULTRA",
                               "model":  [
