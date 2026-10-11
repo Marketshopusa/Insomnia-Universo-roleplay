@@ -162,6 +162,13 @@ def build_graph(template, image_name, manifest_path, idea, job_id, episode, tota
     if not image_name:
         raise ValueError("Kineva necesita una imagen inicial para esta toma.")
     cast = cast or {}
+    two_person_dialogue = bool(dialogue and cast.get("secondary_name"))
+    two_shot_camera = (
+        "Locked static wide two-person shot. Both adults visible together from head to knees "
+        "throughout, in the same location and with the same identities as the first frame. "
+        "Keep the action within that frame. Camera does not move, crop, zoom, pan, cut, "
+        "or reframe. The speaker talks while the second character remains distinct."
+    )
     story = idea.strip()
     if total > 1:
         story += f" This is episode {episode} of {total} in a connected miniseries."
@@ -169,9 +176,11 @@ def build_graph(template, image_name, manifest_path, idea, job_id, episode, tota
             story += " Keep the same protagonist and established story prop; show only the current location and action."
     one(graph, "KinevaDirectShotPlan")[1]["inputs"].update({
         "prompt": story, "exact_dialogue": dialogue,
-        "camera": ("Stable medium close-up of " + (cast.get("primary_name") or "the speaker")
-                   + "; speaking face large and sharply focused; listener remains distinct; no pan or zoom")
-                  if dialogue else "stable medium shot; preserve the reference framing; no pan or zoom",
+        "camera": two_shot_camera if two_person_dialogue else (
+            ("Stable medium close-up of " + (cast.get("primary_name") or "the speaker")
+             + "; speaking face large and sharply focused; no pan or zoom")
+            if dialogue else "stable medium shot; preserve the reference framing; no pan or zoom"
+        ),
         "duration_seconds": min(15.08, max(5.17, 5.17 + len(idea) / 80)),
         "primary_character": cast.get("primary_name") or "the adult person in the uploaded reference image",
         "secondary_character": cast.get("secondary_name") or "",
@@ -186,9 +195,12 @@ def build_graph(template, image_name, manifest_path, idea, job_id, episode, tota
     if not dialogue:
         one(graph, "KinevaVoiceRouter")[1]["inputs"]["mode"] = "NONE"
     one(graph, "KinevaPlanLock")[1]["inputs"].update({
-        "profile": "MINISERIES", "preserve_dialogue": True,
-        "exact_dialogue": dialogue, "force_single_take": False,
-        "presenter_visible": False, "lock_camera": False,
+        "profile": "TALKING_PRESENTER" if two_person_dialogue else "MINISERIES",
+        "preserve_dialogue": True, "exact_dialogue": dialogue,
+        "force_single_take": two_person_dialogue,
+        "presenter_visible": two_person_dialogue,
+        "lock_camera": two_person_dialogue,
+        "camera_rule": two_shot_camera if two_person_dialogue else "stable medium shot",
         "project_id": "local_" + job_id,
     })
     director_id = one(graph, "MinimaxStoryDirector")[0]
