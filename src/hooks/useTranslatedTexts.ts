@@ -119,33 +119,40 @@ export function useTranslatedTexts(texts: (string | null | undefined)[]): string
     let cancelled = false;
 
     (async () => {
-      const uniqueTexts = Array.from(new Set(needsFetch.map((n) => n.text)));
-      const toFetch = uniqueTexts.filter((t) => !cache.has(`${language}::${t}`));
-      const pending = uniqueTexts
-        .map((t) => inflight.get(`${language}::${t}`))
-        .filter(Boolean) as Promise<void>[];
+      try {
+        const uniqueTexts = Array.from(new Set(needsFetch.map((n) => n.text)));
+        const toFetch = uniqueTexts.filter((t) => !cache.has(`${language}::${t}`));
+        const pending = uniqueTexts
+          .map((t) => inflight.get(`${language}::${t}`))
+          .filter(Boolean) as Promise<void>[];
 
-      if (toFetch.length > 0) {
-        const batch = translateBatch(toFetch, language).then((arr) => {
-          toFetch.forEach((text, i) => {
-            if (arr && typeof arr[i] === "string") {
-              cache.set(`${language}::${text}`, arr[i]);
-            }
-            inflight.delete(`${language}::${text}`);
+        if (toFetch.length > 0) {
+          const batch = translateBatch(toFetch, language).then((arr) => {
+            toFetch.forEach((text, i) => {
+              if (arr && typeof arr[i] === "string") {
+                cache.set(`${language}::${text}`, arr[i]);
+              }
+              inflight.delete(`${language}::${text}`);
+            });
+          }).catch((err) => {
+            console.warn("Translation batch error:", err);
+            toFetch.forEach((text) => inflight.delete(`${language}::${text}`));
           });
-        });
-        toFetch.forEach((t) => inflight.set(`${language}::${t}`, batch));
-        await batch;
-      }
-      if (pending.length > 0) await Promise.all(pending);
+          toFetch.forEach((t) => inflight.set(`${language}::${t}`, batch));
+          await batch;
+        }
+        if (pending.length > 0) await Promise.allSettled(pending);
 
-      if (cancelled) return;
-      const final = safe.map((text) => {
-        if (!text) return text;
-        if (isLikelySpanish(text) && language === "es") return text;
-        return cache.get(`${language}::${text}`) || text;
-      });
-      setResult(final);
+        if (cancelled) return;
+        const final = safe.map((text) => {
+          if (!text) return text;
+          if (isLikelySpanish(text) && language === "es") return text;
+          return cache.get(`${language}::${text}`) || text;
+        });
+        setResult(final);
+      } catch (err) {
+        console.warn("Translation effect error:", err);
+      }
     })();
 
     return () => {

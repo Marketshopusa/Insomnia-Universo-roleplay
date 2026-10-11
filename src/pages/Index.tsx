@@ -1,81 +1,81 @@
- import { useState, useEffect } from "react";
- import { Link, useNavigate } from "react-router-dom";
- import { MainLayout } from "@/components/layout/MainLayout";
+import { useState, useEffect } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { MainLayout } from "@/components/layout/MainLayout";
 import { FilterBar } from "@/components/chat/FilterBar";
- import { CategoryTags } from "@/components/chat/CategoryTags";
- import { StoryCard } from "@/components/chat/StoryCard";
- import { Pagination } from "@/components/chat/Pagination";
-  import { AudioQuickControl } from "@/components/chat/AudioQuickControl";
+import { CategoryTags } from "@/components/chat/CategoryTags";
+import { StoryCard } from "@/components/chat/StoryCard";
+import { Pagination } from "@/components/chat/Pagination";
+import { AudioQuickControl } from "@/components/chat/AudioQuickControl";
 import { StoryConfigDialog, type ConfigurableStory } from "@/components/story/StoryConfigDialog";
 import { useStoryCustomizations } from "@/hooks/useStoryCustomizations";
- import { useStories, useCategories } from "@/hooks/useStories";
- import { useLanguage } from "@/contexts/LanguageContext";
+import { useStories, useCategories } from "@/hooks/useStories";
+import { useLanguage } from "@/contexts/LanguageContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAdultMode } from "@/contexts/AdultModeContext";
 import { AdultConsentDialog } from "@/components/adult/AdultConsentDialog";
 import { Button } from "@/components/ui/button";
-import { ShieldAlert, Lock, Sparkles } from "lucide-react";
- import { Skeleton } from "@/components/ui/skeleton";
+import { ShieldAlert, Sparkles, RefreshCw } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useShorts } from "@/hooks/useShorts";
 import { seriesStatus } from "@/lib/shortsCatalog";
 import { SeriesCover } from "@/components/shorts/SeriesCover";
- 
- type StoryType = "adventure" | "roleplay" | "real_sex";
- type StorySource = "crafted" | "custom";
- 
- const Index = () => {
-   const navigate = useNavigate();
-   const { t } = useLanguage();
+
+type StoryType = "adventure" | "roleplay" | "real_sex";
+type StorySource = "crafted" | "custom";
+
+const Index = () => {
+  const navigate = useNavigate();
+  const { t } = useLanguage();
   const { user } = useAuth();
   const { enabled: adultEnabled, consentGiven, enable, grantConsent } = useAdultMode();
   const [consentOpen, setConsentOpen] = useState(false);
-   const [storyType, setStoryType] = useState<StoryType>("roleplay");
-   const [storySource, setStorySource] = useState<StorySource>("crafted");
-   const [hasExplicit, setHasExplicit] = useState(false);
-   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
-   const [currentPage, setCurrentPage] = useState(1);
- 
-   // Audio settings state
-   const [voiceName, setVoiceName] = useState("Aoede");
-   const [genderFilter, setGenderFilter] = useState("All");
-   const [styleFilter, setStyleFilter] = useState("All");
-   const [isMuted, setIsMuted] = useState(false);
-   const [autoplay, setAutoplay] = useState(true);
- 
-   const [configStory, setConfigStory] = useState<ConfigurableStory | null>(null);
-   const { data: customizations, refetch: refetchCustomizations } = useStoryCustomizations();
+  const [storyType, setStoryType] = useState<StoryType>("roleplay");
+  const [storySource, setStorySource] = useState<StorySource>("crafted");
+  const [hasExplicit, setHasExplicit] = useState(false);
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+  const [currentPage, setCurrentPage] = useState(1);
 
-   const { series: shortSeries } = useShorts(adultEnabled);
-   const { data: categoriesData } = useCategories();
-   const { data: storiesData, isLoading } = useStories({
-     type: storyType,
-     source: storySource,
-     hasExplicit: hasExplicit ? true : undefined,
-     categoryIds: selectedCategories,
-     page: currentPage,
-     pageSize: 12,
-   });
- 
-   // Reset page when filters change
-   useEffect(() => {
-     setCurrentPage(1);
-   }, [storyType, storySource, hasExplicit, selectedCategories]);
- 
-   const handleCategoryToggle = (categoryId: string) => {
-     setSelectedCategories((prev) =>
-       prev.includes(categoryId)
-         ? prev.filter((id) => id !== categoryId)
-         : [...prev, categoryId]
-     );
-   };
- 
-   const handleStoryClick = (storyId: string) => {
+  // Audio settings state
+  const [voiceName, setVoiceName] = useState("Aoede");
+  const [genderFilter, setGenderFilter] = useState("All");
+  const [styleFilter, setStyleFilter] = useState("All");
+  const [isMuted, setIsMuted] = useState(false);
+  const [autoplay, setAutoplay] = useState(true);
+
+  const [configStory, setConfigStory] = useState<ConfigurableStory | null>(null);
+  const { data: customizations, refetch: refetchCustomizations } = useStoryCustomizations();
+
+  const { series: shortSeries } = useShorts(adultEnabled);
+  const { data: categoriesData } = useCategories();
+  const { data: storiesData, isLoading, isError, refetch: refetchStories } = useStories({
+    type: storyType,
+    source: storySource,
+    hasExplicit: hasExplicit ? true : undefined,
+    categoryIds: selectedCategories,
+    page: currentPage,
+    pageSize: 12,
+  });
+
+  // Reset page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [storyType, storySource, hasExplicit, selectedCategories]);
+
+  const handleCategoryToggle = (categoryId: string) => {
+    setSelectedCategories((prev) =>
+      prev.includes(categoryId)
+        ? prev.filter((id) => id !== categoryId)
+        : [...prev, categoryId]
+    );
+  };
+
+  const handleStoryClick = (storyId: string) => {
     if (!user) {
       navigate("/login");
       return;
     }
-     navigate(`/story/${storyId}`);
-   };
+    navigate(`/story/${storyId}`);
+  };
 
   const handleTypeChange = (type: StoryType) => {
     if (type === "real_sex" && !adultEnabled) {
@@ -98,9 +98,9 @@ import { SeriesCover } from "@/components/shorts/SeriesCover";
   };
 
   const realSexBlocked = storyType === "real_sex" && !adultEnabled;
- 
-   return (
-     <MainLayout>
+
+  return (
+    <MainLayout>
       <div className="container mx-auto px-4 py-8">
         {/* Hero — sello Insomnia con divisor decorativo */}
         <div className="relative mb-10">
@@ -111,7 +111,7 @@ import { SeriesCover } from "@/components/shorts/SeriesCover";
               <span className="text-[10px] tracking-[0.5em] uppercase text-accent/80">
                 Insomnia
               </span>
-              <div className="h-px w-10 bg-gradient-to-l from-transparent to-accent/60" />
+              <div className="h-px w-10 bg-gradient-l from-transparent to-accent/60" />
             </div>
             <h1 className="text-4xl md:text-5xl font-display italic text-center">
               <span className="bg-gradient-to-r from-primary via-accent to-primary bg-clip-text text-transparent">
@@ -151,110 +151,126 @@ import { SeriesCover } from "@/components/shorts/SeriesCover";
             />
           </div>
         </div>
- 
-          {realSexBlocked && (
-            <div className="max-w-2xl mx-auto my-12 text-center border border-destructive/30 bg-destructive/5 rounded-lg p-8">
-              <div className="w-14 h-14 rounded-full bg-destructive/10 flex items-center justify-center mx-auto mb-4">
-                <ShieldAlert className="w-7 h-7 text-destructive" />
-              </div>
-              <h2 className="text-xl font-display mb-2">{t("adult.gateTitle")}</h2>
-              <p className="text-muted-foreground mb-6">{t("adult.gateDesc")}</p>
-              <Button
-                onClick={() => (consentGiven ? (enable()) : setConsentOpen(true))}
-                variant="destructive"
-              >
-                {t("adult.enable")}
-              </Button>
-            </div>
-          )}
 
-          {!realSexBlocked && (<>
-         {/* Category panel — desplegable, cuadrado, integrado */}
-         {categoriesData && (
-           <div className="max-w-6xl mx-auto mb-8">
-             <CategoryTags
-               categories={categoriesData}
-               selectedCategories={selectedCategories}
-               onCategoryToggle={handleCategoryToggle}
-             />
-           </div>
-         )}
- 
-         {/* Pagination Top */}
-         {storiesData && storiesData.totalPages > 1 && (
-           <div className="mb-6">
-             <Pagination
-               currentPage={currentPage}
-               totalPages={storiesData.totalPages}
-               onPageChange={setCurrentPage}
-             />
-           </div>
-         )}
- 
-         <div className="mb-3 flex items-end justify-between">
-           <h2 className="font-display text-2xl">Historias</h2>
-           <p className="text-xs text-muted-foreground">Entra en la portada para el chat</p>
-         </div>
-         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-8">
-           {isLoading
-             ? Array.from({ length: 10 }).map((_, i) => (
-                 <Skeleton key={i} className="aspect-[4/5] rounded-none" />
-               ))
-             : storiesData?.stories.map((story, idx) => (
-                 <StoryCard
-                   key={story.id}
-                   story={story}
-                   index={idx}
-                   coverOverride={customizations?.[story.id]?.cover_media_url ?? null}
-                   onConfigure={
-                     user
-                       ? () => setConfigStory(story as ConfigurableStory)
-                       : () => navigate("/login")
-                   }
-                   onClick={() => handleStoryClick(story.id)}
-                 />
-               ))}
-         </div>
- 
-         {/* Empty State */}
-         {!isLoading && storiesData?.stories.length === 0 && (
-           <div className="text-center py-12">
-              {storySource === "custom" && selectedCategories.length === 0 ? (
-                <div className="max-w-md mx-auto p-8 rounded-lg border border-border bg-card">
-                  <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
-                    <Sparkles className="w-7 h-7 text-primary" />
+        {realSexBlocked && (
+          <div className="max-w-2xl mx-auto my-12 text-center border border-destructive/30 bg-destructive/5 rounded-lg p-8">
+            <div className="w-14 h-14 rounded-full bg-destructive/10 flex items-center justify-center mx-auto mb-4">
+              <ShieldAlert className="w-7 h-7 text-destructive" />
+            </div>
+            <h2 className="text-xl font-display mb-2">{t("adult.gateTitle")}</h2>
+            <p className="text-muted-foreground mb-6">{t("adult.gateDesc")}</p>
+            <Button
+              onClick={() => (consentGiven ? enable() : setConsentOpen(true))}
+              variant="destructive"
+            >
+              {t("adult.enable")}
+            </Button>
+          </div>
+        )}
+
+        {!realSexBlocked && (
+          <>
+            {/* Category panel — desplegable, cuadrado, integrado */}
+            {categoriesData && (
+              <div className="max-w-6xl mx-auto mb-8">
+                <CategoryTags
+                  categories={categoriesData}
+                  selectedCategories={selectedCategories}
+                  onCategoryToggle={handleCategoryToggle}
+                />
+              </div>
+            )}
+
+            {/* Pagination Top */}
+            {storiesData && storiesData.totalPages > 1 && (
+              <div className="mb-6">
+                <Pagination
+                  currentPage={currentPage}
+                  totalPages={storiesData.totalPages}
+                  onPageChange={setCurrentPage}
+                />
+              </div>
+            )}
+
+            <div className="mb-3 flex items-end justify-between">
+              <h2 className="font-display text-2xl">Historias</h2>
+              <p className="text-xs text-muted-foreground">Entra en la portada para el chat</p>
+            </div>
+
+            {isError && (
+              <div className="max-w-md mx-auto my-8 p-6 text-center border border-border/80 bg-card/60 rounded-xl space-y-3">
+                <p className="text-muted-foreground text-sm">
+                  No se pudieron cargar las historias en este momento. Revisa tu conexión y vuelve a intentar.
+                </p>
+                <Button onClick={() => refetchStories()} variant="outline" size="sm" className="gap-2">
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  Reintentar carga
+                </Button>
+              </div>
+            )}
+
+            {!isError && (
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-8">
+                {isLoading
+                  ? Array.from({ length: 10 }).map((_, i) => (
+                      <Skeleton key={i} className="aspect-[4/5] rounded-none" />
+                    ))
+                  : (storiesData?.stories ?? []).map((story, idx) => (
+                      <StoryCard
+                        key={story.id}
+                        story={story}
+                        index={idx}
+                        coverOverride={customizations?.[story.id]?.cover_media_url ?? null}
+                        onConfigure={
+                          user
+                            ? () => setConfigStory(story as ConfigurableStory)
+                            : () => navigate("/login")
+                        }
+                        onClick={() => handleStoryClick(story.id)}
+                      />
+                    ))}
+              </div>
+            )}
+
+            {/* Empty State */}
+            {!isLoading && !isError && (storiesData?.stories?.length ?? 0) === 0 && (
+              <div className="text-center py-12">
+                {storySource === "custom" && selectedCategories.length === 0 ? (
+                  <div className="max-w-md mx-auto p-8 rounded-lg border border-border bg-card">
+                    <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
+                      <Sparkles className="w-7 h-7 text-primary" />
+                    </div>
+                    <h3 className="font-display text-xl mb-2">{t("custom.empty.title")}</h3>
+                    <p className="text-muted-foreground mb-6">{t("custom.empty.desc")}</p>
+                    <Button onClick={() => navigate("/studio")} className="gap-2">
+                      <Sparkles className="w-4 h-4" />
+                      {t("custom.empty.cta")}
+                    </Button>
                   </div>
-                  <h3 className="font-display text-xl mb-2">{t("custom.empty.title")}</h3>
-                  <p className="text-muted-foreground mb-6">{t("custom.empty.desc")}</p>
-                  <Button onClick={() => navigate("/studio")} className="gap-2">
-                    <Sparkles className="w-4 h-4" />
-                    {t("custom.empty.cta")}
-                  </Button>
-                </div>
-              ) : storySource === "custom" ? (
-                <div className="max-w-md mx-auto p-8 rounded-lg border border-border bg-card/60">
-                  <p className="text-muted-foreground">
-                    {t("custom.empty.filtered") || "Aún no hay historias personalizadas en esta categoría."}
-                  </p>
-                </div>
-              ) : (
-                <p className="text-muted-foreground">{t("chat.noStories")}</p>
-              )}
-           </div>
-         )}
- 
-         {/* Pagination Bottom */}
-         {storiesData && storiesData.totalPages > 1 && (
-           <div className="mb-8">
-             <Pagination
-               currentPage={currentPage}
-               totalPages={storiesData.totalPages}
-               onPageChange={setCurrentPage}
-             />
-           </div>
-         )}
- 
-          </>)}
+                ) : storySource === "custom" ? (
+                  <div className="max-w-md mx-auto p-8 rounded-lg border border-border bg-card/60">
+                    <p className="text-muted-foreground">
+                      {t("custom.empty.filtered") || "Aún no hay historias personalizadas en esta categoría."}
+                    </p>
+                  </div>
+                ) : (
+                  <p className="text-muted-foreground">{t("chat.noStories")}</p>
+                )}
+              </div>
+            )}
+
+            {/* Pagination Bottom */}
+            {storiesData && storiesData.totalPages > 1 && (
+              <div className="mb-8">
+                <Pagination
+                  currentPage={currentPage}
+                  totalPages={storiesData.totalPages}
+                  onPageChange={setCurrentPage}
+                />
+              </div>
+            )}
+          </>
+        )}
 
         <section className="mt-4 mb-10">
           <div className="mb-3 flex items-end justify-between gap-3">
@@ -262,42 +278,57 @@ import { SeriesCover } from "@/components/shorts/SeriesCover";
               <h2 className="font-display text-2xl">Series</h2>
               <p className="text-xs text-muted-foreground">Entra en la portada para ver los capítulos</p>
             </div>
-            <Link to="/shorts" className="text-xs uppercase tracking-[0.16em] text-accent">Ver todas</Link>
+            <Link to="/shorts" className="text-xs uppercase tracking-[0.16em] text-accent">
+              Ver todas
+            </Link>
           </div>
           {shortSeries.length === 0 ? (
             <p className="text-sm text-muted-foreground">Todavía no hay series en este modo.</p>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
               {shortSeries.slice(0, 5).map((item, index) => (
-                <Link key={item.id} to={`/shorts/${item.id}`} className="group overflow-hidden border border-border/60 bg-card/60 transition-all hover:-translate-y-1 hover:border-primary/60">
+                <Link
+                  key={item.id}
+                  to={`/shorts/${item.id}`}
+                  className="group overflow-hidden border border-border/60 bg-card/60 transition-all hover:-translate-y-1 hover:border-primary/60"
+                >
                   <div className="relative aspect-[4/5] overflow-hidden bg-muted">
-                    <SeriesCover series={item} className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-110" />
+                    <SeriesCover
+                      series={item}
+                      className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-110"
+                    />
                     <div className="absolute inset-0 bg-gradient-to-t from-background via-transparent to-transparent" />
-                    <span className="absolute bottom-0 right-0 border-l border-t border-border/60 bg-background/80 px-2 py-1 font-display text-xs italic text-accent">N°{String(index + 1).padStart(2, "0")}</span>
+                    <span className="absolute bottom-0 right-0 border-l border-t border-border/60 bg-background/80 px-2 py-1 font-display text-xs italic text-accent">
+                      N°{String(index + 1).padStart(2, "0")}
+                    </span>
                   </div>
                   <div className="space-y-1 p-3">
-                    <h3 className="font-display text-base leading-tight line-clamp-2 group-hover:text-primary">{item.title}</h3>
-                    <p className="text-[11px] text-muted-foreground">{item.episodes.length} capítulos · {seriesStatus(item.episodes).label}</p>
+                    <h3 className="font-display text-base leading-tight line-clamp-2 group-hover:text-primary">
+                      {item.title}
+                    </h3>
+                    <p className="text-[11px] text-muted-foreground">
+                      {item.episodes.length} capítulos · {seriesStatus(item.episodes).label}
+                    </p>
                   </div>
                 </Link>
               ))}
             </div>
           )}
         </section>
-       </div>
-        <AdultConsentDialog
-          open={consentOpen}
-          onConfirm={handleConsent}
-          onCancel={() => setConsentOpen(false)}
-        />
-        <StoryConfigDialog
-          story={configStory}
-          open={!!configStory}
-          onOpenChange={(open) => !open && setConfigStory(null)}
-          onSaved={() => refetchCustomizations()}
-        />
-     </MainLayout>
-   );
- };
- 
- export default Index;
+      </div>
+      <AdultConsentDialog
+        open={consentOpen}
+        onConfirm={handleConsent}
+        onCancel={() => setConsentOpen(false)}
+      />
+      <StoryConfigDialog
+        story={configStory}
+        open={!!configStory}
+        onOpenChange={(open) => !open && setConfigStory(null)}
+        onSaved={() => refetchCustomizations()}
+      />
+    </MainLayout>
+  );
+};
+
+export default Index;

@@ -21,7 +21,7 @@ export async function generate(model, parts, settings = {}, options = {}) {
   const key = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
   if (!key || key === "[SENSITIVE]") throw Object.assign(new Error("Gemini no estÃ¡ configurado en Insomnia (Vercel)."), { status: 503, code: "gemini_not_configured" });
   const fetchImpl = options.fetchImpl || fetch;
-  const choices = [...new Set([model, ...(options.fallbackModels || ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite"])])];
+  const choices = [...new Set([model, ...(options.fallbackModels || ["gemini-2.0-flash", "gemini-1.5-flash"])])];
   let lastError;
   for (const candidate of choices) {
     let allowThinking = true;
@@ -417,7 +417,7 @@ export default async function handler(req, res) {
         "gemini-2.5-flash",
         [],
         { maxOutputTokens: 2048, temperature: 0.45 },
-        { contents, systemInstruction, adultMode: adultMode && !mentionsMinor(sceneContext), fallbackModels: ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite"], fastReply: true, validate: (reply) => !isOffRole(reply) },
+        { contents, systemInstruction, adultMode: adultMode && !mentionsMinor(sceneContext), fallbackModels: ["gemini-2.0-flash", "gemini-1.5-flash"], fastReply: true, validate: (reply) => !isOffRole(reply) },
       );
       return send(res, 200, { content });
     }
@@ -425,7 +425,7 @@ export default async function handler(req, res) {
       const texts = Array.isArray(body.texts) ? body.texts.slice(0, 50).map(s => String(s).slice(0, 1000)) : [];
       if (!texts.length) return send(res, 200, { translations: [] });
       const prompt = "Translate this JSON list into " + (body.targetLang === "es" ? "natural Spanish" : "natural English") + ". Preserve names and formatting. Return only a JSON array of the same length and order:\n" + JSON.stringify(texts);
-      const translations = JSON.parse(await generate("gemini-3.5-flash-lite", [{ text: prompt }], { responseMimeType: "application/json" }));
+      const translations = JSON.parse(await generate("gemini-2.5-flash", [{ text: prompt }], { responseMimeType: "application/json" }));
       if (!Array.isArray(translations) || translations.length !== texts.length) throw Object.assign(new Error("Formato de traducciÃ³n incorrecto."), { status: 502 });
       return send(res, 200, { translations });
     }
