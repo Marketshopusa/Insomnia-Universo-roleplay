@@ -1,0 +1,16 @@
+{
+  "started_at": "2026-10-11T16:40:49.679768",
+  "template_path": "C:\\Users\\synth\\Documents\\Kineva-Workflows\\ACTIVE\\KINEVA_MINISERIES_API_TEMPLATE.json",
+  "template_sha256": "f08886ca7ee28620197815a3177c1e70528f56a23620d4e93afb34f978e475f4",
+  "master_sha256_before": "e22836a675711f0eb4bf6ee1e5e4d56d09c2f5898f83c4f9c0cb9eda740749be",
+  "reference": "C:\\Users\\synth\\AppData\\Local\\Comfy-Desktop\\ComfyUI-Shared\\input\\kineva_local\\f1a169a8-5ab8-419f-abbe-c230511767c0_ep1_shot1.png",
+  "reference_sha256": "1b7f92d51d7e86584db1238a7dc26e4008b54e7b9748d11683e994060cc43e7d",
+  "builder": "local_creator.build_graph",
+  "megapixels": 0.75,
+  "steps": 18,
+  "refine_sigmas": "0.9035, 0.6316, 0.3158, 0.0000",
+  "upscale_model": "minimax_h3_latent_upscaler_3d_conv_v1_fp16.safetensors",
+  "comfy_url": "http://127.0.0.1:8188",
+  "test_scope": "Studio graph -> ComfyUI -> Master Export; not a browser submission",
+  "prompt_id": "b81439f1-d049-450f-8316-e5554e6c832d"
+}

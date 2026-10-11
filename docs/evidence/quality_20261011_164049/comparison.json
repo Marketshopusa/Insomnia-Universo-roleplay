@@ -1,0 +1,59 @@
+{
+  "decode_all_frames": "passed",
+  "locked_dialogue": "passed",
+  "baseline": {
+    "file": "C:\\Users\\synth\\AppData\\Local\\Comfy-Desktop\\ComfyUI-Shared\\output\\kineva_projects\\kineva_local_f1a169a8-5ab8-419f-abbe-c230511767c0\\E001\\S001\\SH001\\Take_01\\Kineva_Master_00001_.mp4",
+    "width": 768,
+    "height": 1360,
+    "duration": 6.583333,
+    "audio": true,
+    "frames": [
+      {
+        "second": 0.395,
+        "face_count": 1,
+        "sharpness_laplacian": 107.55
+      },
+      {
+        "second": 3.292,
+        "face_count": 1,
+        "sharpness_laplacian": 112.91
+      },
+      {
+        "second": 6.188,
+        "face_count": 1,
+        "sharpness_laplacian": 114.71
+      }
+    ]
+  },
+  "new": {
+    "file": "C:\\Users\\synth\\AppData\\Local\\Comfy-Desktop\\ComfyUI-Shared\\output\\kineva_projects\\kineva_local_b19eb914-bdd7-41a7-9d5c-cd70ab42c7f3\\E001\\S001\\SH001\\Take_01\\Kineva_Master_00001_.mp4",
+    "width": 768,
+    "height": 1360,
+    "duration": 6.583333,
+    "audio": true,
+    "frames": [
+      {
+        "second": 0.395,
+        "face_count": 1,
+        "sharpness_laplacian": 59.79
+      },
+      {
+        "second": 3.292,
+        "face_count": 1,
+        "sharpness_laplacian": 68.34
+      },
+      {
+        "second": 6.188,
+        "face_count": 1,
+        "sharpness_laplacian": 71.78
+      }
+    ],
+    "prompt_id": "b81439f1-d049-450f-8316-e5554e6c832d",
+    "delivered_file": "C:\\Users\\synth\\Documents\\Kineva-Workflows\\RESULTADOS_VERIFICADOS\\KINEVA_ESTUDIO_075MP_18PASOS_20261011_164049.mp4",
+    "output_sha256": "35947f7d8377bcfe43a10ad788e394e69ca7a0730aecffc9d2f2eaa5dfcbd5ba",
+    "master_sha256_after": "e22836a675711f0eb4bf6ee1e5e4d56d09c2f5898f83c4f9c0cb9eda740749be"
+  },
+  "comparison_image": "C:\\Users\\synth\\Documents\\Kineva-Workflows\\RESULTADOS_VERIFICADOS\\KINEVA_ESTUDIO_075MP_18PASOS_20261011_164049.comparison.png",
+  "qc_warnings": [],
+  "comparison_scope": "Same starting image, existing earlier Studio clip; not a fully controlled A/B test."
+}

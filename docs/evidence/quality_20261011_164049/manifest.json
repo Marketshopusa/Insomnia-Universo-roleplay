@@ -1,0 +1,153 @@
+{
+  "kineva_manifest_version": 1,
+  "created_at": "2026-10-11T17:06:06.798123",
+  "project_name": "kineva_local_b19eb914-bdd7-41a7-9d5c-cd70ab42c7f3",
+  "project_context": {
+    "project_name": "kineva_local_b19eb914-bdd7-41a7-9d5c-cd70ab42c7f3",
+    "safe_project_name": "kineva_local_b19eb914-bdd7-41a7-9d5c-cd70ab42c7f3",
+    "episode": 1,
+    "scene": 1,
+    "shot": 1,
+    "take": 1,
+    "filename_prefix": "kineva_projects/kineva_local_b19eb914-bdd7-41a7-9d5c-cd70ab42c7f3/E001/S001/SH001/Take_01/Kineva_Master"
+  },
+  "saved_path": "C:\\Users\\synth\\AppData\\Local\\Comfy-Desktop\\ComfyUI-Shared\\output\\kineva_projects\\kineva_local_b19eb914-bdd7-41a7-9d5c-cd70ab42c7f3\\E001\\S001\\SH001\\Take_01\\Kineva_Master_00001_.mp4",
+  "qc": {
+    "version": 1,
+    "width": 768,
+    "height": 1360,
+    "aspect": 0.564706,
+    "frames": 158,
+    "fps": 24.0,
+    "duration_seconds": 6.5833,
+    "audio_present": true,
+    "temporal": {
+      "mean_frame_delta": 0.008102,
+      "max_frame_delta": 0.057368,
+      "threshold": 0.18,
+      "suspected_cuts": []
+    },
+    "issues": [],
+    "warnings": []
+  },
+  "plan_lock": {
+    "version": 1,
+    "profile": "MINISERIES",
+    "primary_character": "the adult person in the uploaded reference image",
+    "changes": [
+      "Persistent project identity locked.",
+      "MINISERIES exact spoken segment restored."
+    ],
+    "warnings": []
+  },
+  "locked_plan": {
+    "cast": {
+      "style": "photorealistic, natural lighting",
+      "mood": "",
+      "characters": [
+        {
+          "name": "the adult person in the uploaded reference image",
+          "identity": "the adult person in the uploaded reference image",
+          "appearance": "Preserve the uploaded appearance.",
+          "voice": "Natural adult speaking voice.",
+          "seen": true
+        }
+      ],
+      "groups": [],
+      "locations": [
+        {
+          "name": "the setting in the uploaded reference image",
+          "description": "Preserve the original room, geometry, lighting and surfaces."
+        }
+      ]
+    },
+    "scenes": [
+      {
+        "text": "The uploaded image is the exact first frame. Preserve the subject's identity, clothing, spatial layout and lighting. Presentador habla al micr?fono sentado en el estudio de podcast. Primer plano de su rostro durante toda la frase.",
+        "summary": "Presentador habla al micr?fono sentado en el estudio de podcast. Primer plano de su rostro durante toda la frase.",
+        "actions": [
+          "Presentador habla al micr?fono sentado en el estudio de podcast. Primer plano de su rostro durante toda la frase."
+        ],
+        "location": "the setting in the uploaded reference image",
+        "moves_to": "",
+        "characters": [
+          "the adult person in the uploaded reference image"
+        ],
+        "groups": [],
+        "time": "present",
+        "pace": "normal",
+        "shots": 1
+      }
+    ],
+    "shots": [
+      {
+        "index": 0,
+        "seed": 16982011745878599900,
+        "text": "The uploaded image is the exact first frame. Preserve the subject's identity, clothing, spatial layout and lighting. Presentador habla al micr?fono sentado en el estudio de podcast. Primer plano de su rostro durante toda la frase.",
+        "chars": 113,
+        "frames": 158,
+        "seconds": 6.583333333333333,
+        "characters": [
+          "the adult person in the uploaded reference image"
+        ],
+        "groups": [],
+        "location": "the setting in the uploaded reference image",
+        "pov": "",
+        "time": "present",
+        "pace": "normal",
+        "beats": [
+          {
+            "start": 0.0,
+            "end": 6.583333333333333,
+            "action": "Presentador habla al micr?fono sentado en el estudio de podcast. Primer plano de su rostro durante toda la frase.",
+            "cut": false,
+            "camera": "",
+            "location": "",
+            "time": ""
+          }
+        ],
+        "camera": "Stable medium close-up of the speaker; speaking face large and sharply focused; no pan or zoom",
+        "action": "Presentador habla al micr?fono sentado en el estudio de podcast. Primer plano de su rostro durante toda la frase.",
+        "dialogue": [
+          {
+            "speaker": "the adult person in the uploaded reference image",
+            "language": "Spanish",
+            "line": "Bienvenidos a este episodio sobre las novedades de inteligencia artificial.",
+            "delivery": "natural",
+            "off_screen": false
+          }
+        ],
+        "vocals": "",
+        "soundscape": "Natural ambient sound",
+        "music": "N/A",
+        "continuity": "single continuous take"
+      }
+    ],
+    "_project_id": "local_b19eb914-bdd7-41a7-9d5c-cd70ab42c7f3",
+    "_story_key": "c8f9dd62381a4f74",
+    "_seed": 16982011745878599900,
+    "_kineva_direct_exact_dialogue": "Bienvenidos a este episodio sobre las novedades de inteligencia artificial.",
+    "_kineva": {
+      "source": "direct_shot_v1"
+    },
+    "_kineva_plan_lock": {
+      "enabled": true,
+      "profile": "MINISERIES",
+      "preserve_dialogue": true,
+      "force_single_take": false,
+      "presenter_visible": false,
+      "lock_camera": false,
+      "camera_rule": "stable medium shot",
+      "report": {
+        "version": 1,
+        "profile": "MINISERIES",
+        "primary_character": "the adult person in the uploaded reference image",
+        "changes": [
+          "Persistent project identity locked.",
+          "MINISERIES exact spoken segment restored."
+        ],
+        "warnings": []
+      }
+    }
+  }
+}

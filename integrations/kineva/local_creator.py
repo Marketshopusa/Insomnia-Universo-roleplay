@@ -13,7 +13,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from image_worker import COMFY_INPUT, preflight, render, save_cover_reference, scene_prompt
-from worker import Api, find_manifest, one, probe_video, release_idle_models, wait_for_render
+from worker import Api, default_api_template, load_api_template, find_manifest, one, probe_video, release_idle_models, wait_for_render
 from image_quality import review
 from studio_assembly import assemble_episode
 
@@ -25,7 +25,7 @@ INPUT = COMFY_INPUT
 OUTPUT = Path(os.environ.get("KINEVA_COMFY_OUTPUT", str(SHARED / "output")))
 TEMPLATE_PATH = Path(os.environ.get(
     "KINEVA_API_TEMPLATE",
-    str(Path(__file__).resolve().parent / "workflows/KINEVA_MINISERIES_API_TEMPLATE.json"),
+    str(default_api_template()),
 ))
 COMFY = Api(os.environ.get("KINEVA_COMFY_URL", "http://127.0.0.1:8188"))
 STATE_PATH = HOME / "AppData/Local/Kineva/local-studio-jobs.json"
@@ -361,7 +361,7 @@ def create_shot_reference(job_id, episode, shot_index, visual, cast, source_name
 def run_job(job_id, image, ideas, cast=None, shot_plans=None):
     try:
         with GPU_LOCK:
-            template = json.loads(TEMPLATE_PATH.read_text(encoding="utf-8"))
+            template = load_api_template(TEMPLATE_PATH)
             available = COMFY.call("GET", "/object_info")
             missing = {node["class_type"] for node in template.values()} - available.keys()
             if missing:

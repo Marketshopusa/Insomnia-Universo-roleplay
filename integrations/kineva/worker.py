@@ -2,6 +2,7 @@
 """Local Insomnia -> Kineva worker. Run only on the ComfyUI machine."""
 import argparse
 import copy
+import hashlib
 import json
 import mimetypes
 import os
@@ -53,6 +54,24 @@ def one(graph, kind):
     if len(found) != 1:
         raise ValueError(f"Expected one {kind}, found {len(found)}")
     return found[0]
+
+def default_api_template():
+    active = Path.home() / "Documents/Kineva-Workflows/ACTIVE/KINEVA_MINISERIES_API_TEMPLATE.json"
+    bundled = Path(__file__).resolve().parent / "workflows/KINEVA_MINISERIES_API_TEMPLATE.json"
+    return active if active.is_file() else bundled
+
+
+def load_api_template(path):
+    graph = json.loads(Path(path).read_text(encoding="utf-8-sig"))
+    if not isinstance(graph, dict) or not graph or not all(
+        isinstance(node, dict) and isinstance(node.get("inputs"), dict)
+        and isinstance(node.get("class_type"), str) for node in graph.values()
+    ):
+        raise ValueError("Expected ComfyUI API workflow JSON, not UI workflow JSON")
+    one(graph, "KinevaDirectShotPlan")
+    one(graph, "KinevaMasterExport")
+    return graph
+
 
 def normalized_words(value):
     return " ".join(str(value or "").split())
@@ -362,7 +381,7 @@ def main():
     parser.add_argument("--preflight", action="store_true")
     args = parser.parse_args()
     comfy = Api(os.environ.get("KINEVA_COMFY_URL", "http://127.0.0.1:8188"))
-    template = json.loads(args.workflow_api.read_text(encoding="utf-8"))
+    template = load_api_template(args.workflow_api)
     one(template, "KinevaDirectShotPlan")
     one(template, "KinevaMasterExport")
     validate_runtime(comfy, template, args.input_dir, args.output_dir)
@@ -371,7 +390,20 @@ def main():
         return
     url, key = os.environ["SUPABASE_URL"], os.environ["SUPABASE_SERVICE_ROLE_KEY"]
     cloud = Api(url, key)
+    template_digest = None
     while True:
+        # Reload before claiming work; a running worker must not keep an old graph.
+        current = load_api_template(args.workflow_api)
+        digest = hashlib.sha256(json.dumps(current, sort_keys=True).encode()).hexdigest()
+        if digest != template_digest:
+            validate_runtime(comfy, current, args.input_dir, args.output_dir)
+            template = current
+            template_digest = digest
+            resolution = one(template, "ResolutionSelector")[1]["inputs"]
+            director = one(template, "MinimaxStoryDirector")[1]["inputs"]
+            print("Kineva API template", str(args.workflow_api), digest,
+                  "MP", resolution["megapixels"], "steps", director["steps"],
+                  "refine", director["refine_sigmas"], flush=True)
         worked = run_once(cloud, comfy, template, args.input_dir, args.output_dir)
         if args.once:
             break
