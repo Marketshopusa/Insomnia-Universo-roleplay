@@ -129,13 +129,14 @@ export interface LocalCastInput {
   secondary_name?: string;
   secondary_description?: string;
   secondary_image?: string | null;
+  supporting?: { name: string; image: string }[];
   location_name?: string;
   location_description?: string;
   location_image?: string | null;
 }
 
 export async function createLocalJob(
-  input: { idea?: string; chapters?: string[]; dialogues?: string[]; shot_plans?: { visual: string; dialogue: string }[][]; image?: string | null; cast?: LocalCastInput; episodes?: number },
+  input: { idea?: string; chapters?: string[]; dialogues?: string[]; shot_plans?: { visual: string; dialogue: string; speaker?: string }[][]; image?: string | null; cast?: LocalCastInput; episodes?: number },
   fetchImpl: FetchLike = fetch,
 ): Promise<LocalJob> {
   const chapters = (input.chapters || [])

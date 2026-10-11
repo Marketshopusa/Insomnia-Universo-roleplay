@@ -50,6 +50,7 @@ export const useShorts = (adultEnabled: boolean) => {
     let query = supabase
       .from("shorts_series")
       .select("*, episodes:shorts_episodes(*)")
+      .eq("is_published", true)
       .order("created_at", { ascending: false });
 
     if (!adultEnabled) query = query.eq("is_adult", false);

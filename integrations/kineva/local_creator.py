@@ -101,6 +101,22 @@ def cast_spec(body):
             raise ValueError("La ficha de reparto es demasiado larga.")
         names[field] = value
     names["secondary_image"] = decode_optional_image(source.get("secondary_image"), "Segundo personaje")
+    supporting = source.get("supporting") or []
+    if not isinstance(supporting, list) or len(supporting) > 18:
+        raise ValueError("Selecciona hasta 18 actores adicionales del reparto.")
+    names["supporting"] = []
+    seen = {names["primary_name"].casefold(), names["secondary_name"].casefold()}
+    for actor in supporting:
+        if not isinstance(actor, dict):
+            raise ValueError("Ficha de reparto inválida.")
+        actor_name = str(actor.get("name") or "").strip()
+        if not actor_name or len(actor_name) > 80 or actor_name.casefold() in seen:
+            raise ValueError("Cada actor de reparto necesita un nombre único.")
+        data = decode_optional_image(actor.get("image"), actor_name)
+        if not data:
+            raise ValueError("Falta la foto de " + actor_name)
+        names["supporting"].append({"name": actor_name, "image": data})
+        seen.add(actor_name.casefold())
     names["location_image"] = decode_optional_image(source.get("location_image"), "Lugar")
     if names["secondary_image"] and not names["secondary_name"]:
         raise ValueError("Asigna un nombre al segundo personaje.")
@@ -153,6 +169,9 @@ def build_graph(template, image_name, manifest_path, idea, job_id, episode, tota
             story += " Keep the same protagonist and established story prop; show only the current location and action."
     one(graph, "KinevaDirectShotPlan")[1]["inputs"].update({
         "prompt": story, "exact_dialogue": dialogue,
+        "camera": ("Stable medium close-up of " + (cast.get("primary_name") or "the speaker")
+                   + "; speaking face large and sharply focused; listener remains distinct; no pan or zoom")
+                  if dialogue else "stable medium shot; preserve the reference framing; no pan or zoom",
         "duration_seconds": min(15.08, max(5.17, 5.17 + len(idea) / 80)),
         "primary_character": cast.get("primary_name") or "the adult person in the uploaded reference image",
         "secondary_character": cast.get("secondary_name") or "",
@@ -228,9 +247,10 @@ def chapter_shots(body, ideas):
                 raise ValueError("Toma inválida.")
             visual = str(item.get("visual") or "").strip()
             dialogue = str(item.get("dialogue") or "").strip()
-            if not (5 <= len(visual) <= 1200) or len(dialogue) > 180 or len(dialogue.split()) > 20:
-                raise ValueError("Cada toma necesita una acción visible y una frase breve opcional.")
-            shots.append({"visual": visual, "dialogue": dialogue})
+            speaker = str(item.get("speaker") or "").strip()
+            if not (5 <= len(visual) <= 1200) or len(dialogue) > 180 or len(dialogue.split()) > 20 or len(speaker) > 80:
+                raise ValueError("Cada toma necesita una acción visible, un hablante válido y una frase breve opcional.")
+            shots.append({"visual": visual, "dialogue": dialogue, "speaker": speaker})
         result.append(shots)
     if sum(map(len, result)) > 24:
         raise ValueError("Una serie local admite hasta 24 tomas por proyecto.")
@@ -258,7 +278,36 @@ def review_video_people(path, max_people):
             raise RuntimeError("Toma rechazada: aparecen personas extra en el video; revisa las referencias.")
 
 
-def create_shot_reference(job_id, episode, shot_index, visual, cast, source_names):
+def select_shot_cast(cast, references, image_name, visual, speaker="", dialogue=""):
+    """Put the actual speaker first so the voice and exact dialogue bind to that identity."""
+    actor_sources = [(cast.get("primary_name"), image_name)]
+    if cast.get("secondary_image"):
+        actor_sources.append((cast["secondary_name"], "kineva_local/" + references["characters"][cast["secondary_name"]]))
+    actor_sources.extend((actor["name"], "kineva_local/" + references["characters"][actor["name"]])
+                         for actor in cast.get("supporting", []))
+    mentioned = [(name, path) for name, path in actor_sources
+                 if name and re.search(r"(?<!\w)" + re.escape(name) + r"(?!\w)", visual, re.IGNORECASE)]
+    if len(mentioned) > 2:
+        raise RuntimeError("Esta toma menciona más de dos personajes. Divídela en tomas de uno o dos.")
+    selected = mentioned if mentioned else actor_sources[:2]
+    speaker = str(speaker or "").strip()
+    if speaker and dialogue:
+        speaking = next(((name, path) for name, path in actor_sources
+                         if name and name.casefold() == speaker.casefold()), None)
+        if speaking is None:
+            raise RuntimeError("El hablante de la toma no está en el reparto: " + speaker)
+        if len(mentioned) == 2 and speaking not in mentioned:
+            raise RuntimeError("Esta toma reúne más de dos personajes; divídela en tomas separadas.")
+        selected = [speaking] + [actor for actor in selected if actor[0] != speaking[0]][:1]
+    shot_cast = dict(cast, primary_name=selected[0][0] or cast.get("primary_name"),
+                     secondary_name=selected[1][0] if len(selected) > 1 else "")
+    shot_sources = [path for _, path in selected]
+    if cast.get("location_image"):
+        shot_sources.append("kineva_local/" + references["locations"][cast["location_name"]])
+    return shot_cast, shot_sources
+
+
+def create_shot_reference(job_id, episode, shot_index, visual, cast, source_names, dialogue=""):
     """Make a distinct, reviewable first frame for each shot from cast references."""
     prompt = (
         "One coherent photorealistic cinematic film frame, one instant in one location. "
@@ -266,6 +315,9 @@ def create_shot_reference(job_id, episode, shot_index, visual, cast, source_name
         "Image 1 identifies the primary adult, not the location or camera pose. "
         "Keep that person's face, age, hair and build. "
     )
+    if dialogue:
+        prompt += ("Frame the speaking person in a medium close-up with a sharply visible face. "
+                   "Keep the listener visually distinct and the same room recognizable. ")
     if cast.get("secondary_name"):
         prompt += (
             "Image 2 identifies the second adult separately; never merge their faces or bodies. "
@@ -347,6 +399,11 @@ def run_job(job_id, image, ideas, cast=None, shot_plans=None):
                 filename = job_id + "_second" + image_extension(data)
                 (manifest_path.parent / filename).write_bytes(data)
                 references["characters"][cast["secondary_name"]] = filename
+            for index, actor in enumerate(cast.get("supporting", [])):
+                data = actor["image"]
+                filename = job_id + f"_actor_{index}" + image_extension(data)
+                (manifest_path.parent / filename).write_bytes(data)
+                references["characters"][actor["name"]] = filename
             if cast.get("location_image"):
                 data = cast["location_image"]
                 filename = job_id + "_location" + image_extension(data)
@@ -356,19 +413,16 @@ def run_job(job_id, image, ideas, cast=None, shot_plans=None):
             reference_paths = {"primary": str(image_path)}
             if cast.get("secondary_image"):
                 reference_paths["secondary"] = str(manifest_path.parent / references["characters"][cast["secondary_name"]])
+            for index, actor in enumerate(cast.get("supporting", [])):
+                reference_paths[f"supporting_{index}"] = str(manifest_path.parent / references["characters"][actor["name"]])
             if cast.get("location_image"):
                 reference_paths["location"] = str(manifest_path.parent / references["locations"][cast["location_name"]])
             with JOBS_LOCK:
                 JOBS[job_id]["reference_paths"] = reference_paths
                 JOBS[job_id]["references"] = {key: "/references/" + job_id + "/" + key for key in reference_paths}
             persist_jobs()
-            await_review(job_id, "references_ready")
+            update(job_id, state="rendering", current=1)
             preflight(COMFY)
-            source_names = [image_name]
-            if cast.get("secondary_image"):
-                source_names.append("kineva_local/" + references["characters"][cast["secondary_name"]])
-            if cast.get("location_image"):
-                source_names.append("kineva_local/" + references["locations"][cast["location_name"]])
             previous = ""
             count = len(ideas)
             shot_plans = shot_plans or [[{"visual": idea, "dialogue": ""}] for idea in ideas]
@@ -379,10 +433,12 @@ def run_job(job_id, image, ideas, cast=None, shot_plans=None):
                     idea = shot["visual"]
                     update(job_id, state="rendering", current=episode)
                     dialogue = shot["dialogue"]
+                    shot_cast, shot_sources = select_shot_cast(
+                        cast, references, image_name, idea, shot.get("speaker"), dialogue)
                     shot_image_name = create_shot_reference(
-                        job_id, episode, shot_index, idea, cast, source_names)
+                        job_id, episode, shot_index, idea, shot_cast, shot_sources, dialogue)
                     graph = build_graph(
-                        template, shot_image_name, manifest_path, idea, job_id, episode, count, previous, cast, dialogue)
+                        template, shot_image_name, manifest_path, idea, job_id, episode, count, previous, shot_cast, dialogue)
                     one(graph, "KinevaProjectContext")[1]["inputs"]["shot"] = shot_index
                     export_node = one(graph, "KinevaMasterExport")[0]
                     created = COMFY.call("POST", "/prompt", {
@@ -422,7 +478,6 @@ def run_job(job_id, image, ideas, cast=None, shot_plans=None):
                             "path": str(path), "script": script[:5000],
                         }
                     persist_jobs()
-                    await_review(job_id, "video_review")
                     approved_shots.append(path)
                     episode_scripts.append(script)
                     with JOBS_LOCK:

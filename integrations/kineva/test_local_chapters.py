@@ -58,6 +58,38 @@ class LocalChaptersTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "referencia separada"):
             creator.cast_spec({"cast": {"primary_name": "Andrea", "secondary_name": "Luis"}})
 
+    def test_supporting_cast_accepts_distinct_faces_and_rejects_duplicates(self):
+        import base64
+        portrait = base64.b64encode(b"\x89PNG\r\n\x1a\nportrait").decode("ascii")
+        cast = creator.cast_spec({"cast": {"primary_name": "Andrea", "supporting": [
+            {"name": "Luis", "image": portrait}, {"name": "Marta", "image": portrait},
+        ]}})
+        self.assertEqual([actor["name"] for actor in cast["supporting"]], ["Luis", "Marta"])
+        with self.assertRaisesRegex(ValueError, "nombre único"):
+            creator.cast_spec({"cast": {"primary_name": "Andrea", "supporting": [
+                {"name": "andrea", "image": portrait},
+            ]}})
+
+    def test_speaker_selects_the_correct_reference_and_voice_identity(self):
+        cast = {"primary_name": "Elena", "secondary_name": "Marco", "secondary_image": b"portrait",
+                "supporting": [{"name": "Clara", "image": b"portrait"}]}
+        refs = {"characters": {"Marco": "marco.png", "Clara": "clara.png"}, "locations": {}}
+        chosen, sources = creator.select_shot_cast(
+            cast, refs, "elena.png", "Elena escucha a Marco hablar.", "Marco", "Bienvenidos.")
+        self.assertEqual(chosen["primary_name"], "Marco")
+        self.assertEqual(chosen["secondary_name"], "Elena")
+        self.assertEqual(sources[:2], ["kineva_local/marco.png", "elena.png"])
+        from comfy_nodes.KinevaDirectShot.nodes import KinevaDirectShotPlan
+        plan, _ = KinevaDirectShotPlan().build("Marco habla con Elena.", "Bienvenidos.",
+                                               primary_character=chosen["primary_name"],
+                                               secondary_character=chosen["secondary_name"])
+        self.assertEqual(plan["shots"][0]["dialogue"][0]["speaker"], "Marco")
+        chosen, _ = creator.select_shot_cast(cast, refs, "elena.png", "Clara presenta el libro.", "Clara", "Hola.")
+        self.assertEqual(chosen["primary_name"], "Clara")
+        self.assertFalse(chosen["secondary_name"])
+        with self.assertRaisesRegex(RuntimeError, "más de dos"):
+            creator.select_shot_cast(cast, refs, "elena.png", "Elena, Marco y Clara conversan.", "", "")
+
     def test_two_separate_cast_references_reach_the_video_plan(self):
         import json
         template = json.loads(creator.TEMPLATE_PATH.read_text(encoding="utf-8"))

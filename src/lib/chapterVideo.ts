@@ -28,12 +28,12 @@ export async function attachFinishedVideos(
 export async function publishLocalChapters(options: {
   chapters: string[];
   dialogues?: string[];
-  shotPlans?: { visual: string; dialogue: string }[][];
+  shotPlans?: { visual: string; dialogue: string; speaker?: string }[][];
   episodeIds: string[];
   image?: string | null;
   cast?: LocalCastInput;
   onJob?: (job: LocalJob) => void;
-  createJob: (input: { chapters: string[]; dialogues?: string[]; shot_plans?: { visual: string; dialogue: string }[][]; image?: string | null; cast?: LocalCastInput }) => Promise<LocalJob>;
+  createJob: (input: { chapters: string[]; dialogues?: string[]; shot_plans?: { visual: string; dialogue: string; speaker?: string }[][]; image?: string | null; cast?: LocalCastInput }) => Promise<LocalJob>;
   fetchJob: (id: string) => Promise<LocalJob>;
   fetchVideo: (url: string) => Promise<Blob>;
   upload: (episodeId: string, blob: Blob) => Promise<string>;
@@ -47,7 +47,7 @@ export async function publishLocalChapters(options: {
   options.onJob?.(current);
   for (let attempt = 0; attempt < 450; attempt += 1) {
     await attachFinishedVideos(current, options.episodeIds, attached, options);
-    if (["completed", "failed", "references_ready", "video_review"].includes(current.state)) break;
+    if (["completed", "failed"].includes(current.state)) break;
     await pause(4000);
     current = await options.fetchJob(current.id);
     options.onJob?.(current);
@@ -55,7 +55,6 @@ export async function publishLocalChapters(options: {
   if (current.state === "failed") {
     throw new Error(current.error || "ComfyUI no pudo crear el video de este capítulo.");
   }
-  if (["references_ready", "video_review"].includes(current.state)) return current;
   if (current.state !== "completed") {
     throw new Error("ComfyUI sigue filmando. El capítulo queda en esta serie; vuelve a abrirlo para ver el video.");
   }

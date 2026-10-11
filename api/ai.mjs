@@ -497,11 +497,13 @@ export default async function handler(req, res) {
       const prompt = "Crea un guion breve y coherente de exactamente tres capítulos a partir de una idea sencilla. "
         + "Entrega solo JSON con esta estructura: "
         + JSON.stringify({ title: "", cast_roles: [{ name: "Nombre del elenco", role: "Papel en esta historia" }], chapters: [
-          { visual: "Una acción visual concreta en un lugar", dialogue: "Frase breve pronunciada por el protagonista" },
+          { visual: "Una acción visual concreta en un lugar", dialogue: "Frase breve", speaker: "Nombre exacto del actor que pronuncia la frase" },
           { visual: "", dialogue: "" }, { visual: "", dialogue: "" },
         ] })
         + ". Cada visual muestra una acción distinta y conserva el reparto y los hechos entre capítulos. "
         + "Cada diálogo tiene hasta 20 palabras, puede quedar vacío y no contiene instrucciones técnicas. "
+        + "Si hay diálogo, speaker debe ser el nombre exacto de un actor del elenco que aparece en esa toma; "
+        + "distribuye las frases entre los personajes según su papel, sin atribuir la voz del hombre a la mujer. "
         + "Usa los nombres literales de actores presentes en cada visual, con máximo dos personas por toma; "
         + "asigna a cada actor elegido un papel coherente en cast_roles, sin forzar a los 20 en los tres capítulos. "
         + "No inventes personajes adicionales ni sustituyas la idea. Idioma: " + language

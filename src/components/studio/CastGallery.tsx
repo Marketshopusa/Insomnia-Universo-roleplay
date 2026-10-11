@@ -57,10 +57,11 @@ async function portraitFrom(file: File): Promise<File> {
   } finally { bitmap.close(); }
 }
 
-export function CastGallery({ userId, onPrimary, onSecondary }: {
+export function CastGallery({ userId, onPrimary, onSecondary, onSupporting }: {
   userId: string;
   onPrimary: (file: File, name: string) => void;
   onSecondary: (file: File, name: string) => void;
+  onSupporting: (file: File, name: string) => void;
 }) {
   const { toast } = useToast();
   const [members, setMembers] = useState<Member[]>([]);
@@ -137,14 +138,15 @@ export function CastGallery({ userId, onPrimary, onSecondary }: {
       toast({ title: "No se pudo guardar todo el elenco.", description: error instanceof Error ? error.message : undefined, variant: "destructive" });
     } finally { setBusy(false); }
   };
-  const useMember = async (entry: Member, asPrimary: boolean) => {
+  const useMember = async (entry: Member, position: "primary" | "secondary" | "supporting") => {
     setBusy(true);
     try {
       const { data, error } = await supabase.storage.from(BUCKET).download(entry.path);
       if (error || !data) throw error || new Error("La foto no está disponible.");
       const file = new File([data], entry.path.split("/").at(-1) || "actor.jpg", { type: data.type });
-      if (asPrimary) onPrimary(file, entry.name);
-      else onSecondary(file, entry.name);
+      if (position === "primary") onPrimary(file, entry.name);
+      else if (position === "secondary") onSecondary(file, entry.name);
+      else onSupporting(file, entry.name);
       toast({ title: entry.name + " seleccionado para esta serie." });
     } catch (error) {
       toast({ title: "No se pudo cargar esa foto.", description: error instanceof Error ? error.message : undefined, variant: "destructive" });
@@ -194,8 +196,9 @@ export function CastGallery({ userId, onPrimary, onSecondary }: {
         <div className="truncate font-medium">{entry.name}</div>
         <div className="text-xs text-muted-foreground">{entry.role === "m" ? "Mujer" : entry.role === "h" ? "Hombre" : "Reparto"}</div>
         <div className="mt-2 flex flex-wrap gap-1">
-          <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void useMember(entry, true)}>Principal</Button>
-          <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void useMember(entry, false)}>Segundo</Button>
+          <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void useMember(entry, "primary")}>Principal</Button>
+          <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void useMember(entry, "secondary")}>Segundo</Button>
+          <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void useMember(entry, "supporting")}>Reparto</Button>
           <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={() => void remove(entry)}>Quitar</Button>
         </div>
       </div>)}

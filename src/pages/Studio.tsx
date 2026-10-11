@@ -4,6 +4,7 @@ import { publishLocalChapters } from "@/lib/chapterVideo";
 import { uploadKinevaReference } from "@/lib/kinevaReference";
 import { splitKinevaDialogue } from "@/lib/kinevaDialogue";
 import { CastGallery } from "@/components/studio/CastGallery";
+import { StudioProduction, type ProductionSeries } from "@/components/studio/StudioProduction";
 import { saveNovelSeries } from "@/lib/saveNovelSeries";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -79,11 +80,13 @@ const chapterOptions = [3, 5, 7, 10, 12];
   const [primaryName, setPrimaryName] = useState("");
   const [secondaryName, setSecondaryName] = useState("");
   const [secondaryImage, setSecondaryImage] = useState<File | null>(null);
+  const [supportingCast, setSupportingCast] = useState<{ name: string; file: File }[]>([]);
   const [locationName, setLocationName] = useState("");
   const [locationDescription, setLocationDescription] = useState("");
   const [locationImage, setLocationImage] = useState<File | null>(null);
   const [seriesEpisodeIds, setSeriesEpisodeIds] = useState<string[]>([]);
   const [savedSeriesId, setSavedSeriesId] = useState<string | null>(null);
+  const [productionRefresh, setProductionRefresh] = useState(0);
   const [localHealth, setLocalHealth] = useState<LocalStudioStatus>("missing-worker");
   const [localJob, setLocalJob] = useState<LocalJob | null>(null);
   const [creativity, setCreativity] = useState("balanced");
@@ -91,6 +94,8 @@ const chapterOptions = [3, 5, 7, 10, 12];
   const [manualTitle, setManualTitle] = useState("");
   const [manualScenes, setManualScenes] = useState(["", "", ""]);
   const [manualLines, setManualLines] = useState(["", "", ""]);
+  const [manualSpeakers, setManualSpeakers] = useState(["", "", ""]);
+  const [castRoles, setCastRoles] = useState<{ name: string; role: string }[]>([]);
   const [draftingThree, setDraftingThree] = useState(false);
   const [showManualEditor, setShowManualEditor] = useState(false);
   const [chapterCount, setChapterCount] = useState(7);
@@ -203,6 +208,7 @@ const chapterOptions = [3, 5, 7, 10, 12];
       status: "ready", video_url: path, error_message: null,
     }).eq("id", episodeId);
     if (error) throw new Error(error.message);
+    setProductionRefresh((value) => value + 1);
   };
 
   const filmChapters = async (chapters: string[], episodeIds: string[], pendingProbe?: Promise<LocalProbe>, dialogues: string[] = [], storyPlan?: any, existingJob?: LocalJob) => {
@@ -228,6 +234,7 @@ const chapterOptions = [3, 5, 7, 10, 12];
       secondary_name: secondaryName.trim() || (secondaryImage ? "" : String(second.name || "").slice(0, 80)),
       secondary_description: secondaryImage ? "" : String(second.visual_prompt || [second.appearance, second.wardrobe].filter(Boolean).join(". ")).slice(0, 500),
       secondary_image: secondaryImage ? await encodeLocalImage(secondaryImage) : null,
+      supporting: await Promise.all(supportingCast.filter((actor) => actor.name !== primaryName && actor.name !== secondaryName).map(async (actor) => ({ name: actor.name, image: await encodeLocalImage(actor.file) }))),
       location_name: locationName.trim() || String(setting.place || "").slice(0, 80),
       location_description: locationDescription.trim() || String([setting.place, setting.time, setting.visual_style].filter(Boolean).join(". ")).slice(0, 500),
       location_image: locationImage ? await encodeLocalImage(locationImage) : null,
@@ -235,6 +242,7 @@ const chapterOptions = [3, 5, 7, 10, 12];
     const shotPlans = (storyPlan?.chapters || []).map((chapter: any, index: number) => {
       const plans = Array.isArray(chapter.shots) ? chapter.shots.slice(0, 3).map((shot: any) => ({
         visual: String(shot.visual || "").trim(), dialogue: String(shot.dialogue || "").trim(),
+        speaker: String(shot.speaker || manualSpeakers[index] || "").trim(),
       })).filter((shot: { visual: string }) => shot.visual.length >= 5) : [];
       return plans.length ? plans : [{ visual: chapters[index], dialogue: dialogues[index] || "" }];
     });
@@ -262,7 +270,7 @@ const chapterOptions = [3, 5, 7, 10, 12];
       markReady: markChapterReady,
     });
     if (result.state === "completed") {
-      toast({ title: "Escenas aprobadas", description: "Se guardaron los videos revisados en la serie." });
+      toast({ title: "Capítulos generados", description: "Los videos permanecen privados en Producción hasta que los apruebes para Shorts." });
     }
   };
 
@@ -294,15 +302,18 @@ const chapterOptions = [3, 5, 7, 10, 12];
     }
     setDraftingThree(true);
     try {
-      const { data, error } = await invokeFunctionWithRetry<{ draft?: { title: string; chapters: { visual: string; dialogue: string }[] } }>("generate-studio-draft", {
+      const { data, error } = await invokeFunctionWithRetry<{ draft?: { title: string; cast_roles?: { name: string; role: string }[]; chapters: { visual: string; dialogue: string; speaker?: string }[] } }>("generate-studio-draft", {
         description: idea, language,
+        cast_names: [primaryName, secondaryName, ...supportingCast.map((actor) => actor.name)].filter(Boolean),
       });
       if (error || !data?.draft?.chapters || data.draft.chapters.length !== 3) {
         throw new Error(error?.message || "La IA no entregó los tres capítulos.");
       }
       setManualTitle(String(data.draft.title || manualTitle || "Mi miniserie").slice(0, 120));
+      setCastRoles(Array.isArray(data.draft.cast_roles) ? data.draft.cast_roles.filter((entry) => entry?.name && entry?.role).slice(0, 20) : []);
       setManualScenes(data.draft.chapters.map((chapter) => String(chapter.visual || "").slice(0, 1200)));
       setManualLines(data.draft.chapters.map((chapter) => String(chapter.dialogue || "").slice(0, 400)));
+      setManualSpeakers(data.draft.chapters.map((chapter) => String(chapter.speaker || "").slice(0, 80)));
       setShowManualEditor(true);
       toast({ title: "Guion preparado", description: "Revisa las tres escenas antes de filmarlas." });
     } catch (error) {
@@ -350,7 +361,7 @@ const chapterOptions = [3, 5, 7, 10, 12];
       content: visual + (lines[index] ? "\n" + lines[index] : ""),
       video_prompt: visual,
       spoken_line: spokenShots[index][0],
-      shots: spokenShots[index].map((dialogue) => ({ visual, dialogue })),
+      shots: spokenShots[index].map((dialogue) => ({ visual, dialogue, speaker: manualSpeakers[index] || primaryName })),
     }));
     const draft = { title, logline: description.trim() || scenes[0], chapters };
     try {
@@ -368,12 +379,13 @@ const chapterOptions = [3, 5, 7, 10, 12];
         description: draft.logline,
         isAdult: !isSafeForWork,
         referencePath,
+        speakers: manualSpeakers,
       });
       setNovel(draft);
       setSeriesEpisodeIds(saved.episodeIds);
       setSavedSeriesId(saved.seriesId);
       setLocalJob(null);
-      toast({ title: "Serie de tres capítulos guardada", description: "Revisa las referencias y cada toma antes de aprobarla." });
+      toast({ title: "Serie guardada en Producción", description: "Los capítulos se filmarán y quedarán privados hasta tu aprobación final." });
       await filmChapters(scenes, saved.episodeIds, probe, spokenShots.map((shots) => shots[0]), draft);
     } catch (error) {
       toast({
@@ -384,6 +396,32 @@ const chapterOptions = [3, 5, 7, 10, 12];
     } finally {
       setGeneratingVideos(false);
     }
+  };
+
+  const regenerateChapter = async (index: number) => {
+    if (!seriesEpisodeIds[index]) return;
+    const visual = manualScenes[index]?.trim();
+    if (!visual || visual.length < 5 || !referenceImage) {
+      toast({ title: "Escribe la escena y conserva la foto del protagonista.", variant: "destructive" });
+      return;
+    }
+    const spoken = splitKinevaDialogue(manualLines[index] || "");
+    if (spoken.length > 3) {
+      toast({ title: "Divide ese diálogo en hasta tres tomas.", variant: "destructive" });
+      return;
+    }
+    try {
+      await filmChapters([visual], [seriesEpisodeIds[index]], undefined, [spoken[0] || ""], {
+        chapters: [{ shots: spoken.map((dialogue) => ({ visual, dialogue, speaker: manualSpeakers[index] || primaryName })) }],
+      });
+      if (savedSeriesId) {
+        const { error } = await supabase.from("shorts_series").update({ kineva_bible: { language: "Spanish", speakers: manualSpeakers } }).eq("id", savedSeriesId);
+        if (error) throw new Error(error.message);
+      }
+      toast({ title: `Capítulo ${index + 1} actualizado`, description: "El nuevo MP4 reemplazó al anterior en esta serie." });
+    } catch (error) {
+      toast({ title: "No se pudo regenerar el capítulo", description: error instanceof Error ? error.message : undefined, variant: "destructive" });
+    } finally { setGeneratingVideos(false); }
   };
 
   const handleGenerateProject = async () => {
@@ -459,12 +497,7 @@ const chapterOptions = [3, 5, 7, 10, 12];
       episodeIds = savedSeries.episodeIds;
       setSeriesEpisodeIds(savedSeries.episodeIds);
       setSavedSeriesId(savedSeries.seriesId);
-      toast({
-        title: "Novela guardada capítulo por capítulo",
-        description: isSafeForWork
-          ? "Está en Series. Abre la portada para leer cada capítulo."
-          : "Está en Series. Si no la ves en la parrilla, activa el modo 18+ o ábrela desde el enlace de la portada.",
-      });
+      toast({ title: "Novela guardada en Producción", description: "Se publicará en Shorts solo cuando apruebes los videos terminados." });
     } catch (e) {
       toast({
         title: "La novela no se generó",
@@ -672,6 +705,20 @@ const chapterOptions = [3, 5, 7, 10, 12];
         <p role="status" className={`mb-6 text-center text-sm ${localHealth === "ready" ? "text-emerald-600" : "text-amber-600"}`}>{localStatusText}</p>
         <p className="mb-6 text-center text-sm text-muted-foreground">Aquí se escribe la novela. Las portadas quedan en Shorts.</p>
 
+         <StudioProduction userId={user.id} refreshKey={`${savedSeriesId}:${localJob?.state}:${localJob?.videos?.length}:${productionRefresh}`}
+           onEdit={(series: ProductionSeries, reference) => {
+             setSavedSeriesId(series.id);
+             setSeriesEpisodeIds(series.episodes.map((episode) => episode.id));
+             setManualTitle(series.title);
+             setManualScenes(series.episodes.map((episode) => episode.video_prompt || episode.script));
+             setManualLines(series.episodes.map((episode) => episode.script.replace(episode.video_prompt || "", "").trim()));
+             setManualSpeakers(series.episodes.map((_, index) => series.kineva_bible?.speakers?.[index] || ""));
+             setReferenceImage(reference);
+             setNovel({ title: series.title, chapters: series.episodes.map((episode) => ({ number: episode.episode_number, title: episode.title, content: episode.script, video_prompt: episode.video_prompt })) });
+             setLocalJob(null);
+             setShowManualEditor(true);
+             window.sessionStorage.setItem("insomnia.studio.episodeIds", JSON.stringify(series.episodes.map((episode) => episode.id)));
+           }} />
          <Card className="p-6 mb-6 space-y-2">
            <Label>Motor de video</Label>
            <p className="text-sm font-medium">Kineva · ComfyUI en esta PC</p>
@@ -717,7 +764,13 @@ const chapterOptions = [3, 5, 7, 10, 12];
           <Card className="p-6 mb-6 space-y-3">
             <CastGallery userId={user.id}
               onPrimary={(file, name) => { setReferenceImage(file); setPrimaryName(name); }}
-              onSecondary={(file, name) => { setSecondaryImage(file); setSecondaryName(name); }} />
+              onSecondary={(file, name) => { setSecondaryImage(file); setSecondaryName(name); }}
+              onSupporting={(file, name) => setSupportingCast((current) => current.some((actor) => actor.name === name) ? current : [...current, { file, name }])} />
+            {!!supportingCast.length && <div aria-label="Reparto de esta serie" className="flex flex-wrap gap-2 text-sm">
+              {supportingCast.map((actor) => <span key={actor.name} className="rounded border px-2 py-1">{actor.name}
+                <button type="button" className="ml-2" aria-label={`Quitar ${actor.name} del reparto de esta serie`} onClick={() => setSupportingCast((current) => current.filter((item) => item.name !== actor.name))}>×</button>
+              </span>)}
+            </div>}
             <div className="border-t border-border pt-3">
               <Label htmlFor="kineva-reference">Protagonista para esta serie: elige de la galería o sube una foto temporal</Label>
             </div>
@@ -743,7 +796,7 @@ const chapterOptions = [3, 5, 7, 10, 12];
               onChange={(event) => setLocationDescription(event.target.value)} maxLength={400}
               className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm" />
             <p className="text-xs text-muted-foreground">
-              Kineva usa las fotos seleccionadas en esta serie. Otros actores guardados quedan disponibles para elegirlos en la siguiente; aún no aparecen automáticamente en una toma.
+              Elige protagonistas y añade actores de reparto. Kineva usa en cada toma los rostros cuyos nombres aparecen en la escena; una toma admite hasta dos personas. Los demás permanecen disponibles para los otros capítulos.
             </p>
           </Card>
 
@@ -799,7 +852,7 @@ const chapterOptions = [3, 5, 7, 10, 12];
            </div>
          </Card>
 
-        <Card className="p-6 mb-6 space-y-4">
+        <Card id="studio-editor" className="p-6 mb-6 space-y-4">
           <h2 className="text-lg font-medium">Mi miniserie de tres capítulos</h2>
           <p className="text-sm text-muted-foreground">Escribe una idea sencilla. La IA prepara las tres escenas y el diálogo; puedes revisarlos antes de filmar.</p>
           <Textarea aria-label="Idea de la miniserie" placeholder="Ejemplo: una emprendedora presenta su negocio en tres lugares distintos" value={description}
@@ -813,6 +866,7 @@ const chapterOptions = [3, 5, 7, 10, 12];
             </Button>
           </div>
           {showManualEditor && <>
+          {!!castRoles.length && <p className="text-sm text-muted-foreground">Reparto propuesto: {castRoles.map((actor) => `${actor.name}: ${actor.role}`).join(" · ")}</p>}
           <input aria-label="Título de la miniserie" placeholder="Título de la miniserie" value={manualTitle}
             onChange={(event) => setManualTitle(event.target.value)} maxLength={120}
             className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm" />
@@ -822,10 +876,19 @@ const chapterOptions = [3, 5, 7, 10, 12];
               <Textarea id={"manual-scene-" + index} value={scene} placeholder="Describe la acción en una frase"
                 onChange={(event) => setManualScenes((current) => current.map((value, i) => i === index ? event.target.value : value))}
                 className="min-h-[70px]" maxLength={1200} />
-              <input aria-label={"Frase del capítulo " + (index + 1)} value={manualLines[index]}
+              <select aria-label={"Quién habla en el capítulo " + (index + 1)} value={manualSpeakers[index] || ""}
+                onChange={(event) => setManualSpeakers((current) => current.map((name, i) => i === index ? event.target.value : name))}
+                className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm">
+                <option value="">Habla el personaje principal</option>
+                {[primaryName, secondaryName, ...supportingCast.map((actor) => actor.name)].filter(Boolean).map((name) =>
+                  <option key={name} value={name}>{name}</option>)}
+              </select>
+              <input aria-label={"Frase del capítulo " + (index + 1)} value={manualLines[index] || ""}
                 placeholder="Lo que dirá el personaje (opcional; la app lo dividirá en tomas)"
                 onChange={(event) => setManualLines((current) => current.map((value, i) => i === index ? event.target.value : value))}
                 className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm" maxLength={400} />
+              {seriesEpisodeIds[index] && savedSeriesId && <Button type="button" size="sm" variant="secondary" disabled={generatingVideos}
+                onClick={() => void regenerateChapter(index)}>Regenerar solo capítulo {index + 1}</Button>}
             </div>
           ))}
           </>}
@@ -857,11 +920,11 @@ const chapterOptions = [3, 5, 7, 10, 12];
             <h2 className="text-lg font-medium">Video en esta PC</h2>
             <p role="status">
               {localJob.state === "queued" ? "En cola…"
-                : localJob.state === "references_ready" ? "Revisa las referencias antes de generar el video."
-                : localJob.state === "video_review" ? "Revisa la toma. Solo se guardará al aprobarla."
+                : localJob.state === "references_ready" ? "Preparando referencias…"
+                : localJob.state === "video_review" ? "Finalizando una toma…"
                 : localJob.state === "rendering" ? `Creando video ${localJob.current} de ${localJob.total}…`
                 : localJob.state === "failed" ? `Error: ${localJob.error || "Kineva no pudo crear el video."}`
-                : "Escenas listas para revisión."}
+                : "Capítulos generados. Puedes reproducirlos o descargarlos."}
             </p>
             {localJob.references && localJob.state === "references_ready" && (
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -876,7 +939,7 @@ const chapterOptions = [3, 5, 7, 10, 12];
               <div>
                 <h3 className="text-sm font-medium">Capítulo {localJob.preview.episode}, toma {localJob.preview.shot} de {localJob.preview.total_shots}</h3>
                 <video controls className="mt-2 w-full rounded-md" src={localVideoSrc(localJob.preview.url)} />
-                <p className="text-sm text-amber-600">Revisa rostros, manos, movimiento y acción antes de aprobar.</p>
+                <p className="text-sm text-muted-foreground">La serie continúa automáticamente tras el control técnico.</p>
               </div>
             )}
             {localJob.videos?.map((video) => (
@@ -885,15 +948,10 @@ const chapterOptions = [3, 5, 7, 10, 12];
                 <video controls className="mt-2 w-full rounded-md" src={localVideoSrc(video.url)} />
                 <Button type="button" variant="outline" size="sm" className="mt-2"
                   onClick={() => void downloadLocalChapter(video.url, video.episode)}>Descargar MP4</Button>
-                {video.approved === false && <p className="text-sm text-amber-600">Pendiente de aprobación visual</p>}
+                {localJob.state === "completed" && seriesEpisodeIds[video.episode - 1] && <Button type="button" variant="secondary" size="sm" className="mt-2 ml-2"
+                  onClick={() => { setShowManualEditor(true); document.getElementById("studio-editor")?.scrollIntoView({ behavior: "smooth" }); }}>Editar escena y regenerar</Button>}
               </div>
             ))}
-            {["references_ready", "video_review"].includes(localJob.state) && (
-              <div className="flex gap-3">
-                <Button onClick={() => void handleLocalReview(true)}>Aprobar y continuar</Button>
-                <Button variant="secondary" onClick={() => void handleLocalReview(false)}>Rechazar</Button>
-              </div>
-            )}
           </Card>
         )}
 
@@ -902,11 +960,7 @@ const chapterOptions = [3, 5, 7, 10, 12];
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
               <h2 className="font-display text-2xl">{novel.title}</h2>
-              {savedSeriesId && (
-                <Link to={"/shorts/" + savedSeriesId} className="mt-2 inline-block text-xs uppercase tracking-[0.16em] text-accent">
-                  Abrir esta novela en Series
-                </Link>
-              )}
+              {savedSeriesId && <a href="#studio-production" className="mt-2 inline-block text-xs uppercase tracking-[0.16em] text-accent">Ver borrador privado en Producción</a>}
               {novel.logline && (
                 <p className="text-sm text-muted-foreground mt-1">{novel.logline}</p>
               )}
