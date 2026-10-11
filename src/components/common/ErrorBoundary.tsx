@@ -23,14 +23,30 @@ export class ErrorBoundary extends Component<Props, State> {
 
   public componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
     console.error("ErrorBoundary caught an unhandled error:", error, errorInfo);
+    const msg = error?.message || "";
+    const isChunkError =
+      msg.includes("dynamically imported module") ||
+      msg.includes("ChunkLoadError") ||
+      msg.includes("Importing a module script failed") ||
+      msg.includes("Failed to fetch dynamically") ||
+      msg.includes("Failed to fetch");
+
+    if (isChunkError && !sessionStorage.getItem("boundary_reload_done")) {
+      sessionStorage.setItem("boundary_reload_done", "true");
+      window.location.reload();
+    }
   }
 
   private handleReload = () => {
+    sessionStorage.removeItem("boundary_reload_done");
+    sessionStorage.removeItem("chunk_retry_pending");
     window.location.reload();
   };
 
   private handleReset = () => {
-    this.setState({ hasError: false, error: null });
+    sessionStorage.removeItem("boundary_reload_done");
+    sessionStorage.removeItem("chunk_retry_pending");
+    window.location.reload();
   };
 
   public render() {

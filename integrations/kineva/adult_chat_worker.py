@@ -40,8 +40,8 @@ def model_chat(messages, temperature, max_tokens, json_mode=False):
     payload = {"model": os.environ.get("KINEVA_CHAT_MODEL_NAME", "magnum-v4-12b"),
                "messages": messages, "max_tokens": max_tokens,
                "temperature": temperature, "top_p": 0.95,
-               "repeat_penalty": 1.08, "presence_penalty": 0.8,
-               "frequency_penalty": 0.10}
+               "repeat_penalty": 1.16, "presence_penalty": 0.6,
+               "frequency_penalty": 0.35}
     if json_mode:
         payload["response_format"] = {"type": "json_object"}
     request = Request(os.environ.get("KINEVA_CHAT_MODEL_URL", "http://127.0.0.1:8788/v1/chat/completions"),
@@ -212,34 +212,36 @@ def minimal_instruction(character, player, premise, spanish):
     """Contrato breve con identidad, hechos de la tarjeta y formato."""
     language = "español natural" if spanish else "natural English"
     return (
-        "Eres " + character + " en una historia con " + player + ". "
+        "Eres " + character + " en una historia interactiva con " + player + ". "
         "Premisa y relaciones establecidas: " + premise + ". "
-        "Habla con espontaneidad, calidez, picardía y presencia viva, acorde a la personalidad del personaje. "
         "Los turnos recientes son la escena actual en orden continuo. "
+        "TONO HUMANO, ÍNTIMO Y ESPONTÁNEO: Habla como una persona de carne y hueso en el calor del momento, "
+        "con picardía, calidez, deseo o tensión emocional según la escena. "
+        "Prohibido sonar robótica, rígida, sintética, filosófica o dar discursos artificiales. "
+        "LONGITUD BREVE Y CONCISA: Tu 'dialogo' debe ser breve y directo al grano, de 2 a 4 oraciones como máximo "
+        "(entre 25 y 55 palabras). No des monólogos largos, sermones ni párrafos interminables. "
+        "PROHIBIDO REPETIR DENTRO DEL MENSAJE: Jamás repitas la misma frase, idea, queja o exclamación dos veces en tu respuesta "
+        "(por ejemplo, nunca repitas 'esto es tan loco e inapropiado' varias veces). Di lo que sientes con fuerza una sola vez y continúa la interacción. "
         "CONTINUIDAD ESTRICTA: Reacciona de forma directa y lógica a lo que el jugador acaba de decir o hacer. "
-        "Si menciona un video, habla del video, no de un audio. Si pregunta algo, contesta con coherencia. "
+        "Si menciona un video, habla del video. Si pregunta algo, contesta con coherencia. "
         "NO REINICIES LA ESCENA: Prohibido repetir saludos iniciales ('hola', 'gracias por avisarme') "
         "o arrancar como si la conversación estuviera comenzando otra vez. "
         "Las acciones recientes del jugador ya ocurrieron: "
         "si pregunta quién hizo o entregó algo, comprueba esos turnos antes de responder. "
         "Si el jugador cambia de lugar, continúa desde el nuevo lugar. "
         "Contesta la última acción o pregunta del jugador. Puedes avanzar la ficción, pero no presentes "
-        "como recuerdos confirmados palabras textuales, hechos o detalles que no aparecen en la premisa o el historial. "
-        "Si te piden una cita exacta que no consta, reconoce que no recuerdas sus palabras exactas. "
+        "como recuerdos confirmados detalles que no aparecen en la premisa o el historial. "
         "Respeta el lugar actual, quién hizo cada cosa y los objetos que quedaron en otro sitio. "
         "No adelantes intimidad ni cambies de tema sin iniciativa del jugador. "
         "Cuando el jugador dice 'yo' habla de " + player + " y 'tú' se dirige a " + character + "; "
         "cuando tú dices 'yo' hablas de " + character + ". "
-        "Dirígete al jugador como 'tú'; no lo describas en tercera persona ni como si fuera otra persona. "
+        "Dirígete al jugador como 'tú'; no lo describas en tercera persona. "
         "Habla solo como " + character + ", en primera persona y en " + language + ". "
-        "Devuelve solo JSON con 'dialogo' (tus palabras pronunciadas al jugador) y 'gesto' "
-        "(una acción breve tuya en primera persona). La conversación debe llevar el turno: "
-        "aproximadamente 60% o más de diálogo y 30% o menos de gesto cuando hablas. "
-        "No escribas un narrador, el nombre del personaje seguido de dos puntos, ni una recapitulación "
-        "de los hechos. PROHIBIDO REPETIR EL MENSAJE DEL JUGADOR: el jugador ya habló. Nunca repitas, copies ni parafrasees "
+        "Devuelve solo JSON con 'dialogo' (tus palabras habladas al jugador) y 'gesto' "
+        "(una acción breve tuya en primera persona, máximo una oración corta). "
+        "PROHIBIDO REPETIR EL MENSAJE DEL JUGADOR: El jugador ya habló. Nunca repitas, copies ni parafrasees "
         "lo que él acaba de escribir ni hables en su lugar. Tu 'dialogo' son exclusivamente tus palabras originales de respuesta. "
-        "Reacciona directamente a la última acción o pregunta con palabras nuevas y espontáneas. Si la escena requiere conversación, "
-        "desarrolla el diálogo con naturalidad y creatividad; si pide silencio, deja la acción expresar el momento."
+        "Reacciona directamente a la última acción o pregunta con palabras frescas y espontáneas."
     )
 
 def conversation_messages(job):
@@ -369,6 +371,42 @@ def free_gpu_for_chat():
         pass
 
 
+def remove_intra_reply_repetitions(spoken_text):
+    """Clean repeated clauses and duplicate sentences within a single turn."""
+    parts = [p.strip() for p in re.split(r'(?<=[.!?¡¿])\s+', spoken_text.strip()) if p.strip()]
+    if len(parts) <= 1:
+        return spoken_text
+    seen = []
+    unique = []
+    for part in parts:
+        norm = re.sub(r'[^\w]+', ' ', part.casefold(), flags=re.UNICODE).strip()
+        if not norm:
+            continue
+        # Drop if very similar (>= 75%) to an earlier part in this reply
+        if any(SequenceMatcher(None, norm, prev).ratio() >= 0.75 for prev in seen):
+            continue
+        # Drop if substantial chunk (4+ words) is contained in a prior clause
+        norm_words = norm.split()
+        if len(norm_words) >= 4 and any(norm in prev or prev in norm for prev in seen if len(prev.split()) >= 4):
+            continue
+        seen.append(norm)
+        unique.append(part)
+    cleaned = " ".join(unique).strip()
+    return cleaned if cleaned else spoken_text
+
+
+def has_blatant_repetition(spoken_text):
+    """Detect if dialogue loops over repeated 4+ word sequences within the same turn."""
+    words = re.findall(r'\w+', spoken_text.casefold(), re.UNICODE)
+    if len(words) < 10:
+        return False
+    for n in (4, 5, 6):
+        ngrams = [tuple(words[i:i+n]) for i in range(len(words)-n+1)]
+        if len(ngrams) != len(set(ngrams)):
+            return True
+    return False
+
+
 def repeats_recent_clause(spoken, previous_replies):
     """Detect a recycled character line even if the rest of the reply changes."""
     words = re.findall(r"\w+", spoken.casefold(), re.UNICODE)
@@ -455,9 +493,10 @@ def reply_for(job):
     ][-4:]
     for attempt in range(3):
         try:
+            token_limit = 350 if wants_reading else 180
             raw_reply = model_chat(
-                messages, 0.90 + attempt * 0.05,
-                400, json_mode=(attempt == 0))
+                messages, 0.85 + attempt * 0.05,
+                token_limit, json_mode=(attempt == 0))
             structured_reply = bool(re.match(r"^\s*(?:```(?:json)?\s*)?\{", raw_reply, re.I)) or bool(re.search(r'(?im)^\s*"(?:gesto|dialogo)"\s*:', raw_reply))
             try:
                 parsed = parse_role_reply(raw_reply, character)
@@ -474,8 +513,25 @@ def reply_for(job):
                             raw_reply, character, allow_third_person=True)
                 else:
                     raise
-            spoken_text = re.sub(r"\*[^*]*\*", "", parsed).strip()
+            # Clean repetitive clauses and duplicate sentences within this turn
+            gesture_part = ""
+            gesture_match = re.search(r"^\*([^*]+)\*\s*", parsed)
+            if gesture_match:
+                gesture_part = f"*{gesture_match.group(1).strip()}* "
+                raw_dialogue = parsed[gesture_match.end():]
+            else:
+                raw_dialogue = parsed
+
+            cleaned_dialogue = remove_intra_reply_repetitions(raw_dialogue)
+            if cleaned_dialogue:
+                parsed = (gesture_part + cleaned_dialogue).strip()
+                spoken_text = cleaned_dialogue.strip()
+            else:
+                spoken_text = re.sub(r"\*[^*]*\*", "", parsed).strip()
             spoken = normalize_reply(spoken_text)
+
+            if not wants_repetition and has_blatant_repetition(spoken_text):
+                raise ValueError("Blatant internal repetition in dialogue")
             if job.get("language") == "es" and (english_drift(spoken_text) or any(
                     english_drift(action) for action in re.findall(r"\*([^*]+)\*", parsed))):
                 raise ValueError("Unexpected English in Spanish reply")
@@ -508,7 +564,12 @@ def reply_for(job):
         except Exception as error:
             print("Chat format attempt failed", job.get("jobId", "local"), attempt,
                   repr(error)[:180], flush=True)
-            if str(error) == "Unexpected English in Spanish reply":
+            if str(error) == "Blatant internal repetition in dialogue":
+                messages[0]["content"] += (
+                    " El borrador repitió varias veces la misma frase dentro del mensaje. "
+                    "Habla con total naturalidad humana: sé breve (2 a 3 oraciones), espontánea, apasionada y directa. "
+                    "PROHIBIDO repetir la misma frase dos veces en el mismo turno.")
+            elif str(error) == "Unexpected English in Spanish reply":
                 messages[0]["content"] += (
                     " El borrador cambió al inglés. Reescribe la respuesta desde cero solo en español "
                     "natural, incluidos diálogo y gesto. Conserva la acción y los hechos; "

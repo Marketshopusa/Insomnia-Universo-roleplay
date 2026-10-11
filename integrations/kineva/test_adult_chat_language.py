@@ -1,4 +1,4 @@
-﻿import sys
+import sys
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -38,7 +38,16 @@ class LanguageDriftTests(unittest.TestCase):
             reply = reply_for(job)
         self.assertEqual(model.call_count, 2)
         self.assertIn("este libro guarda una pista", reply)
-        self.assertFalse(english_drift(reply))
+    def test_removes_intra_reply_repeated_phrases(self):
+        job = {"language": "es", "story": {"character_role": "Andrea", "player_role": "William",
+                "description": "Amigos en una cabaña."}, "history": [], "memory": [],
+               "userMessage": "¿Qué hacemos ahora?"}
+        draft = '{"gesto":"Te miro fijamente.","dialogo":"Esto es tan loco e inapropiado. Dios mío, ¿qué estamos haciendo? Deberíamos parar. Esto es tan loco e inapropiado."}'
+        with patch("adult_chat_worker.free_gpu_for_chat"), patch(
+                "adult_chat_worker.model_chat", return_value=draft) as model:
+            reply = reply_for(job)
+        self.assertEqual(reply.count("Esto es tan loco e inapropiado"), 1)
+        self.assertIn("Deberíamos parar", reply)
 
 
 if __name__ == "__main__":

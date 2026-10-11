@@ -9,19 +9,44 @@ import { LanguageProvider } from "@/contexts/LanguageContext";
 import { AdultModeProvider } from "@/contexts/AdultModeContext";
 import { ErrorBoundary } from "@/components/common/ErrorBoundary";
 
-// Lazy-loaded pages to eliminate monolithic bundle and drastically speed up initial page load
-const Index = lazy(() => import("./pages/Index"));
-const NotFound = lazy(() => import("./pages/NotFound"));
-const Login = lazy(() => import("./pages/Login"));
-const Register = lazy(() => import("./pages/Register"));
-const Studio = lazy(() => import("./pages/Studio"));
-const MyStories = lazy(() => import("./pages/MyStories"));
-const Plans = lazy(() => import("./pages/Plans"));
-const StoryDetail = lazy(() => import("./pages/StoryDetail"));
-const Shorts = lazy(() => import("./pages/Shorts"));
-const ShortNovel = lazy(() => import("./pages/ShortNovel"));
-const ShortSeries = lazy(() => import("./pages/ShortSeries"));
-const ReadingHistory = lazy(() => import("./pages/ReadingHistory"));
+// Lazy-loaded pages with automatic retry & reload when new versions are deployed to production
+const lazyWithRetry = <T extends React.ComponentType<any>>(
+  factory: () => Promise<{ default: T }>
+) =>
+  lazy(async () => {
+    try {
+      const mod = await factory();
+      sessionStorage.removeItem("chunk_retry_pending");
+      return mod;
+    } catch (error: any) {
+      console.warn("Lazy import failed, checking for deployment chunk refresh:", error);
+      const isChunkError =
+        error?.message?.includes("dynamically imported module") ||
+        error?.name === "ChunkLoadError" ||
+        error?.message?.includes("Importing a module script failed") ||
+        error?.message?.includes("Failed to fetch");
+
+      if (isChunkError && !sessionStorage.getItem("chunk_retry_pending")) {
+        sessionStorage.setItem("chunk_retry_pending", "true");
+        window.location.reload();
+        return { default: (() => null) as unknown as T };
+      }
+      throw error;
+    }
+  });
+
+const Index = lazyWithRetry(() => import("./pages/Index"));
+const NotFound = lazyWithRetry(() => import("./pages/NotFound"));
+const Login = lazyWithRetry(() => import("./pages/Login"));
+const Register = lazyWithRetry(() => import("./pages/Register"));
+const Studio = lazyWithRetry(() => import("./pages/Studio"));
+const MyStories = lazyWithRetry(() => import("./pages/MyStories"));
+const Plans = lazyWithRetry(() => import("./pages/Plans"));
+const StoryDetail = lazyWithRetry(() => import("./pages/StoryDetail"));
+const Shorts = lazyWithRetry(() => import("./pages/Shorts"));
+const ShortNovel = lazyWithRetry(() => import("./pages/ShortNovel"));
+const ShortSeries = lazyWithRetry(() => import("./pages/ShortSeries"));
+const ReadingHistory = lazyWithRetry(() => import("./pages/ReadingHistory"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
