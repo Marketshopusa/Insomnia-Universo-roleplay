@@ -30,7 +30,7 @@ interface StoryCardProps {
   coverOverride?: string | null;
 }
 
-export const StoryCard = ({ story, onClick, index, onConfigure, coverOverride }: StoryCardProps) => {
+export const StoryCard = ({ story, onClick, index, onConfigure, onDelete, coverOverride }: StoryCardProps) => {
   const { t } = useLanguage();
   const coverImage = resolveStoryCover(story.cover_image, coverOverride);
   const isVideoCover = !!coverImage && /\.(mp4|webm|mov|m4v|ogv)(\?|$)/i.test(coverImage);
