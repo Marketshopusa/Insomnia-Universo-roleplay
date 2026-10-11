@@ -236,8 +236,9 @@ def minimal_instruction(character, player, premise, spanish):
         "(una acción breve tuya en primera persona). La conversación debe llevar el turno: "
         "aproximadamente 60% o más de diálogo y 30% o menos de gesto cuando hablas. "
         "No escribas un narrador, el nombre del personaje seguido de dos puntos, ni una recapitulación "
-        "de los hechos. Reacciona directamente a la última acción o pregunta con palabras nuevas; "
-        "no parafrasees ni repitas el mensaje del jugador. Si la escena requiere conversación, "
+        "de los hechos. PROHIBIDO REPETIR EL MENSAJE DEL JUGADOR: el jugador ya habló. Nunca repitas, copies ni parafrasees "
+        "lo que él acaba de escribir ni hables en su lugar. Tu 'dialogo' son exclusivamente tus palabras originales de respuesta. "
+        "Reacciona directamente a la última acción o pregunta con palabras nuevas y espontáneas. Si la escena requiere conversación, "
         "desarrolla el diálogo con naturalidad y creatividad; si pide silencio, deja la acción expresar el momento."
     )
 
@@ -480,6 +481,11 @@ def reply_for(job):
                 raise ValueError("Unexpected English in Spanish reply")
             if unsupported_recalled_fact(parsed, job):
                 raise ValueError("Unsupported scene fact")
+            user_norm = normalize_reply(latest)
+            if len(user_norm) > 18:
+                user_match = SequenceMatcher(None, spoken, user_norm).ratio()
+                if user_match >= 0.65 or user_norm in spoken:
+                    raise ValueError("Echoed player message instead of answering")
             # Solo rechaza un fragmento largo que el personaje repite por sí mismo.
             # El jugador siempre puede pedir de nuevo una cita o una frase.
             similarities = [SequenceMatcher(None, spoken, normalize_reply(old)).ratio()
@@ -511,6 +517,11 @@ def reply_for(job):
                 messages[0]["content"] += (
                     " Tu borrador añadió un número o parentesco no establecido. "
                     "Responde solo con el dato que aparece en los recuerdos o reconoce que no sabes el detalle. ")
+            elif str(error) == "Echoed player message instead of answering":
+                messages[0]["content"] += (
+                    " Tu borrador repitió lo que escribió el jugador. El jugador ya habló. "
+                    "TÚ ERES EL PERSONAJE, nunca repitas las palabras del jugador ni actúes por él. "
+                    "Contéstale con tu propia reacción, opinión y diálogo nuevo.")
             elif (str(error) == "Repeated previous character dialogue"
                     or str(error) == "Reused a clause from a recent reply"):
                 messages[0]["content"] += (

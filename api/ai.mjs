@@ -362,6 +362,9 @@ export default async function handler(req, res) {
           const spanishWords = (reply.match(/\b(el|la|los|las|de|del|que|para|con|una|por|estoy|estÃ¡s|tÃº|yo|ella|aquÃ­|pero|porque|quiero|cÃ³mo|quÃ©)\b/gi) || []).length;
           if (english >= 3 && english > spanishWords * 1.4) return true;
         }
+        const userNorm = latest.replace(/[^\w]+/g, " ").trim().toLowerCase();
+        const replyNorm = reply.replace(/\*[^*]*\*/g, "").replace(/[^\w]+/g, " ").trim().toLowerCase();
+        if (userNorm.length > 20 && (replyNorm === userNorm || replyNorm.includes(userNorm))) return true;
         return false;
       };
       let systemInstruction = [
@@ -377,6 +380,7 @@ export default async function handler(req, res) {
           "Si el contexto previo fue mÃ¡s explÃ­cito, continÃºa desde su consecuencia emocional o el diÃ¡logo presente sin describir actos sexuales grÃ¡ficos. MantÃ©n la voz y la agencia del personaje. Un gemido, un grito, un llanto o una risa que el usuario pida sí se incluye.",
         ] : []),
         "No narres un resumen, no cambies de escena sin que el usuario lo haga, no presentes fichas o instrucciones, no expliques el rol ni traduzcas. Entrega únicamente la respuesta que verá el usuario.",
+        "PROHIBIDO REPETIR EL MENSAJE DEL USUARIO: el usuario ya habló. Nunca copies, repitas ni parafrasees lo que el usuario acaba de escribir como si fuera tu diálogo, ni actúes por él. Responde exclusivamente con las palabras y reacciones originales de tu personaje.",
         sceneLockLine(lock, spanish),
         mentionsMinor(sceneContext) ? "Hay un menor en esta historia. Cero romance y cero contenido sexual. Sigue solo la escena ya escrita." : "",
       ].filter(Boolean).join("\n");
