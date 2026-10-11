@@ -1,6 +1,6 @@
 import { invokeFunctionWithRetry } from "@/lib/invokeFunction";
 import { generateSceneImage } from "@/lib/sceneImage";
-import { publishLocalChapters } from "@/lib/chapterVideo";
+import { attachFinishedVideos, publishLocalChapters } from "@/lib/chapterVideo";
 import { uploadKinevaReference } from "@/lib/kinevaReference";
 import { splitKinevaDialogue } from "@/lib/kinevaDialogue";
 import { CastGallery } from "@/components/studio/CastGallery";
@@ -118,6 +118,7 @@ const chapterOptions = [3, 5, 7, 10, 12];
   ];
 
   const loadedFromUrl = useRef(false);
+  const recoveredJob = useRef<string | null>(null);
   useEffect(() => {
     if (loadedFromUrl.current || !projects?.length) return;
     const id = new URLSearchParams(window.location.search).get("project");
@@ -158,6 +159,34 @@ const chapterOptions = [3, 5, 7, 10, 12];
   useEffect(() => {
     if (localJob?.id) window.sessionStorage.setItem("insomnia.studio.localJob", localJob.id);
   }, [localJob?.id]);
+
+  useEffect(() => {
+    if (!user || generatingVideos || localJob?.state !== "completed" || !seriesEpisodeIds.length || recoveredJob.current === localJob.id) return;
+    recoveredJob.current = localJob.id;
+    void (async () => {
+      const { data: episodes, error } = await supabase.from("shorts_episodes")
+        .select("id,series_id,status,video_url").in("id", seriesEpisodeIds);
+      if (error || !episodes || episodes.length !== seriesEpisodeIds.length ||
+          new Set(episodes.map((episode) => episode.series_id)).size !== 1 ||
+          localJob.total !== seriesEpisodeIds.length) return;
+      const { data: owner } = await supabase.from("shorts_series").select("id")
+        .eq("id", episodes[0].series_id).eq("created_by", user.id).eq("is_published", false).maybeSingle();
+      if (!owner) return;
+      const attached = new Set<number>(episodes.filter((episode) => episode.status === "ready" && episode.video_url)
+        .map((episode) => seriesEpisodeIds.indexOf(episode.id) + 1));
+      await attachFinishedVideos(localJob, seriesEpisodeIds, attached, {
+        fetchVideo: async (url) => {
+          const response = await fetch(url, loopbackInit());
+          if (!response.ok) throw new Error("No se pudo recuperar el MP4 local.");
+          return response.blob();
+        }, upload: storeChapterVideo, markReady: markChapterReady,
+      });
+      setProductionRefresh((value) => value + 1);
+    })().catch((error) => {
+      recoveredJob.current = null;
+      toast({ title: "No se pudieron recuperar los MP4 locales", description: error instanceof Error ? error.message : undefined, variant: "destructive" });
+    });
+  }, [user?.id, generatingVideos, localJob?.id, localJob?.state, seriesEpisodeIds.join(",")]);
 
   useEffect(() => {
     if (!localJob || ["completed", "failed"].includes(localJob.state)) return;
