@@ -50,7 +50,7 @@ import {
 } from "@/components/ui/alert-dialog";
 
 const MyStories = () => {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const { toast } = useToast();
   const { t } = useLanguage();
   const navigate = useNavigate();
@@ -273,6 +273,17 @@ const MyStories = () => {
       )}
     </>
   );
+
+  if (authLoading) {
+    return (
+      <MainLayout>
+        <div className="container mx-auto px-4 py-16 flex flex-col items-center justify-center">
+          <Loader2 className="w-8 h-8 animate-spin text-primary mb-3" />
+          <p className="text-sm text-muted-foreground">Cargando tus historias...</p>
+        </div>
+      </MainLayout>
+    );
+  }
 
   if (!user) {
     return (
