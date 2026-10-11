@@ -8,6 +8,7 @@ export async function saveNovelSeries(input: {
   isAdult: boolean;
   referencePath?: string | null;
   speakers?: string[];
+  lines?: string[];
 }) {
   const draft = seriesDraftFromNovel(input.novel, input.description, input.isAdult);
   if (!draft.episodes.length) throw new Error("La novela no trajo capítulos para guardar.");
@@ -20,7 +21,7 @@ export async function saveNovelSeries(input: {
     video_provider: "kineva",
     is_published: false,
     kineva_reference_image_path: input.referencePath || null,
-    kineva_bible: { language: "Spanish", speakers: input.speakers || [] },
+    kineva_bible: { language: "Spanish", speakers: input.speakers || [], lines: input.lines || [] },
   }).select("id").single();
   if (error || !series) throw new Error(error?.message || "No se pudo guardar la novela.");
   const { data: episodes, error: episodeError } = await supabase.from("shorts_episodes").insert(

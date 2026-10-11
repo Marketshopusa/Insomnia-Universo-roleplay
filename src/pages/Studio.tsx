@@ -409,6 +409,7 @@ const chapterOptions = [3, 5, 7, 10, 12];
         isAdult: !isSafeForWork,
         referencePath,
         speakers: manualSpeakers,
+        lines,
       });
       setNovel(draft);
       setSeriesEpisodeIds(saved.episodeIds);
@@ -443,10 +444,14 @@ const chapterOptions = [3, 5, 7, 10, 12];
       await filmChapters([visual], [seriesEpisodeIds[index]], undefined, [spoken[0] || ""], {
         chapters: [{ shots: spoken.map((dialogue) => ({ visual, dialogue, speaker: manualSpeakers[index] || primaryName })) }],
       });
+      const { error: episodeError } = await supabase.from("shorts_episodes")
+        .update({ video_prompt: visual }).eq("id", seriesEpisodeIds[index]);
+      if (episodeError) throw new Error(episodeError.message);
       if (savedSeriesId) {
-        const { error } = await supabase.from("shorts_series").update({ kineva_bible: { language: "Spanish", speakers: manualSpeakers } }).eq("id", savedSeriesId);
+        const { error } = await supabase.from("shorts_series").update({ kineva_bible: { language: "Spanish", speakers: manualSpeakers, lines: manualLines } }).eq("id", savedSeriesId);
         if (error) throw new Error(error.message);
       }
+      setProductionRefresh((value) => value + 1);
       toast({ title: `Capítulo ${index + 1} actualizado`, description: "El nuevo MP4 reemplazó al anterior en esta serie." });
     } catch (error) {
       toast({ title: "No se pudo regenerar el capítulo", description: error instanceof Error ? error.message : undefined, variant: "destructive" });
@@ -740,7 +745,8 @@ const chapterOptions = [3, 5, 7, 10, 12];
              setSeriesEpisodeIds(series.episodes.map((episode) => episode.id));
              setManualTitle(series.title);
              setManualScenes(series.episodes.map((episode) => episode.video_prompt || episode.script));
-             setManualLines(series.episodes.map((episode) => episode.script.replace(episode.video_prompt || "", "").trim()));
+             setManualLines(series.episodes.map((episode, index) => series.kineva_bible?.lines?.[index] ||
+               (episode.script.length < 500 ? episode.script.replace(episode.video_prompt || "", "").trim() : "")));
              setManualSpeakers(series.episodes.map((_, index) => series.kineva_bible?.speakers?.[index] || ""));
              setReferenceImage(reference);
              setNovel({ title: series.title, chapters: series.episodes.map((episode) => ({ number: episode.episode_number, title: episode.title, content: episode.script, video_prompt: episode.video_prompt })) });

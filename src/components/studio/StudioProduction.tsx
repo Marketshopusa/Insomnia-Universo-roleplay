@@ -10,7 +10,7 @@ type Episode = {
 export type ProductionSeries = {
   id: string; title: string; is_published: boolean;
   kineva_reference_image_path: string | null;
-  kineva_bible?: { speakers?: string[] } | null;
+  kineva_bible?: { speakers?: string[]; lines?: string[] } | null;
   episodes: Episode[];
 };
 type Review = ProductionSeries & { videos: Record<string, string> };
