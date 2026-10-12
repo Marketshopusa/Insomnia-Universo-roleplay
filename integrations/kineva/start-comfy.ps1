@@ -62,6 +62,13 @@ try {
     $portCheck.Dispose()
 }
 
+# Keep the local H3 voice-language patch synchronized with the repository.
+$voiceFix = Join-Path $PSScriptRoot "install_voice_language_fix.py"
+if (Test-Path -LiteralPath $voiceFix) {
+    & $comfyPython $voiceFix (Join-Path $InstallRoot "ComfyUI\custom_nodes\MinimaxStoryBuilder")
+    if ($LASTEXITCODE -ne 0) { throw "H3 voice-language patch failed; source implementation changed." }
+}
+
 $previousLlamaServer = $env:MSB_LLAMA_SERVER
 $previousPythonIoEncoding = $env:PYTHONIOENCODING
 $previousPythonUtf8 = $env:PYTHONUTF8

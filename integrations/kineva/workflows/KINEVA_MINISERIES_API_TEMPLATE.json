@@ -307,7 +307,7 @@
                                                  "26",
                                                  0
                                              ],
-                              "reference_text":  "The morning train was late again, so I walked the last part of the way.",
+                              "reference_text":  "Buenos d\u00edas. Hoy conversamos sobre historias, tecnolog\u00eda y los peque\u00f1os detalles de la vida.",
                               "seed":  424242,
                               "steps":  14,
                               "sampler_name":  "euler",

@@ -101,3 +101,9 @@ Comparaci?n de muestras (misma imagen inicial, no un A/B plenamente controlado):
 La nitidez Laplaciana result? menor en las tres muestras nuevas. Los fotogramas tambi?n tienen diferencias de encuadre y posici?n, por lo que esta m?trica no permite atribuir por s? sola una mejora o degradaci?n a la configuraci?n. La conexi?n al perfil actualizado y la generaci?n/exportaci?n se comprobaron; la calidad cinematogr?fica no queda aprobada por esta prueba.
 
 Para revisi?n conjunta con Antigravity: partir de este MP4, `comparison.json` y el grafo enviado. Revisar encuadre, detalle facial, movimiento y continuidad con una prueba A/B controlada, manteniendo el Master intacto. No sustituir el n?cleo H3 por el workflow b?sico Flux.
+
+## 7. Revisión del usuario — 12 de octubre
+
+El usuario revisó el MP4 nuevo y confirmó que el video se ve mucho mejor. Esa revisión visual sustituye el estado de mejora visual pendiente de la sección anterior. Reportó que la voz suena muy sintética, con pronunciación mezclada entre español e inglés. Se priorizó la voz del estudio; no se alteraron los ajustes visuales ni el Master.
+
+La auditoría de voz encontró una frase de referencia en inglés y una llamada a `build_voice_prompt` que omitía el idioma, dejando su valor por defecto `English`. La caché reutilizaba la voz por nombre sin contrastar idioma, texto o ajustes de muestreo. El cambio de voz y su prueba se documentan en `docs/KINEVA_VOICE_LANGUAGE_FIX.md`.

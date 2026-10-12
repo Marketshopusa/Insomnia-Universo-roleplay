@@ -1,0 +1,12 @@
+{
+  "file": "C:\\Users\\synth\\Documents\\Kineva-Workflows\\RESULTADOS_VERIFICADOS\\KINEVA_VOZ_ESPANOL_20261012_034001.wav",
+  "duration": 5.0,
+  "sample_rate": "32000",
+  "bytes": 640078,
+  "sha256": "e78ca077c44374c1cbb70327f14c776224704032ec3ac45aee5ef7ac5711e424",
+  "chunks": 20,
+  "transfer": "C:\\Users\\synth\\Documents\\Kineva-Workflows\\RESULTADOS_VERIFICADOS\\KINEVA_VOZ_ESPANOL_20261012_034001.transfer.txt",
+  "prompt_id": "f80ed92c-8117-4530-b689-1c418b3987fd",
+  "decode": "passed",
+  "scope": "voice reference sample, not the final video voice"
+}

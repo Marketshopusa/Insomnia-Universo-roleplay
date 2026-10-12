@@ -1,0 +1,8 @@
+{
+  "prompt_id": "f80ed92c-8117-4530-b689-1c418b3987fd",
+  "template": "C:\\Users\\synth\\Documents\\Kineva-Workflows\\ACTIVE\\KINEVA_MINISERIES_API_TEMPLATE.json",
+  "language": "Spanish",
+  "reference_text": "Buenos d\u00edas. Hoy conversamos sobre historias, tecnolog\u00eda y los peque\u00f1os detalles de la vida.",
+  "voice_policy": "language-aware reference and voice_v2 cache",
+  "scope": "H3 voice reference audition only; final video dialogue not regenerated"
+}
