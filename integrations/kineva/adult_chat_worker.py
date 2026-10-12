@@ -69,6 +69,12 @@ def parse_role_reply(raw_reply, character="", allow_third_person=False):
     dialogue = str(parsed.get("dialogo") or "").strip()
     if not dialogue:
         raise ValueError("Incomplete dialogue")
+    # Dialogue must be actual spoken words to the player, not purely a physical stage direction/action
+    narration_starter = r"^(?:(?:Mis|Tus|Sus)\s+(?:manos|dedos|labios|brazos|ojos|cuerpo)|(?:Me|Te)\s+(?:acerco|deslizo|presiono|pego|siento|levanto|muevo|toco|abrazo|giro|apoyo|arrodillo)|Doy\s+un\s+paso)\b"
+    if re.search(narration_starter, dialogue, re.I) and not re.search(r'["«»“”¡!¿?]', dialogue):
+        # The model put its physical gesture inside "dialogo" without speaking aloud
+        if not gesture:
+            raise ValueError("Pure physical action without spoken dialogue")
     speaker = re.match(r"^[A-ZÁÉÍÓÚÑ][a-záéíóúñ]{2,}", character)
     if (re.search(r"(?i)\b(?:gesto|gestos|di[aá]logo|dialogue)\s*:", dialogue)
             or (speaker and re.match(r"^\s*" + re.escape(speaker.group()) + r"\s*:", dialogue, re.I))):
@@ -180,14 +186,30 @@ def repetition_request(text):
 
 def focus_latest_turn(text):
     """Highlight a concrete recent action or question without discarding the full message."""
-    chunks = [part.strip() for part in re.split(r"(?<=[.!?])\s+|(?=¿)", text) if part.strip()]
-    questions = [part for part in chunks if "¿" in part or part.endswith("?")]
+    raw = str(text or "").strip()
+    if not raw:
+        return ""
+    # 1. Questions
+    questions = re.findall(r"[¿¡]?[^.!?\n]*\?", raw)
     if questions:
-        return clip_text(questions[-1], 180)
+        return clip_text(questions[-1].strip(), 180)
+    # 2. Key physical roleplay actions or explicit statements by the player
+    action_match = re.findall(
+        r"(?i)\b(?:la|lo|te)\s+(?:levant[eéó]|met[ií]|entr[eé]|bes[eéó]|abrac[eéó]|toc[eéó]|empuj[eéó]|agarr[eéó]|tom[eéó]|acerc[eéó]|acarici[eéó]|penetr[eéó]|enterr[eéó])\b[^.!?\n]*",
+        raw
+    )
+    if action_match:
+        return clip_text(action_match[-1].strip(), 180)
+    # 3. Clauses with specific intent / user statement
+    chunks = [part.strip() for part in re.split(r"(?<=[.!?])\s+|(?=¿)|\n+", raw) if part.strip()]
     actions = [part for part in chunks if re.search(
         r"(?i)\b(?:te\s+(?:acabo\s+de\s+)?(?:envi[eé]|env[ií]o|mand[eéó]|di|doy|entregu[eé])|"
-        r"acabo\s+de|encontr[eé]|abr[ií]|abro|mira|pregunto|quiero|necesito)\b", part)]
-    return clip_text(actions[-1], 180) if actions else ""
+        r"acabo\s+de|encontr[eé]|abr[ií]|abro|mira|pregunto|quiero|necesito|estoy\s+que)\b", part)]
+    if actions:
+        return clip_text(actions[-1], 180)
+    # 4. Fallback to the last significant clause
+    parts = [p.strip() for p in re.split(r"[,;.:!?\n]+", raw) if len(p.strip()) > 10]
+    return clip_text(parts[-1], 180) if parts else clip_text(raw, 180)
 
 
 _ENGLISH_FUNCTION_WORDS = frozenset({
@@ -237,8 +259,10 @@ def minimal_instruction(character, player, premise, spanish):
         "cuando tú dices 'yo' hablas de " + character + ". "
         "Dirígete al jugador como 'tú'; no lo describas en tercera persona. "
         "Habla solo como " + character + ", en primera persona y en " + language + ". "
+        "OBLIGATORIO: Debes incluir SIEMPRE 'dialogo' con palabras reales que le dices en voz alta a " + player + " (gemidos, jadeos, respuestas pícaras, frases apasionadas o directas en el momento). "
+        "NUNCA dejes 'dialogo' vacío ni pongas descripciones físicas o narración en 'dialogo'. Las acciones físicas van exclusivamente en 'gesto'. "
         "Devuelve solo JSON con 'dialogo' (tus palabras habladas al jugador) y 'gesto' "
-        "(una acción breve tuya en primera persona, máximo una oración corta). "
+        "(una acción o reacción física tuya en primera persona, máximo una oración corta). "
         "PROHIBIDO REPETIR EL MENSAJE DEL JUGADOR: El jugador ya habló. Nunca repitas, copies ni parafrasees "
         "lo que él acaba de escribir ni hables en su lugar. Tu 'dialogo' son exclusivamente tus palabras originales de respuesta. "
         "Reacciona directamente a la última acción o pregunta con palabras frescas y espontáneas."
@@ -564,7 +588,12 @@ def reply_for(job):
         except Exception as error:
             print("Chat format attempt failed", job.get("jobId", "local"), attempt,
                   repr(error)[:180], flush=True)
-            if str(error) == "Blatant internal repetition in dialogue":
+            if str(error) == "Pure physical action without spoken dialogue":
+                messages[0]["content"] += (
+                    " Tu borrador solo describió una acción física sin decir nada en voz alta. "
+                    "El personaje DEBE HABLARle directamente al jugador en 'dialogo' (con palabras reales, emoción o jadeos). "
+                    "Pon la acción en 'gesto' y las palabras que dices en 'dialogo'.")
+            elif str(error) == "Blatant internal repetition in dialogue":
                 messages[0]["content"] += (
                     " El borrador repitió varias veces la misma frase dentro del mensaje. "
                     "Habla con total naturalidad humana: sé breve (2 a 3 oraciones), espontánea, apasionada y directa. "

@@ -49,6 +49,21 @@ class LanguageDriftTests(unittest.TestCase):
         self.assertEqual(reply.count("Esto es tan loco e inapropiado"), 1)
         self.assertIn("Deberíamos parar", reply)
 
+    def test_rejects_pure_physical_narration_without_dialogue(self):
+        job = {"language": "es", "story": {"character_role": "Penelope", "player_role": "Hombre",
+                "description": "Amigos en un balcón."}, "history": [], "memory": [],
+               "userMessage": "Estoy que te agarro ahora mismo."}
+        drafts = [
+            '{"gesto":"","dialogo":"Mis manos se deslizan hacia abajo para sostener fuertemente tus caderas mientras me presiono contra ti"}',
+            '{"gesto":"Mis manos se deslizan hacia tus caderas","dialogo":"Hazlo de una vez, no me hagas esperar más..."}',
+        ]
+        with patch("adult_chat_worker.free_gpu_for_chat"), patch(
+                "adult_chat_worker.model_chat", side_effect=drafts) as model:
+            reply = reply_for(job)
+        self.assertEqual(model.call_count, 2)
+        self.assertIn("Hazlo de una vez", reply)
+        self.assertIn("*Mis manos se deslizan hacia tus caderas*", reply)
+
 
 if __name__ == "__main__":
     unittest.main()
