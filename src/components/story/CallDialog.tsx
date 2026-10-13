@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Phone } from "lucide-react";
+import { Phone, PhoneOff, Mic, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -26,8 +26,8 @@ interface CallDialogProps {
   onTurn: (userText: string, assistantText: string | null) => void;
 }
 
-const SILENCE_MS = 1400;
-const MAX_TURN_MS = 30000;
+const SILENCE_MS = 1200;
+const MAX_TURN_MS = 16000;
 
 function audioUrlFromBase64(content: string, mimeType: string) {
   const binary = window.atob(content);
@@ -165,15 +165,17 @@ export const CallDialog = ({
 
       let silentFor = 0;
       let heardVoice = false;
+      let recordedMs = 0;
       const meter = window.setInterval(() => {
         const level = recorder.getLevel();
-        if (level > 0.005) {
+        recordedMs += 150;
+        if (level > 0.0012) {
           heardVoice = true;
           silentFor = 0;
         } else {
           silentFor += 150;
         }
-        if (heardVoice && silentFor >= SILENCE_MS) {
+        if (heardVoice && silentFor >= SILENCE_MS && recordedMs >= 800) {
           window.clearInterval(meter);
           void finishTurn().catch(recoverTurn);
         }
@@ -205,7 +207,7 @@ export const CallDialog = ({
     const blob = await recorder.stop();
     if (!activeRef.current) return;
 
-    if (!spoke && blob.size < 6000) {
+    if (!spoke && blob.size < 4000) {
       void listen();
       return;
     }
@@ -261,30 +263,61 @@ export const CallDialog = ({
 
   const active = state !== "idle";
   const status = state === "listening"
-    ? t("call.listening")
+    ? (es ? "Escuchando... habla ahora" : "Listening... speak now")
     : state === "thinking"
       ? t("call.answering")
       : state === "speaking"
         ? t("call.speaking")
         : "";
 
+  const handleActionClick = () => {
+    if (!active) {
+      void listen();
+    } else if (state === "listening") {
+      void finishTurn().catch(recoverTurn);
+    } else if (state === "speaking") {
+      stopSpeaking();
+      void listen();
+    }
+  };
+
   return (
-    <div className="flex items-center gap-2">
-      {status && <span className="text-xs text-muted-foreground animate-pulse">{status}</span>}
+    <div className="flex items-center gap-1.5">
+      {status && <span className="text-xs text-muted-foreground animate-pulse max-w-[150px] truncate">{status}</span>}
       <Button
         type="button"
         size="icon"
-        onClick={() => (active ? hangUp() : void listen())}
-        className={`h-10 w-10 shrink-0 rounded-full border transition-colors sm:h-11 sm:w-11 ${
+        onClick={handleActionClick}
+        disabled={state === "thinking"}
+        className={`h-10 w-10 shrink-0 rounded-full border transition-all sm:h-11 sm:w-11 ${
           active
             ? "border-call-active/60 bg-call-active text-call-active-foreground hover:bg-call-active/90 ring-2 ring-call-active/30"
             : "border-call-inactive/60 bg-call-inactive text-call-inactive-foreground hover:bg-call-inactive/90"
         }`}
-        aria-label={active ? t("call.endCall") : t("call.startCall")}
-        title={active ? t("call.endCall") : t("call.startCall")}
+        aria-label={active ? (state === "listening" ? (es ? "Enviar voz" : "Send voice") : t("call.endCall")) : t("call.startCall")}
+        title={active ? (state === "listening" ? (es ? "Toca para enviar ya" : "Tap to send now") : (es ? "Hablar" : "Speak")) : t("call.startCall")}
       >
-        <Phone className={`h-5 w-5 ${active ? "animate-pulse" : ""}`} />
+        {state === "thinking" ? (
+          <Loader2 className="h-5 w-5 animate-spin" />
+        ) : state === "listening" ? (
+          <Mic className="h-5 w-5 animate-pulse" />
+        ) : (
+          <Phone className={`h-5 w-5 ${active ? "animate-pulse" : ""}`} />
+        )}
       </Button>
+      {active && (
+        <Button
+          type="button"
+          size="icon"
+          variant="destructive"
+          onClick={hangUp}
+          className="h-9 w-9 shrink-0 rounded-full sm:h-10 sm:w-10"
+          aria-label={t("call.endCall")}
+          title={t("call.endCall")}
+        >
+          <PhoneOff className="h-4 w-4" />
+        </Button>
+      )}
     </div>
   );
 };

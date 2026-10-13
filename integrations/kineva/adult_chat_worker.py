@@ -230,15 +230,45 @@ def english_drift(text):
     return matches >= 3 and matches / len(words) >= 0.16
 
 
-def minimal_instruction(character, player, premise, spanish):
+def minimal_instruction(character, player, premise, spanish, turns_count=0):
     """Contrato breve con identidad, hechos de la tarjeta y formato."""
     language = "español natural" if spanish else "natural English"
+    turn_index = max(1, (turns_count // 2) + 1)
+    if turn_index <= 3:
+        tone_line = (
+            "TONO HUMANO, NATURAL Y COTIDIANO: Habla como una persona real en convivencia cotidiana o interacción social normal. "
+            "Cero tensión sexual explícita, cero gemidos o jadeos. "
+        )
+        dialogue_clause = (
+            "OBLIGATORIO: En FASE 1 (Social, Turnos 1 a 3), tu 'dialogo' son exclusivamente palabras habladas cotidianas, "
+            "amables, tímidas o conversacionales según la situación. ESTRICTAMENTE PROHIBIDO gemir, jadear o hablar de sexo. "
+        )
+    elif turn_index <= 6:
+        tone_line = (
+            "TONO HUMANO Y CÓMPLICE: Hay química y tensión sutil. Bromea y muestra complicidad sin declaraciones eróticas directas. "
+        )
+        dialogue_clause = (
+            "OBLIGATORIO: En FASE 2 (Tensión, Turnos 3 a 6), tu 'dialogo' tiene química y coqueteo sutil. Prohibido pedir sexo o tocar genitales. "
+        )
+    elif turn_index <= 10:
+        tone_line = (
+            "TONO DE DESEO Y TIMIDEZ: Nerviosismo, atracción confusa e insinuaciones indirectas. "
+        )
+        dialogue_clause = (
+            "OBLIGATORIO: En FASE 3 (Deseo, Turnos 6 a 10), tu 'dialogo' expresa nerviosismo y atracción. Aún no pidas penetración. "
+        )
+    else:
+        tone_line = (
+            "TONO ÍNTIMO, APASIONADO Y CRUDO: Deseo explícito y calor mutuo en el clímax de la escena. "
+        )
+        dialogue_clause = (
+            "OBLIGATORIO: En FASE 4 (Acción, Turnos 10+), tu 'dialogo' es pasional y directo, con palabras ardientes y el vocabulario explícito permitido. "
+        )
     return (
         "Eres " + character + " en una historia interactiva con " + player + ". "
         "Premisa y relaciones establecidas: " + premise + ". "
         "Los turnos recientes son la escena actual en orden continuo. "
-        "TONO HUMANO, ÍNTIMO Y ESPONTÁNEO: Habla como una persona de carne y hueso en el calor del momento, "
-        "con picardía, calidez, deseo o tensión emocional según la escena. "
+        + tone_line +
         "Prohibido sonar robótica, rígida, sintética, filosófica o dar discursos artificiales. "
         "LONGITUD BREVE Y CONCISA: Tu 'dialogo' debe ser breve y directo al grano, de 2 a 4 oraciones como máximo "
         "(entre 25 y 55 palabras). No des monólogos largos, sermones ni párrafos interminables. "
@@ -259,7 +289,7 @@ def minimal_instruction(character, player, premise, spanish):
         "cuando tú dices 'yo' hablas de " + character + ". "
         "Dirígete al jugador como 'tú'; no lo describas en tercera persona. "
         "Habla solo como " + character + ", en primera persona y en " + language + ". "
-        "OBLIGATORIO: Debes incluir SIEMPRE 'dialogo' con palabras reales que le dices en voz alta a " + player + " (gemidos, jadeos, respuestas pícaras, frases apasionadas o directas en el momento). "
+        + dialogue_clause +
         "NUNCA dejes 'dialogo' vacío ni pongas descripciones físicas o narración en 'dialogo'. Las acciones físicas van exclusivamente en 'gesto'. "
         "Devuelve solo JSON con 'dialogo' (tus palabras habladas al jugador) y 'gesto' "
         "(una acción o reacción física tuya en primera persona, máximo una oración corta). "
@@ -353,7 +383,7 @@ def conversation_messages(job):
         recent = recent[1:]
     pacing_clause = pacing_and_language_rules(len(turns), spanish)
     if spanish and os.environ.get("KINEVA_CHAT_MINIMAL_PROMPT", "1") == "1":
-        parts = [minimal_instruction(character, player, premise, spanish), pacing_clause]
+        parts = [minimal_instruction(character, player, premise, spanish, len(turns)), pacing_clause]
         if earlier_memory:
             parts.append(earlier_memory)
         if chronicle:
@@ -412,6 +442,16 @@ def conversation_messages(job):
     current_request += "\n\nÚltimo mensaje del jugador:\n" + latest
     if focus and focus != latest:
         current_request += "\n\nDetalle nuevo que debes atender: " + focus
+    turn_index = max(1, (len(turns) // 2) + 1)
+    if spanish:
+        if turn_index <= 3:
+            current_request += f"\n\n[DIRECTIVA ESTRICTA - TURNO {turn_index} FASE 1 SOCIAL: Prohibido cualquier avance sexual, gemido, desnudez o diálogo erótico. Responde únicamente con conversación cotidiana y humana.]"
+        elif turn_index <= 6:
+            current_request += f"\n\n[DIRECTIVA ESTRICTA - TURNO {turn_index} FASE 2 TENSIÓN: Coqueteo sutil y charla cómplice. Prohibido sexo explícito o palabras genitales.]"
+        elif turn_index <= 10:
+            current_request += f"\n\n[DIRECTIVA ESTRICTA - TURNO {turn_index} FASE 3 CONFUSIÓN/DESEO: Atracción, timidez e insinuaciones. Todavía no pidas penetración.]"
+        else:
+            current_request += f"\n\n[DIRECTIVA ESTRICTA - TURNO {turn_index} FASE 4 ACCIÓN: Intimidad física, pasión y vocabulario explícito permitidos.]"
     if messages[-1]["role"] == "user":
         messages[-1]["content"] += current_request
     else:
@@ -607,6 +647,16 @@ def reply_for(job):
                 raise ValueError("Unexpected English in Spanish reply")
             if unsupported_recalled_fact(parsed, job):
                 raise ValueError("Unsupported scene fact")
+            turns_count = len(job.get("history") or [])
+            turn_index = max(1, (turns_count // 2) + 1)
+            if job.get("language") == "es" and turn_index <= 3:
+                sex_pattern = r"(?i)\b(?:penetr\w*|gem\w*|gim\w*|jade\w*|cuca|conejo|panocha|papaya|culo\s+rico|verga|pinga|pija|pene|güevo|huevo|desnud\w*|chup\w*|mam\w*|masturb\w*|correr(?:me|te)|venir(?:me|te)\s+adentro|empotr\w*|meterla|meto\s+mi|saco\s+mi|toc(?:ar|o|as)\s+mi\s+entrepierna)\b"
+                if re.search(sex_pattern, parsed):
+                    raise ValueError("Phase 1 violation: premature sexual action or vocabulary on turns 1-3")
+            elif job.get("language") == "es" and turn_index <= 6:
+                sex_pattern = r"(?i)\b(?:penetr\w*|cuca|panocha|papaya|verga|pinga|pija|meterla\s+toda|chúpamelo|mámalo)\b"
+                if re.search(sex_pattern, parsed):
+                    raise ValueError("Phase 2 violation: premature explicit sexual organs on turns 4-6")
             user_norm = normalize_reply(latest)
             if len(user_norm) > 18:
                 user_match = SequenceMatcher(None, spoken, user_norm).ratio()
@@ -637,8 +687,16 @@ def reply_for(job):
             if str(error) == "Pure physical action without spoken dialogue":
                 messages[0]["content"] += (
                     " Tu borrador solo describió una acción física sin decir nada en voz alta. "
-                    "El personaje DEBE HABLARle directamente al jugador en 'dialogo' (con palabras reales, emoción o jadeos). "
+                    "El personaje DEBE HABLARle directamente al jugador en 'dialogo' (con palabras reales). "
                     "Pon la acción en 'gesto' y las palabras que dices en 'dialogo'.")
+            elif "Phase 1 violation" in str(error):
+                messages[0]["content"] += (
+                    " PROHIBIDO: Estás en FASE 1 (Social, Turnos 1 a 3). Cero insinuaciones sexuales, gemidos, desnudez o contacto erótico. "
+                    "Responde con absoluta normalidad cotidiana, sorpresa o conversación humana según lo que dijo el jugador.")
+            elif "Phase 2 violation" in str(error):
+                messages[0]["content"] += (
+                    " PROHIBIDO: Estás en FASE 2 (Tensión, Turnos 4 a 6). Química y coqueteo sutil solamente. "
+                    "Aún no puedes usar lenguaje genital explícito ni pedir penetración.")
             elif str(error) == "Blatant internal repetition in dialogue":
                 messages[0]["content"] += (
                     " El borrador repitió varias veces la misma frase dentro del mensaje. "

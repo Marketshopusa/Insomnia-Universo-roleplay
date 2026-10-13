@@ -83,8 +83,8 @@ export async function startWavRecording(): Promise<WavRecorder> {
       count += 1;
     }
     level = Math.sqrt(sum / Math.max(1, count));
-    // Accept audio frames at a sensitive threshold (0.005) so soft voices are heard.
-    voiceFrames = level > 0.005 ? voiceFrames + 1 : 0;
+    // Accept audio frames at a sensitive threshold (0.0012) so soft voices and distant mics are heard.
+    voiceFrames = level > 0.0012 ? voiceFrames + 1 : 0;
     if (voiceFrames >= 1) spoke = true;
   };
   source.connect(processor);

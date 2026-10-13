@@ -64,6 +64,26 @@ class LanguageDriftTests(unittest.TestCase):
         self.assertIn("Hazlo de una vez", reply)
         self.assertIn("*Mis manos se deslizan hacia tus caderas*", reply)
 
+    def test_rejects_premature_sexual_actions_on_phase_1(self):
+        job = {
+            "language": "es",
+            "story": {"character_role": "Estefani", "player_role": "Willian", "description": "Compañeros de apartamento."},
+            "history": [],
+            "memory": [],
+            "userMessage": "Hola Estefani, ¿cómo estás?",
+        }
+        drafts = [
+            '{"gesto":"Me desnudo ante ti y gimo","dialogo":"Quiero que me metas tu verga ahora mismo"}',
+            '{"gesto":"Te saludo con una sonrisa","dialogo":"Hola Willian, bien por dicha, apenas llegando del trabajo. ¿Qué tal estuvo tu día?"}',
+        ]
+        with patch("adult_chat_worker.free_gpu_for_chat"), patch(
+                "adult_chat_worker.model_chat", side_effect=drafts) as model:
+            reply = reply_for(job)
+        self.assertEqual(model.call_count, 2)
+        self.assertIn("Hola Willian, bien por dicha", reply)
+        self.assertNotIn("verga", reply)
+
 
 if __name__ == "__main__":
     unittest.main()
+
