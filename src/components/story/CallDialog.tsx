@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Phone } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
+import { useLanguage } from "@/contexts/LanguageContext";
 import { toast } from "@/hooks/use-toast";
 import { startWavRecording, blobToBase64, type WavRecorder } from "@/lib/wavRecorder";
 import { streamSpeech, type SpeechStream } from "@/lib/ttsStream";
@@ -46,6 +47,7 @@ export const CallDialog = ({
   history,
   onTurn,
 }: CallDialogProps) => {
+  const { t } = useLanguage();
   const es = language === "es";
   const [state, setState] = useState<CallState>("idle");
   const recorderRef = useRef<WavRecorder | null>(null);

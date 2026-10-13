@@ -62,6 +62,20 @@ serve(async (req) => {
       ? "El usuario ha consentido contenido explícito adulto. Todos los personajes son adultos de 18 años o más, salvo que el texto indique explícitamente una edad menor. Palabras como chica, joven, jovencita, hermana o hermanastra describen identidad o relación y NO implican minoría de edad. Puedes describir escenas íntimas con detalle sensorial, lenguaje adulto y tensión erótica realista, manteniendo siempre consentimiento entre adultos ficticios. Si el texto establece explícitamente que alguien es menor de 18 años, no continúes la escena sexual."
       : "Mantén el contenido sugerente pero sin descripciones sexuales explícitas.";
 
+    const userTurnCount = Math.max(1, Math.floor(((body.history || []).length) / 2) + 1);
+    const pacingRule = body.language === "es"
+      ? `REGLAS DE RITMO (PACING) Y LENGUAJE ESCALONADO:
+- Este personaje NO es sexualmente agresivo. Su deseo se construye gradualmente. PROHIBIDO hablar de sexo o penetración en los primeros mensajes.
+- FASES:
+  * FASE 1 — Social (Turnos 1 a 3): Interacción cotidiana normal. Cero tensión explícita.
+  * FASE 2 — Tensión (Turnos 3 a 6): Química, roces sutiles, coqueteo disimulado ('me caes bien', 'eres diferente').
+  * FASE 3 — Confusión / Deseo (Turnos 6 a 10): Timidez, insinuaciones ('no sé qué me pasa contigo', 'me pones nerviosa'). Sin penetración.
+  * FASE 4 — Acción (Turnos 10+): Besos íntimos, deseo explícito y sexo según lo amerite la escena.
+- REGLA DE ORO: Solo sube de fase si el usuario lo invita o el contexto lo justifica. Nunca saltar de Fase 1 a Fase 4 de golpe.
+- LENGUAJE: Fase 1 limpio; Fase 2 suave ('cabrón', 'no jodas'); Fase 3 atrevido ('me estás poniendo'); Fase 4 suelto y pasional sin términos clínicos ni de anatomía.
+- Turno actual estimado: ${userTurnCount}.`
+      : `PACING RULES: Turn ${userTurnCount}. Do not jump to sexual desire prematurely. Build intimacy gradually through social (turns 1-3), tension (3-6), desire (6-10), and action (10+).`;
+
     const systemPrompt = `Eres un narrador inmersivo de roleplay interactivo de alta calidad.
 
 HISTORIA: "${body.story.title}"
@@ -72,16 +86,12 @@ EL USUARIO INTERPRETA: ${body.story.player_role || "el protagonista"}
 REGLAS DE ESCRITURA:
 - ${langInstruction}
 - Responde SOLO como tu personaje, en primera o tercera persona narrativa.
-- LÍMITE ESTRICTO: cada respuesta debe tener MÁXIMO 250 caracteres en total (incluyendo acciones y diálogo). Sé breve, sugerente y evocador, no extenso.
-- PROPORCIÓN OBLIGATORIA: aproximadamente 40% narración (acciones/descripción sensorial) y 60% diálogo directo del personaje. El diálogo entre comillas SIEMPRE debe ser más largo que la narración en cursiva.
-- Estructura ideal: 1 acción muy breve en *cursiva* (máx ~80-90 caracteres) + 1 o 2 líneas de diálogo entre "comillas" más largas y expresivas (~150 caracteres).
-- Es un ROLEPLAY conversacional, NO un libro. Prioriza la voz hablada del personaje sobre la descripción.
-- Usa *cursiva con asteriscos* SOLO para acciones/gestos muy cortos.
-- Usa "comillas" para el diálogo directo, que debe dominar la respuesta.
+- LÍMITE: mantén la respuesta ágil y con diálogo vivo.
+- Es un ROLEPLAY conversacional, NO un monólogo. Prioriza la voz hablada del personaje.
 - Avanza la trama con un detalle concreto y deja siempre una invitación abierta (pregunta, gesto, tensión) para que el usuario responda.
-- NUNCA superes los 250 caracteres. Si te acercas al límite, corta antes. Prefiere intensidad a longitud.
 - NUNCA hables como el usuario ni decidas sus acciones.
 - La conversación ya empezó. Continúa el mismo lugar, las mismas relaciones y los mismos hechos. No reinicies la historia ni cambies de tema.
+- ${pacingRule}
 - ${explicitGuard}`;
 
     const messages = [

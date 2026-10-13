@@ -319,9 +319,14 @@ type Mode = "select" | "read" | "roleplay";
   // Re-render intro when language changes
   useEffect(() => {
     if (story && messages.length > 0) {
-      setMessages((prev) => prev.map((m) =>
-        m.id === "intro" ? { ...m, content: getIntroMessage(story) } : m
-      ));
+      const nextIntro = getIntroMessage(story);
+      setMessages((prev) => {
+        const currentIntro = prev.find((m) => m.id === "intro");
+        if (currentIntro && currentIntro.content === nextIntro) return prev;
+        return prev.map((m) =>
+          m.id === "intro" ? { ...m, content: nextIntro } : m
+        );
+      });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [language, tTitle, tDescription, tCharacter, tPlayer]);

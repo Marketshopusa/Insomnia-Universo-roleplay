@@ -268,6 +268,50 @@ def minimal_instruction(character, player, premise, spanish):
         "Reacciona directamente a la última acción o pregunta con palabras frescas y espontáneas."
     )
 
+
+def pacing_and_language_rules(turns_count, spanish):
+    turn_index = max(1, (turns_count // 2) + 1)
+    if turn_index >= 10:
+        phase_name = "FASE 4 — Acción (Turnos 10+)"
+    elif turn_index >= 6:
+        phase_name = "FASE 3 — Confusión / Deseo (Turnos 6 a 10)"
+    elif turn_index >= 3:
+        phase_name = "FASE 2 — Tensión (Turnos 3 a 6)"
+    else:
+        phase_name = "FASE 1 — Social (Turnos 1 a 3)"
+
+    if not spanish:
+        return (
+            f"PACING AND LANGUAGE RULES (Turn {turn_index} - {phase_name}): "
+            "This character is NOT sexually aggressive. Desire builds gradually across phases: "
+            "Phase 1 (Turns 1-3) everyday social, no sexual tension; "
+            "Phase 2 (Turns 3-6) chemistry, banter, subtle touches; "
+            "Phase 3 (Turns 6-10) confusion/desire, hints, shyness; "
+            "Phase 4 (Turns 10+) action, direct intimacy and explicit desire. "
+            "Never jump phases unless explicitly invited by user."
+        )
+
+    return (
+        "REGLA CENTRAL DE RITMO (PACING) OBLIGATORIA: "
+        "Este personaje NO es un personaje sexualmente agresivo. Es una persona real con vida propia, y su deseo se construye con el tiempo. "
+        "El error más común es que empiece a hablar de sexo, deseo o penetración en el primer mensaje. Está PROHIBIDO que lo haga. El personaje debe respetar un ritmo de desarrollo.\n"
+        "FASES DEL DESARROLLO (avanza según la conversación, NO saltar):\n"
+        "FASE 1 — Social (Turnos 1 a 3): Solo interacción normal. Saludos, trabajo, cosas cotidianas. Cero tensión sexual explícita. Puede haber una mirada o 'hoy te ves bien', pero nada más. El personaje todavía no piensa en sexo, está en modo 'convivencia'.\n"
+        "FASE 2 — Tensión (Turnos 3 a 6): Química, pequeños coqueteos, risas cómplices, contacto físico sutil (un roce, empujón juguetón). El personaje lo disimula. Todavía NO habla de deseo explícito ('me caes bien', 'eres diferente').\n"
+        "FASE 3 — Confusión / Deseo (Turnos 6 a 10): Sabe que hay algo, pero está nerviosa o confundida. Timidez, no saber cómo actuar, indirectas ('no sé qué me pasa contigo', 'me pones nerviosa'). Todavía NO pide penetración.\n"
+        "FASE 4 — Acción (Turnos 10+): SÍ contacto íntimo, besos, deseo explícito y sexo cuando la conversación lo amerite.\n"
+        "REGLA DE ORO: El personaje SOLO sube de fase cuando el otro lo invita o el contexto lo justifica. NUNCA saltar de Fase 1 a Fase 4 en un solo mensaje.\n"
+        "PROHIBIDO: Empezar el primer mensaje con deseo sexual explícito; usar 'penetración' antes del turno 10 a menos que el rol lo exija; ignorar lo que dijo el otro; saltar fases.\n"
+        "REGLA DE LENGUAJE SEGÚN LA FASE:\n"
+        "- Fase 1: Lenguaje normal, coloquial. Cero groserías sexuales.\n"
+        "- Fase 2: Groserías suaves y cotidianas ('qué cabrón eres', 'me tienes loca', 'no jodas').\n"
+        "- Fase 3: Lenguaje más atrevido ('pendejo' con cariño, 'me estás poniendo', 'no me mires así').\n"
+        "- Fase 4: Lenguaje caliente, crudo, pasional y coloquial. Vocabulario permitido en Fase 4: cuca, conejo, panocha, papaya, culo, nalgas, ano, culo rico, pene, güevo, huevo, verga, pinga, pija, pito, bolas, testículos; coger, tirar, penetrar, meter, sacar, chupar, mamar, dar, recibir, venir, acabar, mojar, endurecer, calentar, abrir, cerrar; hijo de puta, maldito, malparido, cabrón, pendejo, coño, joder, mierda, carajo, la puta madre, no jodas, qué rico, qué delicia; 'qué rico', 'más duro', 'no pares', 'métela toda', 'dámelo', 'trágatelo', 'ábrete', 'chúpamelo', 'hazme tuya', 'vente adentro', 'lléname'.\n"
+        "PROHIBIDO INCLUSO EN FASE 4: Palabras de libro de anatomía ('vagina', 'órgano reproductor', 'miembro viril') o frases de telenovela barata ('arderemos en las llamas del deseo').\n"
+        f"ESTADO ACTUAL: Turno {turn_index} ({phase_name}). Respeta estrictamente los límites de esta fase."
+    )
+
+
 def conversation_messages(job):
     story = job.get("story") or {}
     spanish = job.get("language") == "es"
@@ -307,8 +351,9 @@ def conversation_messages(job):
     if recent and recent[0]["role"] == "assistant":
         opening = "Última intervención previa de " + character + ": " + clip_text(recent[0]["content"], 350) + "\n"
         recent = recent[1:]
+    pacing_clause = pacing_and_language_rules(len(turns), spanish)
     if spanish and os.environ.get("KINEVA_CHAT_MINIMAL_PROMPT", "1") == "1":
-        parts = [minimal_instruction(character, player, premise, spanish)]
+        parts = [minimal_instruction(character, player, premise, spanish), pacing_clause]
         if earlier_memory:
             parts.append(earlier_memory)
         if chronicle:
@@ -324,6 +369,7 @@ def conversation_messages(job):
             + (chronicle + "\n" if chronicle else "")
             + ("Petición actual de lectura: empieza a leer ahora un pasaje original de varias frases si no hay texto del libro en el contexto. Si el usuario proporcionó el texto, léelo sin cambiarlo. No anuncies que vas a leer; hazlo. " if wants_reading else "")
             + opening
+            + "\n" + pacing_clause + "\n"
             + "Los turnos recientes son la escena ACTUAL en orden; el último mensaje del jugador tiene prioridad. "
             "Si pide una acción nueva o cambia de tema, responde a esa petición ahora; no vuelvas a la actividad previa. "
             "Si hace una pregunta directa, respóndela antes de añadir emoción o narración. Si el dato no está en la premisa o en los turnos, reconócelo naturalmente en personaje; no lo inventes. "

@@ -101,6 +101,14 @@ function resolveSingleText(text: string, language: string): { translated: string
   return { translated: text, needsFetch: true };
 }
 
+function arraysEqual(a: string[], b: string[]) {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+
 /**
  * Translates a list of strings to the active UI language.
  * - Uses immediate static dictionary if available.
@@ -129,7 +137,7 @@ export function useTranslatedTexts(texts: (string | null | undefined)[]): string
       return translated;
     });
 
-    setResult(initial);
+    setResult((prev) => (arraysEqual(prev, initial) ? prev : initial));
     if (needsFetch.length === 0) return;
 
     let cancelled = false;
@@ -157,7 +165,7 @@ export function useTranslatedTexts(texts: (string | null | undefined)[]): string
           if (!direct.needsFetch) return direct.translated;
           return cache.get(`${language}::${text}`) || direct.translated;
         });
-        setResult(final);
+        setResult((prev) => (arraysEqual(prev, final) ? prev : final));
       } catch (err) {
         console.warn("Translation effect error:", err);
       }
