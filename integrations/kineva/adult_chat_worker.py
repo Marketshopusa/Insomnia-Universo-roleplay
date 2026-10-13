@@ -8,12 +8,17 @@ import re
 import subprocess
 import sys
 import time
+import unicodedata
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 from urllib.error import URLError
 from worker import Api, release_idle_models
+from continuity_review import review_candidate
 
 BUCKET = "kineva-adult-chat"
+
+class ContentBlockedError(RuntimeError):
+    pass
 
 def cloud_call(cloud, method, path, *args, **kwargs):
     """Retry brief Storage disconnects; these queue operations are idempotent."""
@@ -36,14 +41,18 @@ def list_folder(cloud, prefix):
 def normalize_reply(value):
     return re.sub(r"[^\w]+", " ", value.casefold(), flags=re.UNICODE).strip()
 
-def model_chat(messages, temperature, max_tokens, json_mode=False):
+def model_chat(messages, temperature, max_tokens, json_mode=False, schema=None):
     payload = {"model": os.environ.get("KINEVA_CHAT_MODEL_NAME", "magnum-v4-12b"),
                "messages": messages, "max_tokens": max_tokens,
                "temperature": temperature, "top_p": 0.95,
-               "repeat_penalty": 1.16, "presence_penalty": 0.6,
-               "frequency_penalty": 0.35}
+               "repeat_penalty": 1.08, "presence_penalty": 0.0,
+               "frequency_penalty": 0.1}
     if json_mode:
-        payload["response_format"] = {"type": "json_object"}
+        payload["response_format"] = {"type": "json_schema", "json_schema": {
+            "name": "role_reply", "strict": True,
+            "schema": schema or {"type": "object", "properties": {
+                "gesto": {"type": "string"}, "dialogo": {"type": "string"}},
+                "required": ["gesto", "dialogo"], "additionalProperties": False}}}
     request = Request(os.environ.get("KINEVA_CHAT_MODEL_URL", "http://127.0.0.1:8788/v1/chat/completions"),
                       data=json.dumps(payload).encode("utf-8"),
                       headers={"Content-Type": "application/json"}, method="POST")
@@ -231,115 +240,39 @@ def english_drift(text):
 
 
 def minimal_instruction(character, player, premise, spanish, turns_count=0):
-    """Contrato breve con identidad, hechos de la tarjeta y formato."""
+    """Identity and continuity without a turn-count script."""
     language = "español natural" if spanish else "natural English"
-    turn_index = max(1, (turns_count // 2) + 1)
-    if turn_index <= 3:
-        tone_line = (
-            "TONO HUMANO, NATURAL Y COTIDIANO: Habla como una persona real en convivencia cotidiana o interacción social normal. "
-            "Cero tensión sexual explícita, cero gemidos o jadeos. "
-        )
-        dialogue_clause = (
-            "OBLIGATORIO: En FASE 1 (Social, Turnos 1 a 3), tu 'dialogo' son exclusivamente palabras habladas cotidianas, "
-            "amables, tímidas o conversacionales según la situación. ESTRICTAMENTE PROHIBIDO gemir, jadear o hablar de sexo. "
-        )
-    elif turn_index <= 6:
-        tone_line = (
-            "TONO HUMANO Y CÓMPLICE: Hay química y tensión sutil. Bromea y muestra complicidad sin declaraciones eróticas directas. "
-        )
-        dialogue_clause = (
-            "OBLIGATORIO: En FASE 2 (Tensión, Turnos 3 a 6), tu 'dialogo' tiene química y coqueteo sutil. Prohibido pedir sexo o tocar genitales. "
-        )
-    elif turn_index <= 10:
-        tone_line = (
-            "TONO DE DESEO Y TIMIDEZ: Nerviosismo, atracción confusa e insinuaciones indirectas. "
-        )
-        dialogue_clause = (
-            "OBLIGATORIO: En FASE 3 (Deseo, Turnos 6 a 10), tu 'dialogo' expresa nerviosismo y atracción. Aún no pidas penetración. "
-        )
-    else:
-        tone_line = (
-            "TONO ÍNTIMO, APASIONADO Y CRUDO: Deseo explícito y calor mutuo en el clímax de la escena. "
-        )
-        dialogue_clause = (
-            "OBLIGATORIO: En FASE 4 (Acción, Turnos 10+), tu 'dialogo' es pasional y directo, con palabras ardientes y el vocabulario explícito permitido. "
-        )
     return (
         "Eres " + character + " en una historia interactiva con " + player + ". "
-        "Premisa y relaciones establecidas: " + premise + ". "
+        "Premisa y relaciones establecidas (antecedentes, no escena reiniciada): " + premise + ". "
         "Los turnos recientes son la escena actual en orden continuo. "
-        + tone_line +
-        "Prohibido sonar robótica, rígida, sintética, filosófica o dar discursos artificiales. "
-        "LONGITUD BREVE Y CONCISA: Tu 'dialogo' debe ser breve y directo al grano, de 2 a 4 oraciones como máximo "
-        "(entre 25 y 55 palabras). No des monólogos largos, sermones ni párrafos interminables. "
-        "PROHIBIDO REPETIR DENTRO DEL MENSAJE: Jamás repitas la misma frase, idea, queja o exclamación dos veces en tu respuesta "
-        "(por ejemplo, nunca repitas 'esto es tan loco e inapropiado' varias veces). Di lo que sientes con fuerza una sola vez y continúa la interacción. "
-        "CONTINUIDAD ESTRICTA: Reacciona de forma directa y lógica a lo que el jugador acaba de decir o hacer. "
-        "Si menciona un video, habla del video. Si pregunta algo, contesta con coherencia. "
-        "NO REINICIES LA ESCENA: Prohibido repetir saludos iniciales ('hola', 'gracias por avisarme') "
-        "o arrancar como si la conversación estuviera comenzando otra vez. "
-        "Las acciones recientes del jugador ya ocurrieron: "
-        "si pregunta quién hizo o entregó algo, comprueba esos turnos antes de responder. "
-        "Si el jugador cambia de lugar, continúa desde el nuevo lugar. "
-        "Contesta la última acción o pregunta del jugador. Puedes avanzar la ficción, pero no presentes "
-        "como recuerdos confirmados detalles que no aparecen en la premisa o el historial. "
+        "Las acciones realizadas que el jugador narra ya ocurrieron; responde a su consecuencia, "
+        "no vuelvas a proponerlas ni retrocedas al instante anterior. "
+        "Distingue acciones realizadas, propuestas, recuerdos e hipótesis. Una hipótesis no es un hecho. "
+        "Contesta la última acción o pregunta del jugador y respeta todas las partes de su intervención. "
         "Respeta el lugar actual, quién hizo cada cosa y los objetos que quedaron en otro sitio. "
-        "No adelantes intimidad ni cambies de tema sin iniciativa del jugador. "
+        "Una corrección posterior del jugador prevalece sobre los recuerdos y tus inferencias anteriores. "
         "Cuando el jugador dice 'yo' habla de " + player + " y 'tú' se dirige a " + character + "; "
         "cuando tú dices 'yo' hablas de " + character + ". "
-        "Dirígete al jugador como 'tú'; no lo describas en tercera persona. "
-        "Habla solo como " + character + ", en primera persona y en " + language + ". "
-        + dialogue_clause +
-        "NUNCA dejes 'dialogo' vacío ni pongas descripciones físicas o narración en 'dialogo'. Las acciones físicas van exclusivamente en 'gesto'. "
-        "Devuelve solo JSON con 'dialogo' (tus palabras habladas al jugador) y 'gesto' "
-        "(una acción o reacción física tuya en primera persona, máximo una oración corta). "
-        "PROHIBIDO REPETIR EL MENSAJE DEL JUGADOR: El jugador ya habló. Nunca repitas, copies ni parafrasees "
-        "lo que él acaba de escribir ni hables en su lugar. Tu 'dialogo' son exclusivamente tus palabras originales de respuesta. "
-        "Reacciona directamente a la última acción o pregunta con palabras frescas y espontáneas."
+        "No inventes acciones, pensamientos ni palabras del jugador. "
+        "Los recuerdos ya ocurrieron: recordarlos no cambia el lugar o la acción actual. "
+        "No adelantes intimidad ni cambies de tema sin iniciativa del jugador. "
+        "No conviertas el número de turnos en una orden de cambiar de tono o relación. "
+        "Si preguntan un dato establecido, contesta ese dato sin recoger objetos, cambiar de lugar ni inventar cuándo ocurrió. "
+        "No inventes un dato que falta: pregunta brevemente en personaje. "
+        "No reinicies saludos, no repitas tus frases recientes salvo que el jugador pida repetirlas. "
+        "Habla como una persona, con palabras frescas y en primera persona, en " + language + ". "
+        "Conserva los límites de seguridad; no generes contenido sexual con menores ni con edad ambigua. "
+        "Devuelve solo JSON con 'dialogo' (tus propias palabras habladas, normalmente 2 a 4 oraciones) "
+        "y 'gesto' (una acción breve tuya, con las reacciones audibles correspondientes, en primera persona). "
+        "Una reacción audible como grito, llanto o risa va en gesto antes del diálogo correspondiente. "
+        "No repitas el mensaje del jugador como si tú lo hubieras dicho."
     )
 
 
 def pacing_and_language_rules(turns_count, spanish):
-    turn_index = max(1, (turns_count // 2) + 1)
-    if turn_index >= 10:
-        phase_name = "FASE 4 — Acción (Turnos 10+)"
-    elif turn_index >= 6:
-        phase_name = "FASE 3 — Confusión / Deseo (Turnos 6 a 10)"
-    elif turn_index >= 3:
-        phase_name = "FASE 2 — Tensión (Turnos 3 a 6)"
-    else:
-        phase_name = "FASE 1 — Social (Turnos 1 a 3)"
-
-    if not spanish:
-        return (
-            f"PACING AND LANGUAGE RULES (Turn {turn_index} - {phase_name}): "
-            "This character is NOT sexually aggressive. Desire builds gradually across phases: "
-            "Phase 1 (Turns 1-3) everyday social, no sexual tension; "
-            "Phase 2 (Turns 3-6) chemistry, banter, subtle touches; "
-            "Phase 3 (Turns 6-10) confusion/desire, hints, shyness; "
-            "Phase 4 (Turns 10+) action, direct intimacy and explicit desire. "
-            "Never jump phases unless explicitly invited by user."
-        )
-
-    return (
-        "REGLA CENTRAL DE RITMO (PACING) OBLIGATORIA: "
-        "Este personaje NO es un personaje sexualmente agresivo. Es una persona real con vida propia, y su deseo se construye con el tiempo. "
-        "El error más común es que empiece a hablar de sexo, deseo o penetración en el primer mensaje. Está PROHIBIDO que lo haga. El personaje debe respetar un ritmo de desarrollo.\n"
-        "FASES DEL DESARROLLO (avanza según la conversación, NO saltar):\n"
-        "FASE 1 — Social (Turnos 1 a 3): Solo interacción normal. Saludos, trabajo, cosas cotidianas. Cero tensión sexual explícita. Puede haber una mirada o 'hoy te ves bien', pero nada más. El personaje todavía no piensa en sexo, está en modo 'convivencia'.\n"
-        "FASE 2 — Tensión (Turnos 3 a 6): Química, pequeños coqueteos, risas cómplices, contacto físico sutil (un roce, empujón juguetón). El personaje lo disimula. Todavía NO habla de deseo explícito ('me caes bien', 'eres diferente').\n"
-        "FASE 3 — Confusión / Deseo (Turnos 6 a 10): Sabe que hay algo, pero está nerviosa o confundida. Timidez, no saber cómo actuar, indirectas ('no sé qué me pasa contigo', 'me pones nerviosa'). Todavía NO pide penetración.\n"
-        "FASE 4 — Acción (Turnos 10+): SÍ contacto íntimo, besos, deseo explícito y sexo cuando la conversación lo amerite.\n"
-        "REGLA DE ORO: El personaje SOLO sube de fase cuando el otro lo invita o el contexto lo justifica. NUNCA saltar de Fase 1 a Fase 4 en un solo mensaje.\n"
-        "PROHIBIDO: Empezar el primer mensaje con deseo sexual explícito; usar 'penetración' antes del turno 10 a menos que el rol lo exija; ignorar lo que dijo el otro; saltar fases.\n"
-        "REGLA DE LENGUAJE SEGÚN LA FASE:\n"
-        "- Fase 1: Lenguaje normal, coloquial. Cero groserías sexuales.\n"
-        "- Fase 2: Groserías suaves y cotidianas ('qué cabrón eres', 'me tienes loca', 'no jodas').\n"
-        "- Fase 3: Lenguaje más atrevido ('pendejo' con cariño, 'me estás poniendo', 'no me mires así').\n"
-        "- Fase 4: Lenguaje caliente, crudo, pasional y coloquial. Vocabulario permitido en Fase 4: cuca, conejo, panocha, papaya, culo, nalgas, ano, culo rico, pene, güevo, huevo, verga, pinga, pija, pito, bolas, testículos; coger, tirar, penetrar, meter, sacar, chupar, mamar, dar, recibir, venir, acabar, mojar, endurecer, calentar, abrir, cerrar; hijo de puta, maldito, malparido, cabrón, pendejo, coño, joder, mierda, carajo, la puta madre, no jodas, qué rico, qué delicia; 'qué rico', 'más duro', 'no pares', 'métela toda', 'dámelo', 'trágatelo', 'ábrete', 'chúpamelo', 'hazme tuya', 'vente adentro', 'lléname'.\n"
-        "PROHIBIDO INCLUSO EN FASE 4: Palabras de libro de anatomía ('vagina', 'órgano reproductor', 'miembro viril') o frases de telenovela barata ('arderemos en las llamas del deseo').\n"
-        f"ESTADO ACTUAL: Turno {turn_index} ({phase_name}). Respeta estrictamente los límites de esta fase."
-    )
+    return ("El ritmo depende de los hechos y la última intervención, no del número de turnos."
+            if spanish else "Pacing follows the facts and latest turn, not the number of turns.")
 
 
 def conversation_messages(job):
@@ -347,7 +280,9 @@ def conversation_messages(job):
     spanish = job.get("language") == "es"
     character = clip_text(story.get("character_role") or "personaje presente", 400)
     player = clip_text(story.get("player_role") or "protagonista", 220)
-    latest = clip_text(job.get("userMessage") or "", 1000)
+    latest = str(job.get("userMessage") or "").strip()
+    if len(latest) > 8000:
+        raise ValueError("Current message exceeds the context input limit")
     wants_reading = reading_request(latest)
     premise_parts = [str(value).strip() for value in (story.get("description"), story.get("story_context")) if value]
     premise = clip_text("\n".join(dict.fromkeys(premise_parts)), 2400)
@@ -358,9 +293,17 @@ def conversation_messages(job):
         if not isinstance(turn, dict):
             continue
         who = character if turn.get("role") == "assistant" else player
-        content = clip_text(turn.get("content") or "", 240)
+        content = str(turn.get("content") or "").strip()
         if content:
             recalled.append(who + ": " + content)
+    # Reserve space for the complete current message and identity, never clip its ending.
+    recall_budget = max(0, 13500 - len(latest) - len(premise) - 2200)
+    recalled_kept = []
+    for recall in reversed(recalled):
+        if len(recall) <= recall_budget:
+            recalled_kept.insert(0, recall)
+            recall_budget -= len(recall)
+    recalled = recalled_kept
     earlier_memory = ("Recuerdos anteriores relacionados con la pregunta (ya ocurrieron): "
                       + " | ".join(recalled)) if recalled else ""
     # Repeated model replies in saved history are poor examples to imitate.
@@ -428,30 +371,20 @@ def conversation_messages(job):
             + ("Escribe gesto y dialogo enteramente en español; no insertes palabras en inglés." if spanish else "English only.")
             + slang_clause(job)
         )
+    facts = job.get("facts") or []
+    if facts:
+        instruction += "\nHECHOS VERIFICABLES para esta intervención:\n" + fact_lines(facts)
+        instruction += "\nSi preguntan por un dato establecido, responde ese valor con claridad. No inventes otra ubicación, otro autor ni finjas no saberlo."
     messages = [{"role": "system", "content": instruction}]
     for turn in recent:
-        content = clip_text(turn["content"], 600)
+        content = turn["content"]
         if messages[-1]["role"] == turn["role"]:
             messages[-1]["content"] += "\n" + content
         else:
             messages.append({"role": turn["role"], "content": content})
-    focus = focus_latest_turn(latest)
-    current_request = (("\n\nHechos anteriores confirmados: si uno responde a la pregunta, di el dato "
-                        "con claridad, sin fingir duda ni agregar detalles nuevos:\n"
-                        + earlier_memory) if earlier_memory else "")
-    current_request += "\n\nÚltimo mensaje del jugador:\n" + latest
-    if focus and focus != latest:
-        current_request += "\n\nDetalle nuevo que debes atender: " + focus
-    turn_index = max(1, (len(turns) // 2) + 1)
-    if spanish:
-        if turn_index <= 3:
-            current_request += f"\n\n[DIRECTIVA ESTRICTA - TURNO {turn_index} FASE 1 SOCIAL: Prohibido cualquier avance sexual, gemido, desnudez o diálogo erótico. Responde únicamente con conversación cotidiana y humana.]"
-        elif turn_index <= 6:
-            current_request += f"\n\n[DIRECTIVA ESTRICTA - TURNO {turn_index} FASE 2 TENSIÓN: Coqueteo sutil y charla cómplice. Prohibido sexo explícito o palabras genitales.]"
-        elif turn_index <= 10:
-            current_request += f"\n\n[DIRECTIVA ESTRICTA - TURNO {turn_index} FASE 3 CONFUSIÓN/DESEO: Atracción, timidez e insinuaciones. Todavía no pidas penetración.]"
-        else:
-            current_request += f"\n\n[DIRECTIVA ESTRICTA - TURNO {turn_index} FASE 4 ACCIÓN: Intimidad física, pasión y vocabulario explícito permitidos.]"
+    current_request = "\n\nÚltimo mensaje del jugador (completo; atiende todas sus acciones y preguntas):\n" + latest
+    if facts:
+        current_request += "\n\nResponde usando estos datos comprobados:\n" + fact_lines(facts)
     if messages[-1]["role"] == "user":
         messages[-1]["content"] += current_request
     else:
@@ -465,7 +398,7 @@ def trim_messages(messages, limit=16000):
         del messages[1:3]
     total = sum(len(item["content"]) for item in messages)
     if total > limit:
-        messages[-1]["content"] = clip_text(messages[-1]["content"], max(180, len(messages[-1]["content"]) - (total - limit)))
+        raise ValueError("Scene context exceeds limit; current action was not truncated")
     return messages
 
 def free_gpu_for_chat():
@@ -534,7 +467,7 @@ def repeats_recent_clause(spoken, previous_replies):
 
 def unsupported_recalled_fact(reply, job):
     """Do not turn an old fact into an invented number or family relation."""
-    if not job.get("memory") or not re.search(
+    if not (job.get("memory") or job.get("facts")) or not re.search(
             r"(?i)\b(?:d[oó]nde|qui[eé]n|cu[aá]ndo|cu[aá]l|recuerdas|acu[eé]rdate)\b",
             str(job.get("userMessage") or "")):
         return False
@@ -558,7 +491,7 @@ def unsupported_recalled_fact(reply, job):
     for number in re.findall(r"\b\d+\b", candidate):
         if not re.search(r"\b" + re.escape(number) + r"\b", known):
             return True
-    relations = r"t[ií]a|t[ií]o|herman[oa]|madre|padre|hij[oa]|prim[oa]|espos[oa]|novi[oa]"
+    relations = r"t[ií]a|t[ií]o|herman[oa]|madre|padre|hij[oa]|prim[oa]|espos[oa]|novi[oa]|jefe|cliente|asistente"
     for match in re.finditer(r"\b(?:" + relations + r")\b", candidate):
         if not re.search(r"\b" + re.escape(match.group()) + r"\b", known):
             return True
@@ -584,8 +517,90 @@ def requested_vocal_only(text):
     return None
 
 
+
+def unrequested_intimacy(reply, job):
+    """Reject an unsolicited topic change rather than escalating by turn count."""
+    explicit = re.compile(r"(?i)\b(?:sex(?:o|ual)|er[oó]tic\w*|desnud\w*|penetr\w*|genital\w*|verga|pinga|pija)\b")
+    context = json.dumps([job.get("story"), job.get("history"), job.get("userMessage")], ensure_ascii=False)
+    return bool(explicit.search(reply) and not explicit.search(context))
+
+
+def fact_key(value):
+    text = "".join(c for c in unicodedata.normalize("NFD", str(value)).lower()
+                   if not unicodedata.combining(c))
+    text = re.sub(r"\b(?:el|la|los|las|un|una|the|a|an)\b", "", text)
+    return " ".join(re.sub(r"[^\w]+", " ", text).split())
+
+
+def fact_lines(facts):
+    lines = []
+    for fact in facts:
+        if fact.get("kind") == "location":
+            lines.append("- " + fact["object"] + ": " + fact["value"] + ". Fuente: " + fact["source"])
+        elif fact.get("kind") == "transfer":
+            lines.append("- El jugador te entregó " + fact["object"] + "; tú lo recibiste de él. Fuente: " + fact["source"])
+        elif fact.get("kind") == "prop_state":
+            lines.append("- " + fact["object"] + ": " + ("YA ESTÁ ABIERTO; no lo abras otra vez." if fact["value"] == "open" else "Está cerrado."))
+        elif fact.get("kind") == "signature":
+            lines.append("- Quien firmó " + fact["object"] + ": " + fact["value"] + ". Fuente: " + fact["source"])
+    return "\n".join(lines)
+
+
+def contradicts_known_fact(reply, job):
+    question = fact_key(job.get("userMessage") or "")
+    spoken = fact_key(reply)
+    for fact in job.get("facts") or []:
+        if fact.get("kind") == "location" and re.search(r"\b(?:donde|where)\b", question):
+            location_words = [word for word in fact_key(fact.get("value")).split()
+                              if word not in {"en", "in", "on", "de", "del", "bajo", "debajo", "under"}]
+            if (not all(word in spoken for word in location_words)
+                    or re.search(r"\b(?:no se|no estoy segur[oa]|tal vez|no me acuerdo|not sure|dont know)\b", spoken)):
+                return True
+        if fact.get("kind") == "transfer" and re.search(r"\b(?:quien|who)\b", question):
+            if re.search(r"desconocid|alguien mas|no pregunt|no se quien|yo te lo entregue|te entregue el|someone else|unknown", spoken):
+                return True
+        if fact.get("kind") == "signature" and re.search(r"firm|signed|author", question):
+            if fact_key(fact.get("value")) not in spoken:
+                return True
+    return False
+
+
+def repeats_completed_operation(reply, job):
+    if re.search(r"(?i)(?:abre|abrir|open).{0,40}(?:otra vez|de nuevo|again)", str(job.get("userMessage") or "")):
+        return False
+    for fact in job.get("facts") or []:
+        if fact.get("kind") == "prop_state" and fact.get("value") == "open":
+            target = fact_key(fact["object"])
+            for gesture in re.findall(r"\*([^*]+)\*", reply):
+                action = fact_key(gesture)
+                if target in action and re.search(r"\b(?:abro|abrimos|voy abrir|open|i open)\b", action):
+                    return True
+    return False
+
+
+def grounded_fact_reply(job):
+    """Safe fallback for a direct question with one unambiguous stored prop fact."""
+    question = fact_key(job.get("userMessage") or "")
+    facts = job.get("facts") or []
+    if re.search(r"\b(?:donde|where)\b", question):
+        locations = [fact for fact in facts if fact.get("kind") == "location"]
+        if len(locations) == 1:
+            fact = locations[0]
+            return fact["object"][0].upper() + fact["object"][1:] + (" quedó " if job.get("language") == "es" else " is ") + fact["value"] + "."
+    if re.search(r"firm|signed|author", question):
+        signatures = [fact for fact in facts if fact.get("kind") == "signature"]
+        if len(signatures) == 1:
+            return ("La firma es de " if job.get("language") == "es" else "It was signed by ") + signatures[0]["value"] + "."
+    if re.search(r"\b(?:quien|who)\b", question) and any(fact.get("kind") == "transfer" for fact in facts):
+        return "Me lo entregaste tú." if job.get("language") == "es" else "You gave it to me."
+    return None
+
+
 def reply_for(job):
     started = time.monotonic()
+    context = json.dumps([job.get("story"), job.get("history"), job.get("memory"), job.get("userMessage")], ensure_ascii=False)
+    if job.get("containsMinor") or re.search(r"(?i)\b(?:niñ[oa]s?|menor de edad|adolescente|child|minor|teenager)\b|\b(?:[1-9]|1[0-7])\s*(?:años|añitos|years? old)\b", context):
+        raise ContentBlockedError("No se permite contenido sexual con personajes menores de 18 años.")
     vocal_only = requested_vocal_only(str(job.get("userMessage") or ""))
     if vocal_only:
         print("Chat nonverbal turn", job.get("jobId", "local"), flush=True)
@@ -601,12 +616,13 @@ def reply_for(job):
         for turn in (job.get("history") or [])
         if turn.get("role") == "assistant"
     ][-4:]
+    previous_failure = ""
     for attempt in range(3):
         try:
-            token_limit = 350 if wants_reading else 180
+            token_limit = 350 if wants_reading else 300
             raw_reply = model_chat(
-                messages, 0.85 + attempt * 0.05,
-                token_limit, json_mode=(attempt == 0))
+                messages, max(0.3, 0.5 - attempt * 0.1),
+                token_limit, json_mode=(attempt == 0 or previous_failure != "Incomplete dialogue"))
             structured_reply = bool(re.match(r"^\s*(?:```(?:json)?\s*)?\{", raw_reply, re.I)) or bool(re.search(r'(?im)^\s*"(?:gesto|dialogo)"\s*:', raw_reply))
             try:
                 parsed = parse_role_reply(raw_reply, character)
@@ -647,16 +663,14 @@ def reply_for(job):
                 raise ValueError("Unexpected English in Spanish reply")
             if unsupported_recalled_fact(parsed, job):
                 raise ValueError("Unsupported scene fact")
-            turns_count = len(job.get("history") or [])
-            turn_index = max(1, (turns_count // 2) + 1)
-            if job.get("language") == "es" and turn_index <= 3:
-                sex_pattern = r"(?i)\b(?:penetr\w*|gem\w*|gim\w*|jade\w*|cuca|conejo|panocha|papaya|culo\s+rico|verga|pinga|pija|pene|güevo|huevo|desnud\w*|chup\w*|mam\w*|masturb\w*|correr(?:me|te)|venir(?:me|te)\s+adentro|empotr\w*|meterla|meto\s+mi|saco\s+mi|toc(?:ar|o|as)\s+mi\s+entrepierna)\b"
-                if re.search(sex_pattern, parsed):
-                    raise ValueError("Phase 1 violation: premature sexual action or vocabulary on turns 1-3")
-            elif job.get("language") == "es" and turn_index <= 6:
-                sex_pattern = r"(?i)\b(?:penetr\w*|cuca|panocha|papaya|verga|pinga|pija|meterla\s+toda|chúpamelo|mámalo)\b"
-                if re.search(sex_pattern, parsed):
-                    raise ValueError("Phase 2 violation: premature explicit sexual organs on turns 4-6")
+            if repeats_completed_operation(parsed, job):
+                raise ValueError("Repeated completed operation")
+            if contradicts_known_fact(parsed, job):
+                raise ValueError("Contradicted known fact")
+            if len(job.get("history") or []) > 3 and re.match(r"(?i)^(?:hola\b|buenos dias\b|buenas tardes\b|buen dia\b)", fact_key(spoken_text)) and not re.search(r"(?i)hola|buen[oa]s?", latest):
+                raise ValueError("Restarted scene greeting")
+            if unrequested_intimacy(parsed, job):
+                raise ValueError("Unrequested intimacy")
             user_norm = normalize_reply(latest)
             if len(user_norm) > 18:
                 user_match = SequenceMatcher(None, spoken, user_norm).ratio()
@@ -677,11 +691,16 @@ def reply_for(job):
                 print("Chat announced reading without reading; retrying", job.get("jobId", "local"), flush=True)
                 messages[0]["content"] += " Tu borrador solo anunció que iba a leer. En el diálogo lee ya un pasaje original de al menos tres frases, sin preámbulo."
                 continue
+            if job.get("continuityReview"):
+                issue = review_candidate(parsed, messages, model_chat, job)
+                if issue:
+                    raise ValueError("Continuity mismatch: " + issue)
             print("Chat generation timing", job.get("jobId", "local"),
                   "total", round(time.monotonic() - started, 2),
                   "retry", attempt, flush=True)
             return parsed
         except Exception as error:
+            previous_failure = str(error)
             print("Chat format attempt failed", job.get("jobId", "local"), attempt,
                   repr(error)[:180], flush=True)
             if str(error) == "Pure physical action without spoken dialogue":
@@ -689,6 +708,10 @@ def reply_for(job):
                     " Tu borrador solo describió una acción física sin decir nada en voz alta. "
                     "El personaje DEBE HABLARle directamente al jugador en 'dialogo' (con palabras reales). "
                     "Pon la acción en 'gesto' y las palabras que dices en 'dialogo'.")
+            elif str(error) == "Unrequested intimacy":
+                messages[0]["content"] += (
+                    " Tu borrador cambió a un tema íntimo que esta conversación no pidió. "
+                    "Contesta la acción o pregunta actual sin cambiar el tono ni las relaciones.")
             elif "Phase 1 violation" in str(error):
                 messages[0]["content"] += (
                     " PROHIBIDO: Estás en FASE 1 (Social, Turnos 1 a 3). Cero insinuaciones sexuales, gemidos, desnudez o contacto erótico. "
@@ -702,6 +725,19 @@ def reply_for(job):
                     " El borrador repitió varias veces la misma frase dentro del mensaje. "
                     "Habla con total naturalidad humana: sé breve (2 a 3 oraciones), espontánea, apasionada y directa. "
                     "PROHIBIDO repetir la misma frase dos veces en el mismo turno.")
+            elif str(error).startswith("Continuity mismatch:"):
+                messages[0]["content"] += (
+                    " Reescribe el borrador corrigiendo este error de continuidad, sin mencionar la revisión: "
+                    + str(error)[len("Continuity mismatch:"):] + ". Conserva los sonidos y el diálogo compatibles con los hechos.")
+            elif str(error) == "Repeated completed operation":
+                messages[0]["content"] += " La caja, sobre o puerta indicada YA estaba abierta. No la abras otra vez: observa su contenido y responde desde ese estado."
+            elif str(error) == "Contradicted known fact":
+                messages[0]["content"] += (
+                    " El borrador contradijo un hecho verificable. Responde con el valor y el autor exactos "
+                    "de HECHOS VERIFICABLES. No supongas otro lugar, no atribuyas la entrega a un desconocido "
+                    "y no digas que no sabes un dato que consta explícitamente.")
+            elif str(error) == "Restarted scene greeting":
+                messages[0]["content"] += " No saludes otra vez: esta conversación ya está en marcha. Responde directamente a la última intervención."
             elif str(error) == "Unexpected English in Spanish reply":
                 messages[0]["content"] += (
                     " El borrador cambió al inglés. Reescribe la respuesta desde cero solo en español "
@@ -727,6 +763,9 @@ def reply_for(job):
                 messages[0]["content"] += (
                     " El borrador no tuvo el formato válido. Conserva los hechos y la identidad de la escena. "
                     "Devuelve JSON con diálogo hablado y gesto, sin instrucciones internas.")
+    grounded = grounded_fact_reply(job)
+    if grounded:
+        return grounded
     # Repetición completa es un fallo, no una salida satisfactoria.
     raise RuntimeError("Local model returned no usable reply after repetition retries")
 
@@ -754,11 +793,23 @@ def handle(cloud, owner, name):
     if job.get("ownerId") != owner or job.get("jobId") != job_id:
         raise RuntimeError("Chat job owner mismatch")
     try:
+        if job.get("sessionId"):
+            rows = cloud_call(cloud, "GET", "/rest/v1/story_sessions?select=id"
+                              + "&user_id=eq." + quote(owner, safe="")
+                              + "&story_id=eq." + quote(str(job["story"]["id"]), safe=""))
+            if not rows or rows[0]["id"] != job["sessionId"]:
+                raise RuntimeError("session_deleted")
         content = reply_for(job)
+        if job.get("sessionId"):
+            rows = cloud_call(cloud, "GET", "/rest/v1/story_sessions?select=id"
+                              + "&user_id=eq." + quote(owner, safe="")
+                              + "&story_id=eq." + quote(str(job["story"]["id"]), safe=""))
+            if not rows or rows[0]["id"] != job["sessionId"]:
+                raise RuntimeError("session_deleted")
         result = {"status": "completed", "content": content}
     except Exception as error:
         print("Chat generation failed", job_id, repr(error)[:350], file=sys.stderr, flush=True)
-        result = {"status": "failed", "error": "local_chat_failed",
+        result = {"status": "failed", "error": "content_blocked" if isinstance(error, ContentBlockedError) else "session_conflict" if str(error) == "session_deleted" else "local_chat_failed",
                   "message": "El motor local no pudo responder. Reintenta este turno."}
     cloud_call(cloud, "POST", "/storage/v1/object/" + BUCKET + "/" + quote(response_path, safe="/"),
                payload=json.dumps(result).encode("utf-8"), raw=True,
@@ -805,4 +856,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

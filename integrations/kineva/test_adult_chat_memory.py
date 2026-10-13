@@ -36,7 +36,7 @@ class StoryMemoryTest(unittest.TestCase):
         self.assertEqual(focus_latest_turn(latest), "Te envié una brújula antigua.")
         messages = conversation_messages(job([], latest))
         self.assertIn(latest, messages[-1]["content"])
-        self.assertIn("Detalle nuevo que debes atender: Te envié una brújula antigua.", messages[-1]["content"])
+        self.assertIn("completo; atiende todas sus acciones y preguntas", messages[-1]["content"])
         self.assertIn("No adelantes intimidad", messages[0]["content"])
 
 
@@ -134,7 +134,7 @@ class StoryMemoryTest(unittest.TestCase):
         self.assertIn("La tormenta me asusta", messages[0]["content"])
         self.assertIn("'tú' se dirige a Stefany", messages[0]["content"])
         self.assertIn(current["userMessage"], messages[1]["content"])
-        self.assertIn("Detalle nuevo que debes atender:", messages[1]["content"])
+        self.assertIn("completo; atiende todas sus acciones y preguntas", messages[1]["content"])
 
     def test_character_narrates_her_own_action(self):
         with self.assertRaisesRegex(ValueError, "third person"):
@@ -161,7 +161,7 @@ class StoryMemoryTest(unittest.TestCase):
             reply = reply_for(current)
         self.assertEqual(reply, "*Me quedo mirando el muro* Veo una sombra junto a las piedras.")
         model.assert_called_once()
-        self.assertEqual(model.call_args.args[2], 180)
+        self.assertEqual(model.call_args.args[2], 300)
 
     def test_repeated_user_question_and_poem_remain_in_history(self):
         poem = "Pedrito se cayó, volvió a levantarse y siguió cantando."
@@ -283,6 +283,23 @@ class StoryMemoryTest(unittest.TestCase):
         self.assertIn("en la taquilla", reply)
         self.assertNotIn("42", reply)
         self.assertEqual(model.call_count, 2)
+
+    def test_latest_action_at_end_of_long_message_is_not_truncated(self):
+        latest = "Describo los cuadros de la exposición. " * 90 + "Salimos al jardín y Clara ya abrió el sobre."
+        packed = conversation_messages(job([], latest))
+        self.assertIn(latest, packed[-1]["content"])
+        self.assertIn("Clara ya abrió el sobre.", packed[-1]["content"])
+
+    def test_turn_count_never_forces_a_tone_or_relationship_change(self):
+        history = [{"role": "user", "content": f"Seguimos estudiando la pista {i}."} for i in range(48)]
+        system = conversation_messages(job(history, "Continuamos trabajando."))[0]["content"]
+        self.assertNotIn("FASE 4", system)
+        self.assertIn("no del número de turnos", system)
+
+    def test_recent_detail_over_six_hundred_characters_stays_complete(self):
+        detail = "Examinamos la puerta y sus marcas. " * 35 + "La brújula quedó en el cajón verde."
+        packed = conversation_messages(job([{"role": "user", "content": detail}], "¿Dónde quedó la brújula?"))
+        self.assertIn(detail, "\\n".join(m["content"] for m in packed))
 
     def test_storage_connection_reset_retries_without_losing_job(self):
         class FlakyCloud:

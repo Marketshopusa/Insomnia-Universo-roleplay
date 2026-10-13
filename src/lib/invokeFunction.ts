@@ -17,6 +17,7 @@ async function chatSignature(body: unknown): Promise<string> {
   const input = body as {
     story?: { id?: string; title?: string; description?: string; story_context?: string; character_role?: string; player_role?: string };
     userMessage?: string;
+    currentMessageId?: string; sessionId?: string; language?: string; region?: string;
     history?: { role: string; content: string }[];
     memory?: { role: string; content: string }[];
   };
@@ -25,6 +26,7 @@ async function chatSignature(body: unknown): Promise<string> {
   const data = new TextEncoder().encode(JSON.stringify([
     input.story?.id, input.story?.title, input.story?.description,
     input.story?.story_context, input.story?.character_role, input.story?.player_role,
+    input.sessionId, input.currentMessageId, input.language, input.region,
     input.memory, prior.slice(-8), input.userMessage,
   ]));
   const digest = await crypto.subtle.digest("SHA-256", data);
@@ -54,7 +56,7 @@ async function callAdultStoryChat<T>(body: unknown): Promise<FunctionResult<T>> 
         body: { action: "create", adultMode: true, ...(body as object) },
       });
       if (created.error || !created.data?.jobId)
-        return fail("No se pudo enviar el turno a tu modelo local. Tu mensaje sigue en el cuadro.", 503);
+        return fail(created.data?.message || "No se pudo enviar el turno a tu modelo local. Tu mensaje sigue en el cuadro.", responseContext(created.error)?.status || 503, created.data?.error || "local_chat_unavailable");
       jobId = created.data.jobId;
       try { if (key) localStorage.setItem(key, JSON.stringify({ jobId, signature, createdAt: Date.now() })); } catch { /* ignore */ }
     }
