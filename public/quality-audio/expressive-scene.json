@@ -1,0 +1,130 @@
+{
+  "provider": "gemini-2.5-flash-tts",
+  "seconds": 25.04575,
+  "peak": 32448,
+  "rms": 3570.2296179542477,
+  "source": "*Grité de dolor y me agarré el brazo* «No me toques, por favor». *Sollozo* «Me duele». *Suspiro* «Ya estoy más tranquila». *Río suavemente* «Gracias por ayudarme». *Gruño por el esfuerzo* *Gimo de dolor* «Me lastimé».",
+  "text": "[shouting] ¡Aaaah! Me agarré el brazo. «No me toques, por favor» Hh... ah... hh... «Me duele» [sigh] «Ya estoy más tranquila» [laughing] Ja, ja, ja... «Gracias por ayudarme» ¡Urrgh! Aaagh... «Me lastimé»",
+  "parts": [
+    {
+      "kind": "reaction",
+      "event": "pain_scream",
+      "startSample": 0,
+      "endSample": 39600
+    },
+    {
+      "kind": "speech",
+      "startSample": 39600,
+      "endSample": 146423
+    },
+    {
+      "kind": "reaction",
+      "event": "sob",
+      "startSample": 146423,
+      "endSample": 231166
+    },
+    {
+      "kind": "speech",
+      "startSample": 231166,
+      "endSample": 268869
+    },
+    {
+      "kind": "reaction",
+      "event": "sigh",
+      "startSample": 268869,
+      "endSample": 308469
+    },
+    {
+      "kind": "speech",
+      "startSample": 308469,
+      "endSample": 362492
+    },
+    {
+      "kind": "reaction",
+      "event": "laugh",
+      "startSample": 362492,
+      "endSample": 465692
+    },
+    {
+      "kind": "speech",
+      "startSample": 465692,
+      "endSample": 518755
+    },
+    {
+      "kind": "reaction",
+      "event": "grunt",
+      "startSample": 518755,
+      "endSample": 540355
+    },
+    {
+      "kind": "reaction",
+      "event": "pain_groan",
+      "startSample": 540355,
+      "endSample": 564355
+    },
+    {
+      "kind": "speech",
+      "startSample": 564355,
+      "endSample": 601098
+    }
+  ],
+  "reactions": [
+    "pain_scream",
+    "sob",
+    "sigh",
+    "laugh",
+    "grunt",
+    "pain_groan"
+  ],
+  "auditoryReview": "automated_pass",
+  "audioReview": {
+    "transcript": "Me agarré el brazo. No me toques, por favor. Me duele. Ya estoy más tranquila. Gracias por ayudarme. Me lastimé.",
+    "events": [
+      {
+        "start_seconds": 0,
+        "end_seconds": 2,
+        "kind": "scream",
+        "confidence": 0.9,
+        "description": "A sharp cry of pain"
+      },
+      {
+        "start_seconds": 5,
+        "end_seconds": 8,
+        "kind": "sob",
+        "confidence": 0.9,
+        "description": "Sobbing and crying sounds"
+      },
+      {
+        "start_seconds": 10,
+        "end_seconds": 12,
+        "kind": "sigh",
+        "confidence": 0.9,
+        "description": "A deep sigh of relief"
+      },
+      {
+        "start_seconds": 14,
+        "end_seconds": 17,
+        "kind": "laugh",
+        "confidence": 0.9,
+        "description": "Laughter"
+      },
+      {
+        "start_seconds": 19,
+        "end_seconds": 22,
+        "kind": "groan",
+        "confidence": 0.9,
+        "description": "Groaning in pain"
+      }
+    ],
+    "spoken_cue_names": [],
+    "naturalness_notes": "The speaker's voice transitions through various emotional states, including pain, distress, relief, amusement, and lingering discomfort, with realistic nonverbal vocalizations accompanying each state."
+  },
+  "checks": {
+    "speechCorrect": true,
+    "soundsCorrect": true,
+    "noLabels": true,
+    "allPartsPresent": true
+  },
+  "codeRevision": "106a444f5e57a834c52084249260664cbebc85a0",
+  "verifiedVoice": "Aoede / scarlett-hd"
+}
