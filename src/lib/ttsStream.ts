@@ -1,3 +1,4 @@
+import { prepareExpressiveSpeech } from "./expressiveSpeech.mjs";
 import { supabase } from "@/integrations/supabase/client";
 const FUNCTIONS_URL = "/api/speech";
 const PCM_SAMPLE_RATE = 24_000;
@@ -18,7 +19,7 @@ export interface SpeechStream {
 const wait = (milliseconds: number) =>
   new Promise((resolve) => window.setTimeout(resolve, milliseconds));
 
-type Performance = "neutral" | "warm" | "surprised" | "amused" | "sad" | "pain" | "pleasure" | "scream" | "soft";
+type Performance = "neutral" | "warm" | "surprised" | "amused" | "sad" | "pain" | "pleasure" | "scream" | "soft" | "angry" | "afraid" | "disgusted" | "tired";
 
 async function requestSpeech(text: string, voice: string, language: string, region: string, performance: Performance, roleplay: boolean, signal: AbortSignal) {
   const { data: { session } } = await supabase.auth.getSession();
@@ -33,86 +34,9 @@ async function requestSpeech(text: string, voice: string, language: string, regi
   });
 }
 
-type VocalEvent = { tag: string; performance: Performance; burst?: string };
-
-function eventFor(action: string): VocalEvent | null {
-  const value = action.toLowerCase();
-  if (/\b(?:no|sin)\s+(?:grit|re[ií]r|llor|gem|gim)/i.test(value)) return null;
-  if (/(?:gemid|gim|jade|moan)/i.test(value))
-    return { tag: "", performance: /dolor|golpe|herid/i.test(value) ? "pain" : "pleasure", burst: /dolor|golpe|herid/i.test(value) ? "¡Ay!" : "Ah..." };
-  if (/(?:grit|chill|alarl|scream)/i.test(value))
-    return { tag: "[shouting]", performance: "scream", burst: "¡Ah!" };
-  if (/(?:solloz|llor|cry|sob)/i.test(value))
-    return { tag: "[sigh]", performance: "sad" };
-  if (/(?<![\p{L}\p{N}])(?:r[ií][oó]|re[ií]mos|re[ií]r|risas?)(?![\p{L}\p{N}])|carcajad|laugh/iu.test(value))
-    return { tag: "[laughing]", performance: "amused" };
-  if (/(?:sorprend|sobresalt|asombr|surpris|startl)/i.test(value))
-    return { tag: "", performance: "surprised" };
-  if (/(?:sonr[ií]|sonris|smil)/i.test(value))
-    return { tag: "", performance: "warm" };
-  if (/(?:suspiro|susurr|sigh|whisper)/i.test(value))
-    return { tag: "[sigh]", performance: "soft" };
-  return null;
-}
-
-function cleanSceneText(value: string): string {
-  return value.replace(/\[[^\]]{1,40}\]/g, " ").replace(/[*_#`]/g, " ").replace(/\s+/g, " ").trim();
-}
-
-/** Assemble one continuous score in story order: narration, vocal reaction, dialogue. */
+/** Shared scene interpretation; the server compiles the original marked text once. */
 export function performSpeech(text: string): { text: string; performance: Performance } {
-  const vocalOnly = /^\*([^*]+)\*$/.exec(text.trim());
-  if (vocalOnly) {
-    const event = eventFor(vocalOnly[1]);
-    if (event && (event.tag || event.burst)) {
-      return { text: [event.tag, event.burst].filter(Boolean).join(" "), performance: event.performance };
-    }
-  }
-  const pieces = text.split(/(\*[^*]+\*)/g).filter(Boolean);
-  const score: string[] = [];
-  let performance: Performance = "neutral";
-  let pending: VocalEvent | null = null;
-  for (let index = 0; index < pieces.length; index += 1) {
-    const piece = pieces[index];
-    const stage = /^\*[^*]+\*$/.test(piece);
-    const words = cleanSceneText(stage ? piece.slice(1, -1) : piece);
-    if (!words) continue;
-    if (stage) {
-      if (pending) {
-        if (pending.tag) score.push(pending.tag);
-        if (pending.burst) score.push(pending.burst);
-      }
-      // Narration stays audible; a smile is never interpreted as laughter.
-      score.push(/[.!?…]$/.test(words) ? words : words + ".");
-      pending = eventFor(words);
-      if (pending) performance = pending.performance;
-      continue;
-    }
-    let spoken = words.replace(/\ba+h{2,}\b/gi, "Ay").replace(/\bm{3,}\b/gi, "Mmm");
-    // Plain narrative has no asterisks. Put an audible reaction at the event,
-    // without turning a smile or a general emotion into an unrelated laugh.
-    if (pieces.length === 1) {
-      spoken = spoken.replace(/(?<![\p{L}\p{N}])(grit[oó]|peg[oó] un grito|gimi[oó]|gime|solloz[oó]|se ech[oó] a llorar|ri[oó] a carcajadas)(?![\p{L}\p{N}])/giu,
-        (action) => {
-          const event = eventFor(action);
-          if (!event) return action;
-          performance = event.performance;
-          return [action, event.tag, event.burst].filter(Boolean).join(" ");
-        });
-    }
-    if (pending) {
-      const hasVocalAnswer = /^[¡!¿?]*\s*(?:ay|ah|oh|uff|ja)/i.test(spoken);
-      if (pending.tag) score.push(pending.tag);
-      if (pending.burst && !hasVocalAnswer) score.push(pending.burst);
-      pending = null;
-    }
-    score.push(spoken);
-  }
-  if (pending) {
-    if (pending.tag) score.push(pending.tag);
-    if (pending.burst) score.push(pending.burst);
-  }
-  return { text: score.join(" ").replace(/\s+/g, " ").replace(/([!?])\./g, "$1").trim(), performance };
+  return prepareExpressiveSpeech(text);
 }
 
 export function roleplaySpeechText(text: string): string {
@@ -170,7 +94,8 @@ async function receivePcmOnce(text: string, voice: string, language: string, reg
     reader.releaseLock();
   }
   if (!receivedDone || byteCarry.length > 0 || totalBytes === 0) throw new Error("tts_stream_incomplete");
-  const onlyVocalEvent = roleplay && /^\[(?:sigh|laughing|shouting)\](?:\s+¡Ah!)?$/.test(text.trim());
+  const score = roleplay ? prepareExpressiveSpeech(text) : null;
+  const onlyVocalEvent = !!score?.reactions.length && score.segments.every((part) => part.kind === "reaction");
   if (totalBytes / 2 / PCM_SAMPLE_RATE < (onlyVocalEvent ? 0.1 : 0.35)) throw new Error("tts_audio_too_short");
 }
 
@@ -260,9 +185,8 @@ export function streamSpeech(text: string, voice: string, language = "es", rolep
       if (context.state === "suspended") await context.resume();
       if (stopped || !context) return;
       const playbackEnded = new Promise<void>((resolve) => { finishPlayback = resolve; });
-      const prepared = performSpeech(text);
-      const spoken = prepared.text;
-      const performance = prepared.performance;
+      const spoken = text.trim();
+      const performance: Performance = "neutral";
       if (!spoken) { stop(); return; }
       let scheduledAt = context.currentTime;
 
@@ -287,7 +211,7 @@ export function streamSpeech(text: string, voice: string, language = "es", rolep
         scheduledAt = startAt + buffer.duration;
         if (sources.size === 1) reportFirstPlayback();
       };
-      await receivePcm(spoken, voice, language, region, performance, roleplay || performance !== "neutral", controller.signal, schedule);
+      await receivePcm(spoken, voice, language, region, performance, roleplay, controller.signal, schedule);
       schedulingComplete = true;
       if (sources.size === 0) finishPlayback();
       await playbackEnded;

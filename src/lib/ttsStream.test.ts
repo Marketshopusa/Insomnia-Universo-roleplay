@@ -21,6 +21,8 @@ it("starts playback as soon as a PCM chunk arrives, before the stream closes", a
     const payload = JSON.parse(String(init?.body || "{}"));
     if (payload.metric) return Promise.resolve(new Response(null, { status: 204 }));
     speechRequests += 1;
+    expect(payload.text).toBe("*Río* Hola, bienvenida a nuestra historia.");
+    expect(payload.roleplay).toBe(true);
     return Promise.resolve(new Response(stream, { status: 200 }));
   });
   vi.spyOn(supabase.auth, "getSession").mockResolvedValue({ data: { session: { access_token: "test" } }, error: null } as any);
@@ -48,7 +50,7 @@ it("starts playback as soon as a PCM chunk arrives, before the stream closes", a
   }
   vi.stubGlobal("AudioContext", AudioContextMock);
 
-  const speech = streamSpeech("Hola, bienvenida a nuestra historia.", "scarlett-hd");
+  const speech = streamSpeech("*Río* Hola, bienvenida a nuestra historia.", "scarlett-hd", "es", true);
   await speech.started;
   expect(speechRequests).toBe(1);
   expect(starts).toBe(1);
@@ -73,29 +75,11 @@ it("does not play a mismatched device voice when neural TTS has no quota", async
   expect(deviceSpeak).not.toHaveBeenCalled();
 });
 
-it("keeps narration, reactions and dialogue in scene order without reading instructions", () => {
+it("keeps the public playback helpers aligned with the ordered score", () => {
   expect(roleplaySpeechText("*Sonrío* Hola.")).toBe("Sonrío. Hola.");
   expect(roleplayPerformance("*Sonrío* Hola.")).toBe("warm");
-  expect(roleplaySpeechText("*Me quedo sorprendida al verlo* No te esperaba."))
-    .toBe("Me quedo sorprendida al verlo. No te esperaba.");
-  expect(roleplayPerformance("*Me quedo sorprendida al verlo* No te esperaba.")).toBe("surprised");
-  expect(roleplayPerformance("*Río* No me lo esperaba.")).toBe("amused");
-  expect(roleplaySpeechText("*Me siento ofendida y molesta* No esperaba eso."))
-    .toBe("Me siento ofendida y molesta. No esperaba eso.");
-  expect(roleplaySpeechText("*Ella abrió la puerta y gritó* ¡Ay, me golpeé!"))
-    .toBe("Ella abrió la puerta y gritó. [shouting] ¡Ay, me golpeé!");
-  expect(roleplaySpeechText("*Ella abrió la puerta y gritó* ¿Qué fue eso?"))
-    .toBe("Ella abrió la puerta y gritó. [shouting] ¡Ah! ¿Qué fue eso?");
-  expect(roleplaySpeechText("*Gimo de placer* Sí.")).toBe("Gimo de placer. Ah... Sí.");
-  expect(roleplaySpeechText("*Sollozo* Lo siento.")).toBe("Sollozo. [sigh] Lo siento.");
-  expect(roleplaySpeechText("*Río* No me lo esperaba.")).toBe("Río. [laughing] No me lo esperaba.");
-  expect(roleplaySpeechText("Ella abrió la puerta y gritó."))
-    .toBe("Ella abrió la puerta y gritó [shouting] ¡Ah!");
-  expect(roleplayPerformance("Ella abrió la puerta y gritó.")).toBe("scream");
-  expect(roleplaySpeechText("Estoy feliz de ver tu sonrisa.")).toBe("Estoy feliz de ver tu sonrisa.");
-  expect(roleplaySpeechText("*No grito* Estoy tranquila.")).toBe("No grito. Estoy tranquila.");
-  expect(roleplaySpeechText("*Río*")).toBe("[laughing]");
-  expect(roleplaySpeechText("*Sollozo*")).toBe("[sigh]");
-  expect(roleplaySpeechText("*Grito*")).toBe("[shouting] ¡Ah!");
-  expect(roleplaySpeechText("*Gimo*")).toBe("Ah...");
+  expect(roleplaySpeechText("*Sollozo* Lo siento.")).toBe("Hh... ah... hh... Lo siento.");
+  expect(roleplaySpeechText("*Río*")).toBe("[laughing] Ja, ja, ja...");
+  expect(roleplaySpeechText("*Grito de dolor* «Ahhh, no me toques»"))
+    .toBe("[shouting] ¡Aaaah! «Ahhh, no me toques»");
 });

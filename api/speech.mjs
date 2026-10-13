@@ -1,6 +1,8 @@
+import { synthesizeExpressiveScene } from "../src/lib/expressiveAudio.mjs";
+import { prepareExpressiveSpeech, hasVocalCue } from "../src/lib/expressiveSpeech.mjs";
 import { createClient } from "@supabase/supabase-js";
 import { supabaseUrl, publishableKey } from "./config.mjs";
-import { explainGeminiFailure, isGeminiConfigured, streamGeminiSpeech, synthesizeGemini, removePerformanceCues } from "./geminiTts.mjs";
+import { explainGeminiFailure, isGeminiConfigured, streamGeminiSpeech, synthesizeGemini, removePerformanceCues, previewVoice } from "./geminiTts.mjs";
 
 export const maxDuration = 60;
 
@@ -60,19 +62,31 @@ export default async function handler(req, res) {
     });
   }
   const raw = typeof req.body?.text === "string" ? req.body.text : "";
-  const text = raw.replace(/[*_#]/g, "").replace(/\s+/g, " ").trim().slice(0, 1400);
+  const limited = raw.slice(0, 1400);
+  const expression = req.body?.roleplay ? prepareExpressiveSpeech(limited) : null;
+  const text = expression ? expression.text : limited.replace(/[*_#]/g, "").replace(/\s+/g, " ").trim();
   const plainText = removePerformanceCues(text);
-  if (!plainText) return res.status(400).json({ error: "missing_text" });
+  if (!plainText && !expression?.reactions.length && !hasVocalCue(text)) return res.status(400).json({ error: "missing_text" });
   const region = typeof req.body.region === "string" ? req.body.region : "mx";
   const performance = ["neutral", "warm", "surprised", "amused", "sad", "pain", "pleasure", "scream", "soft"].includes(req.body.performance)
     ? req.body.performance : "neutral";
   const provider = "gemini-2.5-flash-tts";
   let opened = false;
   try {
+    if (expression?.reactions.length) {
+      const scene = await synthesizeExpressiveScene(expression, req.body.voice, req.body.language, { region, resolvedVoice: previewVoice(req.body.voice), synthesize: synthesizeGemini });
+      if (scene.status !== 200) {
+        const status = scene.status === 429 ? 429 : scene.status === 403 ? 403 : 502;
+        return res.status(status).json({ error: scene.status === 429 ? "tts_quota_exhausted" : "tts_unavailable", message: explainGeminiFailure(scene.status, scene.detail) });
+      }
+      writePcm(res, scene.pcm, provider, startedAt);
+      return;
+    }
     try {
       const streamed = await streamGeminiSpeech(text, req.body.voice, req.body.language, {
         performance,
         region,
+        expression,
         onAudio(pcm) {
           if (!pcm?.length) return;
           if (!opened) {
@@ -94,7 +108,7 @@ export default async function handler(req, res) {
       }
       console.warn("Insomnia speech stream failed", failure?.message || failure?.name || "Error", "after_ms", Date.now() - startedAt);
     }
-    const expressive = await synthesizeGemini(text, req.body.voice, req.body.language, { performance, region });
+    const expressive = await synthesizeGemini(text, req.body.voice, req.body.language, { performance, region, expression });
     if (expressive.status !== 200) {
       console.warn("Insomnia speech gemini-2.5-flash-tts", expressive.status, expressive.detail || "", "after_ms", Date.now() - startedAt);
       const status = expressive.status === 429 ? 429 : expressive.status === 403 ? 403 : 502;

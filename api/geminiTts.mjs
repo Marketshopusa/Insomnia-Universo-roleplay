@@ -57,7 +57,7 @@ export function quotaProjectId() {
 }
 
 export function removePerformanceCues(text) {
-  return text.replace(/\[(?:laughing|sigh|uhm|short pause|medium pause|long pause|laughs|sighs|gasps|crying|shouting|moaning|whispering)\]/gi, "").replace(/\s+/g, " ").trim();
+  return text.replace(/\[(?:laughing|sigh|uhm|short pause|medium pause|long pause|laughs|sighs|gasps|crying|sobbing|gasping|panting|groaning|moaning|grunting|growling|coughing|sneezing|hiccup|clears throat|kiss|shouting|moaning|whispering)\]/gi, "").replace(/\s+/g, " ").trim();
 }
 
 function resamplePcm16(pcm, fromRate, toRate = 24000) {
@@ -189,7 +189,28 @@ async function enableAgentPlatform(token, fetchImpl) {
   return true;
 }
 
-export function geminiSpeechDirection(language, performance, region) {
+export function geminiSpeechDirection(language, performance, region, expression) {
+  if (expression?.segments?.length) {
+    const accent = language === "en" ? "Use the selected natural English voice. " : accentHint(language, region) + " ";
+    const hasSpeech = expression.segments.some((part) => part.kind !== "reaction");
+    if (expression.reactions?.length === 1) {
+      const event = expression.reactions[0];
+      if (hasSpeech && /^(?:cry|sob)$/.test(event.event)) {
+        return accent + "The speaker is deeply distressed and actively crying with tears. Start with audible involuntary sobbing, then speak the exact supplied words through tears. Interrupted breath and a breaking tearful voice. Not a sigh, panting, laughter or a relaxed groan. Do not pronounce bracketed cues or add any words.";
+      }
+      if (!hasSpeech) return accent + "Generate ONLY this short nonverbal vocal sound: " + event.direction +
+        " The written vowels are a phonetic guide to this vocal reaction, not a sentence. Do not speak labels, directions, explanations or any invented dialogue. Stop after the sound.";
+    }
+    const delivery = expression.segments.filter((part) => part.kind !== "reaction" && part.performance !== "neutral").at(-1)?.performance || "neutral";
+    const direction = {
+      neutral: "Natural conversational delivery.", warm: "A subtle smile colors the voice; do not laugh.",
+      surprised: "Natural surprise, without added interjections.", amused: "Lightly amused voice, without added laughter.",
+      sad: "A tearful, trembling voice.", pain: "A voice strained with physical pain, without added interjections.",
+      pleasure: "A soft pleased voice.", scream: "Forceful raised voice.", soft: "Speak quietly and softly.",
+      angry: "A tense, angry voice.", afraid: "A frightened, trembling voice.", disgusted: "A voice expressing disgust.", tired: "A weary voice with low energy.",
+    }[delivery] || "Natural conversational delivery.";
+    return accent + direction + " Read only the supplied text, exactly once. Do not read these instructions, repeat phrases or invent words or sounds.";
+  }
   const spanish = language !== "en";
   const mood = {
     neutral: spanish ? "Voz natural acorde con la escena." : "Natural voice suited to the scene.",
@@ -210,7 +231,7 @@ export function geminiSpeechDirection(language, performance, region) {
 const BLOCK_NONE = 4;
 const HARM = { hate: 1, dangerous: 2, harassment: 3, sexual: 4 };
 
-export function geminiStreamPlan(text, preset, language, performance = "neutral", region = "mx") {
+export function geminiStreamPlan(text, preset, language, performance = "neutral", region = "mx", expression) {
   const voice = cloudGeminiVoiceFor(preset, language, region);
   return {
     streamingConfig: {
@@ -224,13 +245,13 @@ export function geminiStreamPlan(text, preset, language, performance = "neutral"
         },
       },
     },
-    input: { text, prompt: geminiSpeechDirection(language, performance, region) },
+    input: { text, prompt: geminiSpeechDirection(language, performance, region, expression) },
   };
 }
 
-export function geminiStreamBody(text, preset, language, performance = "neutral", region = "mx") {
+export function geminiStreamBody(text, preset, language, performance = "neutral", region = "mx", expression) {
   const voice = cloudGeminiVoiceFor(preset, language, region);
-  const prompt = geminiSpeechDirection(language, performance, region);
+  const prompt = geminiSpeechDirection(language, performance, region, expression);
   return {
     contents: {
       role: "user",
@@ -283,7 +304,7 @@ export function pcmFromSseLine(line) {
  * The whole line goes in one request. onAudio runs only for real PCM.
  * A failure before the first sample returns ok:false so the caller can use unary synthesis.
  */
-export async function streamGeminiSpeech(text, preset, language, { performance = "neutral", region = "mx", tokenProvider = getCredentials, fetchImpl = fetch, onAudio = () => {}, firstAudioMs = 8000 } = {}) {
+export async function streamGeminiSpeech(text, preset, language, { performance = "neutral", region = "mx", expression, tokenProvider = getCredentials, fetchImpl = fetch, onAudio = () => {}, firstAudioMs = 8000 } = {}) {
   const projectId = quotaProjectId();
   if (!projectId) return { ok: false, status: 0, detail: "missing_project" };
   const token = await tokenProvider();
@@ -299,7 +320,7 @@ export async function streamGeminiSpeech(text, preset, language, { performance =
         "Content-Type": "application/json",
         "x-goog-user-project": projectId,
       },
-      body: JSON.stringify(geminiStreamBody(text, preset, language, performance, region)),
+      body: JSON.stringify(geminiStreamBody(text, preset, language, performance, region, expression)),
       signal: controller.signal,
     });
   } catch (error) {
@@ -363,10 +384,10 @@ export async function streamGeminiSpeech(text, preset, language, { performance =
   return { ok: true };
 }
 
-export async function synthesizeGemini(text, preset, language, { performance = "neutral", region = "mx", tokenProvider = getCredentials, fetchImpl = fetch, sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)) } = {}) {
+export async function synthesizeGemini(text, preset, language, { performance = "neutral", region = "mx", expression, tokenProvider = getCredentials, fetchImpl = fetch, sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)) } = {}) {
   const token = await tokenProvider();
   const projectId = quotaProjectId();
-  const prompt = geminiSpeechDirection(language, performance, region);
+  const prompt = geminiSpeechDirection(language, performance, region, expression);
   const request = (voice, relaxSafety) => fetchImpl("https://texttospeech.googleapis.com/v1/text:synthesize", {
     method: "POST",
     headers: {

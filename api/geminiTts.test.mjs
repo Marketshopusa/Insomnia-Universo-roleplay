@@ -1,3 +1,4 @@
+import { prepareExpressiveSpeech } from "../src/lib/expressiveSpeech.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { cloudGeminiVoiceFor, decodeLinear16, explainGeminiFailure, geminiSpeechDirection, geminiStreamBody, pcmFromSseLine, removePerformanceCues, streamGeminiSpeech, synthesizeGemini } from "./geminiTts.mjs";
@@ -199,4 +200,29 @@ test("a failed audio stream returns before any sound so unary speech can take ov
   assert.equal(heard, false);
   if (previousAccount === undefined) delete process.env.GOOGLE_CLOUD_TTS_SERVICE_ACCOUNT_JSON;
   else process.env.GOOGLE_CLOUD_TTS_SERVICE_ACCOUNT_JSON = previousAccount;
+});
+
+
+test("local expressive prompts reach both paths without spoken script labels", async () => {
+  const expression = prepareExpressiveSpeech('*Sollozo* «Me duele»');
+  const body = geminiStreamBody('[crying] «Me duele»', "Aoede", "es", "neutral", "ve", expression);
+  assert.equal(body.generation_config.speech_config.voice_config.prebuilt_voice_config.voice_name, "Aoede");
+  assert.match(body.contents.parts.text, /venezolano urbano de Caracas/);
+  assert.match(body.contents.parts.text, /audible involuntary sobbing/);
+  assert.doesNotMatch(body.contents.parts.text, /1\. Narration|2\. Dialogue|ordered score/);
+  const { wav } = sampleWav();
+  const result = await synthesizeGemini('[crying] «Me duele»', "Aoede", "es", {
+    expression, region: "ve", tokenProvider: async () => "test",
+    fetchImpl: async (_url, init) => {
+      const input = JSON.parse(init.body).input;
+      assert.equal(input.text, '[crying] «Me duele»');
+      assert.match(input.prompt, /audible involuntary sobbing/);
+      return new Response(JSON.stringify({ audioContent: wav.toString("base64") }), { status: 200 });
+    },
+  });
+  assert.equal(result.status, 200);
+  assert.equal(removePerformanceCues("[sobbing]"), "");
+  const spoken = prepareExpressiveSpeech('*Sonrío* Hola.');
+  assert.match(geminiSpeechDirection("es", "neutral", "mx", spoken), /subtle smile/);
+  assert.doesNotMatch(geminiSpeechDirection("es", "neutral", "mx", spoken), /Narration:|Dialogue:/);
 });
