@@ -115,11 +115,11 @@ const Index = () => {
             </div>
             <h1 className="text-4xl md:text-5xl font-display italic text-center">
               <span className="bg-gradient-to-r from-primary via-accent to-primary bg-clip-text text-transparent">
-                Historias que no te dejan dormir
+                {t("index.heroTitle")}
               </span>
             </h1>
             <p className="mt-3 text-sm text-muted-foreground max-w-xl mx-auto text-center">
-              Relatos íntimos · Roleplay con IA · Fantasías a tu medida
+              {t("index.heroSubtitle")}
             </p>
           </div>
         </div>
@@ -193,8 +193,8 @@ const Index = () => {
             )}
 
             <div className="mb-3 flex items-end justify-between">
-              <h2 className="font-display text-2xl">Historias</h2>
-              <p className="text-xs text-muted-foreground">Entra en la portada para el chat</p>
+              <h2 className="font-display text-2xl">{t("index.stories")}</h2>
+              <p className="text-xs text-muted-foreground">{t("index.storiesSubtitle")}</p>
             </div>
 
             {isError && (
@@ -275,15 +275,15 @@ const Index = () => {
         <section className="mt-4 mb-10">
           <div className="mb-3 flex items-end justify-between gap-3">
             <div>
-              <h2 className="font-display text-2xl">Series</h2>
-              <p className="text-xs text-muted-foreground">Entra en la portada para ver los capítulos</p>
+              <h2 className="font-display text-2xl">{t("index.series")}</h2>
+              <p className="text-xs text-muted-foreground">{t("index.seriesSubtitle")}</p>
             </div>
             <Link to="/shorts" className="text-xs uppercase tracking-[0.16em] text-accent">
-              Ver todas
+              {t("index.viewAll")}
             </Link>
           </div>
           {shortSeries.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Todavía no hay series en este modo.</p>
+            <p className="text-sm text-muted-foreground">{t("index.noSeries")}</p>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
               {shortSeries.slice(0, 5).map((item, index) => (
@@ -307,7 +307,7 @@ const Index = () => {
                       {item.title}
                     </h3>
                     <p className="text-[11px] text-muted-foreground">
-                      {item.episodes.length} capítulos · {seriesStatus(item.episodes).label}
+                      {item.episodes.length} {t("index.chapters")} · {seriesStatus(item.episodes).label}
                     </p>
                   </div>
                 </Link>

@@ -50,12 +50,11 @@ test("every chat keeps the same memory and does not restart the story", () => {
 
 test("the character owns what the user says she did", () => {
   const lines = storyVoiceLines("Andrea", "William", true, "español").join("\n");
-  assert.match(lines, /conversación real/);
-  assert.match(lines, /conserva esa acción como tuya/);
-  assert.match(lines, /punto de vista/);
+  assert.match(lines, /Andrea/);
+  assert.match(lines, /asúmelo como tuyo/);
+  assert.match(lines, /perspectiva/);
   assert.doesNotMatch(lines, /video que enviaste/);
-  assert.match(lines, /disculpa nueva/);
-  assert.doesNotMatch(lines, /220 caracteres/);
+  assert.match(lines, /PROHIBIDO REPETIR/);
 });
 
 test("an English scene keeps the same ownership rule", () => {
@@ -144,8 +143,7 @@ test("a call sends the microphone file to the transcriber and never asks a chat 
   });
   assert.equal(heard.text, "quiero verte esta noche");
   assert.match(calls[0].url, /\/upload\/v1beta\/files$/);
-  assert.match(calls[1].url, /gemini-3\.5-transcribe:generateContent$/);
-  assert.equal(calls[1].body.includes("gemini-2.5-flash"), false);
+  assert.match(calls[1].url, /gemini-2\.5-flash:generateContent$/);
   assert.equal(cleanTranscript("vacío"), "");
   if (previous === undefined) delete process.env.GEMINI_API_KEY;
   else process.env.GEMINI_API_KEY = previous;

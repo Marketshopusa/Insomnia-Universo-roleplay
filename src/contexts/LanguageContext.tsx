@@ -7,12 +7,60 @@ type Dict = Record<string, { en: string; es: string }>;
 const translations: Dict = {
   // Header / nav
   "nav.chat": { en: "Chat", es: "Chat" },
+  "nav.shorts": { en: "Shorts", es: "Shorts" },
   "nav.novelStudio": { en: "Novel Studio", es: "Estudio de Novelas" },
   "nav.myStories": { en: "My Stories", es: "Mis Historias" },
+  "nav.history": { en: "History", es: "Historial" },
   "nav.plans": { en: "Free & Paid Plans", es: "Planes Gratis y de Pago" },
   "nav.login": { en: "Login", es: "Iniciar Sesión" },
   "nav.logout": { en: "Logout", es: "Cerrar Sesión" },
   "nav.home": { en: "Home", es: "Inicio" },
+
+  // Index / Home
+  "index.heroTitle": { en: "Stories that keep you awake", es: "Historias que no te dejan dormir" },
+  "index.heroSubtitle": { en: "Intimate stories · AI Roleplay · Tailored fantasies", es: "Relatos íntimos · Roleplay con IA · Fantasías a tu medida" },
+  "index.stories": { en: "Stories", es: "Historias" },
+  "index.storiesSubtitle": { en: "Click on the cover to chat", es: "Entra en la portada para el chat" },
+  "index.series": { en: "Series", es: "Series" },
+  "index.seriesSubtitle": { en: "Click on the cover to watch episodes", es: "Entra en la portada para ver los capítulos" },
+  "index.viewAll": { en: "View all", es: "Ver todas" },
+  "index.noSeries": { en: "No series available in this mode yet.", es: "Todavía no hay series en este modo." },
+  "index.chapters": { en: "chapters", es: "capítulos" },
+  "index.filter": { en: "Filters", es: "Filtros" },
+  "index.type": { en: "Type", es: "Tipo" },
+  "index.source": { en: "Source", es: "Fuente" },
+
+  // Categories
+  "categories.title": { en: "Categories", es: "Categorías" },
+  "categories.selected": { en: "selected", es: "seleccionadas" },
+  "categories.available": { en: "available", es: "disponibles" },
+  "categories.clear": { en: "Clear", es: "Limpiar" },
+  "categories.searchPlaceholder": { en: "Search category...", es: "Buscar categoría..." },
+  "categories.noResults": { en: "No results", es: "Sin resultados" },
+
+  // Reading history
+  "history.title": { en: "Reading and Roleplay History", es: "Historial de lectura y roleplay" },
+  "history.desc": { en: "Stories you have recently read or played. Each card includes its classification and can be removed.", es: "Historias que has leído o jugado recientemente. Cada tarjeta incluye su clasificación y puedes eliminarla del historial." },
+  "history.clearAll": { en: "Clear history", es: "Vaciar historial" },
+  "history.empty": { en: "You don't have any history yet", es: "Aún no tienes historial" },
+  "history.emptyDesc": { en: "When you read a story or participate in a roleplay, it will appear here so you can resume or manage it.", es: "Cuando leas una historia o participes en un roleplay, aparecerá aquí para que puedas retomarla o gestionarla." },
+  "history.explore": { en: "Explore stories", es: "Explorar historias" },
+  "history.loading": { en: "Loading history...", es: "Cargando historial..." },
+
+  // Call dialog
+  "call.listening": { en: "Listening", es: "Escuchando" },
+  "call.answering": { en: "Answering", es: "Respondiendo" },
+  "call.speaking": { en: "Speaking", es: "Hablando" },
+  "call.startCall": { en: "Start call", es: "Iniciar llamada" },
+  "call.endCall": { en: "Hang up call", es: "Colgar llamada" },
+  "call.micRequired": { en: "Microphone access is needed", es: "Necesito acceso al micrófono" },
+  "call.micRequiredDesc": { en: "Allow the microphone in your browser to use voice calls.", es: "Permite el micrófono en tu navegador para usar la llamada." },
+  "call.interrupted": { en: "The call was interrupted", es: "Se interrumpió la llamada" },
+  "call.interruptedDesc": { en: "The call remains open. Speak again.", es: "La llamada sigue abierta. Vuelve a hablar." },
+  "call.cantTranscribe": { en: "Could not transcribe the call", es: "No se pudo transcribir la llamada" },
+  "call.noVoice": { en: "The microphone audio did not arrive. The call stays open: speak again.", es: "No llegó la voz del micrófono. La llamada sigue abierta: habla de nuevo." },
+  "call.charFailed": { en: "The character could not answer", es: "El personaje no pudo responder" },
+  "call.savedMessage": { en: "What you said was saved. The call will keep listening.", es: "Guardamos lo que dijiste. La llamada continuará escuchando." },
 
   // Story Types
   "type.adventure": { en: "Adventure", es: "Aventura" },

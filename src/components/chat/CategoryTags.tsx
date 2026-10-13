@@ -1,6 +1,8 @@
 import { useState, useMemo } from "react";
 import { cn } from "@/lib/utils";
 import { ChevronDown, Search, X, Tag } from "lucide-react";
+import { useLanguage } from "@/contexts/LanguageContext";
+import { useTranslatedTexts } from "@/hooks/useTranslatedTexts";
 
 interface Category {
   id: string;
@@ -19,15 +21,28 @@ export const CategoryTags = ({
   selectedCategories,
   onCategoryToggle,
 }: CategoryTagsProps) => {
+  const { t } = useLanguage();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
 
+  const rawNames = useMemo(() => categories.map((c) => c.name), [categories]);
+  const translatedNames = useTranslatedTexts(rawNames);
+  const categoriesWithLabels = useMemo(
+    () =>
+      categories.map((c, i) => ({
+        ...c,
+        label: translatedNames[i] || c.name,
+      })),
+    [categories, translatedNames]
+  );
+
   const filtered = useMemo(
     () =>
-      categories.filter((c) =>
+      categoriesWithLabels.filter((c) =>
+        c.label.toLowerCase().includes(query.trim().toLowerCase()) ||
         c.name.toLowerCase().includes(query.trim().toLowerCase())
       ),
-    [categories, query]
+    [categoriesWithLabels, query]
   );
 
   const clearAll = () => {
@@ -46,11 +61,11 @@ export const CategoryTags = ({
             <Tag className="w-4 h-4 text-primary" />
           </div>
           <div>
-            <div className="text-sm font-medium tracking-wide">Categorías</div>
+            <div className="text-sm font-medium tracking-wide">{t("categories.title")}</div>
             <div className="text-[11px] text-muted-foreground uppercase tracking-[0.2em]">
               {selectedCategories.length > 0
-                ? `${selectedCategories.length} seleccionadas`
-                : `${categories.length} disponibles`}
+                ? `${selectedCategories.length} ${t("categories.selected")}`
+                : `${categories.length} ${t("categories.available")}`}
             </div>
           </div>
         </div>
@@ -65,7 +80,7 @@ export const CategoryTags = ({
               }}
               className="text-xs px-2 py-1 border border-border hover:border-destructive/50 hover:text-destructive transition-colors"
             >
-              Limpiar
+              {t("categories.clear")}
             </span>
           )}
           <ChevronDown
@@ -86,7 +101,7 @@ export const CategoryTags = ({
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Buscar categoría..."
+              placeholder={t("categories.searchPlaceholder")}
               className="w-full bg-background/60 border border-border pl-9 pr-9 py-2 text-sm focus:outline-none focus:border-primary/60"
             />
             {query && (
@@ -113,13 +128,13 @@ export const CategoryTags = ({
                       : "bg-background/40 border-border/60 text-muted-foreground hover:border-primary/40 hover:text-foreground"
                   )}
                 >
-                  {category.name}
+                  {category.label}
                 </button>
               );
             })}
             {filtered.length === 0 && (
               <div className="col-span-full text-center text-xs text-muted-foreground py-6">
-                Sin resultados
+                {t("categories.noResults")}
               </div>
             )}
           </div>

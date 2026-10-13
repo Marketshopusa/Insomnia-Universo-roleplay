@@ -142,8 +142,8 @@ export const CallDialog = ({
   const recoverTurn = () => {
     if (!activeRef.current) return;
     toast({
-      title: es ? "Se interrumpió la llamada" : "The call was interrupted",
-      description: es ? "La llamada sigue abierta. Vuelve a hablar." : "The call remains open. Speak again.",
+      title: t("call.interrupted"),
+      description: t("call.interruptedDesc"),
       variant: "destructive",
     });
     void listen();
@@ -165,7 +165,7 @@ export const CallDialog = ({
       let heardVoice = false;
       const meter = window.setInterval(() => {
         const level = recorder.getLevel();
-        if (level > 0.012) {
+        if (level > 0.005) {
           heardVoice = true;
           silentFor = 0;
         } else {
@@ -186,10 +186,8 @@ export const CallDialog = ({
     } catch {
       hangUp();
       toast({
-        title: es ? "Necesito acceso al micrófono" : "Microphone access is needed",
-        description: es
-          ? "Permite el micrófono en tu navegador para usar la llamada."
-          : "Allow the microphone in your browser to use the call.",
+        title: t("call.micRequired"),
+        description: t("call.micRequiredDesc"),
         variant: "destructive",
       });
     }
@@ -205,7 +203,7 @@ export const CallDialog = ({
     const blob = await recorder.stop();
     if (!activeRef.current) return;
 
-    if (!spoke || blob.size < 4096) {
+    if (!spoke && blob.size < 6000) {
       void listen();
       return;
     }
@@ -215,10 +213,8 @@ export const CallDialog = ({
     const userText = (data?.text || "").trim();
     if (error || data?.error) {
       toast({
-        title: es ? "No se pudo transcribir la llamada" : "Could not transcribe the call",
-        description: data?.message || error?.message || (es
-          ? "No llegó la voz del micrófono. La llamada sigue abierta: habla de nuevo."
-          : "The microphone audio did not arrive. The call stays open: speak again."),
+        title: t("call.cantTranscribe"),
+        description: data?.message || error?.message || t("call.noVoice"),
         variant: "destructive",
       });
       if (activeRef.current) void listen();
@@ -241,10 +237,8 @@ export const CallDialog = ({
           ? (es ? "Se agotaron los creditos de IA" : "AI credits are exhausted")
           : replyResult.error === "content_blocked"
             ? (es ? "Esta escena no puede continuar" : "This scene cannot continue")
-            : (es ? "El personaje no pudo responder" : "The character could not answer"),
-        description: replyResult.message || (es
-          ? "Guardamos lo que dijiste. La llamada continuará escuchando."
-          : "What you said was saved. The call will keep listening."),
+            : t("call.charFailed"),
+        description: replyResult.message || t("call.savedMessage"),
         variant: "destructive",
       });
       if (replyResult.error === "credits_exhausted") hangUp();
@@ -265,27 +259,27 @@ export const CallDialog = ({
 
   const active = state !== "idle";
   const status = state === "listening"
-    ? (es ? "Escuchando" : "Listening")
+    ? t("call.listening")
     : state === "thinking"
-      ? (es ? "Respondiendo" : "Answering")
+      ? t("call.answering")
       : state === "speaking"
-        ? (es ? "Hablando" : "Speaking")
+        ? t("call.speaking")
         : "";
 
   return (
     <div className="flex items-center gap-2">
-      {status && <span className="text-xs text-muted-foreground">{status}</span>}
+      {status && <span className="text-xs text-muted-foreground animate-pulse">{status}</span>}
       <Button
         type="button"
         size="icon"
         onClick={() => (active ? hangUp() : void listen())}
         className={`h-10 w-10 shrink-0 rounded-full border transition-colors sm:h-11 sm:w-11 ${
           active
-            ? "border-call-active/60 bg-call-active text-call-active-foreground hover:bg-call-active/90"
+            ? "border-call-active/60 bg-call-active text-call-active-foreground hover:bg-call-active/90 ring-2 ring-call-active/30"
             : "border-call-inactive/60 bg-call-inactive text-call-inactive-foreground hover:bg-call-inactive/90"
         }`}
-        aria-label={active ? (es ? "Colgar llamada" : "Hang up call") : (es ? "Iniciar llamada" : "Start call")}
-        title={active ? (es ? "Colgar llamada" : "Hang up call") : (es ? "Iniciar llamada" : "Start call")}
+        aria-label={active ? t("call.endCall") : t("call.startCall")}
+        title={active ? t("call.endCall") : t("call.startCall")}
       >
         <Phone className={`h-5 w-5 ${active ? "animate-pulse" : ""}`} />
       </Button>

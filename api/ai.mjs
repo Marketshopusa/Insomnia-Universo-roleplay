@@ -128,26 +128,45 @@ export async function transcribeAudio(body, options = {}) {
   if (bytes.length < 2048) return { text: "" };
   const language = body.language === "en" ? "en" : "es";
   const locale = speechLocale(language, body.region);
+  const candidateModels = options.model ? [options.model] : (options.fallbackModels || ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]);
+  let lastError;
   const ask = async (requestBody) => {
-    let current = requestBody;
-    for (let attempt = 0; attempt < 2; attempt += 1) {
-      const response = await fetchImpl("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-transcribe:generateContent", {
-        method: "POST",
-        headers: { "x-goog-api-key": key, "Content-Type": "application/json" },
-        body: JSON.stringify(current),
-        signal: AbortSignal.timeout(30000),
-      });
-      const data = await response.json().catch(() => ({}));
-      if (response.ok) return { text: transcriptFrom(data) };
-      const message = data?.error?.message || "";
-      if (attempt === 0 && response.status === 400 && current.generationConfig) {
-        current = { contents: current.contents };
-        continue;
+    for (const candidate of candidateModels) {
+      let current = requestBody;
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        try {
+          const response = await fetchImpl("https://generativelanguage.googleapis.com/v1beta/models/" + candidate + ":generateContent", {
+            method: "POST",
+            headers: { "x-goog-api-key": key, "Content-Type": "application/json" },
+            body: JSON.stringify(current),
+            signal: AbortSignal.timeout(options.timeoutMs || 30000),
+          });
+          const data = await response.json().catch(() => ({}));
+          if (response.ok) return { text: transcriptFrom(data) };
+          const message = data?.error?.message || "";
+          if (attempt === 0 && response.status === 400 && current.generationConfig) {
+            current = { contents: current.contents };
+            continue;
+          }
+          lastError = Object.assign(new Error(message || "No se pudo transcribir el micrófono."), {
+            status: response.status, code: "stt_failed",
+          });
+          if (response.status === 404 || response.status === 429 || response.status >= 500) break;
+          throw lastError;
+        } catch (err) {
+          if (err.code === "stt_failed" && (err.status === 404 || err.status === 429 || err.status >= 500)) {
+            lastError = err;
+            break;
+          }
+          if (err.name === "TimeoutError") {
+            lastError = Object.assign(new Error("Tiempo de espera agotado al transcribir."), { status: 504, code: "stt_failed" });
+            break;
+          }
+          throw err;
+        }
       }
-      throw Object.assign(new Error(message || "No se pudo transcribir el micrófono."), {
-        status: response.status, code: "stt_failed",
-      });
     }
+    if (lastError) throw lastError;
     return { text: "" };
   };
   try {
@@ -430,10 +449,34 @@ export default async function handler(req, res) {
     if (action === "translate") {
       const texts = Array.isArray(body.texts) ? body.texts.slice(0, 50).map(s => String(s).slice(0, 1000)) : [];
       if (!texts.length) return send(res, 200, { translations: [] });
-      const prompt = "Translate this JSON list into " + (body.targetLang === "es" ? "natural Spanish" : "natural English") + ". Preserve names and formatting. Return only a JSON array of the same length and order:\n" + JSON.stringify(texts);
-      const translations = JSON.parse(await generate("gemini-2.5-flash", [{ text: prompt }], { responseMimeType: "application/json" }));
-      if (!Array.isArray(translations) || translations.length !== texts.length) throw Object.assign(new Error("Formato de traducciÃ³n incorrecto."), { status: 502 });
-      return send(res, 200, { translations });
+      const targetLang = body.targetLang === "es" ? "natural Spanish" : "natural English";
+      const prompt = "Translate this JSON list into " + targetLang + ". Preserve names, acronyms and formatting. Return only a JSON array of strings of the same length (" + texts.length + ") and order:\n" + JSON.stringify(texts);
+      let raw = "";
+      try {
+        raw = await generate("gemini-2.5-flash", [{ text: prompt }], { responseMimeType: "application/json", temperature: 0.2 }, { fallbackModels: ["gemini-2.0-flash", "gemini-1.5-flash"] });
+      } catch (err) {
+        console.warn("Translation upstream error:", err.message);
+        return send(res, 200, { translations: texts });
+      }
+      let translations = null;
+      try {
+        const cleaned = raw.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+        const parsed = JSON.parse(cleaned);
+        if (Array.isArray(parsed)) translations = parsed;
+        else if (Array.isArray(parsed?.translations)) translations = parsed.translations;
+        else if (Array.isArray(parsed?.result)) translations = parsed.result;
+        else if (Array.isArray(parsed?.data)) translations = parsed.data;
+      } catch {
+        translations = null;
+      }
+      if (!Array.isArray(translations) || translations.length !== texts.length) {
+        console.warn("Translation length mismatch, returning safe list");
+        const safe = Array.isArray(translations) && translations.length > 0
+          ? texts.map((t, i) => (typeof translations[i] === "string" && translations[i].trim() ? translations[i].trim() : t))
+          : texts;
+        return send(res, 200, { translations: safe });
+      }
+      return send(res, 200, { translations: translations.map(String) });
     }
     if (action === "speech-to-text") {
       return send(res, 200, await transcribeAudio(body));

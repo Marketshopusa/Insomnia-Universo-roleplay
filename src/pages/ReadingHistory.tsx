@@ -104,7 +104,7 @@ export const ReadingHistory = () => {
       <MainLayout>
         <div className="container mx-auto px-4 py-16 flex flex-col items-center justify-center">
           <Loader2 className="w-8 h-8 animate-spin text-primary mb-3" />
-          <p className="text-sm text-muted-foreground">Cargando historial...</p>
+          <p className="text-sm text-muted-foreground">{t("history.loading")}</p>
         </div>
       </MainLayout>
     );
@@ -114,7 +114,7 @@ export const ReadingHistory = () => {
     return (
       <MainLayout>
         <div className="container mx-auto px-4 py-16 text-center">
-          <h1 className="text-3xl font-display mb-4">Historial</h1>
+          <h1 className="text-3xl font-display mb-4">{t("nav.history")}</h1>
           <Card className="max-w-md mx-auto">
             <CardHeader>
               <CardTitle>{t("myStories.loginRequired")}</CardTitle>
@@ -138,10 +138,10 @@ export const ReadingHistory = () => {
           <div>
             <div className="flex items-center gap-2">
               <History className="w-7 h-7 text-primary" />
-              <h1 className="text-3xl font-display">Historial de lectura y roleplay</h1>
+              <h1 className="text-3xl font-display">{t("history.title")}</h1>
             </div>
             <p className="text-sm text-muted-foreground mt-1">
-              Historias que has leído o jugado recientemente. Cada tarjeta incluye su clasificación y puedes eliminarla del historial.
+              {t("history.desc")}
             </p>
           </div>
           {history && history.length > 0 && (
@@ -152,7 +152,7 @@ export const ReadingHistory = () => {
               onClick={() => setConfirmDeleteId("all")}
             >
               <Trash2 className="w-4 h-4 mr-2" />
-              Vaciar historial
+              {t("history.clearAll")}
             </Button>
           )}
         </div>
@@ -160,7 +160,7 @@ export const ReadingHistory = () => {
         {isLoading ? (
           <div className="flex justify-center items-center py-20 text-muted-foreground">
             <Loader2 className="w-6 h-6 animate-spin mr-2" />
-            Cargando historial...
+            {t("history.loading")}
           </div>
         ) : !history || history.length === 0 ? (
           <Card className="text-center py-16 border-dashed">
@@ -168,12 +168,12 @@ export const ReadingHistory = () => {
               <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center mx-auto mb-4 text-2xl">
                 📖
               </div>
-              <h3 className="text-lg font-medium mb-1">Aún no tienes historial</h3>
+              <h3 className="text-lg font-medium mb-1">{t("history.empty")}</h3>
               <p className="text-sm text-muted-foreground mb-6 max-w-md mx-auto">
-                Cuando leas una historia o participes en un roleplay, aparecerá aquí para que puedas retomarla o gestionarla.
+                {t("history.emptyDesc")}
               </p>
               <Link to="/">
-                <Button>Explorar historias</Button>
+                <Button>{t("history.explore")}</Button>
               </Link>
             </CardContent>
           </Card>

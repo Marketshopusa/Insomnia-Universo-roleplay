@@ -46,10 +46,10 @@ import { AdultConsentDialog } from "@/components/adult/AdultConsentDialog";
  
    const navLinks = [
       { href: "/", label: t("nav.home") },
-      { href: "/shorts", label: "Shorts" },
+      { href: "/shorts", label: t("nav.shorts") },
       { href: "/studio", label: t("nav.novelStudio") },
       { href: "/my-stories", label: t("nav.myStories") },
-      { href: "/history", label: "Historial" },
+      { href: "/history", label: t("nav.history") },
       { href: "/plans", label: t("nav.plans") },
    ];
    const linkActive = (href: string) => {

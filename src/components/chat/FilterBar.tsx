@@ -64,7 +64,7 @@ export const FilterBar = ({
       >
         <div className="hidden md:flex items-center gap-2 pl-3 pr-1 text-xs uppercase tracking-[0.2em] text-muted-foreground">
           <Filter className="w-3.5 h-3.5" />
-          <span>Filtros</span>
+          <span>{t("index.filter")}</span>
         </div>
 
         <div className="h-6 w-px bg-border/60 hidden md:block" />
@@ -85,7 +85,7 @@ export const FilterBar = ({
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="w-56">
-            <DropdownMenuLabel>{t("nav.chat")} · Tipo</DropdownMenuLabel>
+            <DropdownMenuLabel>{t("nav.chat")} · {t("index.type")}</DropdownMenuLabel>
             <DropdownMenuSeparator />
             {types.map((tp) => {
               const Icon = TYPE_ICON[tp];
@@ -122,7 +122,7 @@ export const FilterBar = ({
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="w-56">
-            <DropdownMenuLabel>Fuente</DropdownMenuLabel>
+            <DropdownMenuLabel>{t("index.source")}</DropdownMenuLabel>
             <DropdownMenuSeparator />
             {sources.map((src) => {
               const Icon = SOURCE_ICON[src];

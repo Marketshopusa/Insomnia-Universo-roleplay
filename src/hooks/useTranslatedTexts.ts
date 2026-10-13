@@ -1,14 +1,21 @@
 import { useEffect, useState, useRef } from "react";
 import { invokeFunctionWithRetry } from "@/lib/invokeFunction";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { findStaticTranslation } from "@/lib/staticTranslations";
 
 // In-memory cache shared across the app: key = `${lang}::${text}` -> translated
 const cache = new Map<string, string>();
 const inflight = new Map<string, Promise<void>>();
 
 function isLikelySpanish(text: string): boolean {
-  // Quick heuristic: skip translation if text already contains Spanish accents/words
-  return /[áéíóúñ¿¡]/i.test(text) || /\b(el|la|los|las|de|que|para|con|una|por)\b/i.test(text);
+  if (/[áíóúñ¿¡]/i.test(text)) return true;
+  const spanishHits = (text.toLowerCase().match(/\b(el|la|los|las|del|que|para|por|una|unos|unas|está|estoy|historia|relato|capítulo|noche|amor)\b/g) || []).length;
+  return spanishHits >= 2;
+}
+
+function isLikelyEnglish(text: string): boolean {
+  const englishHits = (text.toLowerCase().match(/\b(the|this|that|with|and|your|under|after|before|night|when|love|chapter|episode)\b/g) || []).length;
+  return englishHits >= 2;
 }
 
 type TranslationJob = {
@@ -49,7 +56,9 @@ async function flushTranslations() {
     const { data, error } = await invokeFunctionWithRetry<{ translations?: string[] }>("translate", {
       texts, targetLang: first.targetLang,
     });
-    if (!error && data?.translations?.length === texts.length) translations = data.translations;
+    if (!error && Array.isArray(data?.translations) && data.translations.length === texts.length) {
+      translations = data.translations;
+    }
   } catch (error) {
     console.warn("Translate failed", error);
   } finally {
@@ -77,17 +86,35 @@ function translateBatch(texts: string[], targetLang: string): Promise<string[] |
   });
 }
 
+function resolveSingleText(text: string, language: string): { translated: string; needsFetch: boolean } {
+  if (!text || !text.trim()) return { translated: text, needsFetch: false };
+  const staticMatch = findStaticTranslation(text, language);
+  if (staticMatch) return { translated: staticMatch, needsFetch: false };
+
+  const cacheKey = `${language}::${text}`;
+  const cached = cache.get(cacheKey);
+  if (cached) return { translated: cached, needsFetch: false };
+
+  if (language === "es" && isLikelySpanish(text)) return { translated: text, needsFetch: false };
+  if (language === "en" && isLikelyEnglish(text)) return { translated: text, needsFetch: false };
+
+  return { translated: text, needsFetch: true };
+}
+
 /**
  * Translates a list of strings to the active UI language.
- * - Returns originals immediately if language is "en".
+ * - Uses immediate static dictionary if available.
  * - Caches results in-memory.
- * - Returns the originals while a translation is in flight, then updates.
+ * - Falls back to Gemini translation API for dynamic texts.
  */
 export function useTranslatedTexts(texts: (string | null | undefined)[]): string[] {
   const { language } = useLanguage();
   const safe = texts.map((t) => (t ?? "").toString());
 
-  const [result, setResult] = useState<string[]>(safe);
+  const computeCurrent = (): string[] =>
+    safe.map((t) => resolveSingleText(t, language).translated);
+
+  const [result, setResult] = useState<string[]>(computeCurrent);
   const lastKeyRef = useRef<string>("");
 
   useEffect(() => {
@@ -95,59 +122,40 @@ export function useTranslatedTexts(texts: (string | null | undefined)[]): string
     if (key === lastKeyRef.current) return;
     lastKeyRef.current = key;
 
-    if (language === "en") {
-      setResult(safe);
-      return;
-    }
-
-    // Build the list of items needing translation
-    const needsFetch: { idx: number; text: string; cacheKey: string }[] = [];
-    const initial: string[] = safe.map((text, idx) => {
-      if (!text || text.trim().length === 0) return text;
-      if (isLikelySpanish(text) && language === "es") return text;
-      const cacheKey = `${language}::${text}`;
-      const cached = cache.get(cacheKey);
-      if (cached) return cached;
-      needsFetch.push({ idx, text, cacheKey });
-      return text; // show original until translated
+    const needsFetch: string[] = [];
+    const initial = safe.map((text) => {
+      const { translated, needsFetch: req } = resolveSingleText(text, language);
+      if (req) needsFetch.push(text);
+      return translated;
     });
 
     setResult(initial);
-
     if (needsFetch.length === 0) return;
 
     let cancelled = false;
-
     (async () => {
       try {
-        const uniqueTexts = Array.from(new Set(needsFetch.map((n) => n.text)));
-        const toFetch = uniqueTexts.filter((t) => !cache.has(`${language}::${t}`));
-        const pending = uniqueTexts
-          .map((t) => inflight.get(`${language}::${t}`))
-          .filter(Boolean) as Promise<void>[];
-
-        if (toFetch.length > 0) {
-          const batch = translateBatch(toFetch, language).then((arr) => {
-            toFetch.forEach((text, i) => {
-              if (arr && typeof arr[i] === "string") {
-                cache.set(`${language}::${text}`, arr[i]);
-              }
-              inflight.delete(`${language}::${text}`);
-            });
+        const unique = Array.from(new Set(needsFetch)).filter((t) => !cache.has(`${language}::${t}`));
+        if (unique.length > 0) {
+          const batch = translateBatch(unique, language).then((arr) => {
+            if (Array.isArray(arr)) {
+              unique.forEach((text, i) => {
+                if (typeof arr[i] === "string" && arr[i].trim()) {
+                  cache.set(`${language}::${text}`, arr[i]);
+                }
+              });
+            }
           }).catch((err) => {
             console.warn("Translation batch error:", err);
-            toFetch.forEach((text) => inflight.delete(`${language}::${text}`));
           });
-          toFetch.forEach((t) => inflight.set(`${language}::${t}`, batch));
           await batch;
         }
-        if (pending.length > 0) await Promise.allSettled(pending);
 
         if (cancelled) return;
         const final = safe.map((text) => {
-          if (!text) return text;
-          if (isLikelySpanish(text) && language === "es") return text;
-          return cache.get(`${language}::${text}`) || text;
+          const direct = resolveSingleText(text, language);
+          if (!direct.needsFetch) return direct.translated;
+          return cache.get(`${language}::${text}`) || direct.translated;
         });
         setResult(final);
       } catch (err) {
