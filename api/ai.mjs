@@ -114,8 +114,58 @@ function transcriptFrom(data) {
   return cleanTranscript(parts.map((part) => part.text || "").join(""));
 }
 
+export function interactionsTranscriptionBody(base64Audio, mimeType = "audio/wav", languageCode = "es-419") {
+  return {
+    model: "gemini-3.5-transcribe",
+    input: [
+      {
+        type: "audio",
+        data: base64Audio,
+        mime_type: mimeType,
+      },
+    ],
+    generation_config: {
+      transcription_config: {
+        language_codes: languageCode ? [languageCode] : ["es-419"],
+      },
+    },
+  };
+}
+
+export function interactionTranscript(data) {
+  if (!data || typeof data !== "object") return "";
+  if (typeof data.output_text === "string" && data.output_text.trim()) {
+    return cleanTranscript(data.output_text);
+  }
+  if (typeof data.text === "string" && data.text.trim()) {
+    return cleanTranscript(data.text);
+  }
+  if (Array.isArray(data.steps)) {
+    for (let i = data.steps.length - 1; i >= 0; i--) {
+      const step = data.steps[i];
+      if (step?.type === "model_output" || step?.type === "output" || !step?.type) {
+        if (Array.isArray(step.content)) {
+          const text = step.content
+            .map((item) => (typeof item === "string" ? item : item?.text || ""))
+            .join("");
+          if (text.trim()) return cleanTranscript(text);
+        } else if (typeof step.content === "string" && step.content.trim()) {
+          return cleanTranscript(step.content);
+        } else if (typeof step.text === "string" && step.text.trim()) {
+          return cleanTranscript(step.text);
+        }
+      }
+    }
+  }
+  if (Array.isArray(data.outputs)) {
+    const text = data.outputs.map((o) => (typeof o === "string" ? o : o?.text || "")).join("");
+    if (text.trim()) return cleanTranscript(text);
+  }
+  return "";
+}
+
 export async function transcribeAudio(body, options = {}) {
-  if (typeof body.audio !== "string" || body.audio.length < 2700 || body.audio.length > 12000000) {
+  if (typeof body.audio !== "string" || body.audio.length < 64 || body.audio.length > 12000000) {
     throw Object.assign(new Error("El audio de la llamada no llegó completo."), { status: 400, code: "invalid_audio" });
   }
   const key = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
@@ -127,81 +177,78 @@ export async function transcribeAudio(body, options = {}) {
   const bytes = Buffer.from(body.audio, "base64");
   if (bytes.length < 2048) return { text: "" };
   const language = body.language === "en" ? "en" : "es";
-  const locale = speechLocale(language, body.region);
-  const candidateModels = options.model ? [options.model] : (options.fallbackModels || ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-2.5-flash-lite"]);
-  let lastError;
-  const ask = async (requestBody) => {
-    for (const candidate of candidateModels) {
-      let current = requestBody;
-      for (let attempt = 0; attempt < 2; attempt += 1) {
-        try {
-          const response = await fetchImpl("https://generativelanguage.googleapis.com/v1beta/models/" + candidate + ":generateContent", {
-            method: "POST",
-            headers: { "x-goog-api-key": key, "Content-Type": "application/json" },
-            body: JSON.stringify(current),
-            signal: AbortSignal.timeout(options.timeoutMs || 30000),
-          });
-          const data = await response.json().catch(() => ({}));
-          if (response.ok) return { text: transcriptFrom(data) };
-          const message = data?.error?.message || "";
-          console.warn("Insomnia STT upstream", candidate, response.status, message);
-          if (attempt === 0 && response.status === 400 && current.generationConfig) {
-            current = {
-              contents: (current.contents || []).map((c) => ({
-                ...c,
-                parts: [
-                  ...c.parts,
-                  { text: "Transcribe the spoken audio verbatim in " + locale + ". Output only the transcription, nothing else. If silence, output empty." },
-                ],
-              })),
-            };
-            continue;
-          }
-          lastError = Object.assign(new Error(message || "No se pudo transcribir el micrófono."), {
-            status: response.status, code: "stt_failed",
-          });
-          if (response.status === 404 || response.status === 400 || response.status === 429 || response.status >= 500) break;
-          throw lastError;
-        } catch (err) {
-          if (err.code === "stt_failed" && (err.status === 404 || err.status === 429 || err.status >= 500)) {
-            lastError = err;
-            break;
-          }
-          if (err.name === "TimeoutError") {
-            lastError = Object.assign(new Error("Tiempo de espera agotado al transcribir."), { status: 504, code: "stt_failed" });
-            break;
-          }
-          throw err;
-        }
-      }
-    }
-    if (lastError) throw lastError;
-    return { text: "" };
-  };
+  const locale = language === "en" ? "en-US" : (body.region === "plain" || body.region === "es" ? "es-ES" : "es-419");
+
+  const totalDeadlineMs = options.totalTimeoutMs || options.timeoutMs || 15000;
+  const startTime = Date.now();
+  const remainingTime = () => Math.max(1000, totalDeadlineMs - (Date.now() - startTime));
+  const attemptErrors = [];
+
+  // 1. Primary: gemini-3.5-transcribe via Interactions API (POST /v1beta/interactions)
   try {
-    const uploaded = await fetchImpl("https://generativelanguage.googleapis.com/upload/v1beta/files", {
+    const interactionPayload = interactionsTranscriptionBody(body.audio, mimeType, locale);
+    const response = await fetchImpl("https://generativelanguage.googleapis.com/v1beta/interactions", {
       method: "POST",
-      headers: {
-        "x-goog-api-key": key,
-        "X-Goog-Upload-Protocol": "raw",
-        "X-Goog-Upload-Command": "start, upload, finalize",
-        "X-Goog-Upload-Header-Content-Length": String(bytes.length),
-        "X-Goog-Upload-Header-Content-Type": mimeType,
-        "Content-Type": mimeType,
-      },
-      body: bytes,
-      signal: AbortSignal.timeout(20000),
+      headers: { "x-goog-api-key": key, "Content-Type": "application/json" },
+      body: JSON.stringify(interactionPayload),
+      signal: AbortSignal.timeout(remainingTime()),
     });
-    const uploadedData = await uploaded.json().catch(() => ({}));
-    const fileUri = uploadedData.file?.uri || uploadedData.uri;
-    if (uploaded.ok && fileUri) return await ask(speechToTextBody(fileUri, mimeType, locale));
-  } catch (error) {
-    if (error.code === "stt_failed") throw error;
+    const data = await response.json().catch(() => ({}));
+    if (response.ok) {
+      return { text: interactionTranscript(data) };
+    }
+    const message = data?.error?.message || response.statusText || "Interactions call failed";
+    console.warn("Insomnia STT attempt error (interactions):", response.status, message);
+    attemptErrors.push({ strategy: "interactions:gemini-3.5-transcribe", status: response.status, message });
+  } catch (err) {
+    const message = err.name === "TimeoutError" ? "Tiempo agotado en transcripción." : (err.message || String(err));
+    console.warn("Insomnia STT interactions exception:", message);
+    attemptErrors.push({ strategy: "interactions:gemini-3.5-transcribe", status: err.status || 500, message });
   }
-  return ask({
-    contents: [{ role: "user", parts: [{ inlineData: { mimeType, data: body.audio } }] }],
-    generationConfig: { audioTranscriptionConfig: { languageCodes: [locale] } },
-  });
+
+  // 2. Fallback: generateContent on gemini-2.5-flash with inline audio (if remaining time allows and fallback not disabled)
+  if (remainingTime() > 2000 && !options.noFallback) {
+    try {
+      const fallbackResponse = await fetchImpl("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent", {
+        method: "POST",
+        headers: { "x-goog-api-key": key, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{
+            role: "user",
+            parts: [
+              { inlineData: { mimeType, data: body.audio } },
+              { text: "Transcribe the spoken audio verbatim in " + locale + ". Output only the transcription, nothing else. If silence, output empty." }
+            ]
+          }],
+          generationConfig: { temperature: 0.1 }
+        }),
+        signal: AbortSignal.timeout(remainingTime()),
+      });
+      const fallbackData = await fallbackResponse.json().catch(() => ({}));
+      if (fallbackResponse.ok) {
+        return { text: transcriptFrom(fallbackData) };
+      }
+      const message = fallbackData?.error?.message || fallbackResponse.statusText;
+      console.warn("Insomnia STT fallback error:", fallbackResponse.status, message);
+      attemptErrors.push({ strategy: "generateContent:gemini-2.5-flash", status: fallbackResponse.status, message });
+    } catch (err) {
+      const message = err.name === "TimeoutError" ? "Tiempo agotado en fallback." : (err.message || String(err));
+      attemptErrors.push({ strategy: "generateContent:gemini-2.5-flash", status: err.status || 500, message });
+    }
+  }
+
+  const allDetails = attemptErrors.map((e) => `[${e.strategy}: ${e.status} ${e.message}]`).join("; ");
+  console.error("Insomnia STT all attempts failed:", allDetails);
+  const last = attemptErrors[attemptErrors.length - 1] || {};
+  throw Object.assign(
+    new Error(last.message || "No se pudo transcribir el micrófono."),
+    {
+      status: last.status || 500,
+      code: "stt_failed",
+      attempts: attemptErrors,
+      details: allDetails,
+    }
+  );
 }
 
 export function storyContinuityLines(spanish) {
@@ -678,7 +725,7 @@ export default async function handler(req, res) {
   } catch (error) {
     const status = Number(error.status) >= 400 && Number(error.status) <= 599 ? Number(error.status) : error.name === "TimeoutError" ? 504 : 500;
     console.error("Insomnia AI", action, status, error.message);
-    return send(res, status, { error: error.code || "ai_error", message: error.message });
+    return send(res, status, { error: error.code || "ai_error", message: error.message, details: error.details, attempts: error.attempts });
   }
 }
 

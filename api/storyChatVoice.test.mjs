@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { cleanTranscript, generate, generationConfigFor, lockedStoryFacts, mentionsMinor, narrativeRequest, narrativeStays, replyChangesScene, sceneLock, speechToTextBody, storyContinuityLines, storyVoiceLines, transcribeAudio } from "./ai.mjs";
+import { cleanTranscript, generate, generationConfigFor, interactionTranscript, interactionsTranscriptionBody, lockedStoryFacts, mentionsMinor, narrativeRequest, narrativeStays, replyChangesScene, sceneLock, speechToTextBody, storyContinuityLines, storyVoiceLines, transcribeAudio } from "./ai.mjs";
 
 test("a video stays with the person who sent it", () => {
   const facts = lockedStoryFacts([
@@ -118,48 +118,170 @@ test("Gemini 3.x uses thinking level and recovers from a generic invalid argumen
   }
 });
 
-test("a call sends the microphone file to the transcriber and never asks a chat model to greet", async () => {
-  const body = speechToTextBody("files/mic", "audio/wav", "es-MX");
-  assert.deepEqual(body.contents[0].parts, [{ fileData: { fileUri: "files/mic", mimeType: "audio/wav" } }]);
-  assert.equal(JSON.stringify(body).includes("Transcribe"), false);
-  assert.equal(body.generationConfig.audioTranscriptionConfig.languageCodes[0], "es-MX");
-  const previous = process.env.GEMINI_API_KEY;
-  process.env.GEMINI_API_KEY = "test-key";
-  const calls = [];
-  const wav = Buffer.alloc(3000, 1).toString("base64");
-  const heard = await transcribeAudio({ audio: wav, language: "es", region: "mx", mimeType: "audio/wav" }, {
-    fetchImpl: async (url, init) => {
-      calls.push({ url: String(url), body: init.body, headers: init.headers });
-      if (String(url).includes("/upload/")) {
-        return new Response(JSON.stringify({ file: { uri: "https://generativelanguage.googleapis.com/v1beta/files/mic" } }), { status: 200 });
-      }
-      const request = JSON.parse(init.body);
-      assert.equal(request.contents[0].parts[0].text, undefined);
-      assert.equal(request.contents[0].parts[0].fileData.mimeType, "audio/wav");
-      return new Response(JSON.stringify({
-        candidates: [{ content: { parts: [{ text: "quiero verte esta noche" }] } }],
-      }), { status: 200 });
-    },
-  });
-  assert.equal(heard.text, "quiero verte esta noche");
-  assert.match(calls[0].url, /\/upload\/v1beta\/files$/);
-  assert.match(calls[1].url, /gemini-2\.5-flash:generateContent$/);
-  assert.equal(cleanTranscript("vacío"), "");
-  if (previous === undefined) delete process.env.GEMINI_API_KEY;
-  else process.env.GEMINI_API_KEY = previous;
+export function createSyntheticWav(durationMs = 500, sampleRate = 16000, frequency = 440) {
+  const numSamples = Math.floor((durationMs / 1000) * sampleRate);
+  const dataSize = numSamples * 2;
+  const buffer = Buffer.alloc(44 + dataSize);
+  buffer.write("RIFF", 0);
+  buffer.writeUInt32LE(36 + dataSize, 4);
+  buffer.write("WAVE", 8);
+  buffer.write("fmt ", 12);
+  buffer.writeUInt32LE(16, 16);
+  buffer.writeUInt16LE(1, 20);
+  buffer.writeUInt16LE(1, 22);
+  buffer.writeUInt32LE(sampleRate, 24);
+  buffer.writeUInt32LE(sampleRate * 2, 28);
+  buffer.writeUInt16LE(2, 32);
+  buffer.writeUInt16LE(16, 34);
+  buffer.write("data", 36);
+  buffer.writeUInt32LE(dataSize, 40);
+  for (let i = 0; i < numSamples; i++) {
+    const t = i / sampleRate;
+    const sample = Math.round(Math.sin(2 * Math.PI * frequency * t) * 16000);
+    buffer.writeInt16LE(sample, 44 + i * 2);
+  }
+  return buffer;
+}
+
+test("interactionsTranscriptionBody constructs exact schema for gemini-3.5-transcribe", () => {
+  const wavBase64 = createSyntheticWav(200).toString("base64");
+  const body = interactionsTranscriptionBody(wavBase64, "audio/wav", "es-419");
+  assert.equal(body.model, "gemini-3.5-transcribe");
+  assert.equal(body.input[0].type, "audio");
+  assert.equal(body.input[0].mime_type, "audio/wav");
+  assert.equal(body.input[0].data, wavBase64);
+  assert.deepEqual(body.generation_config.transcription_config.language_codes, ["es-419"]);
 });
 
-test("silence in a call is an empty transcript, not an error", async () => {
+test("interactionTranscript parses diverse Interactions response shapes and cleans noise", () => {
+  assert.equal(interactionTranscript({ output_text: "  \"Hola Andrea\"  " }), "Hola Andrea");
+  assert.equal(interactionTranscript({ text: "Transcripción: ¿Dónde estás?" }), "¿Dónde estás?");
+  assert.equal(interactionTranscript({
+    steps: [
+      { type: "user_input", content: [{ text: "audio" }] },
+      { type: "model_output", content: [{ type: "text", text: "Vente conmigo ahora" }] },
+    ],
+  }), "Vente conmigo ahora");
+  assert.equal(interactionTranscript({ output_text: "[silencio]" }), "");
+  assert.equal(interactionTranscript({ output_text: "vacío" }), "");
+  assert.equal(cleanTranscript("(silence)"), "");
+});
+
+test("transcribeAudio successfully calls Interactions endpoint with synthetic WAV", async () => {
   const previous = process.env.GEMINI_API_KEY;
   process.env.GEMINI_API_KEY = "test-key";
-  const content = await generate("gemini-2.5-flash", [{ text: "audio" }], { temperature: 0 }, {
-    allowEmpty: true,
-    fallbackModels: [],
-    fetchImpl: async () => new Response(JSON.stringify({
-      candidates: [{ content: { parts: [{ text: "" }] } }],
-    }), { status: 200 }),
-  });
-  assert.equal(content, "");
-  if (previous === undefined) delete process.env.GEMINI_API_KEY;
-  else process.env.GEMINI_API_KEY = previous;
+  try {
+    const wav = createSyntheticWav(400).toString("base64");
+    const calls = [];
+    const result = await transcribeAudio(
+      { audio: wav, language: "es", region: "co", mimeType: "audio/wav" },
+      {
+        fetchImpl: async (url, init) => {
+          calls.push({ url: String(url), body: JSON.parse(init.body) });
+          assert.equal(url, "https://generativelanguage.googleapis.com/v1beta/interactions");
+          return new Response(JSON.stringify({
+            status: "completed",
+            steps: [
+              { type: "model_output", content: [{ type: "text", text: "Hola parce" }] },
+            ],
+          }), { status: 200 });
+        },
+      }
+    );
+    assert.equal(result.text, "Hola parce");
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].body.model, "gemini-3.5-transcribe");
+    assert.deepEqual(calls[0].body.generation_config.transcription_config.language_codes, ["es-419"]);
+  } finally {
+    if (previous === undefined) delete process.env.GEMINI_API_KEY;
+    else process.env.GEMINI_API_KEY = previous;
+  }
+});
+
+test("transcribeAudio records attempt errors and activates fallback when primary fails", async () => {
+  const previous = process.env.GEMINI_API_KEY;
+  process.env.GEMINI_API_KEY = "test-key";
+  try {
+    const wav = createSyntheticWav(400).toString("base64");
+    const calls = [];
+    const result = await transcribeAudio(
+      { audio: wav, language: "es", region: "mx", mimeType: "audio/wav" },
+      {
+        fetchImpl: async (url, init) => {
+          calls.push({ url: String(url) });
+          if (String(url).includes("/interactions")) {
+            return new Response(JSON.stringify({
+              error: { message: "Model gemini-3.5-transcribe temporarily unavailable" },
+            }), { status: 503 });
+          }
+          return new Response(JSON.stringify({
+            candidates: [{ content: { parts: [{ text: "Respuesta de respaldo" }] } }],
+          }), { status: 200 });
+        },
+      }
+    );
+    assert.equal(result.text, "Respuesta de respaldo");
+    assert.equal(calls.length, 2);
+    assert.match(calls[0].url, /\/interactions$/);
+    assert.match(calls[1].url, /gemini-2\.5-flash:generateContent$/);
+  } finally {
+    if (previous === undefined) delete process.env.GEMINI_API_KEY;
+    else process.env.GEMINI_API_KEY = previous;
+  }
+});
+
+test("transcribeAudio collects all attempt errors when all endpoints fail", async () => {
+  const previous = process.env.GEMINI_API_KEY;
+  process.env.GEMINI_API_KEY = "test-key";
+  try {
+    const wav = createSyntheticWav(400).toString("base64");
+    await assert.rejects(
+      async () => {
+        await transcribeAudio(
+          { audio: wav, language: "es", region: "mx", mimeType: "audio/wav" },
+          {
+            fetchImpl: async (url) => {
+              if (String(url).includes("/interactions")) {
+                return new Response(JSON.stringify({ error: { message: "Interactions 404" } }), { status: 404 });
+              }
+              return new Response(JSON.stringify({ error: { message: "Fallback 500" } }), { status: 500 });
+            },
+          }
+        );
+      },
+      (err) => {
+        assert.equal(err.code, "stt_failed");
+        assert.equal(err.attempts.length, 2);
+        assert.equal(err.attempts[0].strategy, "interactions:gemini-3.5-transcribe");
+        assert.equal(err.attempts[0].status, 404);
+        assert.equal(err.attempts[1].strategy, "generateContent:gemini-2.5-flash");
+        assert.equal(err.attempts[1].status, 500);
+        assert.match(err.details, /Interactions 404/);
+        assert.match(err.details, /Fallback 500/);
+        return true;
+      }
+    );
+  } finally {
+    if (previous === undefined) delete process.env.GEMINI_API_KEY;
+    else process.env.GEMINI_API_KEY = previous;
+  }
+});
+
+test("silence under 2048 bytes returns empty text without calling upstream", async () => {
+  const previous = process.env.GEMINI_API_KEY;
+  process.env.GEMINI_API_KEY = "test-key";
+  try {
+    // 1000 bytes base64-encoded (which decodes to ~750 bytes < 2048)
+    const smallAudio = Buffer.alloc(1000).toString("base64");
+    let called = false;
+    const result = await transcribeAudio(
+      { audio: smallAudio, language: "es", mimeType: "audio/wav" },
+      { fetchImpl: async () => { called = true; return new Response("{}"); } }
+    );
+    assert.equal(result.text, "");
+    assert.equal(called, false);
+  } finally {
+    if (previous === undefined) delete process.env.GEMINI_API_KEY;
+    else process.env.GEMINI_API_KEY = previous;
+  }
 });

@@ -57,6 +57,8 @@ export const CallDialog = ({
   const historyRef = useRef<Turn[]>(history);
   const activeRef = useRef(false);
   const timersRef = useRef<number[]>([]);
+  const sessionCountRef = useRef(0);
+  const abortControllerRef = useRef<AbortController | null>(null);
   useEffect(() => {
     historyRef.current = history;
   }, [history]);
@@ -80,6 +82,9 @@ export const CallDialog = ({
 
   const hangUp = () => {
     activeRef.current = false;
+    sessionCountRef.current += 1;
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = null;
     clearTimers();
     stopSpeaking();
     recorderRef.current?.cancel();
@@ -207,33 +212,63 @@ export const CallDialog = ({
     const blob = await recorder.stop();
     if (!activeRef.current) return;
 
-    if (!spoke && blob.size < 4000) {
-      void listen();
+    if (!spoke) {
+      if (activeRef.current) void listen();
       return;
     }
 
+    const turnSession = sessionCountRef.current;
+    abortControllerRef.current = new AbortController();
+
     const audio = await blobToBase64(blob);
-    const { data, error } = await invokeFunctionWithRetry<{ text?: string; error?: string; message?: string }>("speech-to-text", { audio, mimeType: "audio/wav", language: es ? "es" : "en", region });
-    const userText = (data?.text || "").trim();
+    if (!activeRef.current || sessionCountRef.current !== turnSession) return;
+
+    const { data, error } = await invokeFunctionWithRetry<{ text?: string; error?: string; message?: string; details?: string }>("speech-to-text", {
+      audio,
+      mimeType: "audio/wav",
+      language: es ? "es" : "en",
+      region,
+    });
+    if (!activeRef.current || sessionCountRef.current !== turnSession) return;
+
     if (error || data?.error) {
+      const status = (error as { context?: Response } | null)?.context?.status;
+      const isPermanent = status === 404 || status === 400 || status === 401 || status === 403
+        || data?.error === "gemini_not_configured"
+        || data?.error === "invalid_audio"
+        || (data?.error === "stt_failed" && (status === 404 || status === 400))
+        || /no está disponible|no disponible|no configurado/i.test(data?.message || "");
+
+      if (isPermanent) {
+        hangUp();
+        toast({
+          title: es ? "Llamada finalizada" : "Call ended",
+          description: data?.message || error?.message || (es ? "El servicio de transcripción no está disponible." : "Voice service unavailable."),
+          variant: "destructive",
+        });
+        return;
+      }
+
       toast({
         title: t("call.cantTranscribe"),
         description: data?.message || error?.message || t("call.noVoice"),
         variant: "destructive",
       });
-      if (activeRef.current) void listen();
+      if (activeRef.current && sessionCountRef.current === turnSession) void listen();
       return;
     }
+
+    const userText = (data?.text || "").trim();
     if (!userText) {
-      if (activeRef.current) void listen();
+      if (activeRef.current && sessionCountRef.current === turnSession) void listen();
       return;
     }
 
     const priorHistory = historyRef.current.slice();
     onTurn(userText, null);
     const replyResult = await askCharacter(userText, priorHistory);
+    if (!activeRef.current || sessionCountRef.current !== turnSession) return;
     const reply = replyResult.content;
-    if (!activeRef.current) return;
     if (!reply) {
       historyRef.current = [...priorHistory, { role: "user", content: userText }];
       toast({
@@ -245,8 +280,11 @@ export const CallDialog = ({
         description: replyResult.message || t("call.savedMessage"),
         variant: "destructive",
       });
-      if (replyResult.error === "credits_exhausted") hangUp();
-      else void listen();
+      if (replyResult.error === "credits_exhausted" || replyResult.error === "content_blocked") {
+        hangUp();
+      } else {
+        if (activeRef.current && sessionCountRef.current === turnSession) void listen();
+      }
       return;
     }
 
@@ -258,7 +296,7 @@ export const CallDialog = ({
     onTurn(userText, reply);
     setState("speaking");
     await speak(reply);
-    if (activeRef.current) void listen();
+    if (activeRef.current && sessionCountRef.current === turnSession) void listen();
   };
 
   const active = state !== "idle";
