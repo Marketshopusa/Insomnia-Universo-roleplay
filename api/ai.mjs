@@ -21,7 +21,7 @@ export async function generate(model, parts, settings = {}, options = {}) {
   const key = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
   if (!key || key === "[SENSITIVE]") throw Object.assign(new Error("Gemini no estÃ¡ configurado en Insomnia (Vercel)."), { status: 503, code: "gemini_not_configured" });
   const fetchImpl = options.fetchImpl || fetch;
-  const choices = [...new Set([model, ...(options.fallbackModels || ["gemini-2.0-flash", "gemini-1.5-flash"])])];
+  const choices = [...new Set([model, ...(options.fallbackModels || ["gemini-2.0-flash", "gemini-2.5-flash-lite"])])];
   let lastError;
   for (const candidate of choices) {
     let allowThinking = true;
@@ -128,7 +128,7 @@ export async function transcribeAudio(body, options = {}) {
   if (bytes.length < 2048) return { text: "" };
   const language = body.language === "en" ? "en" : "es";
   const locale = speechLocale(language, body.region);
-  const candidateModels = options.model ? [options.model] : (options.fallbackModels || ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]);
+  const candidateModels = options.model ? [options.model] : (options.fallbackModels || ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-2.5-flash-lite"]);
   let lastError;
   const ask = async (requestBody) => {
     for (const candidate of candidateModels) {
@@ -144,14 +144,23 @@ export async function transcribeAudio(body, options = {}) {
           const data = await response.json().catch(() => ({}));
           if (response.ok) return { text: transcriptFrom(data) };
           const message = data?.error?.message || "";
+          console.warn("Insomnia STT upstream", candidate, response.status, message);
           if (attempt === 0 && response.status === 400 && current.generationConfig) {
-            current = { contents: current.contents };
+            current = {
+              contents: (current.contents || []).map((c) => ({
+                ...c,
+                parts: [
+                  ...c.parts,
+                  { text: "Transcribe the spoken audio verbatim in " + locale + ". Output only the transcription, nothing else. If silence, output empty." },
+                ],
+              })),
+            };
             continue;
           }
           lastError = Object.assign(new Error(message || "No se pudo transcribir el micrófono."), {
             status: response.status, code: "stt_failed",
           });
-          if (response.status === 404 || response.status === 429 || response.status >= 500) break;
+          if (response.status === 404 || response.status === 400 || response.status === 429 || response.status >= 500) break;
           throw lastError;
         } catch (err) {
           if (err.code === "stt_failed" && (err.status === 404 || err.status === 429 || err.status >= 500)) {
@@ -516,7 +525,7 @@ export default async function handler(req, res) {
         "gemini-2.5-flash",
         [],
         { maxOutputTokens: 2048, temperature: 0.45 },
-        { contents, systemInstruction, adultMode: adultMode && !mentionsMinor(sceneContext), fallbackModels: ["gemini-2.0-flash", "gemini-1.5-flash"], fastReply: true, validate: (reply) => !isOffRole(reply) },
+        { contents, systemInstruction, adultMode: adultMode && !mentionsMinor(sceneContext), fallbackModels: ["gemini-2.0-flash", "gemini-2.5-flash-lite"], fastReply: true, validate: (reply) => !isOffRole(reply) },
       );
       return send(res, 200, { content });
     }
@@ -527,7 +536,7 @@ export default async function handler(req, res) {
       const prompt = "Translate this JSON list into " + targetLang + ". Preserve names, acronyms and formatting. Return only a JSON array of strings of the same length (" + texts.length + ") and order:\n" + JSON.stringify(texts);
       let raw = "";
       try {
-        raw = await generate("gemini-2.5-flash", [{ text: prompt }], { responseMimeType: "application/json", temperature: 0.2 }, { fallbackModels: ["gemini-2.0-flash", "gemini-1.5-flash"] });
+        raw = await generate("gemini-2.5-flash", [{ text: prompt }], { responseMimeType: "application/json", temperature: 0.2 }, { fallbackModels: ["gemini-2.0-flash", "gemini-2.5-flash-lite"] });
       } catch (err) {
         console.warn("Translation upstream error:", err.message);
         return send(res, 200, { translations: texts });
@@ -551,6 +560,13 @@ export default async function handler(req, res) {
         return send(res, 200, { translations: safe });
       }
       return send(res, 200, { translations: translations.map(String) });
+    }
+    if (action === "list-models") {
+      const key = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+      if (!key || key === "[SENSITIVE]") return send(res, 503, { error: "no_key" });
+      const response = await fetch("https://generativelanguage.googleapis.com/v1beta/models?key=" + key);
+      const data = await response.json();
+      return send(res, 200, data);
     }
     if (action === "speech-to-text") {
       return send(res, 200, await transcribeAudio(body));
