@@ -140,7 +140,7 @@ const MyStories = () => {
     setEditingId(story.id);
     setNewTitle(story.title ?? "");
     setNewDescription(story.description ?? "");
-    setNewContent(story.story_context ?? "");
+    setNewContent((story.story_context || "").trim() || (story.description || "").trim());
     setNewCharacter(story.character_role ?? "");
     setNewPlayer(story.player_role ?? "hombre");
     setNewType((story.story_type as any) ?? "roleplay");
@@ -158,10 +158,12 @@ const MyStories = () => {
     if (!user) return;
     setCreating(true);
     try {
+      const cleanContext = newContent.trim() || newDescription.trim() || null;
+      const cleanDesc = newDescription.trim() || (cleanContext ? cleanContext.slice(0, 160) : null);
       const payload = {
         title: newTitle.trim(),
-        description: newDescription.trim() || null,
-        story_context: newContent.trim() || null,
+        description: cleanDesc,
+        story_context: cleanContext,
         cover_image: newCoverUrl,
         character_role: newCharacter.trim() || null,
         player_role: newPlayer || "hombre",

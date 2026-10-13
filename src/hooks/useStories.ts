@@ -13,7 +13,7 @@ interface UseStoriesParams {
   pageSize?: number;
 }
 
-const STORY_CARD_COLUMNS = "id, title, description, cover_image, player_role, character_role, video_count, image_count, has_explicit_images, story_type, source, created_at";
+const STORY_CARD_COLUMNS = "id, title, description, story_context, cover_image, player_role, character_role, video_count, image_count, has_explicit_images, story_type, source, created_by, created_at";
 
 export const useStories = ({
   type,

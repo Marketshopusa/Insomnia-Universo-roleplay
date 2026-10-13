@@ -58,7 +58,8 @@ export const StoryConfigDialog = ({ story, open, onOpenChange, onSaved }: StoryC
   const queryClient = useQueryClient();
   const { language } = useLanguage();
   const es = language === "es";
-  const isOwner = !!user && !!story?.created_by && story.created_by === user.id;
+  const [ownerId, setOwnerId] = useState<string | null>(story?.created_by ?? null);
+  const isOwner = !!user && !!(ownerId || story?.created_by) && (ownerId || story?.created_by) === user.id;
 
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -76,9 +77,13 @@ export const StoryConfigDialog = ({ story, open, onOpenChange, onSaved }: StoryC
 
   useEffect(() => {
     if (!open || !story) return;
+
+    setOwnerId(story.created_by ?? null);
     setTitle(story.title ?? "");
     setDescription(story.description ?? "");
-    setStoryContext(story.story_context ?? "");
+    // If story_context is missing or empty, fall back to description so the development prompt is never empty
+    const initialContext = (story.story_context || "").trim() || (story.description || "").trim();
+    setStoryContext(initialContext);
     setCharacter(story.character_role ?? "");
     setPlayer(story.player_role ?? "");
     setType((story.story_type as any) ?? "roleplay");
@@ -87,7 +92,43 @@ export const StoryConfigDialog = ({ story, open, onOpenChange, onSaved }: StoryC
 
     let cancelled = false;
     (async () => {
-      let url = story.cover_image ?? null;
+      // 1. Fetch the complete story record directly from Supabase so we have fresh and full fields
+      const { data: dbStory } = await supabase
+        .from("stories")
+        .select("*")
+        .eq("id", story.id)
+        .maybeSingle();
+
+      if (cancelled) return;
+
+      if (dbStory) {
+        if (dbStory.created_by) setOwnerId(dbStory.created_by);
+        setTitle(dbStory.title ?? "");
+        setDescription(dbStory.description ?? "");
+        // Resolve development prompt: prefer story_context, fall back to description
+        const resolvedContext = (dbStory.story_context || "").trim() || (dbStory.description || "").trim();
+        setStoryContext(resolvedContext);
+        setCharacter(dbStory.character_role ?? "");
+        setPlayer(dbStory.player_role ?? "");
+        setType((dbStory.story_type as any) ?? "roleplay");
+        setExplicit(!!dbStory.has_explicit_images);
+      }
+
+      // If both story_context and description were empty, check if user has a narrative in story_sessions
+      if (user && (!dbStory || (!(dbStory.story_context || "").trim() && !(dbStory.description || "").trim()))) {
+        const { data: sess } = await supabase
+          .from("story_sessions")
+          .select("narrative")
+          .eq("user_id", user.id)
+          .eq("story_id", story.id)
+          .maybeSingle();
+        if (cancelled) return;
+        if (sess?.narrative) {
+          setStoryContext(sess.narrative);
+        }
+      }
+
+      let url = dbStory?.cover_image ?? story.cover_image ?? null;
       if (user) {
         const { data } = await supabase
           .from("story_customizations")
@@ -107,7 +148,7 @@ export const StoryConfigDialog = ({ story, open, onOpenChange, onSaved }: StoryC
     return () => {
       cancelled = true;
     };
-  }, [open, story, user]);
+  }, [open, story?.id, user?.id]);
 
   const uploadCover = async (file: File) => {
     if (!user) return;
@@ -150,12 +191,14 @@ export const StoryConfigDialog = ({ story, open, onOpenChange, onSaved }: StoryC
       setStoryVoice(story.id, voice);
 
       if (isOwner) {
+        const cleanContext = storyContext.trim() || description.trim() || null;
+        const cleanDesc = description.trim() || (cleanContext ? cleanContext.slice(0, 160) : null);
         const { error } = await supabase
           .from("stories")
           .update({
             title: title.trim(),
-            description: description.trim() || null,
-            story_context: storyContext.trim() || null,
+            description: cleanDesc,
+            story_context: cleanContext,
             cover_image: coverUrl,
             character_role: character.trim() || null,
             player_role: player.trim() || "hombre",
