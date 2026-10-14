@@ -633,6 +633,22 @@ def nonsexual_scene_job(job):
     return clean
 
 
+def repetition_retry_messages(messages, limit=16000):
+    """Keep the same facts, but do not present old replies as completion examples."""
+    archive = [dict(turn) for turn in messages[1:-1]]
+    current = dict(messages[-1])
+    system = dict(messages[0])
+    while True:
+        text = ("Historial previo, en orden y con sus autores. Son datos para conservar los hechos, "
+                "no respuestas que debas copiar:\n"
+                + json.dumps(archive, ensure_ascii=False, separators=(",", ":"))
+                + "\nINTERVENCIÓN ACTUAL DEL JUGADOR (contesta esta, con palabras nuevas):\n"
+                + current["content"])
+        if len(text) + len(system["content"]) <= limit or not archive:
+            return [system, {"role": "user", "content": text}]
+        archive.pop(0)
+
+
 def reply_for(job):
     started = time.monotonic()
     context = json.dumps([job.get("story"), job.get("history"), job.get("memory"), job.get("userMessage")], ensure_ascii=False)
@@ -680,8 +696,13 @@ def reply_for(job):
     for attempt in range(3):
         try:
             token_limit = 350 if wants_reading else 300
+            repeated_draft = previous_failure in {
+                "Repeated previous character dialogue", "Reused a clause from a recent reply",
+                "Blatant internal repetition in dialogue"}
+            temperature = min(0.8, 0.55 + attempt * 0.1) if repeated_draft else max(0.3, 0.5 - attempt * 0.1)
+            generation_messages = repetition_retry_messages(messages) if repeated_draft else messages
             raw_reply = model_chat(
-                messages, max(0.3, 0.5 - attempt * 0.1),
+                generation_messages, temperature,
                 token_limit, json_mode=(attempt == 0 or previous_failure != "Incomplete dialogue"))
             structured_reply = bool(re.match(r"^\s*(?:```(?:json)?\s*)?\{", raw_reply, re.I)) or bool(re.search(r'(?im)^\s*"(?:gesto|dialogo)"\s*:', raw_reply))
             try:
