@@ -240,7 +240,7 @@ const chapterOptions = [3, 5, 7, 10, 12];
     setProductionRefresh((value) => value + 1);
   };
 
-  const filmChapters = async (chapters: string[], episodeIds: string[], pendingProbe?: Promise<LocalProbe>, dialogues: string[] = [], storyPlan?: any, existingJob?: LocalJob) => {
+  const filmChapters = async (chapters: string[], episodeIds: string[], pendingProbe?: Promise<LocalProbe> | LocalProbe, dialogues: string[] = [], storyPlan?: any, existingJob?: LocalJob) => {
     const probe = await (pendingProbe ?? probeLocalKineva());
     setLocalHealth(probe.status);
     if (probe.status !== "ready") {
@@ -448,7 +448,7 @@ const chapterOptions = [3, 5, 7, 10, 12];
         .update({ video_prompt: visual }).eq("id", seriesEpisodeIds[index]);
       if (episodeError) throw new Error(episodeError.message);
       if (savedSeriesId) {
-        const { error } = await supabase.from("shorts_series").update({ kineva_bible: { language: "Spanish", speakers: manualSpeakers, lines: manualLines } }).eq("id", savedSeriesId);
+        const { error } = await supabase.from("shorts_series").update({ kineva_bible: { language: "Spanish", speakers: manualSpeakers, lines: manualLines } } as any).eq("id", savedSeriesId);
         if (error) throw new Error(error.message);
       }
       setProductionRefresh((value) => value + 1);

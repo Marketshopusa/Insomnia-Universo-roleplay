@@ -24,7 +24,7 @@ export function StudioProduction({ userId, refreshKey, onEdit }: {
   const [drafts, setDrafts] = useState<Review[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const load = useCallback(async () => {
-    const { data, error } = await supabase.from("shorts_series")
+    const { data, error } = await (supabase.from("shorts_series") as any)
       .select("id,title,is_published,kineva_reference_image_path,kineva_bible,episodes:shorts_episodes(id,episode_number,title,script,video_prompt,video_url,status)")
       .eq("created_by", userId).eq("is_published", false).eq("video_provider", "kineva")
       .order("created_at", { ascending: false });
