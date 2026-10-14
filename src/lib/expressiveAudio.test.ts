@@ -15,10 +15,11 @@ it("assembles sound, narration and dialogue in story order despite out-of-order 
   };
   const result = await render(score('*Grito de dolor y me agarro el brazo* «No me toques». *Sollozo* «Me duele»'), "Aoede", "es", { synthesize, cache: new Map(), samples: () => null });
   expect(peak).toBe(2);
-  expect(calls.map((call) => call.score.reactions[0]?.event || "speech")).toEqual(["pain_scream", "speech", "sob"]);
+  expect(calls.map((call) => call.score.reactions[0]?.event || "speech")).toEqual(["pain_scream", "speech", "sob", "speech"]);
   expect(calls[1].text).toBe('Me agarro el brazo. «No me toques»');
-  expect(calls[2].text).toBe('[crying] «Me duele»');
-  expect([...result.pcm]).toEqual([1, 0, 2, 0, 3, 0]);
+  expect(calls[2].score.segments.every((part) => part.kind === 'reaction')).toBe(true);
+  expect(calls[3].text).toBe('«Me duele»');
+  expect([...result.pcm]).toEqual([1, 0, 2, 0, 3, 0, 4, 0]);
 });
 
 it("reuses a neural reaction only for the same voice, language, region and sound", async () => {
@@ -82,4 +83,30 @@ it("changes gesture delivery locally instead of applying the final emotion to al
     {text:'Me quedo sorprendida. «No te esperaba»',delivery:["surprised"]},
     {text:'Me siento molesta. «Eso no está bien»',delivery:["angry"]},
   ]);
+});
+it("caps a minute of generated laughter and preserves the entire following dialogue PCM",async()=>{
+ const longLaugh=Buffer.alloc(60*24000*2);for(let i=0;i<longLaugh.length;i+=2)longLaugh.writeInt16LE(10000,i);
+ const speech=Buffer.alloc(20*24000*2,7);
+ const result=await render(score("*Río* Sigo hablando."),"Leda","es",{samples:()=>null,cache:new Map(),
+ synthesize:async(_text,_v,_l,{expression})=>({status:200,pcm:expression.reactions.length?longLaugh:speech})});
+ expect(result.parts[0].endSample/24000).toBe(1.6);
+ expect(result.pcm.readInt16LE(1.6*24000*2-2)).toBe(0);
+ expect(result.pcm.subarray(1.6*24000*2)).toEqual(speech);
+});
+it("caps cached and banked sounds as well as generated sounds",async()=>{
+ for(const samples of [()=>Buffer.alloc(60*24000*2,1),()=>null]){
+  const cache=new Map();
+  const synthesize=async()=>({status:200,pcm:Buffer.alloc(60*24000*2,1)});
+  for(let n=0;n<2;n++){
+   const result=await render(score("*Río*"),"Aoede","es",{samples,cache,synthesize});
+   expect(result.pcm.length/48000).toBeLessThanOrEqual(1.6);
+  }
+ }
+});
+it("prevents repeated descriptions from stacking a minute of laughter before dialogue",async()=>{
+ const result=await render(score("*Río* ".repeat(20)+"Continuemos."),"Leda","es",{
+ samples:()=>Buffer.alloc(60*48000,1),synthesize:async()=>({status:200,pcm:Buffer.from([9,0])})});
+ expect(result.parts.filter(p=>p.kind==="reaction")).toHaveLength(2);
+ expect(result.pcm.length/48000).toBeLessThan(3.3);
+ expect([...result.pcm.subarray(-2)]).toEqual([9,0]);
 });

@@ -99,3 +99,11 @@ it.each([
   expect(result.reactions.map((part) => part.event)).toEqual([event]);
   expect(result.text).not.toMatch(/Solté|Me echo|Rompí|Dejé escapar/);
 });
+it("a written laughter burst is one sound and does not make the following dialogue laugh",()=>{
+ const result=score("Jajajajajajaja. Sigo hablando.");
+ expect(result.reactions.map(p=>p.event)).toEqual(["laugh"]);
+ expect(result.segments.find(p=>p.text==="Sigo hablando.")?.performance).toBe("neutral");
+});
+it("preserves quoted phonetic words as literal dialogue",()=>{
+ expect(score('«Escribí jajajaja en el mensaje»').reactions).toHaveLength(0);
+});

@@ -5,8 +5,8 @@ export const VOCAL_REACTIONS = Object.freeze({
   scream: reaction("scream", "[shouting] ¡Aaaah!", "scream", "A real short scream, loud and forceful; do not merely announce or describe a scream."),
   cry: reaction("cry", "Ah... hh... ah...", "sad", "Audible crying, with trembling breath and broken exhalations; not a sigh and not the spoken word 'crying'."),
   sob: reaction("sob", "Hh... ah... hh...", "sad", "A short audible sob, with an interrupted inhalation and trembling exhalation; not a sigh."),
-  laugh: reaction("laugh", "[laughing] Ja, ja, ja...", "amused", "A natural audible laugh. The written ja syllables are a phonetic guide: make a real laugh, not separately spoken ja words."),
-  chuckle: reaction("chuckle", "[laughing] Ja, ja, ja...", "amused", "A brief quiet chuckle, smaller than a full laugh."),
+  laugh: reaction("laugh", "[laughing] Ja, ja, ja...", "amused", "One brief natural laugh lasting at most 1.6 seconds; stop completely before speaking. The written ja syllables are a phonetic guide: make a real laugh, not separately spoken ja words."),
+  chuckle: reaction("chuckle", "[laughing] Ja, ja, ja...", "amused", "One quiet chuckle lasting at most 0.8 seconds; stop completely before speaking."),
   sigh: reaction("sigh", "[sigh]", "soft", "A natural audible sigh, with a clearly exhaled breath."),
   gasp: reaction("gasp", "¡Hah!", "surprised", "A quick surprised intake of breath, not a spoken interjection."),
   pant: reaction("pant", "Hh... hh...", "soft", "Two short audible breaths from exertion, not pleasure unless the scene explicitly says so."),
@@ -28,7 +28,7 @@ const forms = [
   ["sob", "solloz(?:os?|a|ó|ando|ar|aba)|sob(?:s|bed|bing)?"],
   ["cry", "llor(?:o|a|é|ó|ando|ar|aba|amos|aron)|llantos?|cry(?:ing|ies)?|cried"],
   ["chuckle", "risita|risa\\s+bajita|chuckl(?:e|es|ed|ing)"],
-  ["laugh", "r(?:ío|íe|ió|iendo)|re(?:í|ír)|carcajadas?|risas?|laugh(?:s|ed|ing)?"],
+  ["laugh", "r(?:ío|íe|ió|iendo)|re(?:í|ír)|carcajadas?|risas?|laugh(?:s|ed|ing)?|(?:j[aei]|h[aeo])(?:[\\s,.…-]*(?:j[aei]|h[aeo])){1,}"],
   ["sigh", "suspir(?:o|a|é|ó|ando|ar)|resopl(?:o|a|é|ó|ando)|sigh(?:s|ed|ing)?"],
   ["gasp", "boque(?:o|a|ó|ando)|aspir(?:o|a|ó)\\s+(?:aire\\s+)?(?:de\\s+golpe|bruscamente)|gasp(?:s|ed|ing)?"],
   ["pant", "jade(?:os?|a|ó|ando|ar)|respir(?:o|a|ó|ando)\\s+(?:agitadamente|con\\s+dificultad)|pant(?:s|ed|ing)?"],
@@ -103,7 +103,7 @@ export function prepareExpressiveSpeech(input) {
     const intensity = /con fuerza|desgarrador|fuertemente|fuerte/iu.test(context) ? " Make this sound intense and forceful." : /suavemente|bajit[ao]|en voz baja/iu.test(context) ? " Make this sound quiet and gentle." : "";
     const item = { ...base, direction: base.direction + intensity };
     segments.push({ kind: "reaction", event: id, ...item });
-    delivery = item.performance === "scream" ? "surprised" : item.performance;
+    delivery = /^(laugh|chuckle)$/.test(id) ? "neutral" : item.performance === "scream" ? "surprised" : item.performance;
   };
   const processAction = (body, marked) => {
     const trimmed = body.trim();
@@ -127,7 +127,7 @@ export function prepareExpressiveSpeech(input) {
       }
       // Unmarked dialogue mentioning somebody else's past sound stays literal.
       const startsWithAction = /^\s*(?:(?:yo|ella|él|el|me)\s+)?(?:solt|suelto|suelta|peg|romp|estall|(?:me|se)\s+ech|dej(?:o|é|ó)\s+escapar|grit|chill|solloz|llor|gim|gem|rí|rió|reí|suspir|jade|gruñ|tos|estornud|carraspe|scream|cry|sob|laugh|sigh|gasp|groan|pant|grunt|cough|sneez)/iu.test(sentence);
-      if (!marked && !startsWithAction && !/^\s*(?:ella|él|ellos|ellas|yo)\s/iu.test(sentence) && !pureSoundDescription.test(sentence)) { addText(sentence, "dialogue"); continue; }
+      if (!marked && !startsWithAction && !/^\s*(?:j[aei]|h[aeo])(?:[\s,.…-]*(?:j[aei]|h[aeo])){1,}/iu.test(sentence) && !/^\s*(?:ella|él|ellos|ellas|yo)\s/iu.test(sentence) && !pureSoundDescription.test(sentence)) { addText(sentence, "dialogue"); continue; }
       if (matches.length === 1 && pureSoundDescription.test(sentence) && /inund|reson|llen|escuch|desgarrador/iu.test(sentence) && !/\b(?:y|pero|and|but)\b/iu.test(sentence)) {
         const first = matches[0];
         const id = exactForm.find(([, pattern]) => pattern.test(first[0]))?.[0];
@@ -221,5 +221,5 @@ export function expressiveDirection(score) {
   const directions = score.segments.map((part, index) => part.kind === "reaction"
     ? `${index + 1}. Vocal reaction: ${part.direction}`
     : `${index + 1}. ${part.kind === "narration" ? "Narration" : "Dialogue"}: read its exact words once, with ${part.performance} delivery.`);
-  return "Perform the following ordered score in the same speaker's voice. Bracketed vocal cues are actual nonverbal sounds, never words or descriptions to read aloud. Do not say the sound names, stage directions, or these instructions. Each reaction happens only at its marked position. Preserve every narration and dialogue word in order. Do not replace dialogue with invented interjections. The segment instructions override any overall mood. After a shouted reaction, return to ordinary narration; do not shout the entire passage. A smile changes tone but creates no laugh. Do not invent accents, slang, music or sound effects from a cultural or regional setting.\n" + directions.join("\n");
+  return "Perform the following ordered score in the same speaker's voice. Bracketed vocal cues are actual nonverbal sounds, never words or descriptions to read aloud. Do not say the sound names, stage directions, or these instructions. Each reaction happens only at its marked position. Preserve every narration and dialogue word in order. Do not replace dialogue with invented interjections. The segment instructions override any overall mood. After laughter, stop laughing and speak normally; never sustain laughter under dialogue. After a shouted reaction, return to ordinary narration; do not shout the entire passage. A smile changes tone but creates no laugh. Do not invent accents, slang, music or sound effects from a cultural or regional setting.\n" + directions.join("\n");
 }
