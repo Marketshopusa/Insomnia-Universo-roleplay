@@ -5,6 +5,7 @@ import { uploadKinevaReference } from "@/lib/kinevaReference";
 import { splitKinevaDialogue } from "@/lib/kinevaDialogue";
 import { CastGallery } from "@/components/studio/CastGallery";
 import { StudioProduction, type ProductionSeries } from "@/components/studio/StudioProduction";
+import { StudioPresetDirector } from "@/components/studio/StudioPresetDirector";
 import { saveNovelSeries } from "@/lib/saveNovelSeries";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -54,9 +55,10 @@ import { useLanguage } from "@/contexts/LanguageContext";
  } from "@/components/ui/alert-dialog";
 
 const models = [
-  { value: "apprentice-6", label: "Apprentice 6 (♦)" },
-  { value: "master-pro", label: "Master Pro (♦♦)" },
-  { value: "sage-elite", label: "Sage Elite (♦♦♦)" },
+  { value: "wan-2.1", label: "Wan 2.1 I2V (Ultra Fotorrealismo y Física)" },
+  { value: "master-pro", label: "Kineva Director (Cinematográfico Episódico)" },
+  { value: "apprentice-6", label: "LTX-Video (Render Rápido)" },
+  { value: "sage-elite", label: "Sage Elite (Máxima Calidad Multi-toma)" },
 ];
 
 const languages = [
@@ -75,7 +77,7 @@ const chapterOptions = [3, 5, 7, 10, 12];
    const updateProject = useUpdateNovelProject();
    const deleteProject = useDeleteNovelProject();
 
-  const [model, setModel] = useState("apprentice-6");
+  const [model, setModel] = useState("wan-2.1");
   const [referenceImage, setReferenceImage] = useState<File | null>(null);
   const [primaryName, setPrimaryName] = useState("");
   const [secondaryName, setSecondaryName] = useState("");
@@ -897,9 +899,40 @@ const chapterOptions = [3, 5, 7, 10, 12];
               {draftingThree ? "Preparando guion…" : "Preparar tres capítulos con IA"}
             </Button>
             <Button type="button" variant="outline" onClick={() => setShowManualEditor((value) => !value)}>
-              {showManualEditor ? "Ocultar edición" : "Escribir o editar las escenas"}
+              {showManualEditor ? "Ocultar edición de escenas" : "Editar tomas manualmente"}
             </Button>
           </div>
+
+          {/* Director Visual de Poses y Escenas SFW / NSFW */}
+          <StudioPresetDirector
+            initialCategory={isSafeForWork ? "sfw" : "nsfw"}
+            onApplyScene={(chapterIndex, visualPrompt, suggestedLine) => {
+              setManualScenes((current) =>
+                current.map((s, i) => (i === chapterIndex ? visualPrompt : s))
+              );
+              if (suggestedLine) {
+                setManualLines((current) =>
+                  current.map((l, i) => (i === chapterIndex ? suggestedLine : l))
+                );
+              }
+              setShowManualEditor(true);
+              toast({
+                title: `Escena configurada en Capítulo ${chapterIndex + 1}`,
+                description: "Se inyectó el encuadre de cámara y prompt cinematográfico.",
+              });
+            }}
+            onApplyArc={(arcTitle, chapters) => {
+              setManualTitle(arcTitle);
+              setManualScenes(chapters.map((c) => c.visual));
+              setManualLines(chapters.map((c) => c.line));
+              setShowManualEditor(true);
+              toast({
+                title: `Trilogía cargada: ${arcTitle}`,
+                description: "Los 3 capítulos fueron configurados con tomas y diálogos coordinados.",
+              });
+            }}
+          />
+
           {showManualEditor && <>
           {!!castRoles.length && <p className="text-sm text-muted-foreground">Reparto propuesto: {castRoles.map((actor) => `${actor.name}: ${actor.role}`).join(" · ")}</p>}
           <input aria-label="Título de la miniserie" placeholder="Título de la miniserie" value={manualTitle}
