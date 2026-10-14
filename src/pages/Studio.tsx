@@ -359,13 +359,9 @@ const chapterOptions = [3, 5, 7, 10, 12];
       toast({ title: "Inicia sesión para guardar la serie.", variant: "destructive" });
       return;
     }
-    const title = manualTitle.trim();
+    const title = manualTitle.trim() || description.trim().slice(0, 40) || "Miniserie Insomnia";
     const scenes = manualScenes.map((text) => text.trim());
     const lines = manualLines.map((text) => text.trim());
-    if (!title) {
-      toast({ title: "Escribe el título de la miniserie.", variant: "destructive" });
-      return;
-    }
     const missingScene = scenes.findIndex((text) => text.length < 5);
     if (missingScene !== -1) {
       toast({ title: `Describe qué ocurre en el capítulo ${missingScene + 1} (al menos cinco caracteres).`, variant: "destructive" });
@@ -377,8 +373,7 @@ const chapterOptions = [3, 5, 7, 10, 12];
       return;
     }
     if (!referenceImage) {
-      toast({ title: "Sube una foto del personaje principal para mantener su identidad.", variant: "destructive" });
-      return;
+      toast({ title: "Sin foto de referencia", description: "ComfyUI creará el aspecto visual del protagonista según el guion." });
     }
     if (localJob && !["completed", "failed"].includes(localJob.state)) {
       toast({ title: "Termina o rechaza la serie que está en curso antes de comenzar otra.", variant: "destructive" });
@@ -397,7 +392,13 @@ const chapterOptions = [3, 5, 7, 10, 12];
     const draft = { title, logline: description.trim() || scenes[0], chapters };
     try {
       const probe = await probeLocalKineva();
-      if (probe.status !== "ready") throw new Error("Enciende ComfyUI y Kineva en esta PC antes de crear la serie.");
+      if (probe.status !== "ready") {
+        throw new Error(probe.status === "missing-comfy"
+          ? "ComfyUI no está conectado en el puerto 8188."
+          : probe.status === "missing-template"
+            ? "Falta la plantilla de Kineva en esta PC."
+            : "El motor Kineva no está conectado en el puerto 8787.");
+      }
       let referencePath: string | null = null;
       try {
         referencePath = await uploadKinevaReference(user.id, title, referenceImage);
@@ -464,6 +465,10 @@ const chapterOptions = [3, 5, 7, 10, 12];
     if (!user) {
       toast({ title: t("studio.toast.loginToCreate"), variant: "destructive" });
       return;
+    }
+    const hasManualScenes = manualScenes.some((text) => text.trim().length >= 5);
+    if (hasManualScenes) {
+      return handleManualSeries();
     }
     if (description.trim().length < 10) {
       toast({ title: "Describe tu idea con más detalle", variant: "destructive" });
@@ -975,6 +980,14 @@ const chapterOptions = [3, 5, 7, 10, 12];
           {generating ? (
             <>
               <Loader2 className="w-5 h-5 mr-2 animate-spin" /> Generando novela completa…
+            </>
+          ) : generatingVideos ? (
+            <>
+              <Loader2 className="w-5 h-5 mr-2 animate-spin" /> {videoProgress || "Filmando con ComfyUI…"}
+            </>
+          ) : manualScenes.some((s) => s.trim().length >= 5) ? (
+            <>
+              <Clapperboard className="w-5 h-5 mr-2" /> Filmar miniserie de 3 capítulos con ComfyUI
             </>
           ) : (
             <>

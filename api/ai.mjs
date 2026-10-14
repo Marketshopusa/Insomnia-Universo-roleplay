@@ -714,7 +714,12 @@ export default async function handler(req, res) {
       if (idea.length < 10) return send(res, 400, { error: "description_too_short" });
       const count = Math.min(20, Math.max(3, Number(body.chapterCount) || 7));
       const prompt = "Escribe UNA novela en " + String(body.language || "español").slice(0, 40) + ". No es una historia nueva: sigue la idea al pie de la letra, con las mismas personas, el mismo lugar y el mismo suceso en cada capítulo. No inventes una edad ni un lugar que la idea no diga. Si la idea no habla de un menor, nadie es menor. Devuelve solo JSON: " + JSON.stringify({ title: "", logline: "", characters: [{ name: "", role: "", appearance: "", wardrobe: "", personality: "", voice: "", visual_prompt: "" }], setting: { place: "", time: "", visual_style: "" }, outline: "", chapters: [{ number: 1, title: "", summary: "", characters_present: [""], content: "capítulo completo que continúa el anterior", video_prompt: "one specific visible action from this chapter, setting and characters, 9:16, no captions", spoken_line: "one short line in the story language spoken by the main character, at most 13 words", shots: [{ visual: "first visible action and framing, one continuous shot", dialogue: "" }, { visual: "second distinct visible action in the same scene, one continuous shot", dialogue: "" }] }] }) + ". Exactamente " + count + " capítulos. Cada content tiene entre 500 y 1200 caracteres. El video_prompt describe una sola toma visible del capítulo, no toda la prosa. Cada capítulo incluye dos tomas en shots con acciones visuales distintas, mismo reparto, vestuario y lugar; cada diálogo es breve u opcional. spoken_line es opcional si no hay diálogo y nunca contiene instrucciones visuales. Idea: " + idea;
-      const raw = await generate("gemini-2.5-flash", [{ text: prompt }], { responseMimeType: "application/json", maxOutputTokens: 12000, temperature: 0.4 }, { fallbackModels: [] });
+      const raw = await generate(
+        "gemini-2.5-flash",
+        [{ text: prompt }],
+        { responseMimeType: "application/json", maxOutputTokens: 12000, temperature: 0.4 },
+        { fallbackModels: ["gemini-3.1-flash-lite", "gemini-2.5-flash-lite", "gemini-3.8-flash"], timeoutMs: 60000, retryBadRequest: true }
+      );
       const novel = JSON.parse(raw);
       if (!novel.title || !Array.isArray(novel.chapters) || novel.chapters.length !== count) throw Object.assign(new Error("Proyecto incompleto; intenta otra vez."), { status: 502 });
       for (const chapter of novel.chapters) {
