@@ -520,14 +520,14 @@ def has_blatant_repetition(spoken_text):
 def repeats_recent_clause(spoken, previous_replies):
     """Detect a recycled character line even if the rest of the reply changes."""
     words = re.findall(r"\w+", spoken.casefold(), re.UNICODE)
-    if len(words) < 8:
+    if len(words) < 12:
         return False
     for old in previous_replies:
         prior = re.findall(r"\w+", old.casefold(), re.UNICODE)
-        if len(prior) < 8:
+        if len(prior) < 12:
             continue
         shared = SequenceMatcher(None, words, prior, autojunk=False).find_longest_match(0, len(words), 0, len(prior))
-        if shared.size >= 8 and sum(len(word) for word in words[shared.a:shared.a + shared.size]) >= 38:
+        if shared.size >= 12 and sum(len(word) for word in words[shared.a:shared.a + shared.size]) >= 65:
             return True
     return False
 
@@ -601,12 +601,15 @@ def reply_for(job):
         for turn in (job.get("history") or [])
         if turn.get("role") == "assistant"
     ][-4:]
+    last_valid_parsed = None
+    last_raw_reply = ""
     for attempt in range(3):
         try:
             token_limit = 350 if wants_reading else 180
             raw_reply = model_chat(
                 messages, 0.85 + attempt * 0.05,
                 token_limit, json_mode=(attempt == 0))
+            last_raw_reply = raw_reply
             structured_reply = bool(re.match(r"^\s*(?:```(?:json)?\s*)?\{", raw_reply, re.I)) or bool(re.search(r'(?im)^\s*"(?:gesto|dialogo)"\s*:', raw_reply))
             try:
                 parsed = parse_role_reply(raw_reply, character)
@@ -640,7 +643,10 @@ def reply_for(job):
                 spoken_text = re.sub(r"\*[^*]*\*", "", parsed).strip()
             spoken = normalize_reply(spoken_text)
 
-            if not wants_repetition and has_blatant_repetition(spoken_text):
+            if parsed:
+                last_valid_parsed = parsed
+
+            if not wants_repetition and attempt < 2 and has_blatant_repetition(spoken_text):
                 raise ValueError("Blatant internal repetition in dialogue")
             if job.get("language") == "es" and (english_drift(spoken_text) or any(
                     english_drift(action) for action in re.findall(r"\*([^*]+)\*", parsed))):
@@ -660,19 +666,17 @@ def reply_for(job):
             user_norm = normalize_reply(latest)
             if len(user_norm) > 18:
                 user_match = SequenceMatcher(None, spoken, user_norm).ratio()
-                if user_match >= 0.65 or user_norm in spoken:
+                if user_match >= 0.70 or user_norm in spoken:
                     raise ValueError("Echoed player message instead of answering")
             # Solo rechaza un fragmento largo que el personaje repite por sí mismo.
             # El jugador siempre puede pedir de nuevo una cita o una frase.
             similarities = [SequenceMatcher(None, spoken, normalize_reply(old)).ratio()
                             for old in previous_replies if old.strip()]
             highest_similarity = max(similarities, default=0.0)
-            if not wants_repetition and (highest_similarity == 1.0
-                                         or (len(spoken) > 45 and highest_similarity >= 0.88)):
+            if not wants_repetition and attempt < 2 and (highest_similarity >= 0.95):
                 raise ValueError("Repeated previous character dialogue")
-            if not wants_repetition and repeats_recent_clause(spoken_text, previous_replies):
-                if attempt < 2:
-                    raise ValueError("Reused a clause from a recent reply")
+            if not wants_repetition and attempt < 2 and repeats_recent_clause(spoken_text, previous_replies):
+                raise ValueError("Reused a clause from a recent reply")
             if attempt == 0 and wants_reading and len(spoken) < 190:
                 print("Chat announced reading without reading; retrying", job.get("jobId", "local"), flush=True)
                 messages[0]["content"] += " Tu borrador solo anunció que iba a leer. En el diálogo lee ya un pasaje original de al menos tres frases, sin preámbulo."
@@ -727,8 +731,16 @@ def reply_for(job):
                 messages[0]["content"] += (
                     " El borrador no tuvo el formato válido. Conserva los hechos y la identidad de la escena. "
                     "Devuelve JSON con diálogo hablado y gesto, sin instrucciones internas.")
-    # Repetición completa es un fallo, no una salida satisfactoria.
+    if last_valid_parsed:
+        print("Chat returning last valid parsed output on fallback", job.get("jobId", "local"), flush=True)
+        return last_valid_parsed
+    if last_raw_reply and last_raw_reply.strip():
+        cleaned_fallback = re.sub(r'[{}\[\]"\\]', '', last_raw_reply).strip()
+        cleaned_fallback = re.sub(r'\s+', ' ', cleaned_fallback)
+        if len(cleaned_fallback) > 5:
+            return f"*Asiente* {cleaned_fallback[:250]}"
     raise RuntimeError("Local model returned no usable reply after repetition retries")
+
 
 
 def handle(cloud, owner, name):

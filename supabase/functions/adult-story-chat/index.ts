@@ -37,6 +37,33 @@ Deno.serve(async (req) => {
       const result = JSON.parse(await data.text());
       return reply(result);
     }
+    if (body?.action === "update-story") {
+      const storyId = body?.storyId;
+      if (typeof storyId !== "string" || !storyId)
+        return reply({ error: "invalid_story_id" }, 400);
+
+      const updateData: Record<string, unknown> = {};
+      if (typeof body.title === "string") updateData.title = body.title.trim();
+      if (body.description !== undefined) updateData.description = body.description;
+      if (body.story_context !== undefined) updateData.story_context = body.story_context;
+      if (body.cover_image !== undefined) updateData.cover_image = body.cover_image;
+      if (body.character_role !== undefined) updateData.character_role = body.character_role;
+      if (body.player_role !== undefined) updateData.player_role = body.player_role;
+      if (body.story_type !== undefined) updateData.story_type = body.story_type;
+      if (body.has_explicit_images !== undefined) updateData.has_explicit_images = !!body.has_explicit_images;
+
+      const { data, error } = await service
+        .from("stories")
+        .update(updateData)
+        .eq("id", storyId)
+        .select()
+        .maybeSingle();
+
+      if (error) {
+        return reply({ error: error.message }, 500);
+      }
+      return reply({ success: true, story: data });
+    }
     if (body?.action !== "create" || body?.adultMode !== true)
       return reply({ error: "invalid_request" }, 400);
     const latest = String(body.userMessage ?? "").trim().slice(0, 1500);

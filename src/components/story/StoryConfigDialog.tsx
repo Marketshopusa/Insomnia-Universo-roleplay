@@ -182,7 +182,7 @@ export const StoryConfigDialog = ({ story, open, onOpenChange, onSaved }: StoryC
 
   const save = async () => {
     if (!story || !user) return;
-    if (isOwner && !title.trim()) {
+    if (!title.trim()) {
       toast({ title: es ? "Ponle un título" : "Add a title", variant: "destructive" });
       return;
     }
@@ -190,24 +190,35 @@ export const StoryConfigDialog = ({ story, open, onOpenChange, onSaved }: StoryC
     try {
       setStoryVoice(story.id, voice);
 
-      if (isOwner) {
-        const cleanContext = storyContext.trim() || description.trim() || null;
-        const cleanDesc = description.trim() || (cleanContext ? cleanContext.slice(0, 160) : null);
-        const { error } = await supabase
-          .from("stories")
-          .update({
-            title: title.trim(),
-            description: cleanDesc,
-            story_context: cleanContext,
-            cover_image: coverUrl,
-            character_role: character.trim() || null,
-            player_role: player.trim() || "hombre",
-            story_type: (explicit ? "real_sex" : type) as "adventure" | "roleplay" | "real_sex",
-            has_explicit_images: explicit,
-          })
-          .eq("id", story.id)
-          .eq("created_by", user.id);
-        if (error) throw error;
+      const cleanContext = storyContext.trim() || description.trim() || null;
+      const cleanDesc = description.trim() || (cleanContext ? cleanContext.slice(0, 160) : null);
+      const storyPayload = {
+        title: title.trim(),
+        description: cleanDesc,
+        story_context: cleanContext,
+        cover_image: coverUrl,
+        character_role: character.trim() || null,
+        player_role: player.trim() || "hombre",
+        story_type: (explicit ? "real_sex" : type) as "adventure" | "roleplay" | "real_sex",
+        has_explicit_images: explicit,
+      };
+
+      const { error: directError } = await supabase
+        .from("stories")
+        .update(storyPayload)
+        .eq("id", story.id);
+
+      if (directError) {
+        const invokeRes = await supabase.functions.invoke("adult-story-chat", {
+          body: {
+            action: "update-story",
+            storyId: story.id,
+            ...storyPayload,
+          },
+        });
+        if (invokeRes.error || !(invokeRes.data as any)?.success) {
+          throw directError;
+        }
       }
 
       const personalCover = coverUrl && coverUrl !== story.cover_image ? coverUrl : null;
@@ -215,8 +226,8 @@ export const StoryConfigDialog = ({ story, open, onOpenChange, onSaved }: StoryC
         {
           user_id: user.id,
           story_id: story.id,
-          cover_media_url: isOwner ? null : personalCover,
-          cover_media_type: isOwner ? null : personalCover ? coverType : null,
+          cover_media_url: personalCover,
+          cover_media_type: personalCover ? coverType : null,
           voice,
         },
         { onConflict: "user_id,story_id" }
@@ -249,64 +260,56 @@ export const StoryConfigDialog = ({ story, open, onOpenChange, onSaved }: StoryC
         <DialogHeader>
           <DialogTitle>{es ? "Configurar historia" : "Configure story"}</DialogTitle>
           <DialogDescription>
-            {isOwner
-              ? es
-                ? "Modifica los datos, la portada y la voz de esta historia."
-                : "Edit the details, cover and voice of this story."
-              : es
-                ? "Elige tu portada y la voz para esta historia. Solo tú verás estos cambios."
-                : "Pick your own cover and voice for this story. Only you see these changes."}
+            {es
+              ? "Modifica los datos, la portada y la voz de esta historia."
+              : "Edit the details, cover and voice of this story."}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
-          {isOwner && (
-            <>
-              <div>
-                <Label className="mb-1 block text-xs">{es ? "Título" : "Title"}</Label>
-                <Input value={title} onChange={(event) => setTitle(event.target.value)} />
-              </div>
-              <div>
-                <Label htmlFor="story-description" className="mb-1 block text-xs">{es ? "Descripción corta de la tarjeta" : "Short card description"}</Label>
-                <Input id="story-description" value={description} onChange={(event) => setDescription(event.target.value)} />
-              </div>
-              <div>
-                <Label htmlFor="story-context" className="mb-1 block text-xs">{es ? "Desarrollo de la historia" : "Story development"}</Label>
-                <Textarea id="story-context" value={storyContext} onChange={(event) => setStoryContext(event.target.value)} className="min-h-[180px]" placeholder={es ? "Contexto, personajes y hechos que debe conocer la IA." : "Context, characters and facts the AI should know."} />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label className="mb-1 block text-xs">{es ? "Tu rol" : "Your role"}</Label>
-                  <Input value={player} onChange={(event) => setPlayer(event.target.value)} />
-                </div>
-                <div>
-                  <Label className="mb-1 block text-xs">{es ? "Personaje IA" : "AI character"}</Label>
-                  <Input value={character} onChange={(event) => setCharacter(event.target.value)} />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3 items-end">
-                <div>
-                  <Label className="mb-1 block text-xs">{es ? "Tipo" : "Type"}</Label>
-                  <Select value={type} onValueChange={(value: any) => setType(value)}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="roleplay">{es ? "Juego de Roles" : "Roleplay"}</SelectItem>
-                      <SelectItem value="adventure">{es ? "Aventura" : "Adventure"}</SelectItem>
-                      <SelectItem value="real_sex">{es ? "Sexo Real" : "Real Sex"}</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="flex items-center gap-2 h-10">
-                  <Switch id="story-config-explicit" checked={explicit} onCheckedChange={setExplicit} />
-                  <Label htmlFor="story-config-explicit" className="text-xs">
-                    {es ? "+18 Contenido explícito" : "+18 Explicit content"}
-                  </Label>
-                </div>
-              </div>
-            </>
-          )}
+          <div>
+            <Label className="mb-1 block text-xs">{es ? "Título" : "Title"}</Label>
+            <Input value={title} onChange={(event) => setTitle(event.target.value)} />
+          </div>
+          <div>
+            <Label htmlFor="story-description" className="mb-1 block text-xs">{es ? "Descripción corta de la tarjeta" : "Short card description"}</Label>
+            <Input id="story-description" value={description} onChange={(event) => setDescription(event.target.value)} />
+          </div>
+          <div>
+            <Label htmlFor="story-context" className="mb-1 block text-xs">{es ? "Desarrollo de la historia" : "Story development"}</Label>
+            <Textarea id="story-context" value={storyContext} onChange={(event) => setStoryContext(event.target.value)} className="min-h-[180px]" placeholder={es ? "Contexto, personajes y hechos que debe conocer la IA." : "Context, characters and facts the AI should know."} />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label className="mb-1 block text-xs">{es ? "Tu rol" : "Your role"}</Label>
+              <Input value={player} onChange={(event) => setPlayer(event.target.value)} />
+            </div>
+            <div>
+              <Label className="mb-1 block text-xs">{es ? "Personaje IA" : "AI character"}</Label>
+              <Input value={character} onChange={(event) => setCharacter(event.target.value)} />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3 items-end">
+            <div>
+              <Label className="mb-1 block text-xs">{es ? "Tipo" : "Type"}</Label>
+              <Select value={type} onValueChange={(value: any) => setType(value)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="roleplay">{es ? "Juego de Roles" : "Roleplay"}</SelectItem>
+                  <SelectItem value="adventure">{es ? "Aventura" : "Adventure"}</SelectItem>
+                  <SelectItem value="real_sex">{es ? "Sexo Real" : "Real Sex"}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex items-center gap-2 h-10">
+              <Switch id="story-config-explicit" checked={explicit} onCheckedChange={setExplicit} />
+              <Label htmlFor="story-config-explicit" className="text-xs">
+                {es ? "+18 Contenido explícito" : "+18 Explicit content"}
+              </Label>
+            </div>
+          </div>
 
           <div>
             <Label className="mb-1 block text-xs">{es ? "Voz del personaje" : "Character voice"}</Label>
