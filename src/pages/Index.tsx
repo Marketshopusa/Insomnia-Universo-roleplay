@@ -325,7 +325,10 @@ const Index = () => {
         story={configStory}
         open={!!configStory}
         onOpenChange={(open) => !open && setConfigStory(null)}
-        onSaved={() => refetchCustomizations()}
+        onSaved={() => {
+          refetchCustomizations();
+          refetchStories();
+        }}
       />
     </MainLayout>
   );

@@ -62,6 +62,18 @@ Deno.serve(async (req) => {
       if (error) {
         return reply({ error: error.message }, 500);
       }
+
+      if (Array.isArray(body.category_ids)) {
+        await service.from("story_categories").delete().eq("story_id", storyId);
+        if (body.category_ids.length > 0) {
+          const catRows = body.category_ids.map((cid: string) => ({
+            story_id: storyId,
+            category_id: cid,
+          }));
+          await service.from("story_categories").insert(catRows);
+        }
+      }
+
       return reply({ success: true, story: data });
     }
     if (body?.action !== "create" || body?.adultMode !== true)

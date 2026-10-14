@@ -26,6 +26,8 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import { toast } from "@/hooks/use-toast";
 import { STORY_VOICES, getStoryVoice, normalizeStoryVoice, setStoryVoice } from "@/lib/voices";
 import { MAX_STORY_COVER_BYTES } from "@/lib/storyCover";
+import { useCategories } from "@/hooks/useStories";
+import { cn } from "@/lib/utils";
 
 export interface ConfigurableStory {
   id: string;
@@ -61,6 +63,8 @@ export const StoryConfigDialog = ({ story, open, onOpenChange, onSaved }: StoryC
   const [ownerId, setOwnerId] = useState<string | null>(story?.created_by ?? null);
   const isOwner = !!user && !!(ownerId || story?.created_by) && (ownerId || story?.created_by) === user.id;
 
+  const { data: availableCategories } = useCategories();
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [storyContext, setStoryContext] = useState("");
@@ -89,6 +93,7 @@ export const StoryConfigDialog = ({ story, open, onOpenChange, onSaved }: StoryC
     setType((story.story_type as any) ?? "roleplay");
     setExplicit(!!story.has_explicit_images);
     setVoice(getStoryVoice(story.id));
+    setSelectedCategories([]);
 
     let cancelled = false;
     (async () => {
@@ -112,6 +117,15 @@ export const StoryConfigDialog = ({ story, open, onOpenChange, onSaved }: StoryC
         setPlayer(dbStory.player_role ?? "");
         setType((dbStory.story_type as any) ?? "roleplay");
         setExplicit(!!dbStory.has_explicit_images);
+      }
+
+      // Fetch story categories
+      const { data: storyCats } = await supabase
+        .from("story_categories")
+        .select("category_id")
+        .eq("story_id", story.id);
+      if (!cancelled && storyCats) {
+        setSelectedCategories(storyCats.map((sc: any) => sc.category_id));
       }
 
       // If both story_context and description were empty, check if user has a narrative in story_sessions
@@ -203,22 +217,25 @@ export const StoryConfigDialog = ({ story, open, onOpenChange, onSaved }: StoryC
         has_explicit_images: explicit,
       };
 
-      const { error: directError } = await supabase
-        .from("stories")
-        .update(storyPayload)
-        .eq("id", story.id);
+      // Always invoke adult-story-chat edge function (runs with service_role key)
+      // to guarantee updates succeed on all cards (crafted default cards with created_by=null as well as custom cards)
+      // bypassing Postgres RLS which silently ignores client-side updates when auth.uid() != created_by.
+      const invokeRes = await supabase.functions.invoke("adult-story-chat", {
+        body: {
+          action: "update-story",
+          storyId: story.id,
+          ...storyPayload,
+          category_ids: selectedCategories,
+        },
+      });
 
-      if (directError) {
-        const invokeRes = await supabase.functions.invoke("adult-story-chat", {
-          body: {
-            action: "update-story",
-            storyId: story.id,
-            ...storyPayload,
-          },
-        });
-        if (invokeRes.error || !(invokeRes.data as any)?.success) {
-          throw directError;
-        }
+      if (invokeRes.error || !(invokeRes.data as any)?.success) {
+        // Fallback: direct client update
+        const { error: directError } = await supabase
+          .from("stories")
+          .update(storyPayload)
+          .eq("id", story.id);
+        if (directError) throw directError;
       }
 
       const personalCover = coverUrl && coverUrl !== story.cover_image ? coverUrl : null;
@@ -326,6 +343,38 @@ export const StoryConfigDialog = ({ story, open, onOpenChange, onSaved }: StoryC
               </SelectContent>
             </Select>
           </div>
+
+          {availableCategories && availableCategories.length > 0 && (
+            <div>
+              <Label className="mb-1.5 block text-xs">{es ? "Categorías de la historia" : "Story categories"}</Label>
+              <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto p-2 border border-border/60 rounded-md bg-muted/20">
+                {availableCategories.map((cat) => {
+                  const isSelected = selectedCategories.includes(cat.id);
+                  return (
+                    <button
+                      key={cat.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedCategories((prev) =>
+                          prev.includes(cat.id)
+                            ? prev.filter((id) => id !== cat.id)
+                            : [...prev, cat.id]
+                        );
+                      }}
+                      className={cn(
+                        "text-xs px-2.5 py-1 rounded-full border transition-colors",
+                        isSelected
+                          ? "bg-primary text-primary-foreground border-primary font-medium"
+                          : "bg-background/80 text-muted-foreground border-border hover:border-primary/50"
+                      )}
+                    >
+                      {cat.name}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           <input
             ref={fileRef}
