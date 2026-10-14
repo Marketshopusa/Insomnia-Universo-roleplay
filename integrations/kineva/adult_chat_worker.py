@@ -646,6 +646,18 @@ def reply_for(job):
     if vocal_only:
         print("Chat nonverbal turn", job.get("jobId", "local"), flush=True)
         return vocal_only
+    latest_question = str(job.get("userMessage") or "")
+    questions = re.findall(r"¿([^?]+)\?", latest_question)
+    if len(questions) == 1 and re.match(r"(?i)\s*(?:d[oó]nde|qui[eé]n)\b", questions[0]):
+        # Answer a single factual question from authoritative saved evidence.
+        # Requests for another action or a vocal performance still use generation.
+        extra_request = re.search(
+            r"(?i)\b(?:trae|tr[aá]eme|dame|busca|abre|cierra|explica|cuenta|describe|lee|grita|llora|r[ií]e|gime)\b",
+            latest_question)
+        grounded = grounded_fact_reply(job)
+        compound_question = re.search(r"(?i)\b(?:adem[aá]s|tambi[eé]n|por qu[eé]|c[oó]mo|qu[eé])\b", questions[0])
+        if grounded and not extra_request and not compound_question:
+            return grounded
     free_gpu_for_chat()
     messages = conversation_messages(job)
     if nonsexual_only:

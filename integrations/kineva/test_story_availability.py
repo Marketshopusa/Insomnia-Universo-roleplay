@@ -29,5 +29,13 @@ class StoryAvailabilityTests(unittest.TestCase):
         job["userMessage"] = "Cierra el cajón verde."
         self.assertFalse(worker.contradicts_known_fact("*Cierro el cajón verde.* Listo.", job))
 
+    def test_single_factual_question_uses_saved_evidence_without_model_guessing(self):
+        job = {"language": "es", "story": {"character_role": "Clara, 32 años", "player_role": "Alex, 34 años"},
+               "userMessage": "*Abro el cajón y saco la brújula. Ahora la tengo en mi mano.* ¿Quién tiene la brújula?",
+               "facts": [{"kind": "holder", "object": "la brújula", "value": "user"}]}
+        with patch.object(worker, "model_chat") as model:
+            self.assertEqual(worker.reply_for(job), "Tú tienes la brújula en la mano.")
+        model.assert_not_called()
+
 if __name__ == "__main__":
     unittest.main()
