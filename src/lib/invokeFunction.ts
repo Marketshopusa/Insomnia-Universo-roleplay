@@ -13,6 +13,22 @@ type FunctionResult<T> = { data: T | null; error: ({ message: string; context: R
 type ChatReply = { status?: string; jobId?: string; content?: string; error?: string; message?: string };
 type PendingChat = { jobId: string; signature: string; createdAt: number };
 
+// Supabase returns data=null for non-2xx responses; the server's error is in context.
+async function chatErrorReply(error: unknown, data: ChatReply | null): Promise<ChatReply | null> {
+  if (data) return data;
+  const response = responseContext(error);
+  if (!response) return null;
+  try {
+    const parsed: unknown = await response.clone().json();
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+    const value = parsed as Record<string, unknown>;
+    return {
+      ...(typeof value.error === "string" ? { error: value.error } : {}),
+      ...(typeof value.message === "string" ? { message: value.message } : {}),
+    };
+  } catch { return null; }
+}
+
 async function chatSignature(body: unknown): Promise<string> {
   const input = body as {
     story?: { id?: string; title?: string; description?: string; story_context?: string; character_role?: string; player_role?: string };
@@ -55,8 +71,14 @@ async function callAdultStoryChat<T>(body: unknown): Promise<FunctionResult<T>> 
       const created = await supabase.functions.invoke<ChatReply>("adult-story-chat", {
         body: { action: "create", adultMode: true, ...(body as object) },
       });
-      if (created.error || !created.data?.jobId)
-        return fail(created.data?.message || "No se pudo enviar el turno a tu modelo local. Tu mensaje sigue en el cuadro.", responseContext(created.error)?.status || 503, created.data?.error || "local_chat_unavailable");
+      if (created.error || !created.data?.jobId) {
+        const details = await chatErrorReply(created.error, created.data);
+        const status = responseContext(created.error)?.status || 503;
+        const code = details?.error || (status === 401 ? "login_required" : "local_chat_unavailable");
+        return fail(details?.message || (status === 401
+          ? "Tu sesión ha caducado. Inicia sesión para continuar."
+          : "No se pudo enviar el turno al servidor. Tu mensaje sigue en el cuadro."), status, code);
+      }
       jobId = created.data.jobId;
       try { if (key) localStorage.setItem(key, JSON.stringify({ jobId, signature, createdAt: Date.now() })); } catch { /* ignore */ }
     }
@@ -67,6 +89,19 @@ async function callAdultStoryChat<T>(body: unknown): Promise<FunctionResult<T>> 
         body: { action: "status", jobId },
       });
       if (result.error) {
+        const response = responseContext(result.error);
+        // A rejected request will not recover by polling the same job repeatedly.
+        if (response && response.status >= 400 && response.status < 500 && response.status !== 429) {
+          const details = await chatErrorReply(result.error, result.data);
+          if (details?.error === "job_not_found") {
+            try { if (key) localStorage.removeItem(key); } catch { /* ignore */ }
+            return fail("Ese turno ya no está en la cola. Reenvía tu mensaje.", 404, "chat_job_expired");
+          }
+          return fail(details?.message || (response.status === 401
+            ? "Tu sesión ha caducado. Inicia sesión para recuperar la respuesta."
+            : "El servidor rechazó la consulta de este turno."), response.status,
+            details?.error || (response.status === 401 ? "login_required" : "chat_status_rejected"));
+        }
         consecutiveErrors += 1;
         if (consecutiveErrors >= 12)
           return fail("La respuesta sigue en proceso, pero se cortó la conexión. Reenvía el mismo mensaje para recuperarla.", 503, "chat_status_unavailable");
