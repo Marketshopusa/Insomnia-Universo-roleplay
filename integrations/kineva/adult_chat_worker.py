@@ -539,6 +539,8 @@ def fact_lines(facts):
             lines.append("- " + fact["object"] + ": " + fact["value"] + ". Fuente: " + fact["source"])
         elif fact.get("kind") == "transfer":
             lines.append("- El jugador te entregó " + fact["object"] + "; tú lo recibiste de él. Fuente: " + fact["source"])
+        elif fact.get("kind") == "holder" and fact.get("value") == "user":
+            lines.append("- El jugador tiene " + fact["object"] + " en su mano ahora. Fuente: " + fact["source"])
         elif fact.get("kind") == "prop_state":
             lines.append("- " + fact["object"] + ": " + ("YA ESTÁ ABIERTO; no lo abras otra vez." if fact["value"] == "open" else "Está cerrado."))
         elif fact.get("kind") == "signature":
@@ -591,6 +593,11 @@ def grounded_fact_reply(job):
         signatures = [fact for fact in facts if fact.get("kind") == "signature"]
         if len(signatures) == 1:
             return ("La firma es de " if job.get("language") == "es" else "It was signed by ") + signatures[0]["value"] + "."
+    if re.search(r"\b(?:quien|who)\b", question):
+        held = [fact for fact in facts if fact.get("kind") == "holder" and fact.get("value") == "user"]
+        if len(held) == 1:
+            return ("Tú tienes " + held[0]["object"] + " en la mano."
+                    if job.get("language") == "es" else "You are holding " + held[0]["object"] + ".")
     if re.search(r"\b(?:quien|who)\b", question) and any(fact.get("kind") == "transfer" for fact in facts):
         return "Me lo entregaste tú." if job.get("language") == "es" else "You gave it to me."
     return None

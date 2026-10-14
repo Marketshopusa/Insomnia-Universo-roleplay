@@ -89,8 +89,8 @@ export function deriveStoryFacts(history, latest = "") {
       if (mentioned) document = mentioned[0];
       if (/[?¿]/.test(sentence) || /\b(si|imagina|fantas[ií]a|recuerdo|podr[ií]a|tal vez|quiz[aá]s|if|might|perhaps|imagine|remember when)\b/i.test(sentence)) continue;
       const patterns = [
-        /(?:dej[eéó]|guard[eéó]|coloqu[eé]|coloc[oó]|mov[iíó]|puse|puso)\s+((?:el|la|los|las|un|una)\s+[^.!?]{1,65}?)\s+((?:en|al|bajo|sobre|debajo de|dentro de)\s+[^.!?,;]{1,65})/ig,
-        /((?:el|la|los|las|un|una)\s+[^.!?]{1,65}?)\s+(?:est[aá]|qued[oó])\s+((?:en|bajo|sobre|debajo de|dentro de)\s+[^.!?,;]{1,65})/ig,
+        /(?:dej[eéóo]|guard[eéóo]|coloqu[eé]|coloc[oó]|mov[iíó]|muevo|puse|puso|pongo)\s+((?:el|la|los|las|un|una)\s+[^.!?]{1,65}?)\s+((?:en|al|bajo|sobre|debajo del?|dentro del?)\s+[^.!?,;]{1,65})/ig,
+        /((?:el|la|los|las|un|una)\s+[^.!?]{1,65}?)\s+(?:est[aá]|qued[oó])\s+((?:en|bajo|sobre|debajo del?|dentro del?)\s+[^.!?,;]{1,65})/ig,
         /(?:left|placed|put|moved)\s+((?:the|a|an)\s+[^.!?]{1,65}?)\s+((?:in|on|under|into|inside)\s+[^.!?,;]{1,65})/ig,
         /((?:the|a|an)\s+[^.!?]{1,65}?)\s+(?:is|was|remained)\s+((?:in|on|under|inside)\s+[^.!?,;]{1,65})/ig,
       ];
@@ -98,7 +98,8 @@ export function deriveStoryFacts(history, latest = "") {
         if (!props.test(match[1]) || /\b(?:no|nunca|jamás|not|never)\s*(?:\w+\s+){0,2}$/i.test(sentence.slice(0, match.index))) continue;
         const object = match[1].trim(), key = "location:" + factKey(object);
         const value = match[2].split(/\s+y\s+|\s+and\s+/i)[0].trim().replace(/^al\s+/i, "en el ");
-        if (facts.get(key)?.role === "user" && turn.role === "assistant") continue;
+        if ((facts.get(key)?.role === "user" || facts.get("holder:" + factKey(object))?.role === "user") && turn.role === "assistant") continue;
+        facts.delete("holder:" + factKey(object));
         facts.set(key, { kind: "location", object, value, source: sentence.trim(), role: turn.role, turn: index + 1 });
       }
       const operation = sentence.match(/\b(abr(?:[ií]|i[oó])|abro|cerr[eéó]|cierro|opened|closed)\s+((?:el|la|un|una|the|a)\s+[^.!?,;:]{1,60})/i);
@@ -115,6 +116,26 @@ export function deriveStoryFacts(history, latest = "") {
           facts.delete("location:" + factKey(object));
           facts.set("transfer:" + factKey(object), { kind: "transfer", object, sender: "user", recipient: "assistant",
             source: sentence.trim(), role: "user", turn: index + 1 });
+        }
+      }
+    }
+    // Resolve first-person holding only when this turn names one known prop.
+    // A pronoun with multiple possible referents remains ambiguous.
+    if (turn.role === "user") {
+      const holding = turn.content.replace(/\*/g, "").split(/(?<=[.!?])\s+|\n/).find((line) =>
+        !/[?¿]/.test(line) && !/\b(?:no|nunca|si|imagina|podr[ií]a|tal vez|quiz[aá]s)\b/i.test(line)
+        && /\b(?:lo|la)\s+(?:tengo|sostengo|llevo|sujeto)\s+en\s+mi(?:s)?\s+mano(?:s)?\b/i.test(line));
+      if (holding) {
+        const pronoun = holding.match(/\b(lo|la)\s+(?:tengo|sostengo|llevo|sujeto)\b/i)[1].toLowerCase();
+        const objects = [...new Map([...facts.values()]
+          .filter((fact) => factKey(turn.content).includes(factKey(fact.object))
+            && (pronoun === "la" ? /^(?:la|una)\s/i : /^(?:el|un)\s/i).test(fact.object))
+          .map((fact) => [factKey(fact.object), fact.object])).values()];
+        if (objects.length === 1) {
+          const object = objects[0], key = factKey(object);
+          facts.delete("location:" + key);
+          facts.set("holder:" + key, { kind: "holder", object, value: "user",
+            source: holding.trim(), role: "user", turn: index + 1 });
         }
       }
     }
