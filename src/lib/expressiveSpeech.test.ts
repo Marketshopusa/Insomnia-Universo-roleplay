@@ -90,14 +90,21 @@ it("does not discard deliberately repeated reactions", () => {
 
 it.each([
   ["*Solté un grito de dolor* Ayúdame.", "pain_scream"],
+  ["*Ahogo un grito* Cuidado.", "scream"],
   ["*Me echo a llorar* No te vayas.", "cry"],
   ["*Rompí en llanto* No te vayas.", "cry"],
   ["*Solté una carcajada* Gracias.", "laugh"],
+  ["*Suelto una carcajada* Gracias.", "laugh"],
+  ["*Suelto una risa* Hola.", "laugh"],
+  ["*Me río divertida* Hola.", "laugh"],
+  ["*Suelto un jadeo* Sí.", "pant"],
   ["*Dejé escapar un suspiro* Estoy tranquila.", "sigh"],
+  ["*Suelto un suspiro* Estoy tranquila.", "sigh"],
+  ["*Gimo suavemente de placer* Qué delicia.", "pleasure_moan"],
 ])("performs whole vocal action phrases without reading broken fragments: %s", (text, event) => {
   const result = score(text);
   expect(result.reactions.map((part) => part.event)).toEqual([event]);
-  expect(result.text).not.toMatch(/Solté|Me echo|Rompí|Dejé escapar/);
+  expect(result.text).not.toMatch(/Solté|Suelto|Me echo|Rompí|Dejé escapar|Ahogo|Divertida/i);
 });
 it("a written laughter burst is one sound and does not make the following dialogue laugh",()=>{
  const result=score("Jajajajajajaja. Sigo hablando.");

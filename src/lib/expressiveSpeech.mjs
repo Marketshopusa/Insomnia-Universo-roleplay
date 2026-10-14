@@ -42,20 +42,21 @@ const forms = [
   ["kiss", "chasquido\\s+de\\s+(?:beso|labios)|sonido\\s+de\\s+(?:un\\s+)?beso|kiss\\s+sound"],
 ];
 const compounds = {
-  scream: String.raw`(?:solt(?:é|ó|amos|aron)|suelto|suelta|peg(?:o|ó|ué)|dej(?:o|é|ó)\s+escapar)\s+(?:un\s+)?grito`,
+  scream: String.raw`(?:(?:solt(?:é|ó|amos|aron)|suelto|suelta|peg(?:o|ó|ué)|dej(?:o|é|ó)\s+escapar|doy|da|di|dio)\s+(?:un\s+)?grito|ahog(?:o|a|ué|ó)\s+un\s+grito)`,
   cry: String.raw`(?:(?:me|se)\s+ech(?:o|a|ó)\s+a\s+llorar|romp(?:o|e|í|ió)\s+(?:a\s+llorar|en\s+llanto))`,
-  laugh: String.raw`(?:(?:me|se)\s+ech(?:o|a|ó)\s+a\s+reír|solt(?:é|ó|amos|aron)\s+una\s+carcajada|estall(?:o|a|é|ó)\s+en\s+risas)`,
-  sigh: String.raw`(?:solt(?:é|ó)|suelto|suelta|dej(?:o|é|ó)\s+escapar)\s+un\s+suspiro`,
-  groan: String.raw`(?:solt(?:é|ó)|suelto|suelta|dej(?:o|é|ó)\s+escapar)\s+un\s+gemido`,
-  grunt: String.raw`(?:solt(?:é|ó)|suelto|suelta)\s+un\s+gruñido`,
+  laugh: String.raw`(?:(?:me|se)\s+ech(?:o|a|ó)\s+a\s+reír|(?:solt(?:é|ó|amos|aron)|suelto|suelta|dej(?:o|é|ó)\s+escapar)\s+(?:una\s+)?(?:carcajada|risita|risa)|estall(?:o|a|é|ó)\s+en\s+risas?)`,
+  sigh: String.raw`(?:solt(?:é|ó|amos|aron)|suelto|suelta|dej(?:o|é|ó)\s+escapar)\s+un\s+suspiro`,
+  pant: String.raw`(?:solt(?:é|ó|amos|aron)|suelto|suelta|dej(?:o|é|ó)\s+escapar)\s+un\s+jadeo`,
+  groan: String.raw`(?:solt(?:é|ó|amos|aron)|suelto|suelta|dej(?:o|é|ó)\s+escapar)\s+un\s+gemido`,
+  grunt: String.raw`(?:solt(?:é|ó|amos|aron)|suelto|suelta)\s+un\s+gruñido`,
 };
 const allForms = forms.map(([id, source]) => [id, compounds[id] ? "(?:" + compounds[id] + "|" + source + ")" : source]);
 const FORM = new RegExp("(?<![\\p{L}\\p{N}])(?:" + allForms.map(([, source]) => "(?:" + source + ")").join("|") + ")(?![\\p{L}\\p{N}])", "giu");
 const exactForm = allForms.map(([id, source]) => [id, new RegExp("^(?:" + source + ")$", "iu")]);
 const actionContext = /(?:dolor|duele|herid|golpe|esfuerzo|pain|hurt|injur|effort)/iu;
-const pleasureContext = /(?:placer|gozo|pleasure)/iu;
+const pleasureContext = /(?:placer|gozo|pleasure|excit|deseo|pasión|pasion|sensual|calor|rico|rica|delicia|lujuria|tentaci|entrecortad|escalofr)/iu;
 const nonPresent = /(?:\b(?:no|sin|not|without|nunca|never)\b|\b(?:quiero|quería|deseo|puedo|podría|debería|intento|intentar|voy\s+a|va\s+a|iba\s+a|si|when|if|want\s+to|will|would|can|could)\b|\b(?:recuerdo|recordé|ayer|yesterday|remember)\b)/iu;
-const contextualTail = /^(?:\s+(?:de\s+(?:dolor|placer|miedo|rabia|alegría|felicidad)|con\s+(?:fuerza|dolor|rabia)|a\s+carcajadas|desgarrador(?:a|es)?|fuertemente|fuerte|suavemente|bajit[ao]|por\s+(?:el\s+)?esfuerzo|de\s+repente))*/iu;
+const contextualTail = /^(?:\s+(?:de\s+(?:dolor|placer|miedo|rabia|alegría|felicidad|deseo|excitación|excitacion|pasión|pasion|satisfacción|satisfaccion|anhelo|alivio)|con\s+(?:fuerza|dolor|rabia|picardía|picardia|diversión|diversion|deseo|pasión|pasion|agitación|agitacion)|a\s+carcajadas|desgarrador(?:a|es)?|fuertemente|fuerte|suavemente|suave|bajit[ao]|en\s+voz\s+baja|por\s+(?:el\s+)?(?:esfuerzo|deseo|calor|miedo)|de\s+repente|divertid[ao]|cómplice|complice|entrecortad[ao]|tembloros[ao]|agitad[ao]|aliviad[ao]))*/iu;
 const pureSoundDescription = /^(?:(?:yo|ella|él|el|mi|mis|sus|su|un|una|el|la)\s+)?(?:sonidos?\s+desgarradores?|gritos?|gemidos?|sollozos?|llantos?|risas?|carcajadas?)(?:\s|[,.!;]|$)/iu;
 const styleFor = (text) => {
   if (/\b(?:no|sin|not|without)\b/iu.test(text)) return null;
@@ -78,6 +79,7 @@ function tidyNarration(text) {
   let result = text.trim().replace(/^[,;:\s]+|[,;:\s]+$/g, "");
   result = result.replace(/(?:\s+|^)(?:y|e|and)\s*$/iu, "").replace(/^(?:y|e|and)\s+/iu, "");
   if (!result || /^(?:yo|ella|él|el|mi|mis|sus|su|me|se|un|una|el|la)[.!]?$/iu.test(result)) return "";
+  if (/^(?:suelto|suelta|solt[éó]|dej[oéó]\s+escapar|doy|dio|di|peg[oóué])\s+(?:un|una)[.!]?$/iu.test(result)) return "";
   if (/^[,.!?\s]+$/.test(result)) return "";
   return result.replace(/^[a-záéíóúñ]/u, (first) => first.toUpperCase());
 }
