@@ -38,7 +38,7 @@ Deno.serve(async (req) => {
       const result = JSON.parse(await data.text());
       return reply(result);
     }
-    if (body?.action !== "create" || body?.adultMode !== true)
+    if (body?.action !== "create")
       return reply({ error: "invalid_request" }, 400);
     const latest = String(body.userMessage ?? "").trim();
     if (latest.length > 8000) return reply({ error: "message_too_long", message: "Divide este mensaje en partes de hasta 8000 caracteres." }, 400);
@@ -60,6 +60,7 @@ Deno.serve(async (req) => {
       sessionId: context.sessionId, currentMessageId: body.currentMessageId || null, totalTurns: context.totalTurns,
       continuityReview: true,
       containsMinor: context.containsMinor,
+      nonSexualOnly: context.containsMinor || body.adultMode !== true,
       story: {
         id: story.id,
         title: String(story.title ?? "").slice(0, 160),

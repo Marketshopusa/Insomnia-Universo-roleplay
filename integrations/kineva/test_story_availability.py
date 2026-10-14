@@ -21,5 +21,13 @@ class StoryAvailabilityTests(unittest.TestCase):
         with self.assertRaises(worker.ContentBlockedError):
             worker.reply_for(job)
 
+    def test_current_open_state_rejects_an_invented_intervening_closure(self):
+        job = {"userMessage": "¿Quién tiene la brújula ahora?", "facts":
+               [{"kind": "prop_state", "object": "el cajón verde", "value": "open"}]}
+        self.assertTrue(worker.contradicts_known_fact("*Miro el cajón verde que acabo de cerrar.* Ahora la tienes tú.", job))
+        self.assertFalse(worker.contradicts_known_fact("*Miro la brújula en tu mano.* Ahora la tienes tú.", job))
+        job["userMessage"] = "Cierra el cajón verde."
+        self.assertFalse(worker.contradicts_known_fact("*Cierro el cajón verde.* Listo.", job))
+
 if __name__ == "__main__":
     unittest.main()

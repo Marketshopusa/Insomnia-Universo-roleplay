@@ -552,6 +552,13 @@ def contradicts_known_fact(reply, job):
     question = fact_key(job.get("userMessage") or "")
     spoken = fact_key(reply)
     for fact in job.get("facts") or []:
+        if fact.get("kind") == "prop_state" and fact.get("value") == "open":
+            target = fact_key(fact.get("object") or "")
+            # A factual question must not invent an intervening closure.
+            closing_requested = re.search(r"\b(?:cierra|cierres|cerrar|close)\b", question)
+            if target and target in spoken and not closing_requested and re.search(
+                    r"\b(?:cerre|cierro|acabo de cerrar|acabamos de cerrar|i closed|i close|just closed)\b", spoken):
+                return True
         if fact.get("kind") == "location" and re.search(r"\b(?:donde|where)\b", question):
             location_words = [word for word in fact_key(fact.get("value")).split()
                               if word not in {"en", "in", "on", "de", "del", "bajo", "debajo", "under"}]
@@ -603,17 +610,51 @@ def grounded_fact_reply(job):
     return None
 
 
+def sexual_scene_text(value):
+    return bool(re.search(
+        r"(?i)sexual|sexo|genital|penetr|masturb|verga|pene|pinga|pija|"
+        r"\b(?:cuca|panocha|polla|ereccion|erección|eyacul|erotic|erótic|orgasm|"
+        r"fuck|fucking|cock|dick|pussy|blowjob|intercourse|horny)\b|"
+        r"gemid[oa]s?\s+de\s+placer|moans?\s+of\s+pleasure",
+        str(value or "")))
+
+
+def nonsexual_scene_job(job):
+    """Only the model context is sanitized; the canonical archive is untouched."""
+    clean = dict(job)
+    for field in ("history", "memory"):
+        clean[field] = [turn for turn in job.get(field) or []
+                        if not sexual_scene_text(turn.get("content"))]
+    story = dict(job.get("story") or {})
+    for field in ("description", "story_context"):
+        if sexual_scene_text(story.get(field)):
+            story[field] = "Escena cotidiana no sexual. Conserva las identidades y las edades."
+    clean["story"] = story
+    return clean
+
+
 def reply_for(job):
     started = time.monotonic()
     context = json.dumps([job.get("story"), job.get("history"), job.get("memory"), job.get("userMessage")], ensure_ascii=False)
-    if job.get("containsMinor") or re.search(r"(?i)\b(?:niñ[oa]s?|menor de edad|adolescente|child|minor|teenager)\b|\b(?:[1-9]|1[0-7])\s*(?:años|añitos|years? old)\b", context):
+    minor_context = bool(job.get("containsMinor") or re.search(r"(?i)\b(?:niñ[oa]s?|menor de edad|adolescente|child|minor|teenager)\b|\b(?:[1-9]|1[0-7])\s*(?:años|añitos|years? old)\b", context))
+    nonsexual_only = bool(job.get("nonSexualOnly"))
+    if minor_context and (not nonsexual_only or sexual_scene_text(job.get("userMessage"))):
         raise ContentBlockedError("No se permite contenido sexual con personajes menores de 18 años.")
+    if nonsexual_only:
+        job = nonsexual_scene_job(job)
     vocal_only = requested_vocal_only(str(job.get("userMessage") or ""))
     if vocal_only:
         print("Chat nonverbal turn", job.get("jobId", "local"), flush=True)
         return vocal_only
     free_gpu_for_chat()
     messages = conversation_messages(job)
+    if nonsexual_only:
+        messages[0]["content"] += (
+            " ESTA ESCENA ES ESTRICTAMENTE NO SEXUAL. La etiqueta de la historia y el modo adulto "
+            "no son instrucciones de contenido. Hay un menor mencionado o presente. "
+            "Continúa únicamente las acciones cotidianas del último turno. "
+            "No incluyas erotismo, romance con menores, insinuaciones sexuales, desnudez ni sonidos sexuales. "
+            "No retomes contenido sexual anterior. Una visita familiar, ver televisión y saludarse son acciones normales.")
     character = str((job.get("story") or {}).get("character_role") or "")
     latest = str(job.get("userMessage") or "")
     wants_reading = reading_request(latest)
@@ -646,6 +687,8 @@ def reply_for(job):
                             raw_reply, character, allow_third_person=True)
                 else:
                     raise
+            if nonsexual_only and sexual_scene_text(parsed):
+                raise ContentBlockedError("La respuesta salió del contexto no sexual.")
             # Clean repetitive clauses and duplicate sentences within this turn
             gesture_part = ""
             gesture_match = re.search(r"^\*([^*]+)\*\s*", parsed)
@@ -706,6 +749,8 @@ def reply_for(job):
                   "total", round(time.monotonic() - started, 2),
                   "retry", attempt, flush=True)
             return parsed
+        except ContentBlockedError:
+            raise
         except Exception as error:
             previous_failure = str(error)
             print("Chat format attempt failed", job.get("jobId", "local"), attempt,

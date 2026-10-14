@@ -107,10 +107,17 @@ describe("grounded facts and latest actions", () => {
 });
 
 
-it("blocks adult mode for a minor remembered earlier in the full archive", async () => {
+it("blocks a sexual request for a minor remembered earlier in the full archive", async () => {
   const messages = [turn("1", "El personaje tiene 17 años."), ...Array.from({length: 100}, (_, i) => turn(String(i+2), "Conversamos en la biblioteca."))];
-  await expect(loadStoryContext(db({id:"s", messages}), "owner", {story:{id:storyId}, userMessage:"Continuemos.", adultMode:true}))
+  await expect(loadStoryContext(db({id:"s", messages}), "owner", {story:{id:storyId}, userMessage:"Iniciemos una acción sexual.", adultMode:true}))
     .rejects.toMatchObject({code:"content_blocked", status:422});
   const safe = await loadStoryContext(db({id:"s", messages}), "owner", {story:{id:storyId}, userMessage:"¿Qué libro estudias?", adultMode:false});
   expect(safe.containsMinor).toBe(true);
+});
+it("allows a nonsexual television scene even when the adult toggle is enabled", async () => {
+ const messages=[turn("past","Él veía televisión con su hija de 15 años.")];
+ const safe=await loadStoryContext(db({id:"s",messages}),"owner",{
+  story:{id:storyId,story_type:"real_sex"},userMessage:"Ella llega a casa y pregunta qué programa están viendo.",adultMode:true});
+ expect(safe.containsMinor).toBe(true);
+ expect(safe.history).toEqual(messages);
 });

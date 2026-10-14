@@ -190,7 +190,7 @@ export async function loadStoryContext(client, userId, body) {
     .eq("user_id", userId).eq("story_id", storyId).maybeSingle();
   if (error) throw Object.assign(new Error("No se pudo recuperar la memoria guardada."), { status: 503, code: "memory_unavailable" });
   const containsMinor = hasMinorContext(JSON.stringify([body.story, data?.messages, body.userMessage]));
-  if (containsMinor && (body.adultMode === true || /sexual|sexo|genital|penetr|masturb|verga|pene|pinga|pija/i.test(String(body.userMessage || ""))))
+  if (containsMinor && /sexual|sexo|genital|penetr|masturb|verga|pene|pinga|pija/i.test(String(body.userMessage || "")))
     throw Object.assign(new Error("No se permite contenido sexual con personajes menores de 18 años. Puedes continuar una escena no sexual fuera del modo adulto."), {status: 422, code: "content_blocked"});
   if ((body.sessionId && data?.id !== body.sessionId)
     || (body.currentMessageId && !(data?.messages || []).some((m) => m.id === body.currentMessageId)))
