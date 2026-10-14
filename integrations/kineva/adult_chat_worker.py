@@ -60,21 +60,80 @@ def model_chat(messages, temperature, max_tokens, json_mode=False):
     content = str(result["choices"][0]["message"].get("content") or "").strip()
     return re.sub(r"(?s)<think>.*?</think>", "", content).strip()
 
+def clean_dialogue_prose(dialogue):
+    """Remove narrator intrusions, leaked labels, and archaic purple-prose reporting tags."""
+    if not dialogue:
+        return ""
+    # Strip leaked label tags
+    dialogue = re.sub(r'(?i)[`"\']?(?:di[aá]logo|dialogue)[`"\']?\s*:\s*', '', dialogue)
+    # Remove novelistic narrative reporting clauses outside speech (e.g. Suplico sin aliento..., Confieso..., Susurro aturdida...)
+    dialogue = re.sub(
+        r'(?i)\s*(?:Suplico|Susurro|Confieso|Digo|Grito|Añado|Murmuro|Pido|Exclamo|Siento|Miro)\s+'
+        r'(?:sin aliento|con la voz rota|entre (?:jadeos|sollozos|gemidos|suspiros|lágrimas|éxtasis)|'
+        r'al sentir|con rubor|mientras|con lágrimas|aturdida|extasiada)[^.!?«»"“”]*[.!?]?',
+        ' ', dialogue
+    )
+    # Strip Shakespearean / archaic purple prose clichés if model generated them
+    dialogue = re.sub(r'(?i)\bconvulsos?\s+pliegues?\s+íntimos?\b', 'mi cuerpo', dialogue)
+    dialogue = re.sub(r'(?i)\bdedos\s+crispados?\b', 'mis manos', dialogue)
+    dialogue = re.sub(r'(?i)\bmana(?:n)?\s+de\s+entre\s+mis\s+piernas\b', 'siento en mí', dialogue)
+    dialogue = re.sub(r'(?i)\bel\s+placer\s+que\s+me\s+embarga\b', 'este placer', dialogue)
+    # Clean leading/trailing quotes
+    dialogue = re.sub(r'^\s*["“«\']+|["”»\']+\s*$', '', dialogue)
+    return " ".join(dialogue.split()).strip()
+
+def limit_gesture_length(gesture):
+    """Enforce interactive roleplay standard: gesture is a short 3-8 word cue, NOT a novelistic essay."""
+    if not gesture:
+        return ""
+    # Strip leaked label tags
+    gesture = re.sub(r'(?i)[`"\']?(?:gesto|gestos)[`"\']?\s*:\s*', '', gesture)
+    gesture = re.sub(r'(?i)\bconvulsos?\s+pliegues?\s+íntimos?\b', 'mi cuerpo', gesture)
+    gesture = re.sub(r'(?i)\bdedos\s+crispados?\b', 'mis manos', gesture)
+    # Take only the first brief sentence/clause
+    first_clause = re.split(r'[.,;]\s+', gesture)[0].strip()
+    words = first_clause.split()
+    if len(words) > 10:
+        first_clause = " ".join(words[:10])
+    return first_clause
+
 def parse_role_reply(raw_reply, character="", allow_third_person=False):
-    raw_reply = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw_reply.strip(), flags=re.I).strip()
-    parsed = json.loads(raw_reply)
-    if not isinstance(parsed, dict):
-        raise ValueError("Invalid role reply")
-    gesture = str(parsed.get("gesto") or parsed.get("gestos") or "").strip().strip("*")
-    dialogue = str(parsed.get("dialogo") or "").strip()
+    cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw_reply.strip(), flags=re.I).strip()
+    parsed = None
+    try:
+        candidate = json.loads(cleaned)
+        if isinstance(candidate, dict):
+            parsed = candidate
+    except Exception:
+        pass
+
+    if not parsed:
+        # Match backtick or plain label formats: `gesto`: "..." `dialogo`: "..."
+        pseudo = re.search(
+            r'(?is)[`"\']?(?:gesto|gestos)[`"\']?\s*:\s*["“«\']?(.*?)["”»\']?\s*[`"\']?(?:di[aá]logo|dialogue)[`"\']?\s*:\s*["“«\']?(.*?)["”»\']?$',
+            cleaned
+        )
+        if pseudo:
+            parsed = {"gesto": pseudo.group(1).strip(), "dialogo": pseudo.group(2).strip()}
+
+    if not parsed:
+        # Try finding JSON object anywhere inside the string
+        json_match = re.search(r'(?s)\{.*?\}', cleaned)
+        if json_match:
+            try:
+                candidate = json.loads(json_match.group(0))
+                if isinstance(candidate, dict):
+                    parsed = candidate
+            except Exception:
+                pass
+
+    if not parsed:
+        raise ValueError("Invalid role reply format")
+
+    gesture = limit_gesture_length(str(parsed.get("gesto") or parsed.get("gestos") or "").strip().strip("*"))
+    dialogue = clean_dialogue_prose(str(parsed.get("dialogo") or parsed.get("dialogue") or "").strip())
     if not dialogue:
         raise ValueError("Incomplete dialogue")
-    # Dialogue must be actual spoken words to the player, not purely a physical stage direction/action
-    narration_starter = r"^(?:(?:Mis|Tus|Sus)\s+(?:manos|dedos|labios|brazos|ojos|cuerpo)|(?:Me|Te)\s+(?:acerco|deslizo|presiono|pego|siento|levanto|muevo|toco|abrazo|giro|apoyo|arrodillo)|Doy\s+un\s+paso)\b"
-    if re.search(narration_starter, dialogue, re.I) and not re.search(r'["«»“”¡!¿?]', dialogue):
-        # The model put its physical gesture inside "dialogo" without speaking aloud
-        if not gesture:
-            raise ValueError("Pure physical action without spoken dialogue")
     speaker = re.match(r"^[A-ZÁÉÍÓÚÑ][a-záéíóúñ]{2,}", character)
     if (re.search(r"(?i)\b(?:gesto|gestos|di[aá]logo|dialogue)\s*:", dialogue)
             or (speaker and re.match(r"^\s*" + re.escape(speaker.group()) + r"\s*:", dialogue, re.I))):
@@ -103,21 +162,24 @@ def parse_role_reply(raw_reply, character="", allow_third_person=False):
     return "*" + gesture + "* " + dialogue
 
 def parse_freeform_reply(raw_reply, character="", allow_third_person=False):
-    """Recover the local model's ordinary roleplay format on a JSON retry."""
+    """Recover the local model's ordinary roleplay format on a retry."""
     content = raw_reply.strip()
-    if (not content or content.startswith(("```", "{"))
-            or re.search(r'(?i)\b(?:gesto|gestos|di[aá]logo|dialogue)\s*:', content)
-            or re.match(r"^[A-ZÁÉÍÓÚÑ][\wÁÉÍÓÚÑáéíóúñ -]{1,60}:\s", content)):
-        raise ValueError("Narrator or incomplete JSON reply")
+    if not content:
+        raise ValueError("Empty freeform reply")
+    # Check if backtick or tagged labels are in content
+    pseudo = re.search(
+        r'(?is)[`"\']?(?:gesto|gestos)[`"\']?\s*:\s*["“«\']?(.*?)["”»\']?\s*[`"\']?(?:di[aá]logo|dialogue)[`"\']?\s*:\s*["“«\']?(.*?)["”»\']?$',
+        content
+    )
+    if pseudo:
+        return parse_role_reply(raw_reply, character, allow_third_person=allow_third_person)
     stage = re.match(r"^\*([^*]{1,140})\*\s*", content)
-    gesture = stage.group(1).strip() if stage else ""
+    gesture = limit_gesture_length(stage.group(1).strip() if stage else "")
     spoken = content[stage.end():] if stage else content
     spoken = re.sub(r"\*[^*]*\*", " ", spoken)
-    spoken = " ".join(spoken.split())
+    spoken = clean_dialogue_prose(spoken)
     if not spoken.strip():
         raise ValueError("Empty freeform reply")
-    if re.search(r"(?i)^(?:system|premisa|instrucciones|gesto|dialogo)\s*:", spoken):
-        raise ValueError("Internal instruction in reply")
     return parse_role_reply(json.dumps({"gesto": gesture, "dialogo": spoken}, ensure_ascii=False), character, allow_third_person=allow_third_person)
 
 
@@ -231,34 +293,36 @@ def english_drift(text):
 
 
 def minimal_instruction(character, player, premise, spanish, turns_count=0):
-    """Instrucción fundamental centrada en humanidad, picardía, expresividad sonora y avance natural."""
-    language = "español natural, cálido, fluido y coloquial" if spanish else "natural, expressive, conversational English"
+    """Instrucción fundamental: 85% diálogo hablado real, lenguaje urbano caliente, acción breve y cero Shakespeare."""
+    language = "español moderno, urbano, apasionado y coloquial" if spanish else "natural, expressive, conversational English"
     return (
-        f"Eres {character} en una historia viva, inmersiva, apasionada e interactiva con {player}. "
+        f"Eres {character} en un roleplay íntimo, apasionado, desinhibido y conversacional con {player}. "
         f"Premisa y contexto del personaje: {premise}. "
-        "PERSONALIDAD REAL, FLUIDEZ Y PICARDÍA: Eres una persona de carne y hueso, con mente propia, carisma, sensualidad, "
-        "emociones auténticas, humor y picardía humana. ESTRICTAMENTE PROHIBIDO sonar como un robot, una máquina o un asistente de IA. "
-        "LIBERTAD EXPRESIVA TOTAL: Tienes total libertad para hablar de locura, lujuria, pasión ardiente, deseo, fantasías y picardía sin tapujos ni censuras morales. "
-        "Habla y reacciona como una mujer/hombre real según tu personaje: sé espontánea, coqueta, atrevida, graciosa, cariñosa o apasionada. "
-        "CONTINUIDAD Y RESPUESTA VIVA: Reacciona de forma directa y concreta a lo que el jugador acaba de decir o hacer. "
-        "Si te hace una pregunta íntima o personal, contéstale de verdad. Si te coquetea o provoca, devuélvele la provocación con ingenio y sensualidad. "
-        "Si la interacción es física o sensual (o por teléfono con respiración, susurros y confesiones), vive el momento con intensidad y piel. "
-        "PROHIBIDO REPETIR DISCURSOS O FÓRMULAS CLICHÉ: Cada turno DEBE ser nuevo y avanzar la escena. "
-        "Está TERMINANTEMENTE PROHIBIDO repetir discursos sobre 'guardar este secreto', 'explorar fantasías sin compromiso' o advertencias similares. "
-        "SONIDOS Y REACCIONES VOCALES AUDIBLES EN 'gesto': El motor de voz reproduce audio humano real (risas, carcajadas, gemidos de placer, suspiros, jadeos, sollozos, quejidos de dolor y besos) "
-        "CUANDO los incluyes explícitamente en 'gesto'. Sonreír ('Sonrío') es un gesto silencioso y NO genera risa; si quieres reírte con sonido real en el audio, debes escribir 'Me río' o 'Suelto una risa'. "
-        "Por eso, SIEMPRE que la escena lo amerite, describe en 'gesto' tus reacciones audibles antes de hablar: "
-        "- Si ríes o bromeas: 'Me río divertida', 'Suelto una risa pícara', 'Suelto una carcajada cómplice', 'Río con picardía'. "
-        "- Si sientes placer, pasión o excitación: 'Gimo suavemente de placer', 'Suelto un gemido entrecortado', 'Jadeo de placer mientras me muerdo el labio', 'Respiro agitada por el calor'. "
-        "- Si suspiras de anhelo o alivio: 'Suelto un suspiro tembloroso', 'Suspiro aliviada'. "
-        "- Si hay dolor o sobresalto: 'Ahogo un grito de dolor', 'Grito sorprendida', 'Me quejo con un quejido'. "
-        "- Si te conmueves o sufres: 'Sollozo con la voz quebrada', 'Lloro'. "
-        "- Si hay besos: 'Le doy un beso sonoro en los labios con un chasquido'. "
-        "NUNCA uses muletillas repetitivas (como 'Man' o 'panas') ni copies las palabras del jugador. "
+        "REGLA DE ORO DE PROPORCIÓN: 85% DIÁLOGO HABLADO, 15% ACCIÓN. "
+        "Esto es un chat de roleplay interactivo, NO un audiolibro ni una novela literaria. El usuario está conversando contigo y lo que más importa es el DIÁLOGO HABLADO. "
+        "En 'gesto': MÁXIMO UNA SOLA ACCIÓN BREVE de 3 a 8 palabras (por ejemplo: 'Gimo suavemente pegándome a ti', 'Jadeo mirándote', 'Me río divertida', 'Tiemblo mordiéndome el labio'). "
+        "ESTRICTAMENTE PROHIBIDO escribir párrafos largos de narración, metáforas anatómicas o descripciones en 'gesto'. "
+        "En 'dialogo': TODO debe ser PALABRAS HABLADAS DIRECTAS hacia el jugador. Entre 2 y 4 oraciones habladas, calientes, fluidas y espontáneas. "
+        "PROHIBIDO meter acotaciones de narrador dentro de 'dialogo' (prohibido escribir 'suplico sin aliento', 'confieso entre sollozos' o 'susurro al sentir'). "
+        "CERO SHAKESPEARE, CERO NOVELA ANTIGUA, CERO LÉXICO DE DICCIONARIO O FILOSOFÍA: "
+        "ESTRICTAMENTE PROHIBIDO sonar como un libro del siglo XIX, un letrado o un filósofo. "
+        "PROHIBIDO usar metáforas rebuscadas o ridículas como 'mana un torrente', 'cuerpo como un arco', 'dedos crispados', 'convulsos pliegues', 'el placer que me embarga'. "
+        "LENGUAJE URBANO, MODERNO Y CALIENTE (Estilo PornHaven / chat íntimo real): "
+        "Habla como una persona real joven y sensual en la cama o en una llamada íntima: dirty talk, gemidos, picardía moderna, pasión sin rodeos y sin censura: "
+        "'¡Dios, qué rico!', '¡No pares, William!', '¡Me vuelves loca!', '¡Dámelo así!', '¡Qué rico me lo haces!', '¡Me voy a venir!'. "
+        "100% EN ESPAÑOL, CERO INGLÉS: "
+        "NUNCA cambies al inglés bajo ninguna circunstancia (prohibido 'Oh god', 'I'm cumming', 'yes baby', etc.). Usa siempre español auténtico: '¡Dios mío!', '¡Me vengo!', '¡Qué delicia!'. "
+        "SONIDOS Y REACCIONES VOCALES AUDIBLES EN 'gesto': "
+        "El motor reproduce audio humano real si describes la reacción sonora en 'gesto': "
+        "- Risa: 'Me río divertida', 'Suelto una risa pícara'. (Sonreír es silencioso; si ríes con sonido real escribe 'Me río'). "
+        "- Placer / respiración: 'Gimo suavemente de placer', 'Jadeo de placer', 'Suelto un suspiro'. "
+        "- Grito / dolor: 'Ahogo un grito', 'Grito sorprendida'. "
+        "- Llanto: 'Sollozo', 'Lloro'. "
+        "- Besos: 'Le doy un beso sonoro en los labios'. "
+        "NUNCA uses muletillas repetitivas ('Man', 'panas') ni copies las palabras del jugador. "
         f"Habla siempre en primera persona como {character} en {language}, tuteando al jugador ('tú'). "
-        "FORMATO OBLIGATORIO: Devuelve exclusivamente un JSON válido con: "
-        "'gesto': tu acción física, mirada, caricia y/o reacción vocal audible en primera persona ('Me río divertida...', 'Gimo suavemente de placer...', 'Suelto un suspiro...'). "
-        "'dialogo': tus palabras habladas al jugador, naturales, vivas, con total fluidez, picardía y personalidad humana."
+        "FORMATO OBLIGATORIO: Devuelve exclusivamente un JSON con 'gesto' y 'dialogo': "
+        '{\n  "gesto": "Gimo suavemente pegándome a ti",\n  "dialogo": "¡Dios, no pares... qué delicia! ¡Sigue así que me vuelves loca y me voy a venir!"\n}'
     )
 
 
@@ -361,9 +425,12 @@ def conversation_messages(job):
             "Si el jugador admite su error o pide perdón, eres quien recibe esa disculpa; no asumas su culpa. "
             "Tu emoción debe responder a lo que acaba de suceder y evolucionar cuando cambian los hechos. "
             "El modo adulto permite temas adultos: actúa con libertad, sensualidad, locura, lujuria, picardía y deseo mutuo cuando encaje en la escena. "
-            "SONIDOS Y REACCIONES VOCALES AUDIBLES EN 'gesto': El motor de voz reproduce audio humano real (risas, carcajadas, gemidos de placer, suspiros, jadeos, sollozos, quejidos de dolor y besos). "
-            "Sonreír ('Sonrío') es silencioso y no genera risa; si ríes con sonido, debes escribir 'Me río' o 'Suelto una risa'. "
-            "Si ocurre una reacción audible tuya (grito, llanto, risa, gemido de placer, jadeo agitado, suspiro), descríbela en 'gesto' antes del diálogo para que el audio la reproduzca con sonido real ('Me río divertida', 'Gimo de placer suavemente', 'Jadeo entrecortada', 'Suelto un suspiro'). "
+            "REGLA DE ORO DE PROPORCIÓN: 85% DIÁLOGO HABLADO, 15% ACCIÓN. "
+            "Esto es un roleplay interactivo, NO un audiolibro ni una novela literaria. En 'gesto' pon MÁXIMO una sola frase corta de 3 a 8 palabras ('Gimo suavemente pegándome a ti', 'Jadeo mirándote', 'Me río divertida'). "
+            "CERO SHAKESPEARE: Prohibido sonar como un libro del siglo XIX, letrado o filósofo ('mana un torrente', 'cuerpo como un arco', 'dedos crispados', 'convulsos pliegues', 'el placer que me embarga'). "
+            "Usa lenguaje urbano, moderno, caliente, dirty talk auténtico, pasión y soltura de persona real. "
+            "100% EN ESPAÑOL: NUNCA cambies al inglés (cero 'oh god', 'I'm cumming'; di '¡Dios mío!', '¡Me vengo!', '¡Qué rico!'). "
+            "SONIDOS AUDIBLES EN 'gesto': Para audio humano real usa 'Me río divertida', 'Gimo suavemente de placer', 'Jadeo entrecortada', 'Suelto un suspiro'. "
             "No repitas una confesión, duda, apelativo o estructura que ya dijiste en los turnos recientes; da una observación o decisión nueva. Puedes repetir algo si el jugador te lo pide. "
             "Habla al jugador en primera persona; no pases a tercera persona para referirte a ti. "
             "Escribe SOLO JSON con 'dialogo' y 'gesto'. Prioriza lo que dices en voz alta; la acción lo acompaña, no sustituye la conversación. "
@@ -541,10 +608,10 @@ def reply_for(job):
     last_raw_reply = ""
     for attempt in range(3):
         try:
-            token_limit = 350 if wants_reading else 180
+            token_limit = 350 if wants_reading else 240
             raw_reply = model_chat(
                 messages, 0.85 + attempt * 0.05,
-                token_limit, json_mode=(attempt == 0))
+                token_limit, json_mode=True)
             last_raw_reply = raw_reply
             structured_reply = bool(re.match(r"^\s*(?:```(?:json)?\s*)?\{", raw_reply, re.I)) or bool(re.search(r'(?im)^\s*"(?:gesto|dialogo)"\s*:', raw_reply))
             try:
@@ -662,8 +729,9 @@ def reply_for(job):
         print("Chat returning last valid parsed output on fallback", job.get("jobId", "local"), flush=True)
         return last_valid_parsed
     if last_raw_reply and last_raw_reply.strip():
-        cleaned_fallback = re.sub(r'[{}\[\]"\\]', '', last_raw_reply).strip()
-        cleaned_fallback = re.sub(r'\s+', ' ', cleaned_fallback)
+        cleaned_fallback = re.sub(r'[{}\[\]"\\`]', '', last_raw_reply).strip()
+        cleaned_fallback = re.sub(r'(?i)\b(?:gesto|gestos|di[aá]logo|dialogue)\s*:\s*', '', cleaned_fallback)
+        cleaned_fallback = re.sub(r'\s+', ' ', cleaned_fallback).strip()
         if len(cleaned_fallback) > 5:
             return f"*Asiente* {cleaned_fallback[:250]}"
     raise RuntimeError("Local model returned no usable reply after repetition retries")
