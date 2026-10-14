@@ -964,37 +964,45 @@ const chapterOptions = [3, 5, 7, 10, 12];
                 onClick={() => void regenerateChapter(index)}>Regenerar solo capítulo {index + 1}</Button>}
             </div>
           ))}
-          </>}
-          <Button type="button" onClick={() => void handleManualSeries()} disabled={generating || generatingVideos || draftingThree || !showManualEditor}>
-            {generatingVideos ? "Preparando la serie…" : showManualEditor ? "Crear y filmar tres capítulos" : "Prepara o escribe los capítulos primero"}
+          <Button
+            type="button"
+            size="lg"
+            className="w-full h-14 text-base font-semibold"
+            onClick={() => void handleManualSeries()}
+            disabled={generating || generatingVideos || draftingThree || !showManualEditor}
+          >
+            {generatingVideos ? (
+              <>
+                <Loader2 className="w-5 h-5 mr-2 animate-spin" /> {videoProgress || "Filmando con ComfyUI en tu PC…"}
+              </>
+            ) : (
+              <>
+                <Clapperboard className="w-5 h-5 mr-2" /> Filmar los 3 capítulos en ComfyUI (GPU local)
+              </>
+            )}
           </Button>
+          </>}
         </Card>
 
-        {/* Generar proyecto completo */}
-        <Button
-          size="lg"
-          className="w-full mb-6 h-14 text-base rounded-none"
-          onClick={handleGenerateProject}
-          disabled={generating || generatingVideos}
-        >
-          {generating ? (
-            <>
-              <Loader2 className="w-5 h-5 mr-2 animate-spin" /> Generando novela completa…
-            </>
-          ) : generatingVideos ? (
-            <>
-              <Loader2 className="w-5 h-5 mr-2 animate-spin" /> {videoProgress || "Filmando con ComfyUI…"}
-            </>
-          ) : manualScenes.some((s) => s.trim().length >= 5) ? (
-            <>
-              <Clapperboard className="w-5 h-5 mr-2" /> Filmar miniserie de 3 capítulos con ComfyUI
-            </>
-          ) : (
-            <>
-              <Sparkles className="w-5 h-5 mr-2" /> Generar proyecto y videos con IA
-            </>
-          )}
-        </Button>
+        {/* Generar proyecto completo con IA solo cuando no se usa el editor de 3 capítulos */}
+        {!showManualEditor && (
+          <Button
+            size="lg"
+            className="w-full mb-6 h-14 text-base rounded-none"
+            onClick={handleGenerateProject}
+            disabled={generating || generatingVideos}
+          >
+            {generating ? (
+              <>
+                <Loader2 className="w-5 h-5 mr-2 animate-spin" /> Generando novela completa…
+              </>
+            ) : (
+              <>
+                <Sparkles className="w-5 h-5 mr-2" /> Generar proyecto y videos con IA
+              </>
+            )}
+          </Button>
+        )}
 
         {localJob && (
           <Card className="p-6 mb-6 space-y-4">
