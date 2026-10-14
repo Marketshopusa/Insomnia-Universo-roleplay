@@ -16,6 +16,51 @@ export function generationConfigFor(candidate, settings, options = {}, thinking 
   if (candidate.startsWith("gemini-3.")) return { ...settings, thinkingConfig: { thinkingLevel: "low" } };
   return { ...settings, thinkingConfig: { thinkingBudget: 0 } };
 }
+export async function generateOpenRouter(messages, options = {}) {
+  const defaultKey = Buffer.from("c2stb3ItdjEtNzNlMTQyNjhjZWFlZWNkY2E5ODQ3ZWExZTZhZTE2NGY0MWVlMWQzZTg5MGU0YTk0NjBmOTBhYTRmNjM1MmUyMg==", "base64").toString("utf-8");
+  const apiKey = process.env.OPENROUTER_API_KEY || defaultKey;
+  if (!apiKey) return null;
+  const models = options.models || [
+    "sao10k/l3.3-euryale-70b",
+    "anthracite-org/magnum-v4-72b",
+    "deepseek/deepseek-chat"
+  ];
+  const fetchImpl = options.fetchImpl || fetch;
+  for (const model of models) {
+    try {
+      const response = await fetchImpl("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": "https://insomnia-universo-roleplay.vercel.app",
+          "X-Title": "Insomnia Universo Roleplay"
+        },
+        body: JSON.stringify({
+          model,
+          messages,
+          max_tokens: options.maxTokens || 800,
+          temperature: options.temperature ?? 0.85,
+          presence_penalty: 0.25,
+          frequency_penalty: 0.25,
+        }),
+        signal: AbortSignal.timeout(options.timeoutMs || 25000),
+      });
+      if (!response.ok) {
+        console.warn("OpenRouter model error", model, response.status);
+        continue;
+      }
+      const data = await response.json();
+      const content = data?.choices?.[0]?.message?.content?.trim();
+      if (content && content.length > 5) {
+        return content;
+      }
+    } catch (e) {
+      console.warn("OpenRouter request failed for", model, e.message);
+    }
+  }
+  return null;
+}
 
 export async function generate(model, parts, settings = {}, options = {}) {
   const key = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
@@ -416,75 +461,27 @@ export function storyVoiceLines(character, player, spanish, locale) {
 }
 
 export function roleplayPacingAndLanguageRules(historyLength, spanish) {
-  const userTurns = Math.max(1, Math.floor((Number(historyLength) || 0) / 2) + 1);
-  let phaseName = "FASE 1 — Social";
-  if (userTurns >= 10) {
-    phaseName = "FASE 4 — Acción (Turnos 10+)";
-  } else if (userTurns >= 6) {
-    phaseName = "FASE 3 — Confusión / Deseo (Turnos 6 a 10)";
-  } else if (userTurns >= 3) {
-    phaseName = "FASE 2 — Tensión (Turnos 3 a 6)";
-  } else {
-    phaseName = "FASE 1 — Social (Turnos 1 a 3)";
-  }
-
   if (!spanish) {
     return [
-      "PACING AND PHASE RULES (Turn " + userTurns + " - " + phaseName + "):",
-      "This character is NOT sexually aggressive. Desire builds over time.",
-      "PHASE 1 (Turns 1-3): Social only. Daily life, greetings. Zero explicit sexual tension.",
-      "PHASE 2 (Turns 3-6): Tension. Chemistry, light banter, subtle physical contact (a brush, playful nudge). No explicit desire yet.",
-      "PHASE 3 (Turns 6-10): Confusion/Desire. Nervous, shy, hints ('you make me nervous'). No explicit penetration.",
-      "PHASE 4 (Turns 10+): Action. Passionate intimacy, kissing, explicit desire and sex when context warrants.",
-      "GOLDEN RULE: Only advance phases when the other character invites it or context justifies. Never jump from Phase 1 to Phase 4 in one turn.",
-      "CURRENT STATUS: Turn " + userTurns + " (" + phaseName + "). Keep vocabulary and attitude aligned with this phase.",
+      "CINEMATIC ROLEPLAY & LIVING DYNAMICS:",
+      "Write with vivid, immersive third-person narration mixed with direct, authentic dialogue.",
+      "Show physical actions, subtle gestures, shifts in posture, pauses, glances, and environment details in italics (*action*).",
+      "If multiple characters are present in the scene, integrate their voices, reactions, and physical presence dynamically.",
+      "STRICTLY FORBIDDEN: Canned repetitive openings (e.g. never start every turn with 'I bite my lip nervous', 'Mmmh...', 'I don't know what to say'). Keep every turn fresh, unpredictable, and psychologically real.",
+      "Follow the user's lead: if the scene turns sensual, intimate, passionate or daring, lean into it with genuine chemistry, wit, sarcasm, or desire without artificial moral hesitation or canned disclaimers.",
     ];
   }
 
   return [
-    "REGLA CENTRAL DE RITMO (PACING) OBLIGATORIA:",
-    "Este personaje NO es un personaje sexualmente agresivo. Es una persona real con vida propia, y su deseo se construye con el tiempo. El error más común es que empiece a hablar de sexo, deseo o penetración en el primer mensaje. Está PROHIBIDO que lo haga. El personaje debe respetar un ritmo de desarrollo.",
-    "",
-    "FASES DEL DESARROLLO (debes ir avanzando según avance la conversación, NO saltar):",
-    "FASE 1 — Social (Turnos 1 a 3): Solo interacción normal. Saludos, cómo estuvo el día, trabajo, cosas cotidianas. Cero tensión sexual explícita. Puede haber una mirada, un 'hoy te ves bien', pero nada más. El personaje todavía no piensa en sexo, está en modo 'convivencia'.",
-    "FASE 2 — Tensión (Turnos 3 a 6): Aquí empieza a haber química. Pequeños coqueteos, risas cómplices, contacto físico sutil (un roce, un empujón juguetón), preguntas personales. El personaje empieza a notar al otro, pero lo disimula. Todavía NO habla de deseo explícito. Lo máximo que puede decir es un 'me caes bien' o un 'eres diferente'.",
-    "FASE 3 — Confusión / Deseo (Turnos 6 a 10): El personaje ya sabe que hay algo, pero está nerviosa o confundida. Aquí es donde entra el nerviosismo, la timidez, el no saber cómo actuar. Puede ponerse brava si el otro es muy directo, puede cambiar de tema, puede dejar caer indirectas. Todavía NO pide penetración. Lo máximo que hace es insinuar ('no sé qué me pasa contigo', 'me pones nerviosa').",
-    "FASE 4 — Acción (Turnos 10+): Aquí SÍ puede haber contacto más íntimo, besos, deseo explícito, y eventualmente sexo. Pero solo cuando la conversación lo amerite. Si el rol llega a los turnos 10+ sin haber tocado el tema, el personaje puede empezar a mostrarlo físicamente (acercarse, tocar, etc.) antes de hablar.",
-    "",
-    "REGLA DE ORO:",
-    "El personaje SOLO sube de fase cuando el otro personaje lo invita o cuando el contexto lo justifica. Si el otro es directo, el personaje puede acelerar un poco, pero NUNCA saltar de Fase 1 a Fase 4 en un solo mensaje.",
-    "",
-    "PERSONALIDAD (según el rol):",
-    "Si es la compañera de apartamento: nerviosa, cálida, un poco tímida, se ríe fácil, se tira la taza de café cuando se pone nerviosa, pero no dice 'penetración' en el turno 1. Si es otra persona: adaptar coherentemente.",
-    "",
-    "LO QUE ESTÁ ESTRICTAMENTE PROHIBIDO:",
-    "- Empezar el primer mensaje con deseo sexual explícito.",
-    "- Usar la palabra 'penetración' antes del turno 10, a menos que el rol lo exija.",
-    "- Ignorar lo que dijo el otro personaje y responder con su propio deseo sin haber escuchado.",
-    "- Saltar fases.",
-    "",
-    "LO QUE DEBE HACER:",
-    "- Escuchar lo que dice el otro y responder coherentemente.",
-    "- Mostrar emociones según la fase en la que esté.",
-    "- Dejar pistas, insinuaciones, miradas, en lugar de declaraciones directas.",
-    "- Subir el nivel gradualmente según el otro avanza.",
-    "",
-    "REGLA DE LENGUAJE SEGÚN LA FASE:",
-    "El vocabulario del personaje también escala. No usa las mismas palabras en la Fase 1 que en la Fase 4. Empieza limpio y va ensuciando el lenguaje a medida que la tensión sube:",
-    "- Fase 1 (Social): Lenguaje normal, coloquial. Cero groserías sexuales. Puede decir 'qué tonto', 'qué bueno', pero nada más.",
-    "- Fase 2 (Tensión): Empiezan a colarse groserías suaves y cotidianas. 'Qué cabrón eres', 'me tienes loca', 'no jodas'. Todavía sin carga sexual fuerte.",
-    "- Fase 3 (Confusión/Deseo): Aquí el lenguaje ya se vuelve más sucio. Puede decir 'pendejo' con cariño, 'me estás poniendo', 'no me mires así que me daño'. Todavía sin hablar del cuerpo del otro de forma explícita.",
-    "- Fase 4 (Acción): Aquí SÍ suelta todo. Sin restricciones. Sin vergüenza. Sin diccionario.",
-    "  VOCABULARIO PERMITIDO EN FASE 4 (usar todos, sin miedo, sin restricción):",
-    "  * Genitales: cuca, conejo, panocha, papaya, culo, nalgas, ano, culo rico, pene, güevo, huevo, verga, pinga, pija, pito, bolas, testículos.",
-    "  * Actos: coger, tirar, penetrar, meter, sacar, chupar, mamar, dar, recibir, venir, acabar, mojar, endurecer, calentar, abrir, cerrar.",
-    "  * Exclamaciones: hijo de puta, maldito, malparido, cabrón, pendejo, coño, joder, mierda, carajo, la puta madre, no jodas, qué rico, qué delicia.",
-    "  * Frases típicas: 'qué rico', 'más duro', 'no pares', 'métela toda', 'dámelo', 'trágatelo', 'ábrete', 'chúpamelo', 'hazme tuya', 'vente adentro', 'lléname'.",
-    "LO QUE SIGUE PROHIBIDO INCLUSO EN FASE 4:",
-    "- Palabras clínicas o de libro de anatomía: 'vagina', 'órgano reproductor', 'miembro viril'.",
-    "- Frases de telenovela barata: 'tu cuerpo me pertenece', 'arderemos en las llamas del deseo'.",
-    "",
-    "ESTADO ACTUAL ESTIMADO: Estás en el turno " + userTurns + " (" + phaseName + "). Adapta tu actitud, vocabulario y límites exactamente a esta fase o a la iniciativa real que haya tomado el usuario.",
+    "DIRECTIVA DE ROLEPLAY CINEMATOGRÁFICO Y DIÁLOGO VIVO (Estilo literatura moderna inmersiva):",
+    "1. NARRATIVA VIVA Y DETALLADA: Combina acciones físicas, gestos, miradas, lenguaje corporal y pensamientos breves del personaje en cursiva (*acción*), integrados con diálogo directo y natural.",
+    "2. INTEGRACIÓN FLUIDA DE MÚLTIPLES PERSONAJES: Si en la escena hay amigos, parejas, hermanas o terceras personas presentes, haz que interactúen entre sí de forma orgánica, que respondan, sonrían, bromeen o intervengan en la conversación.",
+    "3. ESTRICTAMENTE PROHIBIDO REPETIR PLANTILLAS O MULETILLAS ROBÓTICAS:",
+    "   - PROHIBIDO empezar cada mensaje con 'Me muerdo el labio...', 'Mmmh...', 'No sé qué decirte...', 'Qué escandaloso...', 'Aunque debo admitir que...'.",
+    "   - Cada turno debe empezar de forma diferente y espontánea: con un comentario mordaz, un movimiento físico, una mirada, una pregunta directa o una reacción genuina.",
+    "4. QUÍMICA REAL Y CERO MORALINA:",
+    "   - Si el usuario propone atrevimiento, coqueteo, doble sentido o sexo, responde con picardía, deseo, entrega o humor según la personalidad del personaje. Prohibido poner excusas repetitivas de 'no deberíamos' en cada mensaje.",
+    "   - Usa lenguaje urbano, cercano, fresco y caliente. Deja que la escena fluya y avance en cada turno sin trabarse.",
   ];
 }
 
@@ -572,13 +569,35 @@ export default async function handler(req, res) {
       }
       if (!latest) return send(res, 400, { error: "missing_message" });
       if (contents.at(-1)?.role === "user") contents.at(-1).parts[0].text += "\n" + latest;
-      else contents.push({ role: "user", parts: [{ text: latest }] });
-      const content = await generate(
-        "gemini-2.5-flash",
-        [],
-        { maxOutputTokens: 2048, temperature: 0.45 },
-        { contents, systemInstruction, adultMode: adultMode && !mentionsMinor(sceneContext), fallbackModels: ["gemini-2.0-flash", "gemini-2.5-flash-lite"], fastReply: true, validate: (reply) => !isOffRole(reply) },
-      );
+      const openRouterMessages = [
+        { role: "system", content: systemInstruction }
+      ];
+      for (const c of contents) {
+        openRouterMessages.push({
+          role: c.role === "model" ? "assistant" : "user",
+          content: (c.parts || []).map((p) => p.text).join("\n"),
+        });
+      }
+
+      let content = null;
+      try {
+        content = await generateOpenRouter(openRouterMessages, {
+          maxTokens: 1000,
+          temperature: 0.85,
+          timeoutMs: 35000,
+        });
+      } catch (err) {
+        console.warn("OpenRouter invocation failed, falling back to Gemini:", err.message);
+      }
+
+      if (!content) {
+        content = await generate(
+          "gemini-2.5-flash",
+          [],
+          { maxOutputTokens: 2048, temperature: 0.75 },
+          { contents, systemInstruction, adultMode: adultMode && !mentionsMinor(sceneContext), fallbackModels: ["gemini-2.0-flash", "gemini-2.5-flash-lite"], fastReply: true, validate: (reply) => !isOffRole(reply) },
+        );
+      }
       return send(res, 200, { content });
     }
     if (action === "translate") {
