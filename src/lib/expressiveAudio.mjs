@@ -33,7 +33,7 @@ function remember(key, pcm) {
 }
 
 /** Prepare every part before playback so a failed reaction never silently disappears. */
-export async function synthesizeExpressiveScene(score, voice, language, { region = "mx", synthesize, cache = reactionCache, samples = vocalSample, resolvedVoice = voice, deadlineMs = 50_000 } = {}) {
+export async function synthesizeExpressiveScene(score, voice, language, { region = "mx", synthesize, cache = reactionCache, samples = vocalSample, resolvedVoice = voice, deadlineMs = 50_000, onAudio } = {}) {
   // Isolate every reaction so limiting a sound can never cut spoken words.
   const separate = new Set(score.reactions.map((part) => part.event));
   const counts = new Map();
@@ -53,6 +53,14 @@ export async function synthesizeExpressiveScene(score, voice, language, { region
   const startedAt = Date.now();
   let cursor = 0;
   let failed;
+  let nextEmit = 0;
+  const emitReady = () => {
+    if (typeof onAudio !== "function") return;
+    while (nextEmit < runs.length && results[nextEmit]) {
+      onAudio(results[nextEmit]);
+      nextEmit++;
+    }
+  };
   const worker = async () => {
     while (!failed && cursor < runs.length) {
       const index = cursor++;
@@ -60,20 +68,29 @@ export async function synthesizeExpressiveScene(score, voice, language, { region
       if (Date.now() - startedAt >= deadlineMs) { failed = { status: 504, detail: "expressive_scene_timeout" }; break; }
       if (run.reactions.length && run.segments.length === 1) {
         const sample = samples(resolvedVoice, language, run.reactions[0].event, run.reactions[0].direction);
-        if (sample) { results[index] = briefReaction(sample, run.reactions[0].event); continue; }
+        if (sample) {
+          results[index] = briefReaction(sample, run.reactions[0].event);
+          emitReady();
+          continue;
+        }
       }
       const key = run.reactions.length && run.segments.length === 1 ? JSON.stringify([voice, language, region, run.reactions[0].event, run.text, run.reactions[0].direction]) : null;
-      if (key && cache.has(key)) { results[index] = briefReaction(cache.get(key), run.reactions[0].event); continue; }
+      if (key && cache.has(key)) {
+        results[index] = briefReaction(cache.get(key), run.reactions[0].event);
+        emitReady();
+        continue;
+      }
       const result = await synthesize(run.text, voice, language, { region, expression: run });
       if (result.status !== 200 || !result.pcm?.length || result.pcm.length % 2) {
         failed = result.status === 200 ? { status: 502, detail: "empty_expressive_audio" } : result;
         break;
       }
-      results[index] = key ? briefReaction(result.pcm, run.reactions[0].event) : result.pcm;
+      results[index] = key || run.reactions.length ? briefReaction(result.pcm, run.reactions[0].event) : result.pcm;
       if (key) {
         if (cache === reactionCache) remember(key, results[index]);
         else cache.set(key, results[index]);
       }
+      emitReady();
     }
   };
   // At most two provider requests run at once; completion order never controls playback.

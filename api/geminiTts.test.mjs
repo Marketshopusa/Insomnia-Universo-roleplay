@@ -1,7 +1,7 @@
 import { prepareExpressiveSpeech } from "../src/lib/expressiveSpeech.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { cloudGeminiVoiceFor, decodeLinear16, explainGeminiFailure, geminiSpeechDirection, geminiStreamBody, pcmFromSseLine, removePerformanceCues, streamGeminiSpeech, synthesizeGemini } from "./geminiTts.mjs";
+import { cloudGeminiVoiceFor, decodeLinear16, explainGeminiFailure, geminiSpeechDirection, geminiStreamBody, pcmFromSseLine, removePerformanceCues, streamGeminiSpeech, synthesizeGemini, splitSentences } from "./geminiTts.mjs";
 
 function sampleWav() {
   const pcm = Buffer.alloc(48_000, 1);
@@ -61,7 +61,7 @@ test("all six regional selections reach Gemini with distinct directions and supp
   const cases = [
     ["ar", "rioplatense urbano de Buenos Aires", "es-419"],
     ["ve", "venezolano urbano de Caracas", "es-419"],
-    ["co", "colombiano de Bogotá", "es-419"],
+    ["co", "colombiano de Medellín", "es-419"],
     ["mx", "mexicano del centro de México", "es-MX"],
     ["es", "castellano peninsular de España", "es-ES"],
     ["cl", "chileno urbano de Santiago", "es-419"],
@@ -226,3 +226,13 @@ test("local expressive prompts reach both paths without spoken script labels", a
   assert.match(geminiSpeechDirection("es", "neutral", "mx", spoken), /subtle smile/);
   assert.doesNotMatch(geminiSpeechDirection("es", "neutral", "mx", spoken), /Narration:|Dialogue:/);
 });
+
+test("splitSentences cleanly breaks paragraphs into fluent chunks for fast first-audio playback", () => {
+  assert.deepEqual(splitSentences(""), []);
+  assert.deepEqual(splitSentences("Hola, amor."), ["Hola, amor."]);
+  const chunks = splitSentences("Hola mi vida. ¿Cómo estás hoy? Quería decirte que te he extrañado muchísimo durante todo este tiempo.");
+  assert.equal(chunks.length >= 2, true);
+  assert.equal(chunks.join(" ").includes("Hola mi vida."), true);
+  assert.equal(chunks.join(" ").includes("extrañado muchísimo"), true);
+});
+

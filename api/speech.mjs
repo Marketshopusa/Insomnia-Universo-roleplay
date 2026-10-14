@@ -2,7 +2,7 @@ import { synthesizeExpressiveScene } from "../src/lib/expressiveAudio.mjs";
 import { prepareExpressiveSpeech, hasVocalCue } from "../src/lib/expressiveSpeech.mjs";
 import { createClient } from "@supabase/supabase-js";
 import { supabaseUrl, publishableKey } from "./config.mjs";
-import { explainGeminiFailure, isGeminiConfigured, streamGeminiSpeech, synthesizeGemini, removePerformanceCues, previewVoice } from "./geminiTts.mjs";
+import { explainGeminiFailure, isGeminiConfigured, streamGeminiSpeech, synthesizeGemini, removePerformanceCues, previewVoice, splitSentences } from "./geminiTts.mjs";
 
 export const maxDuration = 60;
 
@@ -74,19 +74,10 @@ export default async function handler(req, res) {
   let opened = false;
   try {
     if (expression?.reactions.length) {
-      const scene = await synthesizeExpressiveScene(expression, req.body.voice, req.body.language, { region, resolvedVoice: previewVoice(req.body.voice), synthesize: synthesizeGemini });
-      if (scene.status !== 200) {
-        const status = scene.status === 429 ? 429 : scene.status === 403 ? 403 : 502;
-        return res.status(status).json({ error: scene.status === 429 ? "tts_quota_exhausted" : "tts_unavailable", message: explainGeminiFailure(scene.status, scene.detail) });
-      }
-      writePcm(res, scene.pcm, provider, startedAt);
-      return;
-    }
-    try {
-      const streamed = await streamGeminiSpeech(text, req.body.voice, req.body.language, {
-        performance,
+      const scene = await synthesizeExpressiveScene(expression, req.body.voice, req.body.language, {
         region,
-        expression,
+        resolvedVoice: previewVoice(req.body.voice),
+        synthesize: synthesizeGemini,
         onAudio(pcm) {
           if (!pcm?.length) return;
           if (!opened) {
@@ -96,18 +87,76 @@ export default async function handler(req, res) {
           writePcmChunks(res, pcm);
         },
       });
+      if (scene.status !== 200) {
+        if (!opened) {
+          const status = scene.status === 429 ? 429 : scene.status === 403 ? 403 : 502;
+          return res.status(status).json({
+            error: scene.status === 429 ? "tts_quota_exhausted" : "tts_unavailable",
+            message: explainGeminiFailure(scene.status, scene.detail),
+          });
+        }
+      }
       if (opened) {
         finishSpeech(res, provider, startedAt);
-        return;
+      } else {
+        writePcm(res, scene.pcm, provider, startedAt);
       }
-      console.warn("Insomnia speech stream fallback", streamed.status || 0, streamed.detail || "", "after_ms", Date.now() - startedAt);
-    } catch (failure) {
-      if (opened) {
-        finishSpeech(res, provider, startedAt);
-        return;
-      }
-      console.warn("Insomnia speech stream failed", failure?.message || failure?.name || "Error", "after_ms", Date.now() - startedAt);
+      return;
     }
+
+    // Sentence-chunked streaming via synthesizeGemini for instant first playback latency (< 1s)
+    const sentences = splitSentences(text);
+    if (sentences.length > 1) {
+      const results = new Array(sentences.length);
+      let nextEmit = 0;
+      let failed = null;
+
+      const emitReady = () => {
+        while (nextEmit < sentences.length && results[nextEmit]) {
+          if (!opened) {
+            opened = true;
+            openSpeech(res, provider, startedAt);
+          }
+          writePcmChunks(res, results[nextEmit]);
+          nextEmit++;
+        }
+      };
+
+      // Fast-path: Synthesize sentence 0 first to ensure immediate playback in ~600ms
+      const first = await synthesizeGemini(sentences[0], req.body.voice, req.body.language, { performance, region, expression });
+      if (first.status !== 200 || !first.pcm?.length) {
+        const status = first.status === 429 ? 429 : first.status === 403 ? 403 : 502;
+        return res.status(status).json({
+          error: first.status === 429 ? "tts_quota_exhausted" : "tts_unavailable",
+          message: explainGeminiFailure(first.status, first.detail),
+        });
+      }
+      results[0] = first.pcm;
+      emitReady();
+
+      // Synthesize remaining sentences with concurrent workers in background while sentence 0 plays
+      let cursor = 1;
+      const worker = async () => {
+        while (!failed && cursor < sentences.length) {
+          const idx = cursor++;
+          const piece = await synthesizeGemini(sentences[idx], req.body.voice, req.body.language, { performance, region, expression });
+          if (piece.status !== 200 || !piece.pcm?.length) {
+            failed = piece;
+            break;
+          }
+          results[idx] = piece.pcm;
+          emitReady();
+        }
+      };
+
+      await Promise.all([worker(), worker()]);
+
+      if (opened) {
+        finishSpeech(res, provider, startedAt);
+        return;
+      }
+    }
+
     const expressive = await synthesizeGemini(text, req.body.voice, req.body.language, { performance, region, expression });
     if (expressive.status !== 200) {
       console.warn("Insomnia speech gemini-2.5-flash-tts", expressive.status, expressive.detail || "", "after_ms", Date.now() - startedAt);

@@ -446,3 +446,26 @@ export async function synthesizeGemini(text, preset, language, { performance = "
   }
   return result;
 }
+
+export function splitSentences(text) {
+  const trimmed = String(text || "").replace(/\s+/g, " ").trim();
+  if (!trimmed) return [];
+  const matches = trimmed.match(/[^.!?…]+[.!?…]+["'»”)]*(?:\s+|$)|[^.!?…]+$/gu) || [trimmed];
+  const chunks = [];
+  let current = "";
+  for (const part of matches) {
+    const trimmedPart = part.trim();
+    if (!trimmedPart) continue;
+    if (!current) {
+      current = trimmedPart;
+    } else if (current.length < 25 || current.split(/\s+/).length < 4) {
+      current += " " + trimmedPart;
+    } else {
+      chunks.push(current);
+      current = trimmedPart;
+    }
+  }
+  if (current) chunks.push(current);
+  return chunks.length ? chunks : [trimmed];
+}
+

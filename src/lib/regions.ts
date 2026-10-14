@@ -5,14 +5,13 @@ export interface RegionOption {
   slang: string;
 }
 
-/** México is the default accent. Spain keeps es-ES; the others are Latin American locales. */
 export const STORY_REGIONS: RegionOption[] = [
-  { id: "ar", label: "Argentina", locale: "es-AR", slang: "Escribe con jerga de Argentina: vos, tenés, che y dale." },
-  { id: "ve", label: "Venezuela", locale: "es-VE", slang: "Escribe con jerga de Venezuela: chamo y vale." },
-  { id: "co", label: "Colombia", locale: "es-CO", slang: "Escribe con jerga de Colombia: parce, bacano y qué más." },
-  { id: "mx", label: "México", locale: "es-MX", slang: "Escribe con jerga de México: órale, ahorita y chido." },
-  { id: "es", label: "España", locale: "es-ES", slang: "Escribe con jerga de España: vale, tío y mola." },
-  { id: "cl", label: "Chile", locale: "es-CL", slang: "Escribe con jerga de Chile: po, cachai y al tiro." },
+  { id: "ar", label: "Argentina (Buenos Aires)", locale: "es-AR", slang: "Escribe con jerga de Argentina: vos, tenés, che y dale." },
+  { id: "ve", label: "Venezuela (Caracas)", locale: "es-VE", slang: "Escribe con jerga de Venezuela: chamo y vale." },
+  { id: "co", label: "Colombia (Medellín)", locale: "es-CO", slang: "Escribe con jerga de Colombia: parce, bacano y qué más." },
+  { id: "mx", label: "México (CDMX)", locale: "es-MX", slang: "Escribe con jerga de México: órale, ahorita y chido." },
+  { id: "es", label: "España (Madrid)", locale: "es-ES", slang: "Escribe con jerga de España: vale, tío y mola." },
+  { id: "cl", label: "Chile (Santiago)", locale: "es-CL", slang: "Escribe con jerga de Chile: po, cachai y al tiro." },
 ];
 
 export const DEFAULT_REGION = "mx";
