@@ -325,30 +325,53 @@ const chapterOptions = [3, 5, 7, 10, 12];
     }
   };
 
-  const draftThreeChapters = async () => {
+  const draftThreeChapters = async (): Promise<boolean> => {
     const idea = description.trim();
     if (idea.length < 10) {
       toast({ title: "Escribe una idea breve para que la IA prepare los capítulos.", variant: "destructive" });
-      return;
+      return false;
     }
     setDraftingThree(true);
     try {
-      const { data, error } = await invokeFunctionWithRetry<{ draft?: { title: string; cast_roles?: { name: string; role: string }[]; chapters: { visual: string; dialogue: string; speaker?: string }[] } }>("generate-studio-draft", {
-        description: idea, language,
-        cast_names: [primaryName, secondaryName, ...supportingCast.map((actor) => actor.name)].filter(Boolean),
-      });
-      if (error || !data?.draft?.chapters || data.draft.chapters.length !== 3) {
-        throw new Error(error?.message || "La IA no entregó los tres capítulos.");
+      let draft: any = null;
+      // 1. Try local Kineva / Magnum model (uncensored for adult & drama, instant)
+      try {
+        const localRes = await fetch(`${LOCAL_KINEVA_URL}/draft`, loopbackInit({
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ description: idea, language }),
+        }));
+        if (localRes.ok) {
+          const json = await localRes.json();
+          if (json?.draft?.chapters?.length === 3) draft = json.draft;
+        }
+      } catch {
+        // Fallback to cloud API
       }
-      setManualTitle(String(data.draft.title || manualTitle || "Mi miniserie").slice(0, 120));
-      setCastRoles(Array.isArray(data.draft.cast_roles) ? data.draft.cast_roles.filter((entry) => entry?.name && entry?.role).slice(0, 20) : []);
-      setManualScenes(data.draft.chapters.map((chapter) => String(chapter.visual || "").slice(0, 1200)));
-      setManualLines(data.draft.chapters.map((chapter) => String(chapter.dialogue || "").slice(0, 400)));
-      setManualSpeakers(data.draft.chapters.map((chapter) => String(chapter.speaker || "").slice(0, 80)));
+
+      // 2. If not from local, try cloud API
+      if (!draft) {
+        const { data, error } = await invokeFunctionWithRetry<{ draft?: { title: string; cast_roles?: { name: string; role: string }[]; chapters: { visual: string; dialogue: string; speaker?: string }[] } }>("generate-studio-draft", {
+          description: idea, language,
+          cast_names: [primaryName, secondaryName, ...supportingCast.map((actor) => actor.name)].filter(Boolean),
+        });
+        if (error || !data?.draft?.chapters || data.draft.chapters.length !== 3) {
+          throw new Error(error?.message || "La IA no entregó los tres capítulos.");
+        }
+        draft = data.draft;
+      }
+
+      setManualTitle(String(draft.title || manualTitle || "Mi miniserie").slice(0, 120));
+      setCastRoles(Array.isArray(draft.cast_roles) ? draft.cast_roles.filter((entry: any) => entry?.name && entry?.role).slice(0, 20) : []);
+      setManualScenes(draft.chapters.map((chapter: any) => String(chapter.visual || "").slice(0, 1200)));
+      setManualLines(draft.chapters.map((chapter: any) => String(chapter.dialogue || "").slice(0, 400)));
+      setManualSpeakers(draft.chapters.map((chapter: any) => String(chapter.speaker || "").slice(0, 80)));
       setShowManualEditor(true);
-      toast({ title: "Guion preparado", description: "Revisa las tres escenas antes de filmarlas." });
+      toast({ title: "¡Guion preparado con IA!", description: "Los 3 capítulos fueron generados a partir de tu idea. Puedes revisarlos o filmarlos." });
+      return true;
     } catch (error) {
       toast({ title: "No pude preparar el guion", description: error instanceof Error ? error.message : undefined, variant: "destructive" });
+      return false;
     } finally {
       setDraftingThree(false);
     }
@@ -360,11 +383,16 @@ const chapterOptions = [3, 5, 7, 10, 12];
       return;
     }
     const title = manualTitle.trim() || description.trim().slice(0, 40) || "Miniserie Insomnia";
-    const scenes = manualScenes.map((text) => text.trim());
-    const lines = manualLines.map((text) => text.trim());
-    const missingScene = scenes.findIndex((text) => text.length < 5);
+    let scenes = manualScenes.map((text) => text.trim());
+    let lines = manualLines.map((text) => text.trim());
+    let missingScene = scenes.findIndex((text) => text.length < 5);
     if (missingScene !== -1) {
-      toast({ title: `Describe qué ocurre en el capítulo ${missingScene + 1} (al menos cinco caracteres).`, variant: "destructive" });
+      if (description.trim().length >= 10) {
+        toast({ title: "Generando guion automático con IA...", description: "Completando los 3 capítulos a partir de tu idea antes de filmar." });
+        const ok = await draftThreeChapters();
+        if (ok) return;
+      }
+      toast({ title: `Describe qué ocurre en el capítulo ${missingScene + 1} o pulsa 'Generar guion con IA'.`, variant: "destructive" });
       return;
     }
     const longLine = lines.findIndex((text) => splitKinevaDialogue(text).length > 3);
@@ -900,8 +928,21 @@ const chapterOptions = [3, 5, 7, 10, 12];
           <Textarea aria-label="Idea de la miniserie" placeholder="Ejemplo: una emprendedora presenta su negocio en tres lugares distintos" value={description}
             onChange={(event) => setDescription(event.target.value)} className="min-h-[80px]" />
           <div className="flex flex-wrap gap-2">
-            <Button type="button" variant="secondary" onClick={() => void draftThreeChapters()} disabled={draftingThree || generatingVideos}>
-              {draftingThree ? "Preparando guion…" : "Preparar tres capítulos con IA"}
+            <Button
+              type="button"
+              className="bg-accent text-accent-foreground font-semibold hover:bg-accent/90"
+              onClick={() => void draftThreeChapters()}
+              disabled={draftingThree || generatingVideos}
+            >
+              {draftingThree ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Preparando guion con IA…
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-4 h-4 mr-2" /> Generar guion de los 3 capítulos con IA
+                </>
+              )}
             </Button>
             <Button type="button" variant="outline" onClick={() => setShowManualEditor((value) => !value)}>
               {showManualEditor ? "Ocultar edición de escenas" : "Editar tomas manualmente"}

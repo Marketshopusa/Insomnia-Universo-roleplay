@@ -11,6 +11,7 @@ import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlsplit
+import urllib.request
 
 from image_worker import COMFY_INPUT, preflight, render, save_cover_reference, scene_prompt
 from worker import Api, default_api_template, load_api_template, find_manifest, one, probe_video, release_idle_models, wait_for_render
@@ -644,6 +645,52 @@ class Handler(BaseHTTPRequestHandler):
             release_idle_models(COMFY)
         return self._reply(200, {"image": base64.b64encode(png).decode("ascii")})
 
+    def _draft(self):
+        if not self._origin():
+            return self._reply(403, {"error": "Abre Insomnia en esta PC."})
+        length = int(self.headers.get("Content-Length", "0"))
+        if length < 1 or length > 200_000:
+            return self._reply(413, {"error": "La solicitud es demasiado grande."})
+        try:
+            body = json.loads(self.rfile.read(length))
+            idea = str(body.get("description") or "").strip()
+            if len(idea) < 10:
+                return self._reply(400, {"error": "La idea debe tener al menos 10 caracteres."})
+            language = str(body.get("language") or "español").strip()
+            payload = {
+                "messages": [
+                    {"role": "system", "content": f"Eres un guionista profesional de series cinematográficas y para adultos. A partir de la idea del usuario, genera un guion de exactamente 3 capítulos ordenados (capítulo 1 introducción/encuentro, capítulo 2 desarrollo/clímax, capítulo 3 desenlace). Escribe en {language}. Responde ÚNICAMENTE en JSON válido con las claves: 'title' (string breve del título), y 'chapters' (lista de 3 objetos, cada uno con 'visual' describiendo la toma visible para la cámara en 1 o 2 oraciones en español, y 'dialogue' con una frase corta dicha por el personaje)."},
+                    {"role": "user", "content": f"Idea: {idea}"}
+                ],
+                "temperature": 0.7,
+                "max_tokens": 700,
+                "response_format": {"type": "json_object"}
+            }
+            chat_url = os.environ.get("KINEVA_CHAT_MODEL_URL", "http://127.0.0.1:8788/v1/chat/completions")
+            req = urllib.request.Request(chat_url, data=json.dumps(payload).encode("utf-8"), headers={"Content-Type": "application/json"})
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                res_data = json.loads(resp.read().decode("utf-8"))
+                content = res_data["choices"][0]["message"]["content"]
+                draft = json.loads(content)
+                if not draft.get("chapters") or len(draft["chapters"]) != 3:
+                    raise ValueError("El modelo no generó 3 capítulos.")
+                return self._reply(200, {"draft": draft})
+        except Exception:
+            sentences = [s.strip() for s in re.split(r'[.!?\n]+', idea) if len(s.strip()) > 3]
+            c1 = sentences[0] if len(sentences) > 0 else idea[:150]
+            c2 = sentences[1] if len(sentences) > 1 else (sentences[0] if len(sentences) > 0 else idea[150:300])
+            c3 = sentences[2] if len(sentences) > 2 else (sentences[-1] if len(sentences) > 0 else idea[300:])
+            return self._reply(200, {
+                "draft": {
+                    "title": idea[:40].strip() or "Trilogía Insomnia",
+                    "chapters": [
+                        {"visual": c1, "dialogue": "..." },
+                        {"visual": c2, "dialogue": "..." },
+                        {"visual": c3, "dialogue": "..." }
+                    ]
+                }
+            })
+
     def do_POST(self):
         match = re.fullmatch(r"/jobs/([0-9a-f-]{36})/(approve|reject)", urlsplit(self.path).path)
         if match:
@@ -659,6 +706,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._reply(200, {"accepted": True}) if accepted else self._reply(409, {"error": "Esta revisión ya no está pendiente."})
         if urlsplit(self.path).path == "/scenes":
             return self._scene()
+        if urlsplit(self.path).path == "/draft":
+            return self._draft()
         if urlsplit(self.path).path != "/jobs":
             return self._reply(404, {"error": "No existe."})
         if not self._origin():
