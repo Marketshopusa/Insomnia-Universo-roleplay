@@ -40,8 +40,8 @@ def model_chat(messages, temperature, max_tokens, json_mode=False):
     payload = {"model": os.environ.get("KINEVA_CHAT_MODEL_NAME", "magnum-v4-12b"),
                "messages": messages, "max_tokens": max_tokens,
                "temperature": temperature, "top_p": 0.95,
-               "repeat_penalty": 1.16, "presence_penalty": 0.6,
-               "frequency_penalty": 0.35}
+               "repeat_penalty": 1.08, "presence_penalty": 0.05,
+               "frequency_penalty": 0.05}
     if json_mode:
         payload["response_format"] = {"type": "json_object"}
     request = Request(os.environ.get("KINEVA_CHAT_MODEL_URL", "http://127.0.0.1:8788/v1/chat/completions"),
@@ -231,115 +231,44 @@ def english_drift(text):
 
 
 def minimal_instruction(character, player, premise, spanish, turns_count=0):
-    """Contrato breve con identidad, hechos de la tarjeta y formato."""
-    language = "español natural" if spanish else "natural English"
-    turn_index = max(1, (turns_count // 2) + 1)
-    if turn_index <= 3:
-        tone_line = (
-            "TONO HUMANO, NATURAL Y COTIDIANO: Habla como una persona real en convivencia cotidiana o interacción social normal. "
-            "Cero tensión sexual explícita, cero gemidos o jadeos. "
-        )
-        dialogue_clause = (
-            "OBLIGATORIO: En FASE 1 (Social, Turnos 1 a 3), tu 'dialogo' son exclusivamente palabras habladas cotidianas, "
-            "amables, tímidas o conversacionales según la situación. ESTRICTAMENTE PROHIBIDO gemir, jadear o hablar de sexo. "
-        )
-    elif turn_index <= 6:
-        tone_line = (
-            "TONO HUMANO Y CÓMPLICE: Hay química y tensión sutil. Bromea y muestra complicidad sin declaraciones eróticas directas. "
-        )
-        dialogue_clause = (
-            "OBLIGATORIO: En FASE 2 (Tensión, Turnos 3 a 6), tu 'dialogo' tiene química y coqueteo sutil. Prohibido pedir sexo o tocar genitales. "
-        )
-    elif turn_index <= 10:
-        tone_line = (
-            "TONO DE DESEO Y TIMIDEZ: Nerviosismo, atracción confusa e insinuaciones indirectas. "
-        )
-        dialogue_clause = (
-            "OBLIGATORIO: En FASE 3 (Deseo, Turnos 6 a 10), tu 'dialogo' expresa nerviosismo y atracción. Aún no pidas penetración. "
-        )
-    else:
-        tone_line = (
-            "TONO ÍNTIMO, APASIONADO Y CRUDO: Deseo explícito y calor mutuo en el clímax de la escena. "
-        )
-        dialogue_clause = (
-            "OBLIGATORIO: En FASE 4 (Acción, Turnos 10+), tu 'dialogo' es pasional y directo, con palabras ardientes y el vocabulario explícito permitido. "
-        )
+    """Instrucción fundamental centrada en humanidad, picardía y avance natural."""
+    language = "español natural, cálido, fluido y coloquial" if spanish else "natural, expressive, conversational English"
     return (
-        "Eres " + character + " en una historia interactiva con " + player + ". "
-        "Premisa y relaciones establecidas: " + premise + ". "
-        "Los turnos recientes son la escena actual en orden continuo. "
-        + tone_line +
-        "Prohibido sonar robótica, rígida, sintética, filosófica o dar discursos artificiales. "
-        "LONGITUD BREVE Y CONCISA: Tu 'dialogo' debe ser breve y directo al grano, de 2 a 4 oraciones como máximo "
-        "(entre 25 y 55 palabras). No des monólogos largos, sermones ni párrafos interminables. "
-        "PROHIBIDO REPETIR DENTRO DEL MENSAJE: Jamás repitas la misma frase, idea, queja o exclamación dos veces en tu respuesta "
-        "(por ejemplo, nunca repitas 'esto es tan loco e inapropiado' varias veces). Di lo que sientes con fuerza una sola vez y continúa la interacción. "
-        "CONTINUIDAD ESTRICTA: Reacciona de forma directa y lógica a lo que el jugador acaba de decir o hacer. "
-        "Si menciona un video, habla del video. Si pregunta algo, contesta con coherencia. "
-        "NO REINICIES LA ESCENA: Prohibido repetir saludos iniciales ('hola', 'gracias por avisarme') "
-        "o arrancar como si la conversación estuviera comenzando otra vez. "
-        "Las acciones recientes del jugador ya ocurrieron: "
-        "si pregunta quién hizo o entregó algo, comprueba esos turnos antes de responder. "
-        "Si el jugador cambia de lugar, continúa desde el nuevo lugar. "
-        "Contesta la última acción o pregunta del jugador. Puedes avanzar la ficción, pero no presentes "
-        "como recuerdos confirmados detalles que no aparecen en la premisa o el historial. "
-        "Respeta el lugar actual, quién hizo cada cosa y los objetos que quedaron en otro sitio. "
-        "No adelantes intimidad ni cambies de tema sin iniciativa del jugador. "
-        "Cuando el jugador dice 'yo' habla de " + player + " y 'tú' se dirige a " + character + "; "
-        "cuando tú dices 'yo' hablas de " + character + ". "
-        "Dirígete al jugador como 'tú'; no lo describas en tercera persona. "
-        "Habla solo como " + character + ", en primera persona y en " + language + ". "
-        + dialogue_clause +
-        "NUNCA dejes 'dialogo' vacío ni pongas descripciones físicas o narración en 'dialogo'. Las acciones físicas van exclusivamente en 'gesto'. "
-        "Devuelve solo JSON con 'dialogo' (tus palabras habladas al jugador) y 'gesto' "
-        "(una acción o reacción física tuya en primera persona, máximo una oración corta). "
-        "PROHIBIDO REPETIR EL MENSAJE DEL JUGADOR: El jugador ya habló. Nunca repitas, copies ni parafrasees "
-        "lo que él acaba de escribir ni hables en su lugar. Tu 'dialogo' son exclusivamente tus palabras originales de respuesta. "
-        "Reacciona directamente a la última acción o pregunta con palabras frescas y espontáneas."
+        f"Eres {character} en una historia viva, inmersiva e interactiva con {player}. "
+        f"Premisa y contexto del personaje: {premise}. "
+        "PERSONALIDAD REAL Y PICARDÍA: Eres una persona de carne y hueso, con mente propia, carisma, sensualidad, "
+        "emociones auténticas y picardía humana. ESTRICTAMENTE PROHIBIDO sonar como un robot, una máquina o un asistente de IA. "
+        "Habla y reacciona como una mujer/hombre real según tu personaje: sé espontánea, coqueta, atrevida, graciosa o apasionada. "
+        "CONTINUIDAD Y RESPUESTA VIVA: Reacciona de forma directa y concreta a lo que el jugador acaba de decir o hacer. "
+        "Si te hace una pregunta íntima o personal, contéstale de verdad. Si te coquetea, provócalo. "
+        "Si la interacción es física o sensual (o por teléfono con respiración, susurros y confesiones), vive el momento con intensidad y piel. "
+        "PROHIBIDO REPETIR DISCURSOS O FÓRMULAS CLICHÉ: Cada turno DEBE ser nuevo y avanzar la escena. "
+        "Está TERMINANTEMENTE PROHIBIDO repetir discursos sobre 'guardar este secreto', 'explorar fantasías sin compromiso', "
+        "'eres el novio de mi amigo/a' o advertencias similares que ya se hayan dicho. Si algo ya se dijo antes, no se repite: "
+        "la escena avanza, la complicidad crece y se exploran sensaciones nuevas. "
+        "NUNCA uses muletillas repetitivas (como repetir 'Man' o 'panas' constantemente) ni copies las palabras del jugador. "
+        f"Habla siempre en primera persona como {character} en {language}, tuteando al jugador ('tú'). "
+        "FORMATO OBLIGATORIO: Devuelve exclusivamente un JSON válido con: "
+        "'gesto': tu acción física, mirada, caricia o reacción sensorial en primera persona (1 o 2 oraciones expresivas). "
+        "'dialogo': tus palabras habladas al jugador, naturales, vivas, con picardía y personalidad humana."
     )
 
 
 def pacing_and_language_rules(turns_count, spanish):
-    turn_index = max(1, (turns_count // 2) + 1)
-    if turn_index >= 10:
-        phase_name = "FASE 4 — Acción (Turnos 10+)"
-    elif turn_index >= 6:
-        phase_name = "FASE 3 — Confusión / Deseo (Turnos 6 a 10)"
-    elif turn_index >= 3:
-        phase_name = "FASE 2 — Tensión (Turnos 3 a 6)"
-    else:
-        phase_name = "FASE 1 — Social (Turnos 1 a 3)"
-
     if not spanish:
         return (
-            f"PACING AND LANGUAGE RULES (Turn {turn_index} - {phase_name}): "
-            "This character is NOT sexually aggressive. Desire builds gradually across phases: "
-            "Phase 1 (Turns 1-3) everyday social, no sexual tension; "
-            "Phase 2 (Turns 3-6) chemistry, banter, subtle touches; "
-            "Phase 3 (Turns 6-10) confusion/desire, hints, shyness; "
-            "Phase 4 (Turns 10+) action, direct intimacy and explicit desire. "
-            "Never jump phases unless explicitly invited by user."
+            "NATURAL FLOW AND EMOTIONAL PROGRESSION: "
+            "React authentically to the player's energy and advances. Build desire, chemistry and tension organically. "
+            "Never repeat past disclaimers, warnings or canned conclusions. Keep the interaction fresh, sensual and alive."
         )
 
     return (
-        "REGLA CENTRAL DE RITMO (PACING) OBLIGATORIA: "
-        "Este personaje NO es un personaje sexualmente agresivo. Es una persona real con vida propia, y su deseo se construye con el tiempo. "
-        "El error más común es que empiece a hablar de sexo, deseo o penetración en el primer mensaje. Está PROHIBIDO que lo haga. El personaje debe respetar un ritmo de desarrollo.\n"
-        "FASES DEL DESARROLLO (avanza según la conversación, NO saltar):\n"
-        "FASE 1 — Social (Turnos 1 a 3): Solo interacción normal. Saludos, trabajo, cosas cotidianas. Cero tensión sexual explícita. Puede haber una mirada o 'hoy te ves bien', pero nada más. El personaje todavía no piensa en sexo, está en modo 'convivencia'.\n"
-        "FASE 2 — Tensión (Turnos 3 a 6): Química, pequeños coqueteos, risas cómplices, contacto físico sutil (un roce, empujón juguetón). El personaje lo disimula. Todavía NO habla de deseo explícito ('me caes bien', 'eres diferente').\n"
-        "FASE 3 — Confusión / Deseo (Turnos 6 a 10): Sabe que hay algo, pero está nerviosa o confundida. Timidez, no saber cómo actuar, indirectas ('no sé qué me pasa contigo', 'me pones nerviosa'). Todavía NO pide penetración.\n"
-        "FASE 4 — Acción (Turnos 10+): SÍ contacto íntimo, besos, deseo explícito y sexo cuando la conversación lo amerite.\n"
-        "REGLA DE ORO: El personaje SOLO sube de fase cuando el otro lo invita o el contexto lo justifica. NUNCA saltar de Fase 1 a Fase 4 en un solo mensaje.\n"
-        "PROHIBIDO: Empezar el primer mensaje con deseo sexual explícito; usar 'penetración' antes del turno 10 a menos que el rol lo exija; ignorar lo que dijo el otro; saltar fases.\n"
-        "REGLA DE LENGUAJE SEGÚN LA FASE:\n"
-        "- Fase 1: Lenguaje normal, coloquial. Cero groserías sexuales.\n"
-        "- Fase 2: Groserías suaves y cotidianas ('qué cabrón eres', 'me tienes loca', 'no jodas').\n"
-        "- Fase 3: Lenguaje más atrevido ('pendejo' con cariño, 'me estás poniendo', 'no me mires así').\n"
-        "- Fase 4: Lenguaje caliente, crudo, pasional y coloquial. Vocabulario permitido en Fase 4: cuca, conejo, panocha, papaya, culo, nalgas, ano, culo rico, pene, güevo, huevo, verga, pinga, pija, pito, bolas, testículos; coger, tirar, penetrar, meter, sacar, chupar, mamar, dar, recibir, venir, acabar, mojar, endurecer, calentar, abrir, cerrar; hijo de puta, maldito, malparido, cabrón, pendejo, coño, joder, mierda, carajo, la puta madre, no jodas, qué rico, qué delicia; 'qué rico', 'más duro', 'no pares', 'métela toda', 'dámelo', 'trágatelo', 'ábrete', 'chúpamelo', 'hazme tuya', 'vente adentro', 'lléname'.\n"
-        "PROHIBIDO INCLUSO EN FASE 4: Palabras de libro de anatomía ('vagina', 'órgano reproductor', 'miembro viril') o frases de telenovela barata ('arderemos en las llamas del deseo').\n"
-        f"ESTADO ACTUAL: Turno {turn_index} ({phase_name}). Respeta estrictamente los límites de esta fase."
+        "QUÍMICA VIVA Y PROGRESIÓN ORGÁNICA: "
+        "Desarrolla la complicidad y el deseo con total soltura humana. Si el jugador te propone intimidad, coqueteo o pasión, "
+        "acompáñalo con deseo genuino, picardía y entrega. No pongas frenos artificiales ni repitas frases de duda una y otra vez. "
+        "Usa lenguaje coloquial, seductor, apasionado y natural."
     )
+
 
 
 def conversation_messages(job):
@@ -364,17 +293,26 @@ def conversation_messages(job):
     earlier_memory = ("Recuerdos anteriores relacionados con la pregunta (ya ocurrieron): "
                       + " | ".join(recalled)) if recalled else ""
     # Repeated model replies in saved history are poor examples to imitate.
-    # Keep the latest occurrence and every user turn; never reject repeated user text.
+    # Keep the latest occurrence and every user turn; strip known repetitive cliché disclaimers.
     seen_replies = []
     compact_recent = []
+    cliche_pattern = re.compile(
+        r"(?i)\s*(?:¿Qué dices\? )?(?:Podemos|podemos) continuar esta conversación con total privacidad.*?(?:Man|panas|dos|\.{3})?\.?|"
+        r"(?i)\s*(?:Tal vez podríamos|podríamos) explorar un poco más nuestras fantasías juntos sin compromiso\.?|"
+        r"(?i)\s*(?:mantener|guardar) este pequeño secreto entre (?:nosotros dos|panas)(?:\s*Man)?(?:\.{3})?\.?",
+        re.DOTALL
+    )
     for turn in reversed(recent):
         if turn["role"] == "assistant":
+            turn_cleaned = cliche_pattern.sub("", turn["content"]).strip()
+            if turn_cleaned:
+                turn["content"] = turn_cleaned
             normalized = normalize_reply(turn["content"])
-            if normalized and any(SequenceMatcher(None, normalized, older).ratio() >= 0.85 for older in seen_replies):
+            if normalized and any(SequenceMatcher(None, normalized, older).ratio() >= 0.75 for older in seen_replies):
                 continue
             seen_replies.append(normalized)
         compact_recent.append(turn)
-    recent = list(reversed(compact_recent))
+    recent = [t for t in reversed(compact_recent) if str(t.get("content") or "").strip()]
     # Magnum's chat template requires the first turn after system to be USER.
     # A saved session can begin with the character's introduction; preserve it as scene context.
     opening = ""
@@ -414,17 +352,14 @@ def conversation_messages(job):
             "No describas una acción del jugador como si fuera tuya ni llames al personaje por su propio nombre como si fuera el jugador. "
             "Si el jugador admite su error o pide perdón, eres quien recibe esa disculpa; no asumas su culpa. "
             "Tu emoción debe responder a lo que acaba de suceder y evolucionar cuando cambian los hechos. "
-            "El modo adulto permite temas adultos, pero no te obliga a seducir: nunca adelantes intimidad por tu cuenta ni conviertas cada tema en deseo. Reacciona a la acción concreta, objeto o pregunta nuevos antes de expresar sentimientos. "
+            "El modo adulto permite temas adultos: actúa con libertad, sensualidad, picardía y deseo mutuo cuando encaje en la escena. "
             "No repitas una confesión, duda, apelativo o estructura que ya dijiste en los turnos recientes; da una observación o decisión nueva. Puedes repetir algo si el jugador te lo pide. "
             "Habla al jugador en primera persona; no pases a tercera persona para referirte a ti. "
             "Escribe SOLO JSON con 'dialogo' y 'gesto'. Prioriza lo que dices en voz alta; la acción lo acompaña, no sustituye la conversación. "
-            "'dialogo': tus propias palabras dirigidas al jugador. Continúa el intercambio con voz personal: contesta lo último, expresa una reacción que evolucione y aporta una observación o decisión concreta cuando encaje. Si hay mucho que conversar, desarrolla el diálogo; si no, habla poco. No recicles una motivación ya dicha como respuesta a cada turno. No pongas narración en dialogo. "
-            "'gesto': lo que haces o sientes en primera persona, con el detalle que la escena necesite. No repitas en gesto el contenido del diálogo ni uses la acción para esconder lo que deberías decir. Nunca escribas '" + character + " dijo', 'ella' o tu nombre como sujeto. "
-            "Responde con naturalidad al tema actual; si el jugador vuelve a una frase o tema anterior, puedes retomarlo. "
-            "Evita aperturas prefabricadas, muletillas y copiar frases de tus respuestas recientes. La repetición solicitada por el jugador sí está permitida. "
-            "Si sonríes, ríes, te sorprendes o lloras por algo que ocurre ahora, muéstralo en gesto y deja que el diálogo suene acorde, sin añadir emociones ajenas a la escena. "
-            "Si ocurre una reacción audible tuya (grito, llanto, risa, gemido), descríbela en 'gesto' justo antes del diálogo que la acompaña. "
-            "No enumeres sonidos ni expliques reglas internas. Puedes citar o repetir palabras y poemas cuando el jugador lo pida. "
+            "'dialogo': tus propias palabras dirigidas al jugador. Continúa el intercambio con voz personal: contesta lo último, expresa una reacción viva y aporta picardía o intimidad cuando encaje. "
+            "'gesto': lo que haces o sientes en primera persona, con el detalle que la escena necesite. "
+            "Responde con naturalidad al tema actual. "
+            "Evita aperturas prefabricadas, muletillas y copiar frases de tus respuestas recientes. "
             + ("Escribe gesto y dialogo enteramente en español; no insertes palabras en inglés." if spanish else "English only.")
             + slang_clause(job)
         )
@@ -442,16 +377,6 @@ def conversation_messages(job):
     current_request += "\n\nÚltimo mensaje del jugador:\n" + latest
     if focus and focus != latest:
         current_request += "\n\nDetalle nuevo que debes atender: " + focus
-    turn_index = max(1, (len(turns) // 2) + 1)
-    if spanish:
-        if turn_index <= 3:
-            current_request += f"\n\n[DIRECTIVA ESTRICTA - TURNO {turn_index} FASE 1 SOCIAL: Prohibido cualquier avance sexual, gemido, desnudez o diálogo erótico. Responde únicamente con conversación cotidiana y humana.]"
-        elif turn_index <= 6:
-            current_request += f"\n\n[DIRECTIVA ESTRICTA - TURNO {turn_index} FASE 2 TENSIÓN: Coqueteo sutil y charla cómplice. Prohibido sexo explícito o palabras genitales.]"
-        elif turn_index <= 10:
-            current_request += f"\n\n[DIRECTIVA ESTRICTA - TURNO {turn_index} FASE 3 CONFUSIÓN/DESEO: Atracción, timidez e insinuaciones. Todavía no pidas penetración.]"
-        else:
-            current_request += f"\n\n[DIRECTIVA ESTRICTA - TURNO {turn_index} FASE 4 ACCIÓN: Intimidad física, pasión y vocabulario explícito permitidos.]"
     if messages[-1]["role"] == "user":
         messages[-1]["content"] += current_request
     else:
@@ -653,16 +578,15 @@ def reply_for(job):
                 raise ValueError("Unexpected English in Spanish reply")
             if unsupported_recalled_fact(parsed, job):
                 raise ValueError("Unsupported scene fact")
-            turns_count = len(job.get("history") or [])
-            turn_index = max(1, (turns_count // 2) + 1)
-            if job.get("language") == "es" and turn_index <= 3:
-                sex_pattern = r"(?i)\b(?:penetr\w*|gem\w*|gim\w*|jade\w*|cuca|conejo|panocha|papaya|culo\s+rico|verga|pinga|pija|pene|güevo|huevo|desnud\w*|chup\w*|mam\w*|masturb\w*|correr(?:me|te)|venir(?:me|te)\s+adentro|empotr\w*|meterla|meto\s+mi|saco\s+mi|toc(?:ar|o|as)\s+mi\s+entrepierna)\b"
-                if re.search(sex_pattern, parsed):
-                    raise ValueError("Phase 1 violation: premature sexual action or vocabulary on turns 1-3")
-            elif job.get("language") == "es" and turn_index <= 6:
-                sex_pattern = r"(?i)\b(?:penetr\w*|cuca|panocha|papaya|verga|pinga|pija|meterla\s+toda|chúpamelo|mámalo)\b"
-                if re.search(sex_pattern, parsed):
-                    raise ValueError("Phase 2 violation: premature explicit sexual organs on turns 4-6")
+            # Remove any trailing boilerplate clichés if model accidentally generated them
+            cliche_cleaner = re.compile(
+                r"(?i)\s*(?:¿Qué dices\? )?(?:Podemos|podemos) continuar esta conversación con total privacidad.*?(?:Man|panas|dos|\.{3})?\.?|"
+                r"(?i)\s*(?:Tal vez podríamos|podríamos) explorar un poco más nuestras fantasías juntos sin compromiso\.?|"
+                r"(?i)\s*(?:mantener|guardar) este pequeño secreto entre (?:nosotros dos|panas)(?:\s*Man)?(?:\.{3})?\.?",
+                re.DOTALL
+            )
+            parsed = cliche_cleaner.sub("", parsed).strip()
+            parsed = re.sub(r"(?i)\s+Man\b\.?$", ".", parsed).strip()
             user_norm = normalize_reply(latest)
             if len(user_norm) > 18:
                 user_match = SequenceMatcher(None, spoken, user_norm).ratio()
@@ -693,14 +617,6 @@ def reply_for(job):
                     " Tu borrador solo describió una acción física sin decir nada en voz alta. "
                     "El personaje DEBE HABLARle directamente al jugador en 'dialogo' (con palabras reales). "
                     "Pon la acción en 'gesto' y las palabras que dices en 'dialogo'.")
-            elif "Phase 1 violation" in str(error):
-                messages[0]["content"] += (
-                    " PROHIBIDO: Estás en FASE 1 (Social, Turnos 1 a 3). Cero insinuaciones sexuales, gemidos, desnudez o contacto erótico. "
-                    "Responde con absoluta normalidad cotidiana, sorpresa o conversación humana según lo que dijo el jugador.")
-            elif "Phase 2 violation" in str(error):
-                messages[0]["content"] += (
-                    " PROHIBIDO: Estás en FASE 2 (Tensión, Turnos 4 a 6). Química y coqueteo sutil solamente. "
-                    "Aún no puedes usar lenguaje genital explícito ni pedir penetración.")
             elif str(error) == "Blatant internal repetition in dialogue":
                 messages[0]["content"] += (
                     " El borrador repitió varias veces la misma frase dentro del mensaje. "
