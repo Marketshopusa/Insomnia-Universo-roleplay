@@ -1,5 +1,4 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.58.0";
-import { loadStoryContext } from "../../../src/lib/storyContext.mjs";
 
 const bucket = "kineva-adult-chat";
 const cors = {
@@ -38,14 +37,23 @@ Deno.serve(async (req) => {
       const result = JSON.parse(await data.text());
       return reply(result);
     }
-    if (body?.action !== "create")
+    if (body?.action !== "create" || body?.adultMode !== true)
       return reply({ error: "invalid_request" }, 400);
-    const latest = String(body.userMessage ?? "").trim();
-    if (latest.length > 8000) return reply({ error: "message_too_long", message: "Divide este mensaje en partes de hasta 8000 caracteres." }, 400);
+    const latest = String(body.userMessage ?? "").trim().slice(0, 1500);
     if (latest.length < 2) return reply({ error: "missing_message" }, 400);
     const story = body.story ?? {};
-    const context = await loadStoryContext(userClient, auth.user.id, body);
-    const { history, memory, facts } = context;
+    const history = (Array.isArray(body.history) ? body.history.slice(-48) : [])
+      .filter((item: unknown) => typeof item === "object" && item !== null)
+      .map((item: { role?: string; content?: string }) => ({
+        role: item.role === "assistant" ? "assistant" : "user",
+        content: String(item.content ?? "").slice(0, 700),
+      }));
+    const memory = (Array.isArray(body.memory) ? body.memory.slice(0, 6) : [])
+      .filter((item: unknown) => typeof item === "object" && item !== null)
+      .map((item: { role?: string; content?: string }) => ({
+        role: item.role === "assistant" ? "assistant" : "user",
+        content: String(item.content ?? "").slice(0, 160),
+      }));
     const { data: pending, error: listError } = await service.storage.from(bucket)
       .list(`jobs/${auth.user.id}`, { limit: 10 });
     if (listError) throw listError;
@@ -57,18 +65,13 @@ Deno.serve(async (req) => {
       jobId, ownerId: auth.user.id, createdAt: new Date().toISOString(),
       language: body.language === "es" ? "es" : "en",
       region: ["ar", "ve", "co", "mx", "es", "cl", "plain"].includes(body.region) ? body.region : "mx",
-      sessionId: context.sessionId, currentMessageId: body.currentMessageId || null, totalTurns: context.totalTurns,
-      continuityReview: true,
-      containsMinor: context.containsMinor,
-      nonSexualOnly: context.containsMinor || body.adultMode !== true,
       story: {
-        id: story.id,
         title: String(story.title ?? "").slice(0, 160),
         description: String(story.description ?? "").slice(0, 300),
         story_context: String(story.story_context ?? "").slice(0, 2000),
         character_role: String(story.character_role ?? "").slice(0, 160),
         player_role: String(story.player_role ?? "").slice(0, 160),
-      }, history, memory, facts, userMessage: latest,
+      }, history, memory, userMessage: latest,
     };
     const { error } = await service.storage.from(bucket).upload(requestPath,
       new Blob([JSON.stringify(payload)], { type: "application/json" }),
@@ -76,9 +79,7 @@ Deno.serve(async (req) => {
     if (error) throw error;
     return reply({ status: "pending", jobId }, 202);
   } catch (error) {
-    const failure = error as { status?: number; code?: string; message?: string };
-    console.error("adult-story-chat", failure.code || "local_chat_unavailable");
-    return reply({ error: failure.code || "local_chat_unavailable",
-      message: failure.message || "No se pudo recuperar esta conversación." }, failure.status || 500);
+    console.error("adult-story-chat", error);
+    return reply({ error: "local_chat_unavailable" }, 500);
   }
 });

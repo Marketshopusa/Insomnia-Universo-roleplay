@@ -17,7 +17,6 @@ import { invokeFunctionWithRetry } from "@/lib/invokeFunction";
 import { generateSceneImage } from "@/lib/sceneImage";
 import { normalizeAssistantReply } from "@/lib/roleReply";
 import { selectStoryMemory } from "@/lib/storyMemory";
-import { createStorySessionStore } from "@/lib/storySession.mjs";
 import { resolveStoryCover } from "@/lib/storyCover";
 import { useStoryCustomizations } from "@/hooks/useStoryCustomizations";
  import { useStory } from "@/hooks/useStories";
@@ -96,10 +95,6 @@ type Mode = "select" | "read" | "roleplay";
   const streamRef = useRef<SpeechStream | null>(null);
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [sessionLoaded, setSessionLoaded] = useState(false);
-  const [sessionError, setSessionError] = useState(false);
-  const [sessionReloadKey, setSessionReloadKey] = useState(0);
-  const sessionStoreRef = useRef<ReturnType<typeof createStorySessionStore> | null>(null);
-  const turnBusyRef = useRef(false);
   useEffect(() => {
     const nextVoice = getStoryVoice(storyId);
     const nextRegion = getStoryRegion(storyId);
@@ -236,69 +231,68 @@ type Mode = "select" | "read" | "roleplay";
     story?.story_categories?.map((sc: any) => sc?.categories?.name).filter(Boolean) || [];
   const tCategoryNames = useTranslatedTexts(categoryNamesAll);
  
-  // A failed restore must never look like an empty, new conversation.
+  // Load saved session for this user + story (persistent history)
   useEffect(() => {
     let cancelled = false;
-    const store = user && storyId ? createStorySessionStore(supabase, user.id, storyId) : null;
-    sessionStoreRef.current = store;
-    setSessionLoaded(false);
-    setSessionError(false);
-    setMessages([]);
-    messagesRef.current = [];
-    setNarrative("");
-    setNarrativeLoading(false);
-    streamRef.current?.stop();
-    streamRef.current = null;
-    audioRef.current?.pause();
-    setPlayingId(null);
-    setMode("select");
-    setInputMessage("");
-    setIsTyping(false);
-    turnBusyRef.current = false;
     const load = async () => {
-      if (!store) return;
-      try {
-        const data = await store.load();
-        if (cancelled) return;
-        const restored: Message[] = (data?.messages || []).filter((m: any) =>
-          ["user", "assistant"].includes(m.role) && typeof m.content === "string" && m.content
-        ).map((m: any) => ({ ...m, timestamp: new Date(m.timestamp) }));
-        messagesRef.current = restored;
-        setMessages(restored);
-        if (data?.narrative) setNarrative(data.narrative);
-        if (data?.last_mode === "read" || data?.last_mode === "roleplay") setMode(data.last_mode);
-        if (store.pendingInput()) setInputMessage(store.pendingInput());
-        else if (restored.at(-1)?.role === "user") setInputMessage(restored.at(-1)!.content);
-        if (store.recoveredConflict()) toast({title: language === "es" ? "Se recuperó el historial más reciente. Revisa el turno pendiente antes de reenviarlo." : "Latest history restored. Review the pending turn before resending."});
-        setSessionLoaded(true);
-      } catch {
-        if (!cancelled) setSessionError(true);
-      }
-    };
-    void load();
-    return () => { cancelled = true; store?.close(); };
-  }, [user?.id, storyId, sessionReloadKey]);
-
-  const saveSession = async (
-    nextMessages: Message[], nextNarrative: string | null, nextMode: Mode
-  ): Promise<void> => {
-    const store = sessionStoreRef.current;
-    if (!store) throw new Error("session_not_loaded");
-    try {
-      await store.save(nextMessages, nextNarrative, nextMode);
-    } catch {
-      if (sessionStoreRef.current === store) {
-        setSessionError(true);
-        toast({
-          title: language === "es" ? "No se pudo confirmar el guardado" : "Could not confirm the save",
-          description: language === "es"
-            ? "Recupera la conversación antes de continuar y antes de salir de esta página."
-            : "Recover the conversation before continuing or leaving this page.",
-          variant: "destructive",
+      if (!user || !storyId) return;
+      const { data, error } = await supabase
+        .from("story_sessions")
+        .select("messages, narrative, last_mode")
+        .eq("user_id", user.id)
+        .eq("story_id", storyId)
+        .maybeSingle();
+      if (cancelled) return;
+      if (!error && data) {
+        const raw = (data.messages as any[]) || [];
+        const restored: Message[] = raw.flatMap((m: any) => {
+          const content = m.role === "assistant" ? normalizeAssistantReply(m.content) : m.content;
+          return content ? [{ id: m.id, role: m.role, content, timestamp: new Date(m.timestamp) }] : [];
         });
+        if (restored.length > 0) setMessages(restored);
+        if (data.narrative) setNarrative(data.narrative);
+        if (data.last_mode === "read" || data.last_mode === "roleplay") {
+          setMode(data.last_mode as Mode);
+        }
       }
-      throw new Error("session_save_failed");
-    }
+      setSessionLoaded(true);
+    };
+    load();
+    return () => { cancelled = true; };
+  }, [user, storyId]);
+
+  // Preserve the order of saves: a slow earlier request must not overwrite a newer turn.
+  const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const saveSession = (
+    nextMessages: Message[],
+    nextNarrative: string | null,
+    nextMode: Mode
+  ): Promise<void> => {
+    if (!user || !storyId) return Promise.resolve();
+    const userId = user.id;
+    const currentStoryId = storyId;
+    const serializable = nextMessages
+      .filter((m) => m.id !== "intro")
+      .map((m) => ({
+        id: m.id,
+        role: m.role,
+        content: m.content,
+        timestamp: m.timestamp.toISOString(),
+      }));
+    saveQueueRef.current = saveQueueRef.current.catch(() => {}).then(async () => {
+      const { error } = await supabase.from("story_sessions").upsert(
+        {
+          user_id: userId,
+          story_id: currentStoryId,
+          messages: serializable,
+          narrative: nextNarrative,
+          last_mode: nextMode,
+        },
+        { onConflict: "user_id,story_id" }
+      );
+      if (error) console.error("Could not save story turn:", error.message);
+    });
+    return saveQueueRef.current;
   };
 
    const scrollToBottom = () => {
@@ -347,10 +341,9 @@ type Mode = "select" | "read" | "roleplay";
    };
  
    const generateResponse = async (userMessage: string, currentMessageId: string): Promise<string | null> => {
-    const requestStore = sessionStoreRef.current;
     const history = messagesRef.current
       .filter((m) => m.id !== "intro" && m.id !== currentMessageId)
-      .map((m) => ({ id: m.id, role: m.role, content: m.content }));
+      .map((m) => ({ role: m.role, content: m.content }));
     const { data, error } = await invokeFunctionWithRetry<{ content?: string; error?: string; message?: string }>("story-chat", {
         story: {
           id: story?.id,
@@ -363,14 +356,11 @@ type Mode = "select" | "read" | "roleplay";
         },
         language,
         history: history.slice(-48),
-        currentMessageId,
-        sessionId: sessionStoreRef.current?.current()?.id,
         memory: selectStoryMemory(history, userMessage),
         userMessage,
         adultMode: adultEnabled && consentGiven,
         region: activeRegion(),
     });
-    if (sessionStoreRef.current !== requestStore) return null;
     if (error || !data?.content) {
       const status = (error as { context?: Response } | null)?.context?.status;
       const code = status === 402 ? "credits_exhausted" : (data as any)?.error;
@@ -391,10 +381,6 @@ type Mode = "select" | "read" | "roleplay";
         description: data?.message,
         variant: "destructive",
       });
-      else if (code === "session_conflict" || code === "memory_unavailable") {
-        setSessionError(true);
-        toast({ title: language === "es" ? "Recupera la conversación para continuar" : "Recover the conversation to continue", description: data?.message, variant: "destructive" });
-      }
       else if (code === "content_blocked") toast({
         title: language === "es" ? "Esta escena no puede continuar" : "This scene cannot continue",
         description: data?.message,
@@ -422,40 +408,43 @@ type Mode = "select" | "read" | "roleplay";
    };
  
    const handleSendMessage = async () => {
-     if (!inputMessage.trim() || turnBusyRef.current || !sessionLoaded || sessionError) return;
-     turnBusyRef.current = true;
-     const store = sessionStoreRef.current;
-     const previous = messagesRef.current;
-     const last = previous.at(-1);
-     const userMessage: Message = last?.role === "user" && last.content === inputMessage
-       ? last
-       : { id: crypto.randomUUID(), role: "user", content: inputMessage, timestamp: new Date() };
-     const next = last === userMessage ? previous : [...previous, userMessage];
-     messagesRef.current = next;
-     setMessages(next);
+     if (!inputMessage.trim()) return;
+ 
+     const userMessage: Message = {
+       id: Date.now().toString(),
+       role: "user",
+       content: inputMessage,
+       timestamp: new Date(),
+     };
+ 
+     setMessages((prev) => [...prev, userMessage]);
      setInputMessage("");
      setIsTyping(true);
-     try {
-       await saveSession(next, narrative || null, mode);
-       if (sessionStoreRef.current !== store) return;
-       const responseContent = await generateResponse(userMessage.content, userMessage.id);
-       if (sessionStoreRef.current !== store) return;
-       if (!responseContent) { setInputMessage(userMessage.content); return; }
-       const assistantMessage: Message = {
-         id: crypto.randomUUID(), role: "assistant", content: responseContent, timestamp: new Date(),
-       };
-       const complete = [...messagesRef.current, assistantMessage];
-       messagesRef.current = complete;
-       setMessages(complete);
-       await saveSession(complete, narrative || null, mode);
-       if (sessionStoreRef.current === store && !isMuted) void playAudio(responseContent, assistantMessage.id);
-     } catch { /* saveSession exposes recovery; an unanswered turn stays saved */ }
-     finally {
-       if (sessionStoreRef.current === store) {
-         turnBusyRef.current = false;
-         setIsTyping(false);
-       }
+ 
+ 
+     const responseContent = await generateResponse(userMessage.content, userMessage.id);
+     if (!responseContent) {
+       setMessages((previous) => previous.filter((message) => message.id !== userMessage.id));
+       setInputMessage(userMessage.content);
+       setIsTyping(false);
+       return;
      }
+     
+     const assistantMessage: Message = {
+       id: (Date.now() + 1).toString(),
+       role: "assistant",
+       content: responseContent,
+       timestamp: new Date(),
+     };
+ 
+     setMessages((current) => {
+       const base = current.some((item) => item.id === userMessage.id) ? current : [...current, userMessage];
+       const next = base.some((item) => item.id === assistantMessage.id) ? base : [...base, assistantMessage];
+       void saveSession(next, narrative || null, mode);
+       return next;
+     });
+     setIsTyping(false);
+     if (!isMuted) void playAudio(responseContent, assistantMessage.id);
    };
 
   const playAudio = async (text: string, id: string) => {
@@ -500,20 +489,16 @@ type Mode = "select" | "read" | "roleplay";
 
    // Reset the roleplay: wipe the saved conversation so it starts fresh and stays private
    const resetRoleplay = async () => {
-     if (!user || !storyId || turnBusyRef.current || !sessionLoaded || sessionError) return;
+     if (!user || !storyId) return;
      stopAudio();
-     try {
-       await sessionStoreRef.current?.remove();
-       messagesRef.current = [];
-       setMessages(story ? [{ id: "intro", role: "assistant", content: getIntroMessage(story), timestamp: new Date() }] : []);
-       setNarrative("");
-       setInputMessage("");
-       setSceneImages({});
-       try { localStorage.removeItem("kineva-adult-pending:" + user.id + ":" + storyId); } catch { /* unavailable */ }
-       toast({ title: language === "es" ? "Roleplay reiniciado. La conversación anterior se borró." : "Roleplay reset. Previous conversation deleted." });
-     } catch {
-       toast({ title: language === "es" ? "No se pudo borrar la conversación" : "Could not delete the conversation", variant: "destructive" });
-     }
+     await supabase
+       .from("story_sessions")
+       .delete()
+       .eq("user_id", user.id)
+       .eq("story_id", storyId);
+     setMessages(story ? [{ id: "intro", role: "assistant", content: getIntroMessage(story), timestamp: new Date() }] : []);
+     setSceneImages({});
+     toast({ title: language === "es" ? "Roleplay reiniciado. La conversación anterior se borró." : "Roleplay reset. Previous conversation deleted." });
    };
 
    const buildIllustrationContext = (key: string) => {
@@ -566,7 +551,6 @@ type Mode = "select" | "read" | "roleplay";
 
     const generateNarrative = async () => {
      if (!story) return;
-     const narrativeStore = sessionStoreRef.current;
      setNarrativeLoading(true);
      setNarrative("");
      try {
@@ -590,7 +574,6 @@ type Mode = "select" | "read" | "roleplay";
              .join("\n")
              .slice(0, 4000),
        });
-       if (sessionStoreRef.current !== narrativeStore) return;
        if (error || !(data as any)?.content) {
          const code = (data as any)?.error;
          if (code === "rate_limited") toast({ title: t("mode.rateLimited"), variant: "destructive" });
@@ -598,10 +581,10 @@ type Mode = "select" | "read" | "roleplay";
          else toast({ title: t("mode.aiError"), variant: "destructive" });
        } else {
          setNarrative((data as any).content);
-          await saveSession(messagesRef.current, (data as any).content, mode);
+          saveSession(messages, (data as any).content, mode);
        }
-     } catch { /* save failures are exposed by saveSession */ } finally {
-       if (sessionStoreRef.current === narrativeStore) setNarrativeLoading(false);
+     } finally {
+       setNarrativeLoading(false);
      }
    };
 
@@ -718,14 +701,6 @@ type Mode = "select" | "read" | "roleplay";
    return (
      <MainLayout>
        <div className="container mx-auto px-4 py-8">
-         {sessionError && (
-           <div role="alert" className="mb-4 rounded border border-destructive p-3">
-             <p>{language === "es" ? "No pudimos recuperar o confirmar el guardado de esta conversación. Recupera el historial para continuar sin perder turnos." : "We could not restore or confirm this conversation. Recover the history before continuing."}</p>
-             <Button className="mt-2" onClick={() => setSessionReloadKey((key) => key + 1)}>
-               {language === "es" ? "Recuperar conversación" : "Recover conversation"}
-             </Button>
-           </div>
-         )}
          {/* Back button */}
          <Button
            variant="ghost"
@@ -1001,7 +976,7 @@ type Mode = "select" | "read" | "roleplay";
                {/* Chat Header */}
                <div className="p-4 border-b border-border flex flex-wrap items-center justify-between gap-2">
                   <h2 className="font-display text-lg">{tTitle || story.title}</h2>
-                 <fieldset disabled={!sessionLoaded || sessionError || isTyping} className="flex flex-wrap items-center gap-1">
+                 <div className="flex flex-wrap items-center gap-1">
                     <VoiceMenu value={voice} language={language} onChange={changeVoice} />
                     <RegionMenu value={region} accent={accent} language={language} onChange={changeRegion} onAccentChange={changeAccent} />
                     <CallDialog
@@ -1014,15 +989,19 @@ type Mode = "select" | "read" | "roleplay";
                         .filter((message) => message.id !== "intro")
                         .map((message) => ({ role: message.role, content: message.content }))}
                       onTurn={(userText, assistantText) => {
-                        const previous = messagesRef.current;
-                        const last = previous.at(-1);
-                        const spoken = last?.role === "user" && last.content === userText;
-                        const next: Message[] = spoken ? [...previous] : [...previous,
-                          { id: crypto.randomUUID(), role: "user", content: userText, timestamp: new Date() }];
-                        if (assistantText) next.push({id: crypto.randomUUID(), role: "assistant", content: assistantText, timestamp: new Date()});
-                        messagesRef.current = next;
-                        setMessages(next);
-                        void saveSession(next, narrative || null, mode).catch(() => {});
+                        setMessages((previous) => {
+                          const last = previous[previous.length - 1];
+                          const spoken = last?.role === "user" && last.content === userText;
+                          const next: Message[] = spoken ? [...previous] : [
+                            ...previous,
+                            { id: `${Date.now()}-u`, role: "user", content: userText, timestamp: new Date() },
+                          ];
+                           if (assistantText) {
+                             next.push({ id: `${Date.now()}-a`, role: "assistant", content: assistantText, timestamp: new Date() });
+                           }
+                          saveSession(next, narrative || null, mode);
+                          return next;
+                        });
                       }}
                     />
                    <Button
@@ -1046,7 +1025,7 @@ type Mode = "select" | "read" | "roleplay";
                        <Volume2 className="w-5 h-5" />
                      )}
                    </Button>
-                 </fieldset>
+                 </div>
                </div>
  
                {/* Messages */}
@@ -1161,11 +1140,11 @@ type Mode = "select" | "read" | "roleplay";
                      onKeyPress={handleKeyPress}
                      placeholder={t("story.typeMessage")}
                      className="flex-1 bg-secondary border-border"
-                     disabled={isTyping || !sessionLoaded || sessionError}
+                     disabled={isTyping}
                    />
                    <Button
                      onClick={handleSendMessage}
-                     disabled={!inputMessage.trim() || isTyping || !sessionLoaded || sessionError}
+                     disabled={!inputMessage.trim() || isTyping}
                      className="gap-2"
                    >
                      <Send className="w-4 h-4" />

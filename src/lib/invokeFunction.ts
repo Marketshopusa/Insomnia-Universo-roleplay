@@ -13,27 +13,10 @@ type FunctionResult<T> = { data: T | null; error: ({ message: string; context: R
 type ChatReply = { status?: string; jobId?: string; content?: string; error?: string; message?: string };
 type PendingChat = { jobId: string; signature: string; createdAt: number };
 
-// Supabase returns data=null for non-2xx responses; the server's error is in context.
-async function chatErrorReply(error: unknown, data: ChatReply | null): Promise<ChatReply | null> {
-  if (data) return data;
-  const response = responseContext(error);
-  if (!response) return null;
-  try {
-    const parsed: unknown = await response.clone().json();
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
-    const value = parsed as Record<string, unknown>;
-    return {
-      ...(typeof value.error === "string" ? { error: value.error } : {}),
-      ...(typeof value.message === "string" ? { message: value.message } : {}),
-    };
-  } catch { return null; }
-}
-
 async function chatSignature(body: unknown): Promise<string> {
   const input = body as {
     story?: { id?: string; title?: string; description?: string; story_context?: string; character_role?: string; player_role?: string };
-    userMessage?: string; adultMode?: boolean;
-    currentMessageId?: string; sessionId?: string; language?: string; region?: string;
+    userMessage?: string;
     history?: { role: string; content: string }[];
     memory?: { role: string; content: string }[];
   };
@@ -42,7 +25,6 @@ async function chatSignature(body: unknown): Promise<string> {
   const data = new TextEncoder().encode(JSON.stringify([
     input.story?.id, input.story?.title, input.story?.description,
     input.story?.story_context, input.story?.character_role, input.story?.player_role,
-    input.sessionId, input.currentMessageId, input.language, input.region, input.adultMode === true,
     input.memory, prior.slice(-8), input.userMessage,
   ]));
   const digest = await crypto.subtle.digest("SHA-256", data);
@@ -69,16 +51,10 @@ async function callAdultStoryChat<T>(body: unknown): Promise<FunctionResult<T>> 
       ? saved.jobId : undefined;
     if (!jobId) {
       const created = await supabase.functions.invoke<ChatReply>("adult-story-chat", {
-        body: { action: "create", adultMode: false, ...(body as object) },
+        body: { action: "create", adultMode: true, ...(body as object) },
       });
-      if (created.error || !created.data?.jobId) {
-        const details = await chatErrorReply(created.error, created.data);
-        const status = responseContext(created.error)?.status || 503;
-        const code = details?.error || (status === 401 ? "login_required" : "local_chat_unavailable");
-        return fail(details?.message || (status === 401
-          ? "Tu sesión ha caducado. Inicia sesión para continuar."
-          : "No se pudo enviar el turno al servidor. Tu mensaje sigue en el cuadro."), status, code);
-      }
+      if (created.error || !created.data?.jobId)
+        return fail("No se pudo enviar el turno a tu modelo local. Tu mensaje sigue en el cuadro.", 503);
       jobId = created.data.jobId;
       try { if (key) localStorage.setItem(key, JSON.stringify({ jobId, signature, createdAt: Date.now() })); } catch { /* ignore */ }
     }
@@ -89,19 +65,6 @@ async function callAdultStoryChat<T>(body: unknown): Promise<FunctionResult<T>> 
         body: { action: "status", jobId },
       });
       if (result.error) {
-        const response = responseContext(result.error);
-        // A rejected request will not recover by polling the same job repeatedly.
-        if (response && response.status >= 400 && response.status < 500 && response.status !== 429) {
-          const details = await chatErrorReply(result.error, result.data);
-          if (details?.error === "job_not_found") {
-            try { if (key) localStorage.removeItem(key); } catch { /* ignore */ }
-            return fail("Ese turno ya no está en la cola. Reenvía tu mensaje.", 404, "chat_job_expired");
-          }
-          return fail(details?.message || (response.status === 401
-            ? "Tu sesión ha caducado. Inicia sesión para recuperar la respuesta."
-            : "El servidor rechazó la consulta de este turno."), response.status,
-            details?.error || (response.status === 401 ? "login_required" : "chat_status_rejected"));
-        }
         consecutiveErrors += 1;
         if (consecutiveErrors >= 12)
           return fail("La respuesta sigue en proceso, pero se cortó la conexión. Reenvía el mismo mensaje para recuperarla.", 503, "chat_status_unavailable");
@@ -156,7 +119,7 @@ async function callOwnAi<T>(name: string, body: unknown): Promise<FunctionResult
 
 /** Retries only transient network, rate-limit, and server failures once. */
 export async function invokeFunctionWithRetry<T>(name: string, body: unknown): Promise<FunctionResult<T>> {
-  if (name === "story-chat")
+  if (name === "story-chat" && (body as { adultMode?: boolean })?.adultMode === true)
     return callAdultStoryChat<T>(body);
   if (ownAi.has(name)) {
     // The server already tries a second Gemini model on overload or timeout.
