@@ -6,16 +6,51 @@ const send = (res, status, data) => res.status(status).json(data);
 
 export const maxDuration = 60;
 
+export const NEGATIVE_SCENE_PROMPT = "(worst quality, low quality, bad anatomy, deformed limbs, extra limbs, extra hands, mutated fingers, duplicate bodies, distorted face, blurry, text, watermark, logo, morphing, malformed:1.3)";
+
+export function visualTagsPrompt(body) {
+  const charRole = String(body.characterRole || "").trim();
+  const playerRole = String(body.playerRole || "").trim();
+  const userText = String(body.userAction || "").replace(/[*_#]/g, " ").trim();
+  const focus = String(body.focusText || "").replace(/[*_#]/g, " ").trim();
+  const location = currentLocation(body.userAction) || currentLocation(body.recentVisualAction) || currentLocation(body.focusText) || "in a coherent room";
+  
+  const tags = [
+    "(photorealistic:1.2, masterpiece, 8k, raw photo)",
+    playerRole ? "two adults, 1man and 1woman" : "1person, solo",
+    charRole ? `(${charRole.slice(0, 100)})` : "young beautiful woman",
+    focus ? `(${focus.slice(0, 160)})` : "",
+    userText ? `action: ${userText.slice(0, 100)}` : "",
+    `setting: ${location}`,
+    "cinematic lighting, shallow depth of field, sharp focus, coherent anatomy"
+  ].filter(Boolean).join(", ");
+
+  return tags;
+}
+
 export function sceneJobRow(userId, body) {
   const source = body.source === "novel" ? "novel" : "story";
   const sceneKey = String(body.sceneKey || "escena").trim().slice(0, 120) || "escena";
   const coverUrl = String(body.coverImageUrl || "").slice(0, 1200) || null;
   const fullPrompt = scenePrompt(body);
+  const visualPrompt = visualTagsPrompt(body);
   const maxPeople = body.source === "story" && body.characterRole && body.playerRole ? 2 : null;
-  let serialized = JSON.stringify({ scene_prompt: fullPrompt, cover_url: coverUrl, max_people: maxPeople });
+  let serialized = JSON.stringify({
+    scene_prompt: fullPrompt,
+    visual_prompt: visualPrompt,
+    negative_prompt: NEGATIVE_SCENE_PROMPT,
+    cover_url: coverUrl,
+    max_people: maxPeople,
+  });
   if (serialized.length > 7900) {
     const overflow = serialized.length - 7900;
-    serialized = JSON.stringify({ scene_prompt: fullPrompt.slice(0, Math.max(100, fullPrompt.length - overflow - 16)), cover_url: coverUrl, max_people: maxPeople });
+    serialized = JSON.stringify({
+      scene_prompt: fullPrompt.slice(0, Math.max(100, fullPrompt.length - overflow - 16)),
+      visual_prompt: visualPrompt.slice(0, 300),
+      negative_prompt: NEGATIVE_SCENE_PROMPT,
+      cover_url: coverUrl,
+      max_people: maxPeople,
+    });
   }
   if (serialized.length < 8 || serialized.length > 8000) throw new Error("La escena excede el límite de ilustración.");
   return {
@@ -90,13 +125,34 @@ export async function drawScene(prompt, options = {}) {
   const models = ["gemini-2.5-flash-image", "gemini-3.1-flash-image"];
   let allowSafety = true;
   let lastError = Object.assign(new Error("Gemini no pudo ilustrar la escena."), { status: 502, code: "scene_draw_failed" });
+  const parts = [];
+  if (options.coverImageUrl && typeof options.coverImageUrl === "string" && options.coverImageUrl.startsWith("http")) {
+    try {
+      const imgRes = await fetchImpl(options.coverImageUrl, { signal: AbortSignal.timeout(8000) });
+      if (imgRes.ok) {
+        const buffer = await imgRes.arrayBuffer();
+        const base64 = Buffer.from(buffer).toString("base64");
+        const contentType = imgRes.headers.get("content-type") || "image/jpeg";
+        parts.push({
+          inlineData: {
+            mimeType: contentType.includes("png") ? "image/png" : contentType.includes("webp") ? "image/webp" : "image/jpeg",
+            data: base64,
+          },
+        });
+      }
+    } catch {
+      // Continue with text prompt if image fetch fails
+    }
+  }
+  parts.push({ text: prompt });
+
   for (const model of models) {
     for (let attempt = 0; attempt < 2; attempt += 1) {
       const response = await fetchImpl("https://generativelanguage.googleapis.com/v1beta/models/" + model + ":generateContent", {
         method: "POST",
         headers: { "x-goog-api-key": key, "Content-Type": "application/json" },
         body: JSON.stringify({
-          contents: [{ role: "user", parts: [{ text: prompt }] }],
+          contents: [{ role: "user", parts }],
           generationConfig: {
             responseModalities: ["IMAGE"],
             imageConfig: { aspectRatio: "3:4" },
@@ -116,8 +172,8 @@ export async function drawScene(prompt, options = {}) {
         if (response.status === 404) break;
         throw lastError;
       }
-      const parts = data.candidates?.[0]?.content?.parts || [];
-      const image = parts.map((part) => part.inlineData || part.inline_data).find((part) => part?.data);
+      const responseParts = data.candidates?.[0]?.content?.parts || [];
+      const image = responseParts.map((part) => part.inlineData || part.inline_data).find((part) => part?.data);
       if (!image?.data) {
         throw Object.assign(new Error("Gemini no entregó la imagen de esta escena."), { status: 502, code: "scene_draw_empty" });
       }
@@ -166,7 +222,7 @@ export default async function handler(req, res) {
     }
 
     const prompt = scenePrompt(body);
-    const imageUrl = await drawScene(prompt);
+    const imageUrl = await drawScene(prompt, { coverImageUrl: body.coverImageUrl });
     return send(res, 200, { status: "ready", imageUrl });
   } catch (failure) {
     const status = Number(failure.status) >= 400 && Number(failure.status) <= 599 ? Number(failure.status) : 500;

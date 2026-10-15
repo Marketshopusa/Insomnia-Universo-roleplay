@@ -69,12 +69,13 @@ def save_cover_reference(url, job_id):
 
 
 def graph_for(job, attempt=0):
+    neg_text = job.get("negative_prompt") or "worst quality, low quality, bad anatomy, deformed limbs, extra limbs, extra hands, mutated fingers, duplicate bodies, distorted face, blurry"
     graph = {
         "1": {"class_type": "UNETLoader", "inputs": {"unet_name": MODEL, "weight_dtype": "default"}},
         "2": {"class_type": "CLIPLoader", "inputs": {"clip_name": ENCODER, "type": "flux2", "device": "default"}},
         "3": {"class_type": "VAELoader", "inputs": {"vae_name": VAE}},
         "4": {"class_type": "CLIPTextEncode", "inputs": {"text": job["prompt"], "clip": ["2", 0]}},
-        "5": {"class_type": "ConditioningZeroOut", "inputs": {"conditioning": ["4", 0]}},
+        "5": {"class_type": "CLIPTextEncode", "inputs": {"text": neg_text, "clip": ["2", 0]}},
         "6": {"class_type": "EmptyFlux2LatentImage", "inputs": {"width": 768, "height": 1024, "batch_size": 1}},
         "7": {"class_type": "KSampler", "inputs": {"model": ["1", 0],
             "seed": int(job["id"].replace("-", "")[:12], 16) + attempt, "steps": 4, "cfg": 1,
@@ -210,7 +211,8 @@ def process_one(cloud, comfy, output_dir):
         stored_prompt = job["prompt"]
         if stored_prompt.startswith('{"scene_prompt":'):
             settings = json.loads(stored_prompt)
-            job["prompt"] = settings["scene_prompt"]
+            job["prompt"] = settings.get("visual_prompt") or settings["scene_prompt"]
+            job["negative_prompt"] = settings.get("negative_prompt", "")
             job["max_people"] = settings.get("max_people")
             reference_name = save_cover_reference(settings.get("cover_url"), job["id"])
             job["reference_name"] = reference_name
