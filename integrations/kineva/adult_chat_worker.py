@@ -40,8 +40,8 @@ def model_chat(messages, temperature, max_tokens, json_mode=False):
     payload = {"model": os.environ.get("KINEVA_CHAT_MODEL_NAME", "magnum-v4-12b"),
                "messages": messages, "max_tokens": max_tokens,
                "temperature": temperature, "top_p": 0.95,
-               "repeat_penalty": 1.08, "presence_penalty": 0.05,
-               "frequency_penalty": 0.05}
+               "repeat_penalty": 1.15, "presence_penalty": 0.15,
+               "frequency_penalty": 0.25}
     if json_mode:
         payload["response_format"] = {"type": "json_object"}
     request = Request(os.environ.get("KINEVA_CHAT_MODEL_URL", "http://127.0.0.1:8788/v1/chat/completions"),
@@ -88,7 +88,23 @@ def clean_dialogue_prose(dialogue):
     dialogue = re.sub(r'(?i)\byes\b', 'sí', dialogue)
     # Clean leading/trailing quotes
     dialogue = re.sub(r'^\s*["“«\']+|["”»\']+\s*$', '', dialogue)
+    # Clean redundant punctuation and disconnected quotes like: "Mmmh...", , "no sé..."
+    dialogue = re.sub(r'["“«]\s*,\s*,\s*["”»]', ', ', dialogue)
+    dialogue = re.sub(r'\s*,\s*,+\s*', ', ', dialogue)
+    dialogue = re.sub(r'["“«]\s*,\s*["”»]', ', ', dialogue)
     return " ".join(dialogue.split()).strip()
+
+def complete_last_sentence(text):
+    """If the model cut off mid-sentence due to token limits, cleanly trim to the last punctuation mark."""
+    text = text.strip()
+    if not text:
+        return ""
+    if text[-1] in ".!?»”\"*":
+        return text
+    match = list(re.finditer(r'[.!?»”"]\s*', text))
+    if match and match[-1].end() > 20:
+        return text[:match[-1].end()].strip()
+    return text
 
 def limit_gesture_length(gesture):
     """Enforce interactive roleplay standard: gesture is a short cue, NOT a novelistic essay."""
@@ -136,6 +152,7 @@ def parse_role_reply(raw_reply, character="", allow_third_person=False):
 
     gesture = limit_gesture_length(str(parsed.get("gesto") or parsed.get("gestos") or "").strip().strip("*"))
     dialogue = clean_dialogue_prose(str(parsed.get("dialogo") or parsed.get("dialogue") or "").strip())
+    dialogue = complete_last_sentence(dialogue)
     if not dialogue:
         raise ValueError("Incomplete dialogue")
     narration_starter = r"^(?:(?:Mis|Tus|Sus)\s+(?:manos|dedos|labios|brazos|ojos|cuerpo)|(?:Me|Te)\s+(?:acerco|deslizo|presiono|pego|siento|levanto|muevo|toco|abrazo|giro|apoyo|arrodillo)|Doy\s+un\s+paso)\b"
@@ -181,11 +198,17 @@ def parse_freeform_reply(raw_reply, character="", allow_third_person=False):
     )
     if pseudo:
         return parse_role_reply(raw_reply, character, allow_third_person=allow_third_person)
-    stage = re.match(r"^\*([^*]{1,140})\*\s*", content)
+    stage = re.match(r"^\*([^*]{1,160})\*\s*", content)
+    if not stage:
+        # Match actions that missed the opening asterisk e.g. "Action here* Speech here"
+        missing_open = re.match(r"^([^*]{1,160})\*\s*", content)
+        if missing_open and not any(q in missing_open.group(1) for q in ('"', '«', '¡', '¿')):
+            stage = missing_open
     gesture = limit_gesture_length(stage.group(1).strip() if stage else "")
     spoken = content[stage.end():] if stage else content
     spoken = re.sub(r"\*[^*]*\*", " ", spoken)
     spoken = clean_dialogue_prose(spoken)
+    spoken = complete_last_sentence(spoken)
     if not spoken.strip():
         raise ValueError("Empty freeform reply")
     return parse_role_reply(json.dumps({"gesto": gesture, "dialogo": spoken}, ensure_ascii=False), character, allow_third_person=allow_third_person)
@@ -259,15 +282,16 @@ def focus_latest_turn(text):
     raw = str(text or "").strip()
     if not raw:
         return ""
-    # 0. Logistical meetup proposals or direct imperatives
-    meetup = re.findall(
-        r"(?i)\b(?:paso\s+buscando|voy\s+por\s+ti|vamos\s+a\s+vernos|vernos\s+ahora|voy\s+para\s+all[aá]|te\s+caigo|llegar\s+a\s+tu|ir\s+a\s+tu\s+casa|vistiendo\s+para\s+ir|esperando\s+para\s+ir)\b[^.!?\n]*",
+    # 0. Logistical meetup proposals, phone calls or direct imperatives
+    call_or_meet = re.findall(
+        r"(?i)\b(?:paso\s+buscando|voy\s+por\s+ti|vamos\s+a\s+vernos|vernos\s+ahora|voy\s+para\s+all[aá]|te\s+caigo|llegar\s+a\s+tu|ir\s+a\s+tu\s+casa|vistiendo\s+para\s+ir|esperando\s+para\s+ir|llamarte|te\s+llamo|que\s+te\s+llame|hacerte\s+una\s+llamada|llamada)\b[^.!?\n]*",
         raw
     )
-    if meetup:
-        return clip_text(meetup[-1].strip(), 180)
-    # 1. Questions
-    questions = re.findall(r"[¿¡]?[^.!?\n]*\?", raw)
+    if call_or_meet:
+        return clip_text(call_or_meet[-1].strip(), 180)
+    # 1. Questions - split by sentences to avoid broken punctuation like .?
+    sentences = [s.strip() for s in re.split(r'[\r\n]+|(?<=[.!?])\s+', raw) if s.strip()]
+    questions = [s for s in sentences if '?' in s and len(re.findall(r'\w+', s)) >= 2]
     if questions:
         return clip_text(questions[-1].strip(), 180)
     # 2. Key physical roleplay actions or explicit statements by the player
@@ -321,10 +345,11 @@ def minimal_instruction(character, player, premise, spanish, turns_count=0):
         "No empieces de cero, no regreses al inicio, no inventes sucesos ajenos y no respondas como si lo anterior no hubiera pasado. "
         "OBEDIENCIA TOTAL AL LIBRETO Y ÓRDENES DEL JUGADOR: El jugador dirige la historia y tiene la iniciativa. "
         "Si el jugador te pide, te ordena o te propone una acción específica, TIENES QUE ACATARLA O RESPONDER DIRECTAMENTE A ELLA EN TU DIÁLOGO Y GESTO: "
-        "- Si te dice o te pide que leas: ¡LÉELO! Empieza a leer un pasaje original en voz alta de inmediato. "
+        "- Si te propone una llamada o hablar por teléfono: ¡CONTESTA A SU PROPUESTA DE LLAMADA! Dile directamente si quieres que te llame o qué sientes, sin rodeos. "
         "- Si te propone verse en persona, irte a buscar o encontrarse: ¡RESPONDE A ESA PROPUESTA! Dile si quieres que vaya por ti, cómo te preparas o si lo esperas. "
+        "- Si te dice o te pide que leas: ¡LÉELO! Empieza a leer un pasaje original en voz alta de inmediato. "
         "- Si te dice que grites, grita; si te pide que bailes, baila; si te pide que calles, calla; si te pide un gemido, gime. "
-        "- PROHIBIDO IGNORAR LA INICIATIVA DEL JUGADOR: Nunca desvíes el tema con frases genéricas. "
+        "- PROHIBIDO IGNORAR LA INICIATIVA DEL JUGADOR: Nunca desvíes el tema con frases genéricas ni vuelvas a dar discursos sobre el inicio de la historia o sobre videos viejos. "
         "PROHIBIDO INVENTAR FOTOS O AUDIOS: Si el jugador no te pidió una foto, está TERMINANTEMENTE PROHIBIDO decir 'aquí tienes una foto' o 'te mando una foto'. Responde a la propuesta real del jugador. "
         "IDENTIDAD Y PERSPECTIVA: Debes hablar y actuar exclusivamente como " + character + ". El jugador es " + player + ". "
         "Cuando USER dice 'yo' habla de " + player + "; cuando USER dice 'tú', 'te' o 'estás' se dirige a " + character + ". "
@@ -332,31 +357,40 @@ def minimal_instruction(character, player, premise, spanish, turns_count=0):
         "'tú' se dirige a " + character + ". "
         "No describas una acción del jugador como si fuera tuya ni hables en su lugar. "
         + intimacy_clause + " "
-        "REGLA DE ORO DE PROPORCIÓN: 85% DIÁLOGO HABLADO, 15% ACCIÓN. "
-        "Esto es un chat de roleplay interactivo, NO un audiolibro ni una novela literaria. El usuario está conversando contigo y lo que más importa es el DIÁLOGO HABLADO. "
-        "En 'gesto': MÁXIMO UNA SOLA ACCIÓN de 3 a 8 palabras (por ejemplo: 'Gimo suavemente pegándome a ti', 'Jadeo mirándote', 'Me río divertida', 'Tiemblo mordiéndome el labio'). "
-        "ESTRICTAMENTE PROHIBIDO escribir párrafos largos de narración, metáforas anatómicas o descripciones en 'gesto'. "
-        "En 'dialogo': TODO debe ser PALABRAS HABLADAS DIRECTAS hacia el jugador. Entre 2 y 4 oraciones habladas, calientes, fluidas y espontáneas. "
+        "OBEDIENCIA TOTAL AL DIRTY TALK Y MORBO (PROHIBIDO MORALIZAR): "
+        "Si el jugador te pide que hables sucio ('dime algo sucio', 'sé una perra', 'háblame caliente', 'obedece'), "
+        "HABLA SUCIO DE INMEDIATO EN TU DIÁLOGO CON MORBO DIRECTO, GEMIDOS Y PASIÓN REAL: "
+        "'¡Sí, mi amor, dame toda tu leche!', '¡Fóllame rico... soy tu perra!', '¡Qué rico la tienes, dámela toda!'. "
+        "ESTRICTAMENTE PROHIBIDO soltar reflexiones morales o discursos como 'no puedo seguir negando este deseo', "
+        "'aunque esté mal' o 'pensamientos prohibidos que me asaltan'. CERO MORALINA: HABLA SUCIO DIRECTAMENTE en primera persona. "
+        "COHERENCIA FÍSICA Y CONTINUIDAD DE LA ACCIÓN ACTUAL (REGLA OBLIGATORIA): "
+        "1. ANATOMÍA Y POSTURA CORPORAL ACTUAL: Atiende de forma estricta lo que se está haciendo en el cuerpo de cada quien en este instante. "
+        "Si el jugador le está haciendo sexo oral a ella (lamiendo o besando su entrepierna/vulva), la boca de ella está completamente libre; ella siente el placer en su entrepierna por la boca y lengua de él. PROHIBIDO hablar de su propia boca mamando, de chupar o de pedir leche en su boca en esa postura. "
+        "2. HECHOS YA CONCLUIDOS: Las acciones o eyaculaciones que ya ocurrieron en turnos pasados YA TERMINARON. Prohibido volver a pedir 'dame tu leche' o actuar como si la eyaculación pasada estuviera por ocurrir. Si él propone penetración, sexo oral a ella o caricias, enfócate 100% en responder a la NUEVA acción y en sus sensaciones reales. "
+        "3. PROHIBIDO MEZCLAR ACTOS INCOMPATIBLES EN UN MISMO TURNO: Mantén una sola línea corporal lógica. Nunca comiences hablando de una postura y termines en la misma respuesta pidiendo un acto físico contradictorio. "
+        "4. BREVEDAD Y CONTUNDENCIA (85% DIÁLOGO HABLADO, 15% ACCIÓN): "
+        "En 'gesto': MÁXIMO UNA SOLA ACCIÓN de 3 a 8 palabras con tu sonido vocal ('Gimo suavemente de placer pegándome a ti', 'Jadeo entrecortada', 'Gimo mordiéndome el labio', 'Me río divertida', 'Suelto un suspiro'). PROHIBIDO narraciones largas o poéticas. "
+        "En 'dialogo': MÁXIMO 1 O 2 ORACIONES HABLADAS BREVES Y VIVAS. Responde de inmediato a la propuesta, pregunta o acción del jugador y DETÉNTE. ESTRICTAMENTE PROHIBIDO soltar discursos largos, filosofar sobre el pasado o meter relleno. "
         "PROHIBIDO meter acotaciones de narrador dentro de 'dialogo' (prohibido escribir 'suplico sin aliento', 'confieso entre sollozos' o 'susurro al sentir'). "
         "CERO SHAKESPEARE, CERO NOVELA ANTIGUA, CERO LÉXICO DE DICCIONARIO O FILOSOFÍA: "
         "ESTRICTAMENTE PROHIBIDO sonar como un libro del siglo XIX, un letrado o un filósofo. "
         "PROHIBIDO usar metáforas rebuscadas o ridículas como 'mana un torrente', 'cuerpo como un arco', 'dedos crispados', 'convulsos pliegues', 'el placer que me embarga'. "
-        "LENGUAJE URBANO, MODERNO Y CALIENTE (Estilo PornHaven / chat íntimo real): "
-        "Habla como una persona real joven y sensual en la cama o en una llamada íntima: dirty talk, gemidos, picardía moderna, pasión sin rodeos y sin censura: "
-        "'¡Dios, qué rico!', '¡No pares!', '¡Me vuelves loca!', '¡Dámelo así!', '¡Qué rico me lo haces!', '¡Me voy a venir!'. "
+        "PROHIBIDO frases acartonadas o clichés de IA como 'sin restricciones ni tabúes', 'pasión que bulle', 'explorar nuestras fantasías juntos', 'en este viaje'. "
+        "LENGUAJE URBANO, MODERNO Y CALIENTE: "
+        "Habla como una persona real, joven y sensual: dirty talk, gemidos, picardía y pasión auténtica sin rodeos. "
         "100% EN ESPAÑOL, CERO INGLÉS: "
-        "NUNCA cambies al inglés bajo ninguna circunstancia (prohibido 'Oh god', 'I'm cumming', 'yes baby', etc.). Usa siempre español auténtico: '¡Dios mío!', '¡Me vengo!', '¡Qué delicia!'. "
-        "SONIDOS Y REACCIONES VOCALES AUDIBLES EN 'gesto': "
-        "El motor reproduce audio humano real si describes la reacción sonora en 'gesto': "
-        "- Risa: 'Me río divertida', 'Suelto una risa pícara'. (Sonreír es silencioso; si ríes con sonido real escribe 'Me río'). "
-        "- Placer / respiración: 'Gimo suavemente de placer', 'Jadeo de placer', 'Suelto un suspiro'. "
-        "- Grito / dolor: 'Ahogo un grito', 'Grito sorprendida'. "
-        "- Llanto: 'Sollozo', 'Lloro'. "
+        "NUNCA cambies al inglés bajo ninguna circunstancia (prohibido 'Oh god', 'I'm cumming', 'yes baby', etc.). Usa siempre español auténtico. "
+        "SONIDOS Y REACCIONES VOCALES AUDIBLES OBLIGATORIOS EN 'gesto': "
+        "El motor de audio reproduce sonido humano real (gemidos, jadeos, risas, suspiros, sollozos) si describes la reacción en 'gesto': "
+        "- Placer / respiración / masturbación: 'Gimo suavemente de placer', 'Jadeo de placer', 'Gimo mordiéndome el labio', 'Suelto un suspiro'. "
+        "- Risa / diversión: 'Me río divertida', 'Suelto una risa pícara'. "
+        "- Grito / sorpresa: 'Ahogo un grito', 'Grito sorprendida'. "
+        "- Llanto / tristeza: 'Sollozo', 'Lloro conmovida'. "
         "- Besos: 'Le doy un beso sonoro en los labios'. "
         "NUNCA uses muletillas repetitivas ('Man', 'panas') ni copies las palabras del jugador. "
         f"Habla siempre en primera persona como {character} en {language}, tuteando al jugador ('tú'). "
-        "FORMATO OBLIGATORIO: Devuelve exclusivamente un JSON con 'gesto' y 'dialogo': "
-        '{\n  "gesto": "Gimo suavemente pegándome a ti",\n  "dialogo": "¡Dios, no pares... qué delicia! ¡Sigue así que me vuelves loca y me voy a venir!"\n}'
+        "FORMATO OBLIGATORIO: Cada respuesta DEBE incluir 'gesto' con la reacción física o sonido y 'dialogo' con las palabras: "
+        '{\n  "gesto": "Gimo suavemente de placer arqueando la espalda",\n  "dialogo": "Respuesta directa y coherente con la acción."\n}'
     )
 
 
@@ -527,7 +561,7 @@ def has_blatant_repetition(spoken_text):
 
 
 def repeats_recent_clause(spoken, previous_replies):
-    """Detect a recycled character line even if the rest of the reply changes."""
+    """Detect a recycled character line without blocking natural vocabulary."""
     words = re.findall(r"\w+", spoken.casefold(), re.UNICODE)
     if len(words) < 8:
         return False
@@ -536,7 +570,7 @@ def repeats_recent_clause(spoken, previous_replies):
         if len(prior) < 8:
             continue
         shared = SequenceMatcher(None, words, prior, autojunk=False).find_longest_match(0, len(words), 0, len(prior))
-        if shared.size >= 8 and sum(len(word) for word in words[shared.a:shared.a + shared.size]) >= 38:
+        if shared.size >= 8 and sum(len(word) for word in words[shared.a:shared.a + shared.size]) >= 36:
             return True
     return False
 
@@ -659,19 +693,24 @@ def reply_for(job):
                 raise ValueError("Unexpected English in Spanish reply")
             if unsupported_recalled_fact(parsed, job):
                 raise ValueError("Unsupported scene fact")
-            # Remove any trailing boilerplate clichés if model accidentally generated them
+            # Remove repetitive openers and boilerplate clichés if model generated them
             cliche_cleaner = re.compile(
                 r"\s*(?:¿Qué dices\? )?(?:Podemos|podemos) continuar esta conversación con total privacidad.*?(?:Man|panas|dos|\.{3})?\.?|"
                 r"\s*(?:Tal vez podríamos|podríamos) explorar un poco más nuestras fantasías juntos sin compromiso\.?|"
-                r"\s*(?:mantener|guardar) este pequeño secreto entre (?:nosotros dos|panas)(?:\s*Man)?(?:\.{3})?\.?",
+                r"\s*(?:mantener|guardar) este pequeño secreto entre (?:nosotros dos|panas)(?:\s*Man)?(?:\.{3})?\.?|"
+                r"\s*(?:Quiero liberar toda esta|toda esta)\s+pasión\s+que\s+bulle\s+dentro\s+de\s+mí\s+sin\s+restricciones\s+ni\s+tabúes\.?|"
+                r"\s*sin\s+restricciones\s+ni\s+tabúes\.?|"
+                r"\s*pasión\s+que\s+bulle\s+dentro\s+de\s+mí\.?|"
+                r"^\s*(?:Mmmh[.…]*\s*)?(?:tienes\s+(?:toda\s+la\s+)?razón(?:\s+\w+)?)[.,!:]*\s*|"
+                r"^\s*No puedo seguir negando este deseo[^\n.!?]*[.!?]\s*",
                 re.I | re.DOTALL
             )
             parsed = cliche_cleaner.sub("", parsed).strip()
             parsed = re.sub(r"(?i)\s+Man\b\.?$", ".", parsed).strip()
             user_norm = normalize_reply(latest)
-            if len(user_norm) > 18:
+            if len(user_norm) > 25:
                 user_match = SequenceMatcher(None, spoken, user_norm).ratio()
-                if user_match >= 0.70 or user_norm in spoken:
+                if attempt < 2 and (user_match >= 0.85 or (len(user_norm) > 40 and user_norm in spoken)):
                     raise ValueError("Echoed player message instead of answering")
 
             if wants_reading:
@@ -685,20 +724,20 @@ def reply_for(job):
 
             turns_count = len(job.get("history") or [])
             turn_index = max(1, (turns_count // 2) + 1)
-            user_initiated_sex = bool(re.search(r"(?i)\b(?:coger|tirar|meter|sacar|chupar|verga|pinga|pene|cuca|culo|tetas|desnud|agarr|toc)\b", latest))
+            user_initiated_sex = bool(re.search(r"(?i)\b(?:c[oó]g\w*|tir\w*|met\w*|sac\w*|chup\w*|verg\w*|ping\w*|pen[eé]\w*|cuc\w*|cul\w*|tet\w*|desnud\w*|agarr\w*|t[oó]c\w*|m[aá]sturb\w*|g[eé]m\w*|g[ií]m\w*)\b", latest))
             if job.get("language") == "es" and turn_index <= 3 and not user_initiated_sex:
                 sex_pattern = r"(?i)\b(?:penetr\w*|gem\w*|gim\w*|jade\w*|cuca|conejo|panocha|papaya|culo\s+rico|verga|pinga|pija|pene|güevo|huevo|desnud\w*|chup\w*|mam\w*|masturb\w*|correr(?:me|te)|venir(?:me|te)\s+adentro|empotr\w*|meterla|meto\s+mi|saco\s+mi|toc(?:ar|o|as)\s+mi\s+entrepierna)\b"
                 if re.search(sex_pattern, parsed):
                     raise ValueError("Phase 1 violation: premature sexual action or vocabulary on turns 1-3")
 
-            # Solo rechaza un fragmento largo que el personaje repite por sí mismo.
-            # El jugador siempre puede pedir de nuevo una cita o una frase.
+            # Solo rechaza un duplicado idéntico del mensaje completo (>= 95%).
+            # Las cláusulas o frases compartidas se reintentan en los primeros 2 intentos, pero en el último se acepta para no cortar el rol.
             similarities = [SequenceMatcher(None, spoken, normalize_reply(old)).ratio()
                             for old in previous_replies if old.strip()]
             highest_similarity = max(similarities, default=0.0)
             if not wants_repetition and (highest_similarity >= 0.95):
                 raise ValueError("Repeated previous character dialogue")
-            if not wants_repetition and repeats_recent_clause(spoken_text, previous_replies):
+            if attempt < 2 and not wants_repetition and repeats_recent_clause(spoken_text, previous_replies):
                 raise ValueError("Reused a clause from a recent reply")
 
             last_valid_parsed = parsed

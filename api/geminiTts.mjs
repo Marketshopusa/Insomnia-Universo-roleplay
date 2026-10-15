@@ -223,9 +223,9 @@ export function geminiSpeechDirection(language, performance, region, expression)
     scream: spanish ? "Eleva la voz solo en el punto marcado." : "Raise the voice only at the marked point.",
     soft: spanish ? "Habla en voz baja." : "Speak softly.",
   }[performance] || (spanish ? "Voz natural y fluida." : "Natural, fluent voice.");
-  return (spanish ? accentHint(language, region) + " Interpreta esta secuencia en el orden escrito con ritmo ágil, fluido y continuo, sin pausas lentas ni silencios innecesarios entre frases; narra las acciones y di el diálogo. " :
-    "Perform this scene in written order with an agile, fluent and continuous pace, without slow pauses or unnecessary silences between sentences, narrating actions and speaking dialogue. ") + mood +
-    (spanish ? " No añadas instrucciones ni nombres de sonidos." : " Do not add instructions or sound names.");
+  return (spanish ? accentHint(language, region) + " Di exclusivamente las palabras del diálogo con voz humana, viva, emotiva y natural acorde a la escena. " :
+    "Speak exclusively the dialogue with a natural, emotive, human voice suited to the scene. ") + mood +
+    (spanish ? " No leas acotaciones de acción entre asteriscos ni nombres de sonidos. Entrega solo la voz hablada viva." : " Do not read stage directions or sound labels. Deliver only the living spoken voice.");
 }
 
 const BLOCK_NONE = 4;
@@ -398,7 +398,7 @@ export async function synthesizeGemini(text, preset, language, { performance = "
     body: JSON.stringify({
       input: { text, prompt },
       voice,
-      audioConfig: { audioEncoding: "LINEAR16", speakingRate: 1.18 },
+      audioConfig: { audioEncoding: "LINEAR16" },
       ...(relaxSafety ? {
         advancedVoiceOptions: {
           safetySettings: {

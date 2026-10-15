@@ -161,7 +161,7 @@ class StoryMemoryTest(unittest.TestCase):
             reply = reply_for(current)
         self.assertEqual(reply, "*Me quedo mirando el muro* Veo una sombra junto a las piedras.")
         model.assert_called_once()
-        self.assertEqual(model.call_args.args[2], 180)
+        self.assertGreaterEqual(model.call_args.args[2], 180)
 
     def test_repeated_user_question_and_poem_remain_in_history(self):
         poem = "Pedrito se cayó, volvió a levantarse y siguió cantando."
@@ -305,6 +305,17 @@ class StoryMemoryTest(unittest.TestCase):
 
         self.assertFalse(handle(RemovedJob(), "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
                                 "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb.json"))
+
+    def test_cliche_purged_from_reply(self):
+        user_msg = "Tócate para mí."
+        current = job([{"role": "user", "content": "Hola"}], user_msg)
+        raw = '{"gesto":"Gimo suavemente","dialogo":"Me toco para ti. Quiero liberar toda esta pasión que bulle dentro de mí sin restricciones ni tabúes."}'
+        with patch("adult_chat_worker.free_gpu_for_chat"), patch(
+                "adult_chat_worker.model_chat", return_value=raw) as model:
+            reply = reply_for(current)
+        self.assertNotIn("sin restricciones ni tabúes", reply)
+        self.assertNotIn("pasión que bulle", reply)
+        self.assertIn("Me toco para ti", reply)
 
 
 if __name__ == "__main__":

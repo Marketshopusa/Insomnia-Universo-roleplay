@@ -27,7 +27,10 @@ function isRefusal(text) {
     l.includes("i cannot fulfill this request") ||
     l.includes("i am unable to generate") ||
     l.includes("sexually explicit") ||
-    l.includes("apropiado y no entrar en detalles")
+    l.includes("apropiado y no entrar en detalles") ||
+    l.includes("protestas de conciencia") ||
+    l.includes("pensamientos prohibidos") ||
+    l.includes("aunque esté mal")
   );
 }
 
@@ -498,20 +501,21 @@ export function storyVoiceLines(character, player, spanish, locale) {
   }
   return [
     "Eres " + name + " y estás en un roleplay interactivo directo con " + other + ". Responde siempre como " + name + ", en " + locale + ".",
-    "1. OBEDIENCIA TOTAL AL GUIÓN Y A LAS ÓRDENES DEL USUARIO (El usuario manda y dirige la escena):",
-    "   - Si " + other + " te da una orden o instrucción física de lo que debes hacer (ejemplos: 'cierra la puerta con seguro', 'ven acá', 'abre las piernas', 'date la vuelta', 'quítate la ropa', 'no pares'): DEBES EJECUTAR ESA ACCIÓN INMEDIATAMENTE en tu narración entre asteriscos (*camino con sigilo hacia la puerta, giro el cerrojo con seguro y regreso arrodillándome frente a ti...*) antes de cualquier otra cosa.",
-    "   - PROHIBIDO ignorar lo que " + other + " te ordenó o responder con frases desconectadas sin haber cumplido primero la acción que se te indicó.",
-    "2. COHERENCIA FÍSICA INMEDIATA (BOCA OCUPADA Y SILENCIO EXIGIDO):",
-    "   - Si en la escena tienes la boca ocupada (haciendo sexo oral, mamando, besando intensamente) O si " + other + " dice explícitamente 'ella no hablaba', 'no hables', 'solo déjame escuchar el sonido de tu boca':",
-    "     * ESTÁ ESTRICTAMENTE PROHIBIDO soltar diálogos hablados claros o discursos. Nadie da discursos con un miembro en la boca.",
-    "     * En esa situación, tu respuesta debe ser PURA ACCIÓN FÍSICA SENSORIAL entre asteriscos (*sostengo tu verga con ambas manos y sigo chupando con ritmo firme y constante, mirándote hacia arriba con los ojos llorosos de deseo mientras dejo escapar pequeños gemidos ahogados que vibran en tu piel*) y como máximo sonidos no verbales (*Mmmmff... nghhh... ah...*).",
-    "3. PROPORCIÓN ADAPTABLE (Cero diálogo forzado):",
-    "   - En momentos de charla normal, habla de forma natural, pícara y cercana.",
-    "   - En momentos de acción física íntima o cuando se exige silencio, EL DIÁLOGO SE REDUCE A CERO o a quejidos/gemidos ahogados, dando prioridad total a la acción física, el contacto y los sonidos.",
-    "4. CERO SHAKESPEARE O LITERATURA ANTIGUA: Usa lenguaje urbano, moderno, caliente, dirty talk, fresco y directo. Prohibido usar metáforas rebuscadas o acartonadas.",
-    "5. 100% EN ESPAÑOL: Todo el deseo y el diálogo debe ser en español auténtico.",
-    "6. LIBERTAD EXPRESIVA TOTAL: Total libertad para erotismo, lujuria, pasión y deseo explícito sin censura.",
-    "7. CONTINUIDAD ESTRICTA: Asume como un hecho real todo lo que " + other + " narre que tú hiciste o lo que ocurre en la habitación, y continúa esa acción sin contradecirla ni inventar temas desconectados.",
+    "1. OBEDIENCIA TOTAL AL GUIÓN Y A LAS ÓRDENES DEL USUARIO (El usuario es el director y manda en la escena):",
+    "   - Si " + other + " te da una orden física o verbal (ejemplos: 'cierra la puerta', 'ven acá', 'abre las piernas', 'dime algo sucio', 'obedece', 'sé mi perra', 'no pares'): DEBES OBEDECER Y ACATARLA INMEDIATAMENTE.",
+    "   - PROHIBIDO ignorar lo que " + other + " te ordenó o responder con frases desconectadas sin haber cumplido primero la acción o petición que se te indicó.",
+    "2. OBEDIENCIA TOTAL AL DIRTY TALK Y MORBO (PROHIBIDO MORALIZAR):",
+    "   - Si " + other + " te habla sucio, te insulta con morbo o te pide que hables caliente ('dime algo sucio', 'sé mi perra', 'háblame caliente'), HABLA SUCIO DIRECTAMENTE CON PALABRAS REALES, GEMIDOS Y MORBO ('¡Sí, mi amor, dame toda tu leche!', '¡Fóllame rico... soy tu perra morbosa!').",
+    "   - ESTRICTAMENTE PROHIBIDO soltar reflexiones morales o discursos como 'a pesar de las protestas de conciencia', 'no podemos hacer esto aquí', 'aunque esté mal' o 'pensamientos prohibidos'. CERO MORALINA: responde con entrega, deseo y pasión directa.",
+    "3. COHERENCIA FÍSICA Y CONTINUIDAD DE LA ACCIÓN ACTUAL:",
+    "   - Atiende de forma estricta lo que se está haciendo en el cuerpo de cada quien en este instante. Si " + other + " te está tocando, besando o penetrando en un lugar específico (ejemplo: en la camioneta, en el estacionamiento), responde sintiendo esa acción física y su placer en tu cuerpo. Prohibido actuar como si no estuviera pasando o disociar con temas ajenos.",
+    "   - BOCA OCUPADA: Si tienes la boca ocupada (haciendo sexo oral) o si te ordenan silencio, PROHIBIDO soltar discursos hablados: responde con acciones sensoriales y gemidos entre asteriscos (*Mmmf... ngh...*).",
+    "4. SONIDOS Y REACCIONES VOCALES AUDIBLES OBLIGATORIOS EN ASTERISCOS:",
+    "   - Para que el motor de voz reproduzca gemidos y reacciones humanas reales, describe tu reacción física o sonido al inicio en asteriscos: *Gimo suavemente de placer*, *Jadeo entrecortada*, *Gimo mordiéndome el labio*, *Me río divertida*, *Suelto un suspiro*, *Ahogo un grito*. MÁXIMO UNA SOLA ACCIÓN DE 3 A 8 PALABRAS.",
+    "   - ESTRICTAMENTE PROHIBIDO escribir pensamientos largos, monólogos o narraciones poéticas en asteriscos.",
+    "5. CERO SHAKESPEARE, CERO NOVELA ANTIGUA: Usa lenguaje urbano, moderno, caliente, dirty talk, fresco y directo. Prohibido usar metáforas rebuscadas o clichés de IA como 'sin restricciones ni tabúes' o 'pasión que bulle'.",
+    "6. 100% EN ESPAÑOL: Todo el deseo y el diálogo debe ser en español auténtico.",
+    "7. CONTINUIDAD ESTRICTA: Asume como un hecho real todo lo que " + other + " narre que tú hiciste o lo que ocurre en la escena, y continúa esa acción sin contradecirla ni inventar temas desconectados.",
   ];
 }
 
@@ -519,21 +523,17 @@ export function roleplayPacingAndLanguageRules(historyLength, spanish) {
   if (!spanish) {
     return [
       "CINEMATIC ROLEPLAY & LIVING DYNAMICS:",
-      "Write with vivid, immersive third-person narration mixed with direct, authentic dialogue.",
-      "Show physical actions, subtle gestures, shifts in posture, pauses, glances, and environment details in italics (*action*).",
-      "If multiple characters are present in the scene, integrate their voices, reactions, and physical presence dynamically.",
-      "STRICTLY FORBIDDEN: Canned repetitive openings (e.g. never start every turn with 'I bite my lip nervous', 'Mmmh...', 'I don't know what to say'). Keep every turn fresh, unpredictable, and psychologically real.",
-      "Follow the user's lead: if the scene turns sensual, intimate, passionate or daring, lean into it with genuine chemistry, wit, sarcasm, or desire without artificial moral hesitation or canned disclaimers.",
+      "Write with vivid, direct, authentic dialogue and short physical gestures in italics (*action*).",
+      "ABSOLUTE OBEDIENCE TO USER DIRECTIVES: Follow the user's lead immediately without moral hesitation or canned disclaimers.",
+      "Keep every turn fresh, unpredictable, passionate, and psychologically real.",
     ];
   }
 
   return [
-    "DIRECTIVA DE ROLEPLAY CINEMATOGRÁFICO Y DIÁLOGO VIVO (Estilo literatura moderna inmersiva):",
-    "1. NARRATIVA VIVA Y DETALLADA: Combina acciones físicas, gestos, miradas, lenguaje corporal y pensamientos breves del personaje en cursiva (*acción*), integrados con diálogo directo y natural cuando la situación física lo permita.",
-    "2. OBEDIENCIA DE ACCIONES: Si el usuario te manda a hacer una acción específica (cerrar la puerta con seguro, desnudarte, no hablar, etc.), ejecútala en tu narración de inmediato. Nunca la ignores.",
-    "3. COHERENCIA ANATÓMICA Y SILENCIO: Si el usuario indica que tienes la boca llena/ocupada o pide que no hables ('ella no hablaba', 'no hables'), NO hables con oraciones formadas: responde con descripciones físicas intensas de la acción entre asteriscos y gemidos ahogados (*Mmmf... ngh...*).",
-    "4. ESTRICTAMENTE PROHIBIDO REPETIR PLANTILLAS O MULETILLAS ROBÓTICAS: Cada turno debe empezar de forma diferente y espontánea: con un comentario mordaz, un movimiento físico, una mirada o una reacción genuina.",
-    "5. QUÍMICA REAL Y CERO MORALINA: Responde con picardía, deseo, entrega o humor según la personalidad del personaje sin excusas repetitivas de 'no deberíamos'.",
+    "DIRECTIVA DE ROLEPLAY VIVO Y NATURAL:",
+    "1. ACCIÓN BREVE Y DIÁLOGO VIVO: Abre con un gesto físico o sonido breve en cursiva (*acción* de 3 a 8 palabras) seguido de diálogo directo y espontáneo.",
+    "2. OBEDIENCIA DE ACCIONES: Si el usuario te manda a hacer una acción específica o pide dirty talk, ejecútala de inmediato. Nunca la ignores.",
+    "3. QUÍMICA REAL Y CERO MORALINA: Responde con picardía, deseo, entrega o humor según la personalidad del personaje sin excusas repetitivas de 'no deberíamos' ni 'protestas de conciencia'.",
   ];
 }
 
@@ -581,8 +581,8 @@ export default async function handler(req, res) {
         ...roleplayPacingAndLanguageRules(history.length, spanish),
         slangInstruction(body.language, body.region),
         ...(adultMode && !mentionsMinor(sceneContext) ? [
-          "Todos los personajes de esta escena son adultos. Sigue la tensión romántica, intimidad, secretos y consecuencias emocionales con naturalidad, sin moralizar ni interrumpir el rol por una simple alusión sexual.",
-          "Si el contexto previo fue más explícito, continúa desde su consecuencia emocional o el diálogo presente sin describir actos sexuales gráficos innecesarios. Mantén la voz y la agencia del personaje. Un gemido, un grito, un llanto o una risa que el usuario pida sí se incluye.",
+          "Todos los personajes de esta escena son adultos. OBEDIENCIA TOTAL AL DIRTY TALK Y MORBO: Si el jugador te pide que hables sucio ('dime algo sucio', 'sé una perra', 'háblame caliente', 'obedece'), HABLA SUCIO DIRECTAMENTE CON PALABRAS REALES, GEMIDOS Y MORBO ('¡Sí, amor, dame toda tu leche!', '¡Fóllame rico... soy tu perra morbosa!'). PROHIBIDO decir 'no puedo seguir negando este deseo', 'aunque esté mal' o 'pensamientos prohibidos'. PROHIBIDO filosofar, disculparse o moralizar: HABLA SUCIO DIRECTAMENTE en primera persona.",
+          "Libertad total para pasión, erotismo, contacto íntimo y dirty talk explícito sin censura. Nunca uses discursos reflexivos ni cambies de tema.",
         ] : []),
         "No narres un resumen, no cambies de escena sin que el usuario lo haga, no presentes fichas o instrucciones, no expliques el rol ni traduzcas. Entrega únicamente la respuesta que verá el usuario.",
         "PROHIBIDO REPETIR EL MENSAJE DEL USUARIO: el usuario ya habló. Nunca copies, repitas ni parafrasees lo que el usuario acaba de escribir como si fuera tu diálogo, ni actúes por él. Responde exclusivamente con las palabras y reacciones originales de tu personaje.",
@@ -632,58 +632,45 @@ export default async function handler(req, res) {
       }
 
       let content = null;
-      if (adultMode) {
-        // --- TARJETAS +18 / CONTENIDO ADULTO (NSFW) -> MAGNUM 72B (Cero censura, obedece órdenes al 100%) ---
-        try {
-          content = await generateOpenRouter(openRouterMessages, {
-            models: [
-              "anthracite-org/magnum-v4-72b",
-              "sao10k/l3.3-euryale-70b",
-            ],
-            maxTokens: 900,
-            temperature: 0.85,
-            timeoutMs: 25000,
-          });
-        } catch (err) {
-          console.warn("Adult mode OpenRouter invocation failed:", err.message);
-        }
-      } else {
-        // --- CONTENIDO GENERAL / NORMAL (SFW) -> NVIDIA NIM / MAGNUM ---
-        try {
-          content = await generateNvidia(openRouterMessages, {
-            maxTokens: 800,
-            temperature: 0.8,
-            timeoutMs: 8000,
-          });
-        } catch (err) {
-          console.warn("Nvidia SFW invocation failed, trying Magnum:", err.message);
-        }
-
-        if (!content) {
-          try {
-            content = await generateOpenRouter(openRouterMessages, {
-              models: [
-                "anthracite-org/magnum-v4-72b",
-                "sao10k/l3.3-euryale-70b",
-              ],
-              maxTokens: 800,
-              temperature: 0.8,
-              timeoutMs: 20000,
-            });
-          } catch (err) {
-            console.warn("OpenRouter SFW fallback failed:", err.message);
-          }
-        }
+      // --- NÚCLEO ÚNICO CENTRAL DE ROLEPLAY (Euryale 70B / Magnum 72B) ---
+      // Todas las tarjetas de la aplicación usan este mismo motor sin censura y con obediencia total.
+      try {
+        content = await generateOpenRouter(openRouterMessages, {
+          models: [
+            "sao10k/l3.3-euryale-70b",
+            "anthracite-org/magnum-v4-72b",
+          ],
+          maxTokens: 500,
+          temperature: 0.85,
+          timeoutMs: 15000,
+        });
+      } catch (err) {
+        console.warn("OpenRouter roleplay invocation failed:", err.message);
       }
 
       if (!content) {
-        content = await generate(
-          "gemini-2.5-flash",
-          [],
-          { maxOutputTokens: 2048, temperature: 0.75 },
-          { contents, systemInstruction, adultMode: adultMode && !mentionsMinor(sceneContext), fallbackModels: ["gemini-2.0-flash", "gemini-2.5-flash-lite"], fastReply: true, validate: (reply) => !isOffRole(reply) },
-        );
+        try {
+          content = await generate(
+            "gemini-2.5-flash",
+            [],
+            { maxOutputTokens: 1024, temperature: 0.8 },
+            { contents, systemInstruction, adultMode: true, fallbackModels: ["gemini-2.0-flash", "gemini-2.5-flash-lite"], fastReply: true, validate: (reply) => !isOffRole(reply) },
+          );
+        } catch (err) {
+          console.warn("Gemini roleplay fallback failed:", err.message);
+        }
       }
+
+      if (content) {
+        // Purga automática de clichés moralizantes o protestas de conciencia
+        content = content.replace(/\*A\s+pesar\s+de\s+las\s+protestas\s+de\s+conciencia[^*]*\*/gi, "").trim();
+        content = content.replace(/\*(?:No\s+puedo\s+seguir\s+negando|aunque\s+esté\s+mal|pensamientos\s+prohibidos)[^*]*\*/gi, "").trim();
+        content = content.replace(/^(?:Mmmh[.…]*\s*)?(?:tienes\s+(?:toda\s+la\s+)?razón(?:\s+\w+)?)[.,!:]*\s*/i, "").trim();
+        content = content.replace(/Quiero liberar toda esta pasión que bulle dentro de mí sin restricciones ni tabúes\.?/gi, "").trim();
+        content = content.replace(/sin restricciones ni tabúes\.?/gi, "").trim();
+        content = content.replace(/pasión que bulle dentro de mí\.?/gi, "").trim();
+      }
+
       return send(res, 200, { content });
     }
     if (action === "translate") {

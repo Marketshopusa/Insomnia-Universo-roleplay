@@ -32,7 +32,7 @@ const forms = [
   ["sigh", "suspir(?:o|a|é|ó|ando|ar)|resopl(?:o|a|é|ó|ando)|sigh(?:s|ed|ing)?"],
   ["gasp", "boque(?:o|a|ó|ando)|aspir(?:o|a|ó)\\s+(?:aire\\s+)?(?:de\\s+golpe|bruscamente)|gasp(?:s|ed|ing)?"],
   ["pant", "jade(?:os?|a|ó|ando|ar)|respir(?:o|a|ó|ando)\\s+(?:agitadamente|con\\s+dificultad)|pant(?:s|ed|ing)?"],
-  ["groan", "g(?:imo|ime|emí|imió|imiendo)|gemidos?|moan(?:s|ed|ing)?|groan(?:s|ed|ing)?"],
+  ["groan", "g(?:imo|ime|emí|imió|imiendo)|gemidos?|moan(?:s|ed|ing)?|groan(?:s|ed|ing)?|mord(?:iendo|er|ió|e|í|erme)\\w*\\s+(?:el\\s+)?labio|ard(?:iendo|er)\\s+de\\s+(?:excitaci[oó]n|deseo)|estremec(?:er|iendo|ió|e|imiento)|tembl(?:ando|or|ar|ó)"],
   ["grunt", "gruñ(?:o|e|ó|endo)|gruñidos?|grunt(?:s|ed|ing)?"],
   ["growl", "rug(?:e|ió|iendo)|sonido\\s+gutural|growl(?:s|ed|ing)?"],
   ["cough", "tos(?:o|e|ió|iendo)|cough(?:s|ed|ing)?"],
@@ -54,7 +54,7 @@ const allForms = forms.map(([id, source]) => [id, compounds[id] ? "(?:" + compou
 const FORM = new RegExp("(?<![\\p{L}\\p{N}])(?:" + allForms.map(([, source]) => "(?:" + source + ")").join("|") + ")(?![\\p{L}\\p{N}])", "giu");
 const exactForm = allForms.map(([id, source]) => [id, new RegExp("^(?:" + source + ")$", "iu")]);
 const actionContext = /(?:dolor|duele|herid|golpe|esfuerzo|pain|hurt|injur|effort)/iu;
-const pleasureContext = /(?:placer|gozo|pleasure|excit|deseo|pasión|pasion|sensual|calor|rico|rica|delicia|lujuria|tentaci|entrecortad|escalofr)/iu;
+const pleasureContext = /(?:placer|gozo|pleasure|excit|deseo|pasión|pasion|sensual|calor|rico|rica|delicia|lujuria|tentaci|entrecortad|escalofr|labio|ard)/iu;
 const nonPresent = /(?:\b(?:no|sin|not|without|nunca|never)\b|\b(?:quiero|quería|deseo|puedo|podría|debería|intento|intentar|voy\s+a|va\s+a|iba\s+a|si|when|if|want\s+to|will|would|can|could)\b|\b(?:recuerdo|recordé|ayer|yesterday|remember)\b)/iu;
 const contextualTail = /^(?:\s+(?:de\s+(?:dolor|placer|miedo|rabia|alegría|felicidad|deseo|excitación|excitacion|pasión|pasion|satisfacción|satisfaccion|anhelo|alivio)|con\s+(?:fuerza|dolor|rabia|picardía|picardia|diversión|diversion|deseo|pasión|pasion|agitación|agitacion)|a\s+carcajadas|desgarrador(?:a|es)?|fuertemente|fuerte|suavemente|suave|bajit[ao]|en\s+voz\s+baja|por\s+(?:el\s+)?(?:esfuerzo|deseo|calor|miedo)|de\s+repente|divertid[ao]|cómplice|complice|entrecortad[ao]|tembloros[ao]|agitad[ao]|aliviad[ao]))*/iu;
 const pureSoundDescription = /^(?:(?:yo|ella|él|el|mi|mis|sus|su|un|una|el|la)\s+)?(?:sonidos?\s+desgarradores?|gritos?|gemidos?|sollozos?|llantos?|risas?|carcajadas?)(?:\s|[,.!;]|$)/iu;
@@ -92,7 +92,7 @@ const taggedReactions = {
   "clears throat": "throat_clear", kiss: "kiss", uhm: "hesitation",
 };
 
-export function prepareExpressiveSpeech(input) {
+export function prepareExpressiveSpeech(input, { roleplay = false } = {}) {
   const segments = [];
   let delivery = "neutral";
   const addText = (text, kind) => {
@@ -173,10 +173,20 @@ export function prepareExpressiveSpeech(input) {
     cursor = match.index + match[0].length;
   }
   processBody(raw.slice(cursor), false);
-  const text = segments.map((part) => part.kind === "reaction" ? part.cue : part.kind === "narration" && !/[.!?…]$/.test(part.text) ? part.text + "." : part.text).join(" ").replace(/\s+/g, " ").trim();
+  const hasDialogue = segments.some((part) => part.kind === "dialogue");
+  const text = segments
+    .map((part) => {
+      if (part.kind === "reaction") return part.cue;
+      if (roleplay && part.kind === "narration") return "";
+      return part.kind === "narration" && !/[.!?…]$/.test(part.text) ? part.text + "." : part.text;
+    })
+    .filter(Boolean)
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .trim();
   const reactions = segments.filter((part) => part.kind === "reaction");
   const performances = [...new Set(segments.map((part) => part.performance).filter((value) => value !== "neutral"))];
-  return { text, segments, reactions, performance: performances.length === 1 ? performances[0] : "neutral" };
+  return { text, segments, reactions, performance: performances.length === 1 ? performances[0] : "neutral", roleplay };
 }
 
 export function hasVocalCue(text) {
@@ -184,16 +194,26 @@ export function hasVocalCue(text) {
 }
 
 /** Neural reactions are generated independently, then joined with the spoken runs. */
-export function splitExpressiveScore(score, { separate = new Set() } = {}) {
+export function splitExpressiveScore(score, { separate = new Set(), roleplay = score?.roleplay || false } = {}) {
   const runs = [];
   let parts = [];
   let delivery = null;
+  const hasDialogue = score.segments.some((part) => part.kind === "dialogue");
   const add = () => {
     if (!parts.length) return;
     const reactions = parts.filter((part) => part.kind === "reaction");
     const hasSpeech = parts.some((part) => part.kind !== "reaction");
-    const text = parts.map((part) => part.kind === "reaction" ? hasSpeech && /^(?:cry|sob)$/.test(part.event) ? "[crying]" : part.cue : part.kind === "narration" && !/[.!?…]$/.test(part.text) ? part.text + "." : part.text).join(" ");
-    runs.push({ text, segments: parts, reactions, performance: "neutral" });
+    const text = parts
+      .map((part) => {
+        if (part.kind === "reaction") return hasSpeech && /^(?:cry|sob)$/.test(part.event) ? "[crying]" : part.cue;
+        if (roleplay && part.kind === "narration") return "";
+        return part.kind === "narration" && !/[.!?…]$/.test(part.text) ? part.text + "." : part.text;
+      })
+      .filter(Boolean)
+      .join(" ");
+    if (text || reactions.length) {
+      runs.push({ text, segments: parts, reactions, performance: "neutral" });
+    }
     parts = [];
     delivery = null;
   };
