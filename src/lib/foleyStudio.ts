@@ -25,8 +25,8 @@ export interface FoleyEvent {
 }
 
 const FOLEY_PATTERNS: Array<[FoleyType, RegExp]> = [
-  ["flesh_impact", /(?:nalgada|palmada\s+en|choque\s+de\s+(?:nuestros\s+)?cuerpos|piel\s+contra\s+piel|azot(?:a|ó|e|ando)\s+(?:mi|tu|su)\s+(?:trasero|culo|piel)|embestid(?:a|as)|chocan\s+nuestras\s+caderas|cuerpos\s+uni[eé]ndose)/iu],
-  ["slap", /(?:bofetada|cachetada|le\s+cruza\s+la\s+cara|sonora\s+palmada\s+en\s+la\s+mejilla)/iu],
+  ["flesh_impact", /(?:golpe\w*\s+(?:mi|tu|su)?\s*(?:trasero|culo|piel|nalgas?|cuerpo)|mano\s+golpea\w*|mano\s+(?:en|contra)\s+(?:mi|tu|su)?\s*(?:trasero|culo|nalgas?)|nalgada\w*|palmada\w*|azot\w*\s+(?:mi|tu|su)?\s*(?:trasero|culo|piel|nalgas?)|choque\s+de\s+(?:nuestros\s+)?cuerpos|piel\s+contra\s+piel|embestid\w*|chocan\s+nuestras\s+caderas|cuerpos\s+uni[eé]ndose)/iu],
+  ["slap", /(?:bofetada\w*|cachetada\w*|le\s+cruza\s+la\s+cara|sonora\s+palmada\s+en\s+la\s+mejilla)/iu],
   ["door_lock", /(?:cierra\s+(?:la\s+puerta\s+)?con\s+seguro|pone\s+el\s+seguro|echa\s+el\s+cerrojo|pasa\s+el\s+cerrojo|gira\s+la\s+llave|cerrar\s+con\s+llave|seguro\s+a\s+la\s+puerta|asegura\s+la\s+puerta)/iu],
   ["door_slam", /(?:portazo|cierra\s+de\s+golpe|azota\s+la\s+puerta)/iu],
   ["door_close", /(?:cierra\s+la\s+puerta|empuja\s+la\s+puerta|cerrando\s+la\s+puerta|puerta\s+se\s+cierra)/iu],
@@ -44,14 +44,14 @@ const FOLEY_PATTERNS: Array<[FoleyType, RegExp]> = [
 export function detectFoleyEvents(text: string): FoleyEvent[] {
   if (!text) return [];
   const events: FoleyEvent[] = [];
-  const stages = text.match(/\*[^*]+\*/g) || [text];
+  const stages = text.match(/\*[^*]+\*/g);
+  const segments = stages && stages.length ? stages : [text];
 
-  for (let i = 0; i < stages.length; i++) {
-    const stage = stages[i];
+  for (let i = 0; i < segments.length; i++) {
+    const stage = segments[i];
     for (const [type, pattern] of FOLEY_PATTERNS) {
       const match = pattern.exec(stage);
       if (match) {
-        // Prevent duplicate types in the same message
         if (!events.some((e) => e.type === type)) {
           events.push({
             type,
@@ -59,6 +59,20 @@ export function detectFoleyEvents(text: string): FoleyEvent[] {
             delaySec: i === 0 ? 0.05 : i * 0.4,
           });
         }
+      }
+    }
+  }
+
+  // Also scan full text for any un-bracketed action matches
+  for (const [type, pattern] of FOLEY_PATTERNS) {
+    if (!events.some((e) => e.type === type)) {
+      const match = pattern.exec(text);
+      if (match) {
+        events.push({
+          type,
+          match: match[0],
+          delaySec: 0.05,
+        });
       }
     }
   }

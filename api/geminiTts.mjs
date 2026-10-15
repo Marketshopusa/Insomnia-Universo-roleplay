@@ -389,7 +389,7 @@ export async function synthesizeGemini(text, preset, language, { performance = "
   const projectId = quotaProjectId();
   const prompt = geminiSpeechDirection(language, performance, region, expression);
   const isPureVocalReaction = expression?.reactions?.length === 1 && !expression.segments?.some((part) => part.kind !== "reaction");
-  const speakingRate = isPureVocalReaction ? 1.0 : 1.15;
+  const speakingRate = isPureVocalReaction ? 1.0 : 1.18;
   const request = (voice, relaxSafety) => fetchImpl("https://texttospeech.googleapis.com/v1/text:synthesize", {
     method: "POST",
     headers: {

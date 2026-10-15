@@ -190,12 +190,7 @@ export function streamSpeech(text: string, voice: string, language = "es", rolep
       const performance: Performance = "neutral";
       if (!spoken) { stop(); return; }
       let scheduledAt = context.currentTime;
-      if (roleplay) {
-        try {
-          const foleySources = scheduleFoleyForMessage(context, text, context.currentTime + 0.05);
-          for (const s of foleySources) sources.add(s);
-        } catch { /* Ignore optional foley errors */ }
-      }
+      let foleyScheduled = false;
 
       const schedule = (bytes: Uint8Array) => {
         if (stopped || !context) return;
@@ -216,7 +211,21 @@ export function streamSpeech(text: string, voice: string, language = "es", rolep
         const startAt = Math.max(scheduledAt, context.currentTime + (scheduledAt === 0 ? 0.08 : 0.025));
         source.start(startAt);
         scheduledAt = startAt + buffer.duration;
-        if (sources.size === 1) reportFirstPlayback();
+        if (!foleyScheduled && roleplay) {
+          foleyScheduled = true;
+          try {
+            const foleySources = scheduleFoleyForMessage(context, text, startAt);
+            for (const s of foleySources) {
+              sources.add(s);
+              s.onended = () => {
+                sources.delete(s);
+                s.disconnect();
+                if (schedulingComplete && sources.size === 0) finishPlayback();
+              };
+            }
+          } catch { /* Ignore optional foley errors */ }
+        }
+        reportFirstPlayback();
       };
       await receivePcm(spoken, voice, language, region, performance, roleplay, controller.signal, schedule);
       schedulingComplete = true;

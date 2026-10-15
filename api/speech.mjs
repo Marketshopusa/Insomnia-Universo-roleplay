@@ -69,7 +69,7 @@ export default async function handler(req, res) {
   if (!plainText && !expression?.reactions.length && !hasVocalCue(text)) return res.status(400).json({ error: "missing_text" });
   const region = typeof req.body.region === "string" ? req.body.region : "mx";
   const performance = ["neutral", "warm", "surprised", "amused", "sad", "pain", "pleasure", "scream", "soft"].includes(req.body.performance)
-    ? req.body.performance : "neutral";
+    ? req.body.performance : (expression?.performance || "neutral");
   const provider = "gemini-2.5-flash-tts";
   let opened = false;
   try {

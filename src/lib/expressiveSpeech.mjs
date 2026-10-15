@@ -55,7 +55,7 @@ const FORM = new RegExp("(?<![\\p{L}\\p{N}])(?:" + allForms.map(([, source]) => 
 const exactForm = allForms.map(([id, source]) => [id, new RegExp("^(?:" + source + ")$", "iu")]);
 const actionContext = /(?:dolor|duele|herid|golpe|esfuerzo|pain|hurt|injur|effort)/iu;
 const pleasureContext = /(?:placer|gozo|pleasure|excit|deseo|pasión|pasion|sensual|calor|rico|rica|delicia|lujuria|tentaci|entrecortad|escalofr|labio|ard)/iu;
-const nonPresent = /(?:\b(?:no|sin|not|without|nunca|never)\b|\b(?:quiero|quería|deseo|puedo|podría|debería|intento|intentar|voy\s+a|va\s+a|iba\s+a|si|when|if|want\s+to|will|would|can|could)\b|\b(?:recuerdo|recordé|ayer|yesterday|remember)\b)/iu;
+const nonPresent = /(?:\b(?:no|sin|not|without|nunca|never)\b|\b(?:quiero|quería|deseo|puedo|podría|debería|intento|intentar|trata(?:r|ndo|ba|n|s|r[aá])\s+(?:de\s+)?|contener|evit(?:ar|ando)|reprim(?:ir|iendo)|ahog(?:ar|ando)|aguant(?:ar|ando)|resist(?:ir|iendo)|voy\s+a|va\s+a|iba\s+a|si|when|if|want\s+to|will|would|can|could)\b|\b(?:recuerdo|recordé|ayer|yesterday|remember)\b)/iu;
 const contextualTail = /^(?:\s+(?:de\s+(?:dolor|placer|miedo|rabia|alegría|felicidad|deseo|excitación|excitacion|pasión|pasion|satisfacción|satisfaccion|anhelo|alivio)|con\s+(?:fuerza|dolor|rabia|picardía|picardia|diversión|diversion|deseo|pasión|pasion|agitación|agitacion)|a\s+carcajadas|desgarrador(?:a|es)?|fuertemente|fuerte|suavemente|suave|bajit[ao]|en\s+voz\s+baja|por\s+(?:el\s+)?(?:esfuerzo|deseo|calor|miedo)|de\s+repente|divertid[ao]|cómplice|complice|entrecortad[ao]|tembloros[ao]|agitad[ao]|aliviad[ao]))*/iu;
 const pureSoundDescription = /^(?:(?:yo|ella|él|el|mi|mis|sus|su|un|una|el|la)\s+)?(?:sonidos?\s+desgarradores?|gritos?|gemidos?|sollozos?|llantos?|risas?|carcajadas?)(?:\s|[,.!;]|$)/iu;
 const styleFor = (text) => {
@@ -67,6 +67,8 @@ const styleFor = (text) => {
   if (/asustad[ao]|aterrad[ao]|tembl(?:ando|or).*miedo|afraid|fearful/iu.test(text)) return "afraid";
   if (/asco|disgust(?:ed)?/iu.test(text)) return "disgusted";
   if (/agotad[ao]|cansad[ao]|exhausted|tired/iu.test(text)) return "tired";
+  if (/(?:placer|deseo|excitaci[oó]n|gemid|muerdo\s+el\s+labio|sensual|lujuria)/iu.test(text)) return "pleasure";
+  if (/(?:dolor|duele|lastim|golpe|quejido)/iu.test(text)) return "pain";
   return null;
 };
 
@@ -139,14 +141,20 @@ export function prepareExpressiveSpeech(input, { roleplay = false } = {}) {
       let cursor = 0;
       for (const match of matches) {
         if (match.index < cursor) continue;
-        addText(sentence.slice(cursor, match.index), "narration");
         const id = exactForm.find(([, pattern]) => pattern.test(match[0]))?.[0];
         if (!id) continue;
         const end = match.index + match[0].length;
         const tail = sentence.slice(end).match(contextualTail)?.[0] || "";
         const nextAction = matches[matches.indexOf(match) + 1]?.index ?? sentence.length;
         const context = sentence.slice(cursor, nextAction);
-        addReaction(classify(id, context), context);
+        const prefixText = sentence.slice(cursor, match.index);
+        const leavesDanglingGrammar = /\b(?:un|una|el|la|los|las|su|sus|mi|mis|tu|tus|de|del|al)\s*$/iu.test(prefixText);
+        if (leavesDanglingGrammar || (marked && sentence.length > 50)) {
+          addText(sentence.slice(cursor, end + tail.length), "narration");
+        } else {
+          addText(prefixText, "narration");
+          addReaction(classify(id, context), context);
+        }
         cursor = end + tail.length;
       }
       addText(sentence.slice(cursor), marked || matches.length ? "narration" : "dialogue");
@@ -177,7 +185,6 @@ export function prepareExpressiveSpeech(input, { roleplay = false } = {}) {
   const text = segments
     .map((part) => {
       if (part.kind === "reaction") return part.cue;
-      if (roleplay && part.kind === "narration") return "";
       return part.kind === "narration" && !/[.!?…]$/.test(part.text) ? part.text + "." : part.text;
     })
     .filter(Boolean)
@@ -206,7 +213,6 @@ export function splitExpressiveScore(score, { separate = new Set(), roleplay = s
     const text = parts
       .map((part) => {
         if (part.kind === "reaction") return hasSpeech && /^(?:cry|sob)$/.test(part.event) ? "[crying]" : part.cue;
-        if (roleplay && part.kind === "narration") return "";
         return part.kind === "narration" && !/[.!?…]$/.test(part.text) ? part.text + "." : part.text;
       })
       .filter(Boolean)
