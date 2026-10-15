@@ -59,7 +59,7 @@ export async function generateOpenRouter(messages, options = {}) {
           presence_penalty: 0.25,
           frequency_penalty: 0.25,
         }),
-        signal: AbortSignal.timeout(options.timeoutMs || 25000),
+        signal: AbortSignal.timeout(options.timeoutMs || 8000),
       });
       if (!response.ok) {
         console.warn("OpenRouter model error", model, response.status);
@@ -99,7 +99,7 @@ export async function generateNvidia(messages, options = {}) {
           max_tokens: options.maxTokens || 800,
           temperature: options.temperature ?? 0.8,
         }),
-        signal: AbortSignal.timeout(options.timeoutMs || 25000),
+        signal: AbortSignal.timeout(options.timeoutMs || 6000),
       });
       if (!response.ok) {
         console.warn("Nvidia model error", model, response.status);
@@ -636,42 +636,45 @@ export default async function handler(req, res) {
 
       let content = null;
       if (adultMode) {
-        // --- TARJETAS +18 / CONTENIDO ADULTO (NSFW) -> MAGNUM (Cero censura) ---
+        // --- TARJETAS +18 / CONTENIDO ADULTO (NSFW) -> EURYALE / MAGNUM (Cero censura, ultrarrápido ~1.6s) ---
         try {
           content = await generateOpenRouter(openRouterMessages, {
             models: [
-              "anthracite-org/magnum-v4-72b",
               "sao10k/l3.3-euryale-70b",
-              "deepseek/deepseek-chat",
+              "anthracite-org/magnum-v4-72b",
             ],
-            maxTokens: 1000,
+            maxTokens: 800,
             temperature: 0.85,
-            timeoutMs: 35000,
+            timeoutMs: 8000,
           });
         } catch (err) {
-          console.warn("Magnum NSFW OpenRouter invocation failed:", err.message);
+          console.warn("Adult mode OpenRouter invocation failed:", err.message);
         }
       } else {
-        // --- CONTENIDO GENERAL / NORMAL (SFW) -> NVIDIA NIM ($0 costo, ultra rápido) ---
+        // --- CONTENIDO GENERAL / NORMAL (SFW) -> EURYALE / NVIDIA NIM ---
         try {
-          content = await generateNvidia(openRouterMessages, {
+          content = await generateOpenRouter(openRouterMessages, {
+            models: [
+              "sao10k/l3.3-euryale-70b",
+              "anthracite-org/magnum-v4-72b",
+            ],
             maxTokens: 800,
-            temperature: 0.8,
-            timeoutMs: 20000,
+            temperature: 0.85,
+            timeoutMs: 8000,
           });
         } catch (err) {
-          console.warn("Nvidia SFW invocation failed:", err.message);
+          console.warn("OpenRouter invocation failed, trying Nvidia:", err.message);
         }
 
         if (!content) {
           try {
-            content = await generateOpenRouter(openRouterMessages, {
+            content = await generateNvidia(openRouterMessages, {
               maxTokens: 800,
               temperature: 0.8,
-              timeoutMs: 25000,
+              timeoutMs: 6000,
             });
           } catch (err) {
-            console.warn("OpenRouter SFW fallback failed:", err.message);
+            console.warn("Nvidia SFW fallback failed:", err.message);
           }
         }
       }

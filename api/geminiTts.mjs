@@ -398,7 +398,7 @@ export async function synthesizeGemini(text, preset, language, { performance = "
     body: JSON.stringify({
       input: { text, prompt },
       voice,
-      audioConfig: { audioEncoding: "LINEAR16", speakingRate: 1.15 },
+      audioConfig: { audioEncoding: "LINEAR16", speakingRate: 1.18 },
       ...(relaxSafety ? {
         advancedVoiceOptions: {
           safetySettings: {
