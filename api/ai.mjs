@@ -548,7 +548,7 @@ export default async function handler(req, res) {
     if (action === "story-chat") {
       const story = body.story || {};
       const spanish = body.language === "es";
-      const adultMode = body.adultMode === true;
+      const adultMode = body.adultMode === true || /(?:\+18|18\+|nsfw|er[oó]tic|sexual|hentai|\badult[oa]?\b)/i.test([story.title, story.description, story.story_context, story.story_type].filter(Boolean).join(" "));
       const locale = spanish ? "español" : "inglés";
       const history = (Array.isArray(body.history) ? body.history : []).flatMap((entry) => {
         const role = entry?.role === "assistant" ? "model" : entry?.role === "user" ? "user" : null;
@@ -635,25 +635,44 @@ export default async function handler(req, res) {
       }
 
       let content = null;
-      try {
-        content = await generateNvidia(openRouterMessages, {
-          maxTokens: 800,
-          temperature: 0.8,
-          timeoutMs: 20000,
-        });
-      } catch (err) {
-        console.warn("Nvidia invocation failed:", err.message);
-      }
-
-      if (!content) {
+      if (adultMode) {
+        // --- TARJETAS +18 / CONTENIDO ADULTO (NSFW) -> MAGNUM (Cero censura) ---
         try {
           content = await generateOpenRouter(openRouterMessages, {
+            models: [
+              "anthracite-org/magnum-v4-72b",
+              "sao10k/l3.3-euryale-70b",
+              "deepseek/deepseek-chat",
+            ],
             maxTokens: 1000,
             temperature: 0.85,
-            timeoutMs: 30000,
+            timeoutMs: 35000,
           });
         } catch (err) {
-          console.warn("OpenRouter invocation failed, falling back to Gemini:", err.message);
+          console.warn("Magnum NSFW OpenRouter invocation failed:", err.message);
+        }
+      } else {
+        // --- CONTENIDO GENERAL / NORMAL (SFW) -> NVIDIA NIM ($0 costo, ultra rápido) ---
+        try {
+          content = await generateNvidia(openRouterMessages, {
+            maxTokens: 800,
+            temperature: 0.8,
+            timeoutMs: 20000,
+          });
+        } catch (err) {
+          console.warn("Nvidia SFW invocation failed:", err.message);
+        }
+
+        if (!content) {
+          try {
+            content = await generateOpenRouter(openRouterMessages, {
+              maxTokens: 800,
+              temperature: 0.8,
+              timeoutMs: 25000,
+            });
+          } catch (err) {
+            console.warn("OpenRouter SFW fallback failed:", err.message);
+          }
         }
       }
 
