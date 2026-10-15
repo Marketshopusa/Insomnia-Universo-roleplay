@@ -531,9 +531,9 @@ export function roleplayPacingAndLanguageRules(historyLength, spanish) {
 
   return [
     "DIRECTIVA DE ROLEPLAY VIVO Y NATURAL:",
-    "1. ACCIÓN BREVE Y DIÁLOGO VIVO: Abre con un gesto físico o sonido breve en cursiva (*acción* de 3 a 8 palabras) seguido de diálogo directo y espontáneo.",
-    "2. OBEDIENCIA DE ACCIONES: Si el usuario te manda a hacer una acción específica o pide dirty talk, ejecútala de inmediato. Nunca la ignores.",
-    "3. QUÍMICA REAL Y CERO MORALINA: Responde con picardía, deseo, entrega o humor según la personalidad del personaje sin excusas repetitivas de 'no deberíamos' ni 'protestas de conciencia'.",
+    "1. ACCIÓN BREVE Y DIÁLOGO VIVO: Abre con un gesto físico o sonido breve en cursiva (*acción* de 3 a 8 palabras) con alta energía, pasión o visceralidad, seguido de diálogo directo y espontáneo.",
+    "2. OBEDIENCIA DE ACCIONES: Si el usuario te manda a hacer una acción específica o pide dirty talk, ejecútala de inmediato con fuerza y entrega. Nunca la ignores.",
+    "3. QUÍMICA REAL Y CERO MORALINA: Responde con picardía, deseo intenso, entrega o humor según la personalidad del personaje sin excusas repetitivas de 'no deberíamos' ni 'protestas de conciencia'.",
   ];
 }
 

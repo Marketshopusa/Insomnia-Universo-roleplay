@@ -213,16 +213,16 @@ export function geminiSpeechDirection(language, performance, region, expression)
   }
   const spanish = language !== "en";
   const mood = {
-    neutral: spanish ? "Voz natural acorde con la escena." : "Natural voice suited to the scene.",
-    warm: spanish ? "La sonrisa se percibe sutilmente en el tono, sin reír ni añadir sonidos." : "Let a slight smile color the voice, without laughing or adding sounds.",
-    surprised: spanish ? "Deja oír una sorpresa natural en el diálogo, sin añadir interjecciones." : "Let natural surprise color the dialogue without adding interjections.",
-    amused: spanish ? "Ríe solo en el punto marcado." : "Laugh only at the marked point.",
-    sad: spanish ? "Voz quebrada por el llanto, sin añadir palabras." : "Voice trembling with tears, without added words.",
-    pain: spanish ? "El sonido marcado expresa dolor." : "The marked sound expresses pain.",
-    pleasure: spanish ? "El sonido marcado expresa placer." : "The marked sound expresses pleasure.",
-    scream: spanish ? "Eleva la voz solo en el punto marcado." : "Raise the voice only at the marked point.",
-    soft: spanish ? "Habla en voz baja." : "Speak softly.",
-  }[performance] || (spanish ? "Voz natural y fluida." : "Natural, fluent voice.");
+    neutral: spanish ? "Voz natural, expresiva y viva acorde con la escena." : "Natural, lively and expressive voice suited to the scene.",
+    warm: spanish ? "Tono cálido, seductor y afectuoso con una sonrisa viva en la voz." : "Warm, affectionate and seductive tone with a living smile in the voice.",
+    surprised: spanish ? "Tono de sorpresa real, alerta e intensa en el diálogo." : "Real, intense surprise in the dialogue.",
+    amused: spanish ? "Risa viva, pícara y divertida." : "Lively, mischievous laughter.",
+    sad: spanish ? "Voz quebrada y desgarrada por el llanto, sollozo real y tristeza sentida." : "Voice trembling with real crying, genuine sobs and deep sorrow.",
+    pain: spanish ? "Voz y sonido con dolor físico real, quejido tenso y fuerza visceral." : "Voice and sound with real physical pain and visceral force.",
+    pleasure: spanish ? "Voz cargada de placer intenso, gemido apasionado, respiración entrecortada y deseo ardiente." : "Voice charged with intense pleasure, passionate moaning, ragged breathing and ardent desire.",
+    scream: spanish ? "Grito con fuerza, potencia vocal y energía desbordada." : "Loud scream with vocal power and overflowing energy.",
+    soft: spanish ? "Susurro íntimo, sensual o en voz baja, muy cerca del oído." : "Intimate, sensual whisper close to the ear.",
+  }[performance] || (spanish ? "Voz natural y expresiva." : "Natural, expressive voice.");
   return (spanish ? accentHint(language, region) + " Di exclusivamente las palabras del diálogo con voz humana, viva, emotiva y natural acorde a la escena. " :
     "Speak exclusively the dialogue with a natural, emotive, human voice suited to the scene. ") + mood +
     (spanish ? " No leas acotaciones de acción entre asteriscos ni nombres de sonidos. Entrega solo la voz hablada viva." : " Do not read stage directions or sound labels. Deliver only the living spoken voice.");
@@ -388,6 +388,8 @@ export async function synthesizeGemini(text, preset, language, { performance = "
   const token = await tokenProvider();
   const projectId = quotaProjectId();
   const prompt = geminiSpeechDirection(language, performance, region, expression);
+  const isPureVocalReaction = expression?.reactions?.length === 1 && !expression.segments?.some((part) => part.kind !== "reaction");
+  const speakingRate = isPureVocalReaction ? 1.0 : 1.15;
   const request = (voice, relaxSafety) => fetchImpl("https://texttospeech.googleapis.com/v1/text:synthesize", {
     method: "POST",
     headers: {
@@ -398,7 +400,7 @@ export async function synthesizeGemini(text, preset, language, { performance = "
     body: JSON.stringify({
       input: { text, prompt },
       voice,
-      audioConfig: { audioEncoding: "LINEAR16" },
+      audioConfig: { audioEncoding: "LINEAR16", speakingRate },
       ...(relaxSafety ? {
         advancedVoiceOptions: {
           safetySettings: {
