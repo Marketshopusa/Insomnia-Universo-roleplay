@@ -1,4 +1,5 @@
 import { prepareExpressiveSpeech } from "./expressiveSpeech.mjs";
+import { scheduleFoleyForMessage } from "./foleyStudio";
 import { supabase } from "@/integrations/supabase/client";
 const FUNCTIONS_URL = "/api/speech";
 const PCM_SAMPLE_RATE = 24_000;
@@ -189,6 +190,12 @@ export function streamSpeech(text: string, voice: string, language = "es", rolep
       const performance: Performance = "neutral";
       if (!spoken) { stop(); return; }
       let scheduledAt = context.currentTime;
+      if (roleplay) {
+        try {
+          const foleySources = scheduleFoleyForMessage(context, text, context.currentTime + 0.05);
+          for (const s of foleySources) sources.add(s);
+        } catch { /* Ignore optional foley errors */ }
+      }
 
       const schedule = (bytes: Uint8Array) => {
         if (stopped || !context) return;
