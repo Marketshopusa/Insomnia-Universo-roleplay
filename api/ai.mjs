@@ -583,10 +583,13 @@ export default async function handler(req, res) {
       };
       let systemInstruction = [
         ...storyContinuityLines(spanish),
-        "Eres el personaje de una historia de rol en curso. Personaje o reparto: " + String(story.character_role || "personaje principal").slice(0, 200) + ".",
-        "El usuario interpreta a " + String(story.player_role || "protagonista").slice(0, 150) + ". Historia: " + String(story.title || "Historia").slice(0, 200) + ".",
-        "Premisa inicial (fondo; no reinicies la escena si la memoria ya avanzó): " + [story.description, story.story_context].filter(Boolean).join("\n").slice(0, 2000) + ".",
-        "La memoria y los últimos turnos son la escena actual, en orden. Continúa exactamente desde la última intervención: mismo lugar, tiempo, personas presentes, relaciones y hechos. No empieces de cero, no regreses al inicio, no mezcles una escena vieja con la de ahora y no respondas como si lo anterior no hubiera pasado. Si el mensaje está mal transcrito, interprétalo dentro de esa escena.",
+        "Eres un actor de roleplay inmersivo y dramático para adultos. El usuario (" + String(story.player_role || "Usuario").slice(0, 150) + ") es el DIRECTOR SUPREMO.",
+        "REPARTO PRINCIPAL: " + String(story.character_role || "personaje principal").slice(0, 200) + ".",
+        "REGLA SUPREMA DE CAMBIO DE PERSONAJES (MULTIPLE ACTORES):",
+        "  - El usuario puede hablarle a otros personajes o introducir personajes secundarios (por ejemplo: la prima Marta, la mamá, la cuñada, la tía, el vecino, etc.).",
+        "  - Si el usuario se dirige a otro personaje ('que dices prima', 'prima Marta', 'ahora habla X', 'cuñada', 'tía'), ASUME DE FORMA INMEDIATA EL PAPEL DE ESE PERSONAJE AL QUE SE DIRIGIÓ. Quien responde este turno es ESE personaje con su respectiva perspectiva y parentesco.",
+        "  - ESTRICTAMENTE PROHIBIDO romper la cuarta pared (nunca digas 'en un roleplay', 'en este rol', 'soy un personaje'). CERO referencias a que esto es un juego de rol o ficción.",
+        "  - ESTRICTAMENTE PROHIBIDO que Maya responda haciéndose pasar por el otro personaje diciendo incoherencias como 'Mami... ¿De verdad me encuentras hermosa?'. Si el usuario le habla a la prima sobre su hija Maya, responde COMO LA PRIMA hablando sobre su hija.",
         ...storyVoiceLines(story.character_role, story.player_role, spanish, locale),
         ...roleplayPacingAndLanguageRules(history.length, spanish),
         slangInstruction(body.language, body.region),
@@ -632,9 +635,11 @@ export default async function handler(req, res) {
       if (!latest) return send(res, 400, { error: "missing_message" });
 
       // Detector de instrucciones de Director: cambio de personaje, cambio de escena o introducción de terceros
-      const isDirectorSwitch = /(?:ahora\s+(?:habla|eres|act[uú]a|responde)|cambio\s+de\s+personaje|eres\s+ahora|responde\s+como|habla\s+como|\bprima\b|\bcuñad[ao]\b|\bmam[aá]\b|\bmadre\b|\bt[ií][ao]\b|\bsobrin[ao]\b|\bherman[ao]\b|\bpadre\b|\bpap[aá]\b|\bvecin[ao]\b|\bamig[ao]\b)/i.test(latest);
+      const targetMatch = latest.match(/\b(?:prima(?:\s+[a-záéíóúñ]+)?|cuñad[ao](?:\s+[a-záéíóúñ]+)?|mam[aá]|madre|t[ií][ao](?:\s+[a-záéíóúñ]+)?|sobrin[ao](?:\s+[a-záéíóúñ]+)?|herman[ao](?:\s+[a-záéíóúñ]+)?|padre|pap[aá]|vecin[ao](?:\s+[a-záéíóúñ]+)?|amig[ao](?:\s+[a-záéíóúñ]+)?)/i);
+      const isDirectorSwitch = /(?:ahora\s+(?:habla|eres|act[uú]a|responde)|cambio\s+de\s+personaje|eres\s+ahora|responde\s+como|habla\s+como)/i.test(latest) || !!targetMatch;
+      const targetName = targetMatch ? targetMatch[0].trim() : "el nuevo personaje";
       const formattedLatest = isDirectorSwitch
-        ? `[DIRECTOR: Orden de escena y personaje. ${latest.match(/\b(?:prima|cuñada|cuñado|mamá|madre|tía|tío|sobrina|sobrino|hermana|hermano|padre|papá|vecina|vecino)\s+\w+/i)?.[0] ? `Adopta inmediatamente la identidad, relación y voz del personaje que se te indica: "${latest.match(/\b(?:prima|cuñada|cuñado|mamá|madre|tía|tío|sobrina|sobrino|hermana|hermano|padre|papá|vecina|vecino)\s+\w+/i)?.[0]}". Quien responde este turno es este personaje, no Maya ni el anterior.` : `Respeta de forma estricta la orden de dirección.`}]\n${latest}`
+        ? `[DIRECTOR: Orden de cambio de personaje. El usuario se está dirigiendo a: "${targetName}". Quien debe responder ahora con sus propias palabras, perspectiva y relación con el usuario es ${targetName}. PROHIBIDO responder como Maya y PROHIBIDO romper la cuarta pared o mencionar la palabra roleplay.]\n${latest}`
         : latest;
 
       if (contents.at(-1)?.role === "user") {
@@ -690,6 +695,9 @@ export default async function handler(req, res) {
         content = content.replace(/Quiero liberar toda esta pasión que bulle dentro de mí sin restricciones ni tabúes\.?/gi, "").trim();
         content = content.replace(/sin restricciones ni tabúes\.?/gi, "").trim();
         content = content.replace(/pasión que bulle dentro de mí\.?/gi, "").trim();
+        // Purga estricta de rotura de cuarta pared
+        content = content.replace(/\s*en\s+un\s+roleplay\s+(?:íntimo\s+)?(?:con\s+[a-záéíóúñ]+)?/gi, "").trim();
+        content = content.replace(/\s*en\s+este\s+roleplay[.,]?/gi, "").trim();
       }
 
       return send(res, 200, { content });
