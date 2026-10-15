@@ -73,37 +73,6 @@ export default async function handler(req, res) {
   const provider = "gemini-2.5-flash-tts";
   let opened = false;
   try {
-    if (expression?.reactions.length) {
-      const scene = await synthesizeExpressiveScene(expression, req.body.voice, req.body.language, {
-        region,
-        resolvedVoice: previewVoice(req.body.voice),
-        synthesize: synthesizeGemini,
-        onAudio(pcm) {
-          if (!pcm?.length) return;
-          if (!opened) {
-            opened = true;
-            openSpeech(res, provider, startedAt);
-          }
-          writePcmChunks(res, pcm);
-        },
-      });
-      if (scene.status !== 200) {
-        if (!opened) {
-          const status = scene.status === 429 ? 429 : scene.status === 403 ? 403 : 502;
-          return res.status(status).json({
-            error: scene.status === 429 ? "tts_quota_exhausted" : "tts_unavailable",
-            message: explainGeminiFailure(scene.status, scene.detail),
-          });
-        }
-      }
-      if (opened) {
-        finishSpeech(res, provider, startedAt);
-      } else {
-        writePcm(res, scene.pcm, provider, startedAt);
-      }
-      return;
-    }
-
     // Sentence-chunked streaming via synthesizeGemini for instant first playback latency (< 1s)
     const sentences = splitSentences(text);
     if (sentences.length > 1) {
@@ -155,6 +124,37 @@ export default async function handler(req, res) {
         finishSpeech(res, provider, startedAt);
         return;
       }
+    }
+
+    if (expression?.reactions.length) {
+      const scene = await synthesizeExpressiveScene(expression, req.body.voice, req.body.language, {
+        region,
+        resolvedVoice: previewVoice(req.body.voice),
+        synthesize: synthesizeGemini,
+        onAudio(pcm) {
+          if (!pcm?.length) return;
+          if (!opened) {
+            opened = true;
+            openSpeech(res, provider, startedAt);
+          }
+          writePcmChunks(res, pcm);
+        },
+      });
+      if (scene.status !== 200) {
+        if (!opened) {
+          const status = scene.status === 429 ? 429 : scene.status === 403 ? 403 : 502;
+          return res.status(status).json({
+            error: scene.status === 429 ? "tts_quota_exhausted" : "tts_unavailable",
+            message: explainGeminiFailure(scene.status, scene.detail),
+          });
+        }
+      }
+      if (opened) {
+        finishSpeech(res, provider, startedAt);
+      } else {
+        writePcm(res, scene.pcm, provider, startedAt);
+      }
+      return;
     }
 
     const expressive = await synthesizeGemini(text, req.body.voice, req.body.language, { performance, region, expression });
