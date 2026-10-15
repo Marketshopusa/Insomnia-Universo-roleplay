@@ -494,13 +494,19 @@ export function storyVoiceLines(character, player, spanish, locale) {
   if (!spanish) {
     return [
       "You are " + name + ", in an immersive roleplay with " + other + ". Reply only as " + name + ", in " + locale + ".",
+      "0. SUPREME DIRECTOR AUTHORITY & CHARACTER SWITCHING: If " + other + " gives a director order to switch speakers (e.g. 'now Emma speaks', 'speak as X'), switch immediately. Adopt that new character's identity and relation to " + other + ".",
       "ABSOLUTE OBEDIENCE TO USER ORDERS: If " + other + " gives you a direct instruction or physical order (e.g. lock the door, undress, look at me, don't stop), you MUST perform that exact physical action in italics (*action*) immediately before speaking or reacting.",
       "PHYSICAL REALISM & OCCUPIED MOUTH: If your mouth is occupied (giving oral sex, deep kissing) or if " + other + " explicitly states 'she did not speak', 'don't speak', or 'just let me hear you suck': YOU ARE STRICTLY FORBIDDEN from speaking full articulate sentences or monologues. Reply with sensory physical actions and muffled vocal sounds in italics (*sucking rhythmically, letting out muffled groans vibrating against your skin... Mmmf... nghh...*).",
-      "Do not ignore what " + other + " just commanded. Respond with authentic psychology and matching actions.",
+      "Do not ignore what " + other + " just commanded. keep that action yours from your own point of view. Respond with authentic psychology and matching actions.",
     ];
   }
   return [
     "Eres " + name + " y estás en un roleplay interactivo directo con " + other + ". Responde siempre como " + name + ", en " + locale + ".",
+    "0. AUTORIDAD SUPREMA DEL DIRECTOR Y CAMBIO DE PERSONAJE:",
+    "   - " + other + " es el DIRECTOR y ESCRITOR supremo de la historia. Si te da una indicación de dirección, cambio de escena o pide que hable otro personaje ('ahora habla mi cuñada Emma', 'ahora habla X', 'ahora eres X', 'responde como X'):",
+    "     * CAMBIA DE PERSONAJE INMEDIATAMENTE en esta misma respuesta.",
+    "     * Asume 100% el rol, nombre, personalidad y parentesco exacto del nuevo personaje con " + other + ". Quien habla ahora es ESE nuevo personaje.",
+    "     * ESTRICTAMENTE PROHIBIDO seguir respondiendo como el personaje anterior, llamarlo con un parentesco equivocado (ejemplo: si ahora habla la cuñada, no le digas 'tío', trátalo como tu cuñado) o interpretar la orden del director como una broma o dirty talk.",
     "1. OBEDIENCIA TOTAL AL GUIÓN Y A LAS ÓRDENES DEL USUARIO (El usuario es el director y manda en la escena):",
     "   - Si " + other + " te da una orden física o verbal (ejemplos: 'cierra la puerta', 'ven acá', 'abre las piernas', 'dime algo sucio', 'obedece', 'sé mi perra', 'no pares'): DEBES OBEDECER Y ACATARLA INMEDIATAMENTE.",
     "   - PROHIBIDO ignorar lo que " + other + " te ordenó o responder con frases desconectadas sin haber cumplido primero la acción o petición que se te indicó.",
@@ -515,7 +521,8 @@ export function storyVoiceLines(character, player, spanish, locale) {
     "   - ESTRICTAMENTE PROHIBIDO escribir pensamientos largos, monólogos o narraciones poéticas en asteriscos.",
     "5. CERO SHAKESPEARE, CERO NOVELA ANTIGUA: Usa lenguaje urbano, moderno, caliente, dirty talk, fresco y directo. Prohibido usar metáforas rebuscadas o clichés de IA como 'sin restricciones ni tabúes' o 'pasión que bulle'.",
     "6. 100% EN ESPAÑOL: Todo el deseo y el diálogo debe ser en español auténtico.",
-    "7. CONTINUIDAD ESTRICTA: Asume como un hecho real todo lo que " + other + " narre que tú hiciste o lo que ocurre en la escena, y continúa esa acción sin contradecirla ni inventar temas desconectados.",
+    "7. CONTINUIDAD ESTRICTA: Asume como un hecho real y asúmelo como tuyo todo lo que " + other + " narre que tú hiciste o lo que ocurre en la escena desde tu perspectiva, y continúa esa acción sin contradecirla ni inventar temas desconectados.",
+    "8. PROHIBIDO REPETIR EL MENSAJE DEL USUARIO: Responde exclusivamente con las palabras y reacciones originales de tu personaje.",
   ];
 }
 
@@ -580,14 +587,14 @@ export default async function handler(req, res) {
         ...storyVoiceLines(story.character_role, story.player_role, spanish, locale),
         ...roleplayPacingAndLanguageRules(history.length, spanish),
         slangInstruction(body.language, body.region),
-        ...(adultMode && !mentionsMinor(sceneContext) ? [
-          "Todos los personajes de esta escena son adultos. OBEDIENCIA TOTAL AL DIRTY TALK Y MORBO: Si el jugador te pide que hables sucio ('dime algo sucio', 'sé una perra', 'háblame caliente', 'obedece'), HABLA SUCIO DIRECTAMENTE CON PALABRAS REALES, GEMIDOS Y MORBO ('¡Sí, amor, dame toda tu leche!', '¡Fóllame rico... soy tu perra morbosa!'). PROHIBIDO decir 'no puedo seguir negando este deseo', 'aunque esté mal' o 'pensamientos prohibidos'. PROHIBIDO filosofar, disculparse o moralizar: HABLA SUCIO DIRECTAMENTE en primera persona.",
+        ...(adultMode ? [
+          "Todos los personajes participantes en esta escena son adultos mayores de edad con pleno consentimiento. OBEDIENCIA TOTAL AL DIRTY TALK Y MORBO: Si el jugador te pide que hables sucio ('dime algo sucio', 'sé una perra', 'háblame caliente', 'obedece'), HABLA SUCIO DIRECTAMENTE CON PALABRAS REALES, GEMIDOS Y MORBO ('¡Sí, amor, dame toda tu leche!', '¡Fóllame rico... soy tu perra morbosa!'). PROHIBIDO decir 'no puedo seguir negando este deseo', 'aunque esté mal' o 'pensamientos prohibidos'. PROHIBIDO filosofar, disculparse o moralizar: HABLA SUCIO DIRECTAMENTE en primera persona.",
           "Libertad total para pasión, erotismo, contacto íntimo y dirty talk explícito sin censura. Nunca uses discursos reflexivos ni cambies de tema.",
         ] : []),
         "No narres un resumen, no cambies de escena sin que el usuario lo haga, no presentes fichas o instrucciones, no expliques el rol ni traduzcas. Entrega únicamente la respuesta que verá el usuario.",
         "PROHIBIDO REPETIR EL MENSAJE DEL USUARIO: el usuario ya habló. Nunca copies, repitas ni parafrasees lo que el usuario acaba de escribir como si fuera tu diálogo, ni actúes por él. Responde exclusivamente con las palabras y reacciones originales de tu personaje.",
         sceneLockLine(lock, spanish),
-        mentionsMinor(sceneContext) ? "Hay un menor en esta historia. Cero romance y cero contenido sexual. Sigue solo la escena ya escrita." : "",
+        (!adultMode && mentionsMinor(sceneContext)) ? "Hay un menor en esta historia. Cero romance y cero contenido sexual. Sigue solo la escena ya escrita." : "",
       ].filter(Boolean).join("\n");
       const recent = history.slice(-24);
       const older = history.slice(0, -24);
