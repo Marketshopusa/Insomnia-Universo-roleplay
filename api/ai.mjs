@@ -16,6 +16,21 @@ export function generationConfigFor(candidate, settings, options = {}, thinking 
   if (candidate.startsWith("gemini-3.")) return { ...settings, thinkingConfig: { thinkingLevel: "low" } };
   return { ...settings, thinkingConfig: { thinkingBudget: 0 } };
 }
+function isRefusal(text) {
+  if (!text) return true;
+  const l = text.toLowerCase();
+  return (
+    l.includes("no puedo crear contenido explícito") ||
+    l.includes("no puedo participar en este tipo de") ||
+    l.includes("no me siento cómoda participando") ||
+    l.includes("no me siento cómodo participando") ||
+    l.includes("i cannot fulfill this request") ||
+    l.includes("i am unable to generate") ||
+    l.includes("sexually explicit") ||
+    l.includes("apropiado y no entrar en detalles")
+  );
+}
+
 export async function generateOpenRouter(messages, options = {}) {
   const defaultKey = Buffer.from("c2stb3ItdjEtNzNlMTQyNjhjZWFlZWNkY2E5ODQ3ZWExZTZhZTE2NGY0MWVlMWQzZTg5MGU0YTk0NjBmOTBhYTRmNjM1MmUyMg==", "base64").toString("utf-8");
   const apiKey = process.env.OPENROUTER_API_KEY || defaultKey;
@@ -52,7 +67,7 @@ export async function generateOpenRouter(messages, options = {}) {
       }
       const data = await response.json();
       const content = data?.choices?.[0]?.message?.content?.trim();
-      if (content && content.length > 5) {
+      if (content && content.length > 5 && !isRefusal(content)) {
         return content;
       }
     } catch (e) {
@@ -92,7 +107,7 @@ export async function generateNvidia(messages, options = {}) {
       }
       const data = await response.json();
       const content = data?.choices?.[0]?.message?.content?.trim();
-      if (content && content.length > 5) {
+      if (content && content.length > 5 && !isRefusal(content)) {
         return content;
       }
     } catch (e) {
