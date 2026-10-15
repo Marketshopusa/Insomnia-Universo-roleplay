@@ -630,7 +630,18 @@ export default async function handler(req, res) {
         else contents.push({ role: entry.role, parts: [{ text: entry.text }] });
       }
       if (!latest) return send(res, 400, { error: "missing_message" });
-      if (contents.at(-1)?.role === "user") contents.at(-1).parts[0].text += "\n" + latest;
+
+      // Detector de instrucciones de Director: cambio de personaje, cambio de escena o introducción de terceros
+      const isDirectorSwitch = /(?:ahora\s+(?:habla|eres|act[uú]a|responde)|cambio\s+de\s+personaje|eres\s+ahora|responde\s+como|habla\s+como|\bprima\b|\bcuñad[ao]\b|\bmam[aá]\b|\bmadre\b|\bt[ií][ao]\b|\bsobrin[ao]\b|\bherman[ao]\b|\bpadre\b|\bpap[aá]\b|\bvecin[ao]\b|\bamig[ao]\b)/i.test(latest);
+      const formattedLatest = isDirectorSwitch
+        ? `[DIRECTOR: Orden de escena y personaje. ${latest.match(/\b(?:prima|cuñada|cuñado|mamá|madre|tía|tío|sobrina|sobrino|hermana|hermano|padre|papá|vecina|vecino)\s+\w+/i)?.[0] ? `Adopta inmediatamente la identidad, relación y voz del personaje que se te indica: "${latest.match(/\b(?:prima|cuñada|cuñado|mamá|madre|tía|tío|sobrina|sobrino|hermana|hermano|padre|papá|vecina|vecino)\s+\w+/i)?.[0]}". Quien responde este turno es este personaje, no Maya ni el anterior.` : `Respeta de forma estricta la orden de dirección.`}]\n${latest}`
+        : latest;
+
+      if (contents.at(-1)?.role === "user") {
+        contents.at(-1).parts[0].text += "\n" + formattedLatest;
+      } else {
+        contents.push({ role: "user", parts: [{ text: formattedLatest }] });
+      }
       const openRouterMessages = [
         { role: "system", content: systemInstruction }
       ];
