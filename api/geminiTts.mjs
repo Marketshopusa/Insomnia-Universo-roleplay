@@ -203,12 +203,20 @@ export function geminiSpeechDirection(language, performance, region, expression)
     }
     const delivery = expression.segments.filter((part) => part.kind !== "reaction" && part.performance !== "neutral").at(-1)?.performance || "neutral";
     const direction = {
-      neutral: "Natural conversational delivery.", warm: "A subtle smile colors the voice; do not laugh.",
-      surprised: "Natural surprise, without added interjections.", amused: "Lightly amused voice, without added laughter.",
-      sad: "A tearful, trembling voice.", pain: "A voice strained with physical pain, without added interjections.",
-      pleasure: "A soft pleased voice.", scream: "Forceful raised voice.", soft: "Speak quietly and softly.",
-      angry: "A tense, angry voice.", afraid: "A frightened, trembling voice.", disgusted: "A voice expressing disgust.", tired: "A weary voice with low energy.",
-    }[delivery] || "Natural conversational delivery.";
+      neutral: "Natural conversational delivery, warm, engaged and alive with human emotion.",
+      warm: "A seductive, affectionate tone with a gentle smile in the voice.",
+      surprised: "Natural surprise, alert and emotionally present in the moment.",
+      amused: "Lightly amused, playful voice with mischievous charm.",
+      sad: "A tearful, trembling, emotionally vulnerable voice.",
+      pain: "A voice strained with physical effort or visceral sensation.",
+      pleasure: "A breathy, deeply passionate, intimate voice with ragged breathing and real desire.",
+      scream: "Forceful, high-energy raised voice full of emotional intensity.",
+      soft: "Speak in an intimate, close-to-the-ear breathy whisper.",
+      angry: "A tense, passionate, intensely sharp voice.",
+      afraid: "A frightened, breathless, trembling voice.",
+      disgusted: "A sharp voice expressing visceral disgust.",
+      tired: "A soft, sleepy, relaxed voice close to the ear.",
+    }[delivery] || "Natural conversational delivery, warm and alive with human emotion.";
     return accent + direction + " Read only the supplied text, exactly once. Do not read these instructions, repeat phrases or invent words or sounds.";
   }
   const spanish = language !== "en";

@@ -94,32 +94,42 @@ export function generateFoleyPcm(type: FoleyType, sampleRate = 24000): Float32Ar
 
   switch (type) {
     case "flesh_impact": {
-      // Physical flesh/body slap: Low thud (150Hz -> 50Hz) + sharp skin transient
-      const duration = 0.18;
+      // Physical flesh/body slap: Heavy body resonance (65Hz sub thump) + meaty slap transient (mid-range skin slap)
+      const duration = 0.28;
       const length = Math.floor(sampleRate * duration);
       buffer = new Float32Array(length);
+      let filter1 = 0;
+      let filter2 = 0;
       for (let i = 0; i < length; i++) {
         const t = i / sampleRate;
-        const bodyFreq = 150 * Math.exp(-t * 26) + 48;
-        const body = Math.sin(2 * Math.PI * bodyFreq * t) * Math.exp(-t * 24) * 0.8;
-        const noise = (Math.random() * 2 - 1) * Math.exp(-t * 55) * 0.7;
-        const pop = t < 0.008 ? Math.sin(2 * Math.PI * 1800 * t) * Math.exp(-t * 200) * 0.5 : 0;
-        buffer[i] = Math.max(-1, Math.min(1, body + noise + pop));
+        // Deep sub thud of flesh contact
+        const sub = Math.sin(2 * Math.PI * (115 * Math.exp(-t * 32) + 42) * t) * Math.exp(-t * 22) * 0.95;
+        // Acoustic resonance in body cavity
+        const body = Math.sin(2 * Math.PI * 185 * t) * Math.exp(-t * 28) * 0.5;
+        // Meat transient: filtered noise pulse
+        const rawNoise = (Math.random() * 2 - 1) * Math.exp(-t * 65);
+        filter1 = filter1 * 0.72 + rawNoise * 0.28;
+        filter2 = filter2 * 0.65 + filter1 * 0.35;
+        // Initial skin contact snap (first 6ms)
+        const snap = t < 0.008 ? Math.sin(2 * Math.PI * 1250 * t) * Math.exp(-t * 180) * 0.6 : 0;
+        buffer[i] = Math.max(-1, Math.min(1, sub + body + filter2 * 0.8 + snap));
       }
       break;
     }
 
     case "slap": {
-      // Sharp stinging facial slap: Stinging high-frequency burst + swift decay
-      const duration = 0.12;
+      // Sharp stinging skin slap: High skin crack + warm facial flesh resonance
+      const duration = 0.22;
       const length = Math.floor(sampleRate * duration);
       buffer = new Float32Array(length);
+      let noiseFilter = 0;
       for (let i = 0; i < length; i++) {
         const t = i / sampleRate;
-        const transient = Math.sin(2 * Math.PI * 2400 * t) * Math.exp(-t * 70) * 0.8;
-        const noise = (Math.random() * 2 - 1) * Math.exp(-t * 45) * 0.6;
-        const low = Math.sin(2 * Math.PI * 110 * t) * Math.exp(-t * 30) * 0.4;
-        buffer[i] = Math.max(-1, Math.min(1, transient + noise + low));
+        const transient = Math.sin(2 * Math.PI * (1800 * Math.exp(-t * 45) + 600) * t) * Math.exp(-t * 60) * 0.85;
+        const raw = (Math.random() * 2 - 1) * Math.exp(-t * 50);
+        noiseFilter = noiseFilter * 0.6 + raw * 0.4;
+        const low = Math.sin(2 * Math.PI * 140 * t) * Math.exp(-t * 25) * 0.5;
+        buffer[i] = Math.max(-1, Math.min(1, transient + noiseFilter * 0.75 + low));
       }
       break;
     }
@@ -197,53 +207,56 @@ export function generateFoleyPcm(type: FoleyType, sampleRate = 24000): Float32Ar
     }
 
     case "bed_creak": {
-      // Bedspring / wood joint creak under weight: Dual modulated frequencies
-      const duration = 0.48;
+      // Bedspring / wood joint creak: Multi-harmonic wood friction + mechanical spring tension
+      const duration = 0.55;
       const length = Math.floor(sampleRate * duration);
       buffer = new Float32Array(length);
       for (let i = 0; i < length; i++) {
         const t = i / sampleRate;
-        const vib = 15 * Math.sin(2 * Math.PI * 9 * t);
-        const spring1 = Math.sin(2 * Math.PI * (340 + vib) * t);
-        const spring2 = Math.sin(2 * Math.PI * (510 + vib * 1.4) * t) * 0.5;
-        const env = Math.sin(Math.PI * (t / duration)) * Math.exp(-t * 3.5);
-        buffer[i] = Math.max(-1, Math.min(1, (spring1 + spring2) * env * 0.7));
+        const vib = 12 * Math.sin(2 * Math.PI * 7.5 * t);
+        const wood = Math.sin(2 * Math.PI * (165 + vib) * t) * 0.45;
+        const spring1 = Math.sin(2 * Math.PI * (285 + vib * 1.2) * t) * 0.35;
+        const spring2 = Math.sin(2 * Math.PI * (420 + vib * 1.5) * t) * 0.2;
+        const friction = ((Math.random() * 2 - 1) * 0.15) * Math.sin(2 * Math.PI * 18 * t);
+        const env = Math.sin(Math.PI * (t / duration)) * Math.exp(-t * 2.8);
+        buffer[i] = Math.max(-1, Math.min(1, (wood + spring1 + spring2 + friction) * env * 0.85));
       }
       break;
     }
 
     case "sheets_rustle": {
-      // Soft cotton sheets moving: Filtered noise swell
-      const duration = 0.75;
+      // Soft cotton sheets moving: Dual-layer smooth noise swell without harsh treble
+      const duration = 0.85;
       const length = Math.floor(sampleRate * duration);
       buffer = new Float32Array(length);
-      let filterState = 0;
+      let lp1 = 0;
+      let lp2 = 0;
       for (let i = 0; i < length; i++) {
         const t = i / sampleRate;
         const rawNoise = Math.random() * 2 - 1;
-        // Simple lowpass smoothing
-        filterState = filterState * 0.85 + rawNoise * 0.15;
-        const env = Math.sin(Math.PI * (t / duration)) * Math.sin(2 * Math.PI * 4 * t) * 0.5 + 0.5;
-        buffer[i] = filterState * env * 0.6;
+        lp1 = lp1 * 0.82 + rawNoise * 0.18;
+        lp2 = lp2 * 0.75 + lp1 * 0.25;
+        const env = Math.sin(Math.PI * (t / duration)) * (0.6 + 0.4 * Math.sin(2 * Math.PI * 3.2 * t));
+        buffer[i] = lp2 * env * 0.75;
       }
       break;
     }
 
     case "footsteps": {
-      // 2 approaching footsteps on floor
-      const duration = 0.85;
+      // 2 approaching footsteps on wood/carpet floor: Deep heel thud + soft sole touch
+      const duration = 0.90;
       const length = Math.floor(sampleRate * duration);
       buffer = new Float32Array(length);
-      const stepTimes = [0.05, 0.45];
+      const stepTimes = [0.06, 0.48];
       for (let i = 0; i < length; i++) {
         const t = i / sampleRate;
         let s = 0;
         for (let stepIdx = 0; stepIdx < stepTimes.length; stepIdx++) {
           const st = t - stepTimes[stepIdx];
-          if (st >= 0 && st < 0.15) {
-            const heel = Math.sin(2 * Math.PI * 140 * st) * Math.exp(-st * 28) * (0.6 + stepIdx * 0.2);
-            const tap = (Math.random() * 2 - 1) * Math.exp(-st * 45) * 0.3;
-            s += heel + tap;
+          if (st >= 0 && st < 0.22) {
+            const heel = Math.sin(2 * Math.PI * (95 * Math.exp(-st * 24) + 48) * st) * Math.exp(-st * 20) * (0.8 + stepIdx * 0.25);
+            const sole = (Math.random() * 2 - 1) * Math.exp(-st * 38) * 0.18;
+            s += heel + sole;
           }
         }
         buffer[i] = Math.max(-1, Math.min(1, s));
@@ -317,7 +330,17 @@ export function playFoley(
     const gainNode = context.createGain();
     gainNode.gain.setValueAtTime(Math.max(0, Math.min(1, volume)), context.currentTime);
 
-    source.connect(gainNode);
+    // Warm cinematic acoustic lowpass filter (removes digital harshness)
+    if (typeof context.createBiquadFilter === "function") {
+      const filter = context.createBiquadFilter();
+      filter.type = "lowpass";
+      filter.frequency.setValueAtTime(type === "flesh_impact" ? 1800 : type === "slap" ? 4200 : 3200, context.currentTime);
+      filter.Q.setValueAtTime(0.7, context.currentTime);
+      source.connect(filter);
+      filter.connect(gainNode);
+    } else {
+      source.connect(gainNode);
+    }
     gainNode.connect(context.destination);
 
     const when = Math.max(context.currentTime, startTime ?? context.currentTime);

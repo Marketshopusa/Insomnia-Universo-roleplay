@@ -75,6 +75,7 @@ export default async function handler(req, res) {
   try {
     if (expression?.reactions.length) {
       const scene = await synthesizeExpressiveScene(expression, req.body.voice, req.body.language, {
+        performance,
         region,
         resolvedVoice: previewVoice(req.body.voice),
         synthesize: synthesizeGemini,

@@ -33,7 +33,7 @@ function remember(key, pcm) {
 }
 
 /** Prepare every part before playback so a failed reaction never silently disappears. */
-export async function synthesizeExpressiveScene(score, voice, language, { region = "mx", synthesize, cache = reactionCache, samples = vocalSample, resolvedVoice = voice, deadlineMs = 50_000, onAudio } = {}) {
+export async function synthesizeExpressiveScene(score, voice, language, { performance = "neutral", region = "mx", synthesize, cache = reactionCache, samples = vocalSample, resolvedVoice = voice, deadlineMs = 50_000, onAudio } = {}) {
   // Isolate every reaction so limiting a sound can never cut spoken words.
   const separate = new Set(score.reactions.map((part) => part.event));
   const counts = new Map();
@@ -80,7 +80,7 @@ export async function synthesizeExpressiveScene(score, voice, language, { region
         emitReady();
         continue;
       }
-      const result = await synthesize(run.text, voice, language, { region, expression: run });
+      const result = await synthesize(run.text, voice, language, { region, performance: run.performance || score.performance || performance, expression: run });
       if (result.status !== 200 || !result.pcm?.length || result.pcm.length % 2) {
         failed = result.status === 200 ? { status: 502, detail: "empty_expressive_audio" } : result;
         break;
