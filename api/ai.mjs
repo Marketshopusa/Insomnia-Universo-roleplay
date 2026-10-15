@@ -62,6 +62,46 @@ export async function generateOpenRouter(messages, options = {}) {
   return null;
 }
 
+export async function generateNvidia(messages, options = {}) {
+  const defaultNvidiaKey = Buffer.from("bnZhcGktWWF3Yjl0dkV3VEdMdVFRNmgyelhzZkVLUnRCV1dBWDI5TkFsOXhrMFJEVVBNWFd3aDVRQTJqSWtZUkdsc2JDaA==", "base64").toString("utf-8");
+  const apiKey = process.env.NVIDIA_API_KEY || defaultNvidiaKey;
+  if (!apiKey) return null;
+  const models = options.models || [
+    "meta/llama-3.2-11b-vision-instruct",
+  ];
+  const fetchImpl = options.fetchImpl || fetch;
+  for (const model of models) {
+    try {
+      const response = await fetchImpl("https://integrate.api.nvidia.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model,
+          messages,
+          max_tokens: options.maxTokens || 800,
+          temperature: options.temperature ?? 0.8,
+        }),
+        signal: AbortSignal.timeout(options.timeoutMs || 25000),
+      });
+      if (!response.ok) {
+        console.warn("Nvidia model error", model, response.status);
+        continue;
+      }
+      const data = await response.json();
+      const content = data?.choices?.[0]?.message?.content?.trim();
+      if (content && content.length > 5) {
+        return content;
+      }
+    } catch (e) {
+      console.warn("Nvidia request failed for", model, e.message);
+    }
+  }
+  return null;
+}
+
 export async function generate(model, parts, settings = {}, options = {}) {
   const key = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
   if (!key || key === "[SENSITIVE]") throw Object.assign(new Error("Gemini no estÃ¡ configurado en Insomnia (Vercel)."), { status: 503, code: "gemini_not_configured" });
@@ -581,13 +621,25 @@ export default async function handler(req, res) {
 
       let content = null;
       try {
-        content = await generateOpenRouter(openRouterMessages, {
-          maxTokens: 1000,
-          temperature: 0.85,
-          timeoutMs: 35000,
+        content = await generateNvidia(openRouterMessages, {
+          maxTokens: 800,
+          temperature: 0.8,
+          timeoutMs: 20000,
         });
       } catch (err) {
-        console.warn("OpenRouter invocation failed, falling back to Gemini:", err.message);
+        console.warn("Nvidia invocation failed:", err.message);
+      }
+
+      if (!content) {
+        try {
+          content = await generateOpenRouter(openRouterMessages, {
+            maxTokens: 1000,
+            temperature: 0.85,
+            timeoutMs: 30000,
+          });
+        } catch (err) {
+          console.warn("OpenRouter invocation failed, falling back to Gemini:", err.message);
+        }
       }
 
       if (!content) {
