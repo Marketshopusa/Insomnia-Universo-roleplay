@@ -200,6 +200,7 @@ def render(job, comfy, output_dir, timeout=600, attempt=0):
     raise TimeoutError("ComfyUI no terminó la ilustración a tiempo.")
 
 def process_one(cloud, comfy, output_dir):
+    preflight(comfy)
     claimed = cloud.call("POST", "/rest/v1/rpc/claim_kineva_scene_job", {})
     if not claimed:
         return False
@@ -217,7 +218,6 @@ def process_one(cloud, comfy, output_dir):
             reference_name = save_cover_reference(settings.get("cover_url"), job["id"])
             job["reference_name"] = reference_name
             print("Image reference attached", job["id"], bool(reference_name), flush=True)
-        preflight(comfy)
         image = None
         for attempt in range(3):
             candidate = render(job, comfy, output_dir, attempt=attempt)
@@ -234,16 +234,22 @@ def process_one(cloud, comfy, output_dir):
                    headers={"Content-Type": "image/png", "x-upsert": "true"})
         result = {"status": "ready", "output_path": path, "error_message": None}
     except Exception as error:
-        print("Image job failed", job["id"], repr(error), file=sys.stderr, flush=True)
+        print("Image job failed", job["id"], repr(error), flush=True)
         result = {"status": "failed", "error_message": str(error)[:350]}
     finally:
         if reference_name:
             (COMFY_INPUT / reference_name).unlink(missing_ok=True)
-        release_idle_models(comfy)
+        try:
+            release_idle_models(comfy)
+        except Exception:
+            pass
     result["finished_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     result["updated_at"] = result["finished_at"]
-    cloud.call("PATCH", "/rest/v1/kineva_scene_jobs?id=eq." + quote(job["id"]) +
-               "&status=eq.running", result, headers={"Prefer": "return=representation"})
+    try:
+        cloud.call("PATCH", "/rest/v1/kineva_scene_jobs?id=eq." + quote(job["id"]) +
+                   "&status=eq.running", result, headers={"Prefer": "return=representation"})
+    except Exception as patch_err:
+        print("Failed to patch job status:", repr(patch_err), flush=True)
     print("Image job", job["id"], result["status"], flush=True)
     return True
 

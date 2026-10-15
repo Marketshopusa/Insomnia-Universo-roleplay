@@ -47,3 +47,17 @@ it("uses the ComfyUI queue when this browser cannot draw locally", async () => {
   expect(url).toBe("https://example.com/scene.png");
   expect(invoke).not.toHaveBeenCalled();
 });
+
+it("falls back to cloud illustration when ComfyUI queue fails", async () => {
+  const invoke = vi.fn(async () => ({
+    data: { status: "ready", imageUrl: "https://example.com/cloud-fallback.png" },
+    error: null,
+  }));
+  const url = await generateSceneImage({ focusText: "Ella cruza la calle de noche" }, {
+    renderLocal: async () => null,
+    queueComfy: async () => { throw new Error("ComfyUI worker down"); },
+    invoke: invoke as never,
+  });
+  expect(url).toBe("https://example.com/cloud-fallback.png");
+  expect(invoke).toHaveBeenCalledOnce();
+});

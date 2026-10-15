@@ -17,7 +17,7 @@ export async function queueComfyStill(
     throw new Error(created.data?.message || created.error?.message || "No se pudo enviar la ilustración a ComfyUI.");
   }
   const started = Date.now();
-  while (Date.now() - started < 660000) {
+  while (Date.now() - started < 90000) {
     await wait(2000);
     const status = await invoke<Reply>("illustrate-scene", { action: "status", jobId });
     if (status.data?.status === "ready" && status.data.imageUrl) return status.data.imageUrl;
@@ -25,7 +25,7 @@ export async function queueComfyStill(
       throw new Error(status.data.message || "ComfyUI no pudo ilustrar la escena.");
     }
   }
-  throw new Error("ComfyUI sigue ilustrando. Déjalo encendido y vuelve a pedir la misma escena.");
+  throw new Error("ComfyUI tardó demasiado en ilustrar la escena.");
 }
 
 export async function generateSceneImage(
@@ -52,8 +52,7 @@ export async function generateSceneImage(
       const queued = await queue(body);
       if (queued) return queued;
     } catch (error) {
-      const message = error instanceof Error ? error.message : "";
-      if (!/enviar la ilustración/.test(message)) throw error;
+      console.warn("ComfyUI worker unavailable or failed, falling back to cloud illustration:", error);
     }
   }
   const created = await invoke<Reply>("illustrate-scene", body);

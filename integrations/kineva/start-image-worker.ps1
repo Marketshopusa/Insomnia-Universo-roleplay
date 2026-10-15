@@ -18,8 +18,10 @@ while ($true) {
     $key = ($keys | Where-Object { $_.name -eq 'service_role' } | Select-Object -First 1).api_key
     if (-not $key) { throw 'Supabase service role key unavailable' }
     $env:SUPABASE_SERVICE_ROLE_KEY = $key
-    Remove-Variable key, keys, keysText -ErrorAction SilentlyContinue
+    $prevEAP = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
     & $python -3 -u $worker --output-dir $outputDir *>> $log
+    $ErrorActionPreference = $prevEAP
   } catch {
     $detail = $_.Exception.Message
     if ($env:SUPABASE_SERVICE_ROLE_KEY) { $detail = $detail.Replace($env:SUPABASE_SERVICE_ROLE_KEY, '[redacted]') }
