@@ -25,16 +25,16 @@ export interface FoleyEvent {
 }
 
 const FOLEY_PATTERNS: Array<[FoleyType, RegExp]> = [
-  ["flesh_impact", /(?:golpe\w*\s+(?:mi|tu|su)?\s*(?:trasero|culo|piel|nalgas?|cuerpo)|mano\s+golpea\w*|mano\s+(?:en|contra)\s+(?:mi|tu|su)?\s*(?:trasero|culo|nalgas?)|nalgada\w*|palmada\w*|azot\w*\s+(?:mi|tu|su)?\s*(?:trasero|culo|piel|nalgas?)|choque\s+de\s+(?:nuestros\s+)?cuerpos|piel\s+contra\s+piel|embestid\w*|chocan\s+nuestras\s+caderas|cuerpos\s+uni[eé]ndose)/iu],
+  ["flesh_impact", /(?:golpe\w*\s+(?:mi|tu|su)?\s*(?:trasero|culo|piel|nalgas?|cuerpo)|mano\s+golpea\w*|mano\s+(?:en|contra)\s+(?:mi|tu|su)?\s*(?:trasero|culo|nalgas?)|nalgada\w*|palmada\w*|azot\w*\s+(?:mi|tu|su)?\s*(?:trasero|culo|piel|nalgas?)|choque\s+de\s+(?:nuestros\s+)?cuerpos|piel\s+contra\s+piel|embestid\w*|chocan\s+nuestras\s+caderas|cuerpos\s+uni[eé]ndose|roce\s+de\s+(?:nuestros\s+)?cuerpos|manos?\s+(?:sobre|recorre\w*)\s+(?:el\s+)?(?:pecho|muslo|cuerpo|espalda|piel)|fricci[oó]n\s+entre\s+(?:nuestras\s+pieles|ambos|los\s+dos))/iu],
   ["slap", /(?:bofetada\w*|cachetada\w*|le\s+cruza\s+la\s+cara|sonora\s+palmada\s+en\s+la\s+mejilla)/iu],
   ["door_lock", /(?:cierra\s+(?:la\s+puerta\s+)?con\s+seguro|pone\s+el\s+seguro|echa\s+el\s+cerrojo|pasa\s+el\s+cerrojo|gira\s+la\s+llave|cerrar\s+con\s+llave|seguro\s+a\s+la\s+puerta|asegura\s+la\s+puerta)/iu],
   ["door_slam", /(?:portazo|cierra\s+de\s+golpe|azota\s+la\s+puerta)/iu],
   ["door_close", /(?:cierra\s+la\s+puerta|empuja\s+la\s+puerta|cerrando\s+la\s+puerta|puerta\s+se\s+cierra)/iu],
   ["zipper", /(?:cremallera|baja\s+el\s+cierre|bajar\s+la\s+cremallera|desabrocha\s+el\s+pantal[oó]n|sonido\s+met[aá]lico\s+del\s+cierre|sube\s+el\s+cierre)/iu],
   ["bed_creak", /(?:cama\s+rechina|colch[oó]n\s+cruje|muelles\s+de\s+la\s+cama|crujido\s+de\s+la\s+madera|el\s+colch[oó]n\s+cede)/iu],
-  ["sheets_rustle", /(?:s[aá]banas|entre\s+las\s+s[aá]banas|roce\s+de\s+(?:las?\s+)?(?:s[aá]banas|ropa)|desliza\s+en\s+la\s+cama|arropa|cae\s+al\s+suelo\s+la\s+ropa|se\s+desviste)/iu],
+  ["sheets_rustle", /(?:s[aá]banas|entre\s+las\s+s[aá]banas|roce\s+de\s+(?:las?\s+)?(?:s[aá]banas|ropa|toalla)|desliza\s+(?:en\s+la\s+cama|la\s+toalla)|arropa|cae\s+(?:al\s+suelo\s+)?(?:la\s+ropa|la\s+toalla)|deja\s+caer\s+la\s+toalla|se\s+desviste|desnud)/iu],
   ["footsteps", /(?:pasos\s+(?:lentos|pesados|apurados)|camina\s+hacia|se\s+acerca\s+lentamente|tacones\s+reson)/iu],
-  ["heartbeat", /(?:coraz[oó]n\s+latiendo|latidos\s+(?:acelerados|fuertes)|palpitaciones|pecho\s+sube\s+y\s+baja)/iu],
+  ["heartbeat", /(?:coraz[oó]n\s+(?:latiendo|se\s+acelera|se\s+dispara|a\s+mil)|latidos\s+(?:acelerados|fuertes)|palpitaciones|pecho\s+(?:sube\s+y\s+baja|agitado|acelerado)|respiraci[oó]n\s+(?:agitada|acelerada))/iu],
   ["pour_drink", /(?:sirve\s+(?:una\s+copa|vino|el\s+trago)|descorcha|brindan|chocan\s+las\s+copas)/iu],
 ];
 

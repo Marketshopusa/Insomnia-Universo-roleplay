@@ -187,7 +187,7 @@ export function streamSpeech(text: string, voice: string, language = "es", rolep
       if (stopped || !context) return;
       const playbackEnded = new Promise<void>((resolve) => { finishPlayback = resolve; });
       const spoken = text.trim();
-      const performance: Performance = "neutral";
+      const performance: Performance = roleplay ? roleplayPerformance(spoken) : "neutral";
       if (!spoken) { stop(); return; }
       let scheduledAt = context.currentTime;
       let foleyScheduled = false;

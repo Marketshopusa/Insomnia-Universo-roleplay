@@ -54,7 +54,7 @@ const allForms = forms.map(([id, source]) => [id, compounds[id] ? "(?:" + compou
 const FORM = new RegExp("(?<![\\p{L}\\p{N}])(?:" + allForms.map(([, source]) => "(?:" + source + ")").join("|") + ")(?![\\p{L}\\p{N}])", "giu");
 const exactForm = allForms.map(([id, source]) => [id, new RegExp("^(?:" + source + ")$", "iu")]);
 const actionContext = /(?:dolor|duele|herid|golpe|esfuerzo|pain|hurt|injur|effort)/iu;
-const pleasureContext = /(?:placer|gozo|pleasure|excit|deseo|pasión|pasion|sensual|calor|rico|rica|delicia|lujuria|tentaci|entrecortad|escalofr|labio|ard)/iu;
+const pleasureContext = /(?:placer|gozo|pleasure|excit|deseo|pasión|pasion|sensual|calor|rico\b|rica\b|delicia|lujuria|tentaci|entrecortad|escalofr|labio|ard|agitad|temblor|t[oó]came|foll|morbo|erotism|desnud|orgasm|cl[ií]max|no\s+pares|m[aá]s\s+fuerte|m[aá]s\s+r[aá]pido|tan\s+duro|qu[eé]\s+tamaño|cuerpos?\s+ardien)/iu;
 const nonPresent = /(?:\b(?:no|sin|not|without|nunca|never)\b|\b(?:quiero|quería|deseo|puedo|podría|debería|intento|intentar|trata(?:r|ndo|ba|n|s|r[aá])\s+(?:de\s+)?|contener|evit(?:ar|ando)|reprim(?:ir|iendo)|ahog(?:ar|ando)|aguant(?:ar|ando)|resist(?:ir|iendo)|voy\s+a|va\s+a|iba\s+a|si|when|if|want\s+to|will|would|can|could)\b|\b(?:recuerdo|recordé|ayer|yesterday|remember)\b)/iu;
 const contextualTail = /^(?:\s+(?:de\s+(?:dolor|placer|miedo|rabia|alegría|felicidad|deseo|excitación|excitacion|pasión|pasion|satisfacción|satisfaccion|anhelo|alivio)|con\s+(?:fuerza|dolor|rabia|picardía|picardia|diversión|diversion|deseo|pasión|pasion|agitación|agitacion)|a\s+carcajadas|desgarrador(?:a|es)?|fuertemente|fuerte|suavemente|suave|bajit[ao]|en\s+voz\s+baja|por\s+(?:el\s+)?(?:esfuerzo|deseo|calor|miedo)|de\s+repente|divertid[ao]|cómplice|complice|entrecortad[ao]|tembloros[ao]|agitad[ao]|aliviad[ao]))*/iu;
 const pureSoundDescription = /^(?:(?:yo|ella|él|el|mi|mis|sus|su|un|una|el|la)\s+)?(?:sonidos?\s+desgarradores?|gritos?|gemidos?|sollozos?|llantos?|risas?|carcajadas?)(?:\s|[,.!;]|$)/iu;
@@ -67,7 +67,7 @@ const styleFor = (text) => {
   if (/asustad[ao]|aterrad[ao]|tembl(?:ando|or).*miedo|afraid|fearful/iu.test(text)) return "afraid";
   if (/asco|disgust(?:ed)?/iu.test(text)) return "disgusted";
   if (/agotad[ao]|cansad[ao]|exhausted|tired/iu.test(text)) return "tired";
-  if (/(?:placer|deseo|excitaci[oó]n|gemid|muerdo\s+el\s+labio|sensual|lujuria)/iu.test(text)) return "pleasure";
+  if (/(?:placer|deseo|excitaci[oó]n|excitad[ao]|gemid|jade[ao]|respiraci[oó]n\s+agitada|agitad[ao]|entrecortad[ao]|tembloros[ao]|muerdo\s+el\s+labio|sensual|lujuria|fóllame|foll|penetr|caliente|morbo|erotism|cl[ií]max|orgasm|delicia|rico\b|rica\b|t[oó]came|b[eé]same|desnud[ao]|cuerpos?\s+ardien|no\s+pares|m[aá]s\s+fuerte|m[aá]s\s+r[aá]pido)/iu.test(text)) return "pleasure";
   if (/(?:dolor|duele|lastim|golpe|quejido)/iu.test(text)) return "pain";
   return null;
 };
@@ -103,11 +103,13 @@ export function prepareExpressiveSpeech(input, { roleplay = false } = {}) {
     segments.push({ kind, text: cleaned, performance: kind === "dialogue" ? delivery : "neutral" });
   };
   const addReaction = (id, context = "") => {
+    const isPleasurePant = id === "pant" && pleasureContext.test(context) && !actionContext.test(context);
     const base = VOCAL_REACTIONS[id];
     const intensity = /con fuerza|desgarrador|fuertemente|fuerte/iu.test(context) ? " Make this sound intense and forceful." : /suavemente|bajit[ao]|en voz baja/iu.test(context) ? " Make this sound quiet and gentle." : "";
-    const item = { ...base, direction: base.direction + intensity };
+    const performance = isPleasurePant ? "pleasure" : base.performance;
+    const item = { ...base, performance, direction: base.direction + intensity };
     segments.push({ kind: "reaction", event: id, ...item });
-    delivery = /^(laugh|chuckle)$/.test(id) ? "neutral" : item.performance === "scream" ? "surprised" : item.performance;
+    delivery = /^(laugh|chuckle)$/.test(id) ? "neutral" : item.performance === "scream" ? "surprised" : (isPleasurePant ? "pleasure" : item.performance);
   };
   const processAction = (body, marked) => {
     const trimmed = body.trim();
@@ -124,7 +126,7 @@ export function prepareExpressiveSpeech(input, { roleplay = false } = {}) {
       });
       if (!matches.length) {
         if (marked && pureSoundDescription.test(sentence) && /inund|reson|llen|escuch/iu.test(sentence) && segments.at(-1)?.kind === "reaction") continue;
-        const style = marked ? styleFor(sentence) : null;
+        const style = marked ? styleFor(sentence) : (pleasureContext.test(sentence) ? "pleasure" : null);
         if (style) delivery = style;
         addText(sentence, marked ? "narration" : "dialogue");
         continue;
@@ -193,7 +195,10 @@ export function prepareExpressiveSpeech(input, { roleplay = false } = {}) {
     .trim();
   const reactions = segments.filter((part) => part.kind === "reaction");
   const performances = [...new Set(segments.map((part) => part.performance).filter((value) => value !== "neutral"))];
-  return { text, segments, reactions, performance: performances.length === 1 ? performances[0] : "neutral", roleplay };
+  let dominant = "neutral";
+  if (performances.length === 1) dominant = performances[0];
+  else if (performances.includes("pleasure")) dominant = "pleasure";
+  return { text, segments, reactions, performance: dominant, roleplay };
 }
 
 export function hasVocalCue(text) {
