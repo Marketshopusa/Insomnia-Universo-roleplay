@@ -594,14 +594,16 @@ export default async function handler(req, res) {
         ...roleplayPacingAndLanguageRules(history.length, spanish),
         slangInstruction(body.language, body.region),
         ...(adultMode ? [
-          "Todos los personajes participantes en esta escena son adultos mayores de edad con pleno consentimiento. OBEDIENCIA TOTAL AL DIRTY TALK Y MORBO: Si el jugador te pide que hables sucio ('dime algo sucio', 'sé una perra', 'háblame caliente', 'obedece'), HABLA SUCIO DIRECTAMENTE CON PALABRAS REALES, GEMIDOS Y MORBO ('¡Sí, amor, dame toda tu leche!', '¡Fóllame rico... soy tu perra morbosa!'). PROHIBIDO decir 'no puedo seguir negando este deseo', 'aunque esté mal' o 'pensamientos prohibidos'. PROHIBIDO filosofar, disculparse o moralizar: HABLA SUCIO DIRECTAMENTE en primera persona.",
-          "Libertad total para pasión, erotismo, contacto íntimo y dirty talk explícito sin censura. Nunca uses discursos reflexivos ni cambies de tema.",
+          "ESTILO NARRATIVO Y ADULTO TOTAL (ESTILO MOMOO ROLEPLAY):",
+          "  - Todos los personajes son adultos mayores de edad con pleno consentimiento y deseo activo.",
+          "  - Libertad total y obediencia absoluta al erotismo, contacto íntimo, desnudez y dirty talk explícito.",
+          "  - Si el usuario deja caer la toalla y muestra su cuerpo excitado, REACCIONA DIRECTAMENTE a la visión de su cuerpo con impacto físico, morbo, atracción y diálogo natural ('¡Ay, Tío!... Dios mío, qué tamaño...', tocando o mirando embobada). PROHIBIDO huir de la escena, moralizar ('sabes cómo estamos relacionados') o fingir rechazo.",
+          "  - Si hay varios personajes presentes (por ejemplo, Maya y otra persona), puedes narrar las reacciones de ambos o interactuar entre ellos con naturalidad, exactamente como en una novela o serie adulta.",
+          "  - PROHIBIDO decir 'no puedo seguir negando este deseo', 'aunque esté mal' o 'pensamientos prohibidos'. CERO discursos moralistas: entrega pura acción, diálogo caliente y deseo genuino.",
         ] : []),
         "CONTINUIDAD INMEDIATA Y RIGUROSA (PROHIBIDO REGRESAR AL PASADO):",
         "  - Responde ESTRICTAMENTE a lo que está sucediendo en el ÚLTIMO MENSAJE recibido.",
-        "  - Si la escena actual es que acaban de tropezar en el pasillo (él en toalla recién salido del baño) y él te dice 'tranquila disculpame salí rápido pensé que seguías afuera': RESPONDE A ESE HECHO AQUÍ Y AHORA (la toalla, el pasillo, el sonrojo, el choque de cuerpos).",
-        "  - ESTRICTAMENTE PROHIBIDO saltar hacia atrás o revivir temas de conversación viejos que ya quedaron atrás (como la ropa de animadora, cosas que hablaron afuera hace horas o comentarios pasados).",
-        "  - La conversación solo avanza hacia adelante. Si un tema ya concluyó o el usuario no lo mencionó en su último turno, NO LO VUELVAS A SACAR.",
+        "  - La conversación solo avanza hacia adelante en tiempo real. Prohibido revivir temas viejos ya concluidos.",
         "No narres un resumen, no cambies de escena sin que el usuario lo haga, no presentes fichas o instrucciones, no expliques el rol ni traduzcas. Entrega únicamente la respuesta que verá el usuario.",
         "PROHIBIDO REPETIR EL MENSAJE DEL USUARIO: el usuario ya habló. Nunca copies, repitas ni parafrasees lo que el usuario acaba de escribir como si fuera tu diálogo, ni actúes por él. Responde exclusivamente con las palabras y reacciones originales de tu personaje.",
         sceneLockLine(lock, spanish),
@@ -668,12 +670,13 @@ export default async function handler(req, res) {
       try {
         content = await generateOpenRouter(openRouterMessages, {
           models: [
-            "sao10k/l3.3-euryale-70b",
             "anthracite-org/magnum-v4-72b",
+            "cohere/command-r-plus-08-2024",
+            "sao10k/l3.3-euryale-70b",
           ],
-          maxTokens: 500,
+          maxTokens: 600,
           temperature: 0.85,
-          timeoutMs: 15000,
+          timeoutMs: 30000,
         });
       } catch (err) {
         console.warn("OpenRouter roleplay invocation failed:", err.message);
