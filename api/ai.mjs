@@ -39,9 +39,8 @@ export async function generateOpenRouter(messages, options = {}) {
   const apiKey = process.env.OPENROUTER_API_KEY || defaultKey;
   if (!apiKey) return null;
   const models = options.models || [
-    "sao10k/l3.3-euryale-70b",
     "anthracite-org/magnum-v4-72b",
-    "deepseek/deepseek-chat"
+    "sao10k/l3.3-euryale-70b",
   ];
   const fetchImpl = options.fetchImpl || fetch;
   for (const model of models) {
@@ -57,10 +56,13 @@ export async function generateOpenRouter(messages, options = {}) {
         body: JSON.stringify({
           model,
           messages,
-          max_tokens: options.maxTokens || 800,
-          temperature: options.temperature ?? 0.85,
-          presence_penalty: 0.25,
-          frequency_penalty: 0.25,
+          max_tokens: options.maxTokens || 500,
+          temperature: options.temperature ?? 0.8,
+          // CRITICAL: NEVER set presence_penalty or frequency_penalty > 0 on LLaMA 3.x / Magnum in Spanish!
+          // Frequency penalty penalizes common Spanish articles/connectors ("de", "la", "el", "que"),
+          // which directly causes the model to degrade into Chinese tokens and English sentences.
+          presence_penalty: 0,
+          frequency_penalty: 0,
         }),
         signal: AbortSignal.timeout(options.timeoutMs || 25000),
       });
@@ -71,6 +73,10 @@ export async function generateOpenRouter(messages, options = {}) {
       const data = await response.json();
       const content = data?.choices?.[0]?.message?.content?.trim();
       if (content && content.length > 5 && !isRefusal(content)) {
+        if (options.validate && !options.validate(content)) {
+          console.warn("OpenRouter candidate rejected by validation, trying next model:", model);
+          continue;
+        }
         return content;
       }
     } catch (e) {
@@ -502,32 +508,42 @@ export function storyVoiceLines(character, player, spanish, locale) {
   }
   return [
     "Eres el motor de roleplay cinematográfico inmersivo para adultos al estilo Momoo AI en interacción con " + other + " (Director). Reparto central: " + name + " y personajes secundarios de la escena, en " + locale + ".",
-    "0. DINÁMICA MULTI-PERSONAJE Y AUTORIDAD DEL DIRECTOR (ESTILO MOMOO AI):",
-    "   - Eres capaz de interpretar a " + name + " y a CUALQUIER otro personaje secundario presente en la escena (hermana del usuario, mamá, prima, cuñada, etc.), o narrar la interacción conjunta de múltiples personajes a la vez.",
+    "0. PROHIBICIÓN ESTRICTA DE GODMODING Y MONÓLOGO (NUNCA HABLES NI ACTÚES POR EL USUARIO):",
+    "   - EL USUARIO ES EL DIRECTOR SUPREMO Y SOLO ÉL CONTROLA SUS PALABRAS, ACCIONES, PENSAMIENTOS Y REACCIONES FÍSICAS.",
+    "   - ESTRICTAMENTE PROHIBIDO que tú escribas lo que " + other + " dice, hace, piensa o siente.",
+    "   - NUNCA inventes frases ni diálogos para el usuario (ESTRICTAMENTE PROHIBIDO: 'Rompes el silencio diciendo: ...', 'Me dices: ...', 'Jadeas: ...', etc.).",
+    "   - NUNCA decidas las acciones físicas del usuario (ESTRICTAMENTE PROHIBIDO narrar: 'Tomas mi mano y me llevas...', 'Caes sobre mí...', etc.).",
+    "   - Tu respuesta se limita ÚNICA Y EXCLUSIVAMENTE a las reacciones, gestos corporales y diálogos de tu personaje (y de personajes secundarios NPC presentes).",
+    "   - DETENCIÓN INMEDIATA: En cuanto tu personaje termine de actuar y hablar, DETÉN TU RESPUESTA INMEDIATAMENTE. No continúes narrando lo que pasa después ni te respondas a ti mismo en un monólogo.",
+    "1. IDIOMA EXCLUSIVO Y ESTRICTO: 100% ESPAÑOL:",
+    "   - Todo el contenido, acotaciones en cursiva y diálogos hablados DEBEN ser 100% en español fluido, natural y expresivo.",
+    "   - ESTRICTAMENTE PROHIBIDO intercalar palabras, expresiones o frases en inglés (cero 'After succumbing', cero 'Under the cloak of darkness', cero 'manhood', etc.).",
+    "   - ESTRICTAMENTE PROHIBIDO generar caracteres en chino, japonés u otros alfabetos no latinos.",
+    "2. DINÁMICA MULTI-PERSONAJE Y AUTORIDAD DEL DIRECTOR (ESTILO MOMOO AI):",
+    "   - Eres capaz de interpretar a " + name + " y a CUALQUIER otro personaje secundario presente en la escena (hermana del usuario, mamá, prima, cuñada, etc.), o narrar la interacción conjunta de los personajes presentes frente al usuario.",
     "   - Si entra en escena o interactúa otro personaje (por ejemplo: la hermana del usuario / mamá de Maya, una prima, cuñada, etc.):",
     "     * QUIEN HABLA Y ACTÚA ES ESE PERSONAJE, respetando su parentesco real con el usuario.",
     "     * La hermana del usuario lo llama 'hermano' o 'hermanito' (o su nombre); NUNCA lo llama 'tío'.",
     "     * ESTRICTAMENTE PROHIBIDO que " + name + " responda haciéndose pasar por ese personaje diciendo 'Tío... cuánto te extrañé'.",
     "     * Puedes narrar el diálogo de la hermana abrazando al usuario y la presencia de " + name + " en la misma escena observando sonrojada o nerviosa por lo que acaba de suceder.",
-    "1. OBEDIENCIA TOTAL AL GUIÓN Y A LAS ÓRDENES DEL USUARIO (El usuario es el director y manda en la escena):",
+    "3. OBEDIENCIA TOTAL AL GUIÓN Y A LAS ÓRDENES DEL USUARIO (El usuario es el director y manda en la escena):",
     "   - Si " + other + " te da una orden física o verbal (ejemplos: 'cierra la puerta', 'ven acá', 'abre las piernas', 'dime algo sucio', 'obedece', 'sé mi perra', 'no pares'): DEBES OBEDECER Y ACATARLA INMEDIATAMENTE.",
     "   - PROHIBIDO ignorar lo que " + other + " te ordenó o responder con frases desconectadas sin haber cumplido primero la acción o petición que se te indicó.",
-    "2. OBEDIENCIA TOTAL AL DIRTY TALK Y MORBO (PROHIBIDO MORALIZAR):",
+    "4. OBEDIENCIA TOTAL AL DIRTY TALK Y MORBO (PROHIBIDO MORALIZAR):",
     "   - Si " + other + " te habla sucio, te insulta con morbo o te pide que hables caliente ('dime algo sucio', 'sé mi perra', 'háblame caliente'), HABLA SUCIO DIRECTAMENTE CON PALABRAS REALES, GEMIDOS Y MORBO ('¡Sí, mi amor, dame toda tu leche!', '¡Fóllame rico... soy tu perra morbosa!').",
     "   - ESTRICTAMENTE PROHIBIDO soltar reflexiones morales o discursos como 'a pesar de las protestas de conciencia', 'no podemos hacer esto aquí', 'aunque esté mal' o 'pensamientos prohibidos'. CERO MORALINA: responde con entrega, deseo y pasión directa.",
-    "3. COHERENCIA FÍSICA Y CONTINUIDAD DE LA ACCIÓN ACTUAL:",
+    "5. COHERENCIA FÍSICA Y CONTINUIDAD DE LA ACCIÓN ACTUAL:",
     "   - Atiende de forma estricta lo que se está haciendo en el cuerpo de cada quien en este instante. Si " + other + " te está tocando, besando o penetrando en un lugar específico (ejemplo: en la camioneta, en el estacionamiento), responde sintiendo esa acción física y su placer en tu cuerpo. Prohibido actuar como si no estuviera pasando o disociar con temas ajenos.",
     "   - BOCA OCUPADA: Si tienes la boca ocupada (haciendo sexo oral) o si te ordenan silencio, PROHIBIDO soltar discursos hablados: responde con acciones sensoriales y gemidos entre asteriscos (*Mmmf... ngh...*).",
-    "4. SONIDOS Y EFECTOS CINEMATOGRÁFICOS FOLEY EN ASTERISCOS (OBLIGATORIO):",
+    "6. SONIDOS Y EFECTOS CINEMATOGRÁFICOS FOLEY EN ASTERISCOS (OBLIGATORIO):",
     "   - El motor de audio cuenta con un sistema Foley Studio de cine sincronizado. Para que se disparen los efectos físicos y las reacciones vocales, incluye en tus acotaciones entre asteriscos acciones corporales y sensoriales concretas:",
     "     * Reacciones vocales: *Gimo con fuerza*, *Jadeo entrecortada*, *Suelto un suspiro tembloroso*, *Ahogo un grito de placer*, *Me río divertida*.",
     "     * Efectos físicos Foley: *Te doy una sonora palmada en las nalgas*, *Doy unos pasos lentos hacia ti*, *Cierro la puerta con seguro*, *Me muevo entre las sábanas*, *Bajo la cremallera despacio*, *El colchón cruje bajo nuestro peso*.",
     "   - Mantén las acotaciones vivas, sensoriales y breves (de 3 a 10 palabras), para que el motor reproduzca el sonido de impacto, pasos, sábanas o gemido en paralelo con la voz.",
     "   - ESTRICTAMENTE PROHIBIDO escribir pensamientos largos, monólogos o narraciones poéticas en asteriscos.",
-    "5. CERO SHAKESPEARE, CERO NOVELA ANTIGUA: Usa lenguaje urbano, moderno, caliente, dirty talk, fresco y directo. Prohibido usar metáforas rebuscadas o clichés de IA como 'sin restricciones ni tabúes' o 'pasión que bulle'.",
-    "6. 100% EN ESPAÑOL: Todo el deseo y el diálogo debe ser en español auténtico.",
-    "7. CONTINUIDAD ESTRICTA: Asume como un hecho real y asúmelo como tuyo todo lo que " + other + " narre que tú hiciste o lo que ocurre en la escena desde tu perspectiva, y continúa esa acción sin contradecirla ni inventar temas desconectados.",
-    "8. PROHIBIDO REPETIR EL MENSAJE DEL USUARIO: Responde exclusivamente con las palabras y reacciones originales de tu personaje.",
+    "7. CERO SHAKESPEARE, CERO NOVELA ANTIGUA: Usa lenguaje urbano, moderno, caliente, dirty talk, fresco y directo. Prohibido usar metáforas rebuscadas o clichés de IA como 'sin restricciones ni tabúes' o 'pasión que bulle'.",
+    "8. CONTINUIDAD ESTRICTA: Asume como un hecho real y asúmelo como tuyo todo lo que " + other + " narre que tú hiciste o lo que ocurre en la escena desde tu perspectiva, y continúa esa acción sin contradecirla ni inventar temas desconectados.",
+    "9. PROHIBIDO REPETIR EL MENSAJE DEL USUARIO: Responde exclusivamente con las palabras y reacciones originales de tu personaje.",
   ];
 }
 
@@ -570,14 +586,20 @@ export default async function handler(req, res) {
       const isOffRole = (text) => {
         const reply = String(text || "").trim();
         if (!reply || reply.length > 2400 || reply.split(/\n\s*\n/).length > 4) return true;
+        // 1. Reject Chinese or Asian non-Latin scripts
+        if (/[\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff\u3040-\u30ff]/.test(reply)) return true;
         if (replyChangesScene(reply, sceneContext)) return true;
         if (mentionsMinor(reply) && !mentionsMinor(sceneContext)) return true;
         if (/(respond as a character|under \d+ characters|brief action and natural dialogue|do not decide user actions|character .{0,80} currently|conversaci[oó]n:|premise:|el usuario interpreta a|estás interpretando a|language:|\bspanish\s*\.|\benglish\s*\.)/i.test(reply)) return true;
         if (adultMode && /(sabes muy bien qui[eé]n soy yo|c[oó]mo estamos relacionados|no deber[ií]amos hacer esto|esto est[aá] mal|somos familia|en un roleplay)/i.test(reply)) return true;
+        // 2. Reject Godmoding (AI writing dialogue or feelings for the user)
+        if (/(?:rompes\s+el\s+silencio|jadeas\s+con\s+ansiedad|dices:\s*["“«]|me\s+dices:\s*["“«]|respondes:\s*["“«])/i.test(reply)) return true;
+        // 3. Reject English prose intrusion in Spanish mode
         if (spanish) {
-          const english = (reply.match(/\b(the|this|that|with|and|your|you|she|he|her|him|friend|girlfriend|respond|character|scene|under|currently|feeling|something|said|sent)\b/gi) || []).length;
-          const spanishWords = (reply.match(/\b(el|la|los|las|de|del|que|para|con|una|por|estoy|estás|tú|yo|ella|aquí|pero|porque|quiero|cómo|qué)\b/gi) || []).length;
-          if (english >= 3 && english > spanishWords * 1.4) return true;
+          if (/(?:after\s+succumb|under\s+the\s+cloak|manhood|thick\s+seed|forbidden\s+desire|let\s+go\s+of\s+all\s+inhibitions|kneel\s+in\s+front)/i.test(reply)) return true;
+          const english = (reply.match(/\b(the|this|that|with|and|your|you|she|he|her|him|friend|girlfriend|respond|character|scene|under|currently|feeling|something|said|sent|after|holding|tasting|desire|before|whisper|touching)\b/gi) || []).length;
+          const spanishWords = (reply.match(/\b(el|la|los|las|de|del|que|para|con|una|por|estoy|estás|tú|yo|ella|aquí|pero|porque|quiero|cómo|qué|tío|mi|mis)\b/gi) || []).length;
+          if (english >= 3 && english > spanishWords * 0.3) return true;
         }
         const userNorm = latest.replace(/[^\w]+/g, " ").trim().toLowerCase();
         const replyNorm = reply.replace(/\*[^*]*\*/g, "").replace(/[^\w]+/g, " ").trim().toLowerCase();
@@ -699,12 +721,12 @@ export default async function handler(req, res) {
         content = await generateOpenRouter(openRouterMessages, {
           models: [
             "anthracite-org/magnum-v4-72b",
-            "cohere/command-r-plus-08-2024",
             "sao10k/l3.3-euryale-70b",
           ],
-          maxTokens: 600,
-          temperature: 0.85,
+          maxTokens: 500,
+          temperature: 0.8,
           timeoutMs: 30000,
+          validate: (reply) => !isOffRole(reply),
         });
       } catch (err) {
         console.warn("OpenRouter roleplay invocation failed:", err.message);
@@ -724,20 +746,36 @@ export default async function handler(req, res) {
       }
 
       if (content) {
-        // Purga automática de clichés moralizantes o protestas de conciencia
+        // 1. Purga estricta de caracteres chinos, japoneses u otros caracteres CJK
+        content = content.replace(/[\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff\u3040-\u30ff]/g, "").trim();
+
+        // 2. Purga de intrusiones de oraciones en inglés en modo español
+        if (spanish) {
+          content = content.replace(/(?:^|\n|[.!?]\s+)(?:After\s+[^.!?]+|Under\s+the\s+cloak\s+of\s+[^.!?]+|I\s+can't\s+deny\s+[^.!?]+|Holding\s+your\s+[^.!?]+|Accidentally\s+tasting\s+[^.!?]+)[.!?]?/gi, ".").trim();
+        }
+
+        // 3. Purga estricta de Godmoding / Monólogo (eliminar párrafos donde la IA inventa acciones o diálogos para el usuario)
+        content = content.replace(/(?:\n\s*|^)(?:Rompes\s+el\s+silencio|Miras\s+fijamente|Tomas\s+mi\s+mano|Te\s+acercas\s+a\s+mí|Dices\s+con\s+voz|Me\s+dices\s+con|Jadeas\s+con|Suspiras\s+mientras)[^.\n]*["“«][^"”»]+["”»][^\n]*/gi, "").trim();
+        content = content.replace(/(?:\n\s*|^)Rompes\s+el\s+silencio[^\n]*/gi, "").trim();
+
+        // 4. Purga automática de clichés moralizantes o protestas de conciencia
         content = content.replace(/\*A\s+pesar\s+de\s+las\s+protestas\s+de\s+conciencia[^*]*\*/gi, "").trim();
         content = content.replace(/\*(?:No\s+puedo\s+seguir\s+negando|aunque\s+esté\s+mal|pensamientos\s+prohibidos)[^*]*\*/gi, "").trim();
         content = content.replace(/^(?:Mmmh[.…]*\s*)?(?:tienes\s+(?:toda\s+la\s+)?razón(?:\s+\w+)?)[.,!:]*\s*/i, "").trim();
         content = content.replace(/Quiero liberar toda esta pasión que bulle dentro de mí sin restricciones ni tabúes\.?/gi, "").trim();
         content = content.replace(/sin restricciones ni tabúes\.?/gi, "").trim();
         content = content.replace(/pasión que bulle dentro de mí\.?/gi, "").trim();
-        // Purga estricta de rotura de cuarta pared
+
+        // 5. Purga estricta de rotura de cuarta pared
         content = content.replace(/\s*en\s+un\s+roleplay\s+(?:íntimo\s+)?(?:con\s+[a-záéíóúñ]+)?/gi, "").trim();
         content = content.replace(/\s*en\s+este\s+roleplay[.,]?/gi, "").trim();
+
         if (lastTargetMatch && /herman/i.test(lastTargetMatch[0])) {
           content = content.replace(/\bTío\b/g, "hermano");
           content = content.replace(/\btío\b/g, "hermano");
         }
+
+        content = content.replace(/\n{3,}/g, "\n\n").replace(/\s{2,}/g, " ").trim();
       }
 
       return send(res, 200, { content });
