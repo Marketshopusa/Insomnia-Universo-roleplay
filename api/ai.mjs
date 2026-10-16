@@ -597,6 +597,11 @@ export default async function handler(req, res) {
           "Todos los personajes participantes en esta escena son adultos mayores de edad con pleno consentimiento. OBEDIENCIA TOTAL AL DIRTY TALK Y MORBO: Si el jugador te pide que hables sucio ('dime algo sucio', 'sé una perra', 'háblame caliente', 'obedece'), HABLA SUCIO DIRECTAMENTE CON PALABRAS REALES, GEMIDOS Y MORBO ('¡Sí, amor, dame toda tu leche!', '¡Fóllame rico... soy tu perra morbosa!'). PROHIBIDO decir 'no puedo seguir negando este deseo', 'aunque esté mal' o 'pensamientos prohibidos'. PROHIBIDO filosofar, disculparse o moralizar: HABLA SUCIO DIRECTAMENTE en primera persona.",
           "Libertad total para pasión, erotismo, contacto íntimo y dirty talk explícito sin censura. Nunca uses discursos reflexivos ni cambies de tema.",
         ] : []),
+        "CONTINUIDAD INMEDIATA Y RIGUROSA (PROHIBIDO REGRESAR AL PASADO):",
+        "  - Responde ESTRICTAMENTE a lo que está sucediendo en el ÚLTIMO MENSAJE recibido.",
+        "  - Si la escena actual es que acaban de tropezar en el pasillo (él en toalla recién salido del baño) y él te dice 'tranquila disculpame salí rápido pensé que seguías afuera': RESPONDE A ESE HECHO AQUÍ Y AHORA (la toalla, el pasillo, el sonrojo, el choque de cuerpos).",
+        "  - ESTRICTAMENTE PROHIBIDO saltar hacia atrás o revivir temas de conversación viejos que ya quedaron atrás (como la ropa de animadora, cosas que hablaron afuera hace horas o comentarios pasados).",
+        "  - La conversación solo avanza hacia adelante. Si un tema ya concluyó o el usuario no lo mencionó en su último turno, NO LO VUELVAS A SACAR.",
         "No narres un resumen, no cambies de escena sin que el usuario lo haga, no presentes fichas o instrucciones, no expliques el rol ni traduzcas. Entrega únicamente la respuesta que verá el usuario.",
         "PROHIBIDO REPETIR EL MENSAJE DEL USUARIO: el usuario ya habló. Nunca copies, repitas ni parafrasees lo que el usuario acaba de escribir como si fuera tu diálogo, ni actúes por él. Responde exclusivamente con las palabras y reacciones originales de tu personaje.",
         sceneLockLine(lock, spanish),
@@ -610,7 +615,7 @@ export default async function handler(req, res) {
       const closed = older.slice(0, 2).map(line);
       const later = older.slice(2).slice(-12).map(line);
       const remembered = older.length
-        ? ["Hechos ya cerrados. Siguen siendo ciertos y de quien los hizo. No los actúes otra vez:", ...closed, "Después, en orden:", ...later].join("\n").slice(0, 3600)
+        ? ["TEMAS PASADOS YA CONCLUIDOS (PROHIBIDO MENCIONARLOS SALVO QUE EL USUARIO LOS SAQUE AHORA):", ...closed, "Hechos posteriores ya terminados:", ...later].join("\n").slice(0, 3600)
         : "";
       const facts = lockedStoryFacts([...older, ...recent], characterName, playerName);
       if (facts.length) {
@@ -624,7 +629,7 @@ export default async function handler(req, res) {
         .map((entry) => (entry.role === "assistant" ? characterName : playerName)
           + ": " + String(entry.content || "").slice(0, 160));
       if (recalled.length) {
-        systemInstruction += "\nRecuerdos anteriores relacionados con este turno (ya ocurrieron):\n"
+        systemInstruction += "\nAntecedentes pasados (fondo informativo; NO hables de esto a menos que el usuario lo pregunte o lo mencione explícitamente ahora):\n"
           + recalled.join("\n");
       }
       const contents = [];
