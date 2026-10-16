@@ -571,6 +571,7 @@ export default async function handler(req, res) {
         if (replyChangesScene(reply, sceneContext)) return true;
         if (mentionsMinor(reply) && !mentionsMinor(sceneContext)) return true;
         if (/(respond as a character|under \d+ characters|brief action and natural dialogue|do not decide user actions|character .{0,80} currently|conversaci[oó]n:|premise:|el usuario interpreta a|estás interpretando a|language:|\bspanish\s*\.|\benglish\s*\.)/i.test(reply)) return true;
+        if (adultMode && /(sabes muy bien qui[eé]n soy yo|c[oó]mo estamos relacionados|no deber[ií]amos hacer esto|esto est[aá] mal|somos familia|en un roleplay)/i.test(reply)) return true;
         if (spanish) {
           const english = (reply.match(/\b(the|this|that|with|and|your|you|she|he|her|him|friend|girlfriend|respond|character|scene|under|currently|feeling|something|said|sent)\b/gi) || []).length;
           const spanishWords = (reply.match(/\b(el|la|los|las|de|del|que|para|con|una|por|estoy|estás|tú|yo|ella|aquí|pero|porque|quiero|cómo|qué)\b/gi) || []).length;
