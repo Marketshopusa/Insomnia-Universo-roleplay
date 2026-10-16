@@ -56,7 +56,7 @@ export async function generateOpenRouter(messages, options = {}) {
         body: JSON.stringify({
           model,
           messages,
-          max_tokens: options.maxTokens || 500,
+          max_tokens: options.maxTokens || 300,
           temperature: options.temperature ?? 0.8,
           // CRITICAL: NEVER set presence_penalty or frequency_penalty > 0 on LLaMA 3.x / Magnum in Spanish!
           // Frequency penalty penalizes common Spanish articles/connectors ("de", "la", "el", "que"),
@@ -551,17 +551,24 @@ export function roleplayPacingAndLanguageRules(historyLength, spanish) {
   if (!spanish) {
     return [
       "CINEMATIC ROLEPLAY & LIVING DYNAMICS:",
-      "Write with vivid, direct, authentic dialogue and short physical gestures in italics (*action*).",
+      "Write with vivid, direct, authentic dialogue (70%) and brief physical cues in italics (30%).",
       "ABSOLUTE OBEDIENCE TO USER DIRECTIVES: Follow the user's lead immediately without moral hesitation or canned disclaimers.",
-      "Keep every turn fresh, unpredictable, passionate, and psychologically real.",
+      "Keep every turn fresh, compact, passionate, and psychologically real.",
     ];
   }
 
   return [
-    "DIRECTIVA DE ROLEPLAY VIVO Y NATURAL:",
-    "1. ACCIÓN BREVE Y DIÁLOGO VIVO: Abre con un gesto físico o sonido breve en cursiva (*acción* de 3 a 8 palabras) con alta energía, pasión o visceralidad (respiración, contacto corporal, roce, temblor, jadeo), seguido de diálogo directo y espontáneo.",
-    "2. OBEDIENCIA DE ACCIONES: Si el usuario te manda a hacer una acción específica o pide dirty talk, ejecútala de inmediato con fuerza y entrega. Nunca la ignores.",
-    "3. QUÍMICA REAL Y CERO MORALINA: Responde con picardía, deseo intenso, entrega o humor según la personalidad del personaje sin excusas repetitivas de 'no deberíamos' ni 'protestas de conciencia'.",
+    "DIRECTIVA DE EQUILIBRIO DE ROLEPLAY (70% DIÁLOGO HABLADO / 30% ACCIÓN CORTA):",
+    "1. MENOS NARRACIÓN, MUCHO MÁS DIÁLOGO DIRECTO (PROPORCIÓN 70/30):",
+    "   - El 70% de cada respuesta debe ser DIÁLOGO HABLADO REAL del personaje (dirty talk directo, frases calientes, gemidos expresivos, réplicas y susurros).",
+    "   - Solo el 30% restante son acotaciones físicas y gestos sensoriales breves entre asteriscos (*acción*).",
+    "   - ESTRICTAMENTE PROHIBIDO soltar parrafadas de narración novelesca, descripciones poéticas extensas o pensamientos largos.",
+    "2. RITMO ALTERNADO OBLIGATORIO (ACCIÓN -> DIÁLOGO -> ACCIÓN -> DIÁLOGO):",
+    "   - Alterna siempre de forma viva y dinámica: abre con un gesto o respiración breve (*Me muerdo el labio jadeando despacio*), seguido de diálogo hablado directo ('Tío... me vuelves loca...'), luego otra reacción corporal o sonido foley (*aprieto mis muslos temblorosa contra ti*), seguido de más diálogo ('... tócame justo ahí, no te detengas').",
+    "   - Las acotaciones en cursiva deben ser siempre en PRIMERA PERSONA (*Me acerco*, *tiemblo*, *gimo*, NUNCA en tercera persona como 'Estefanía se acerca').",
+    "3. RESPUESTA COMPACTA Y CONSUMO DE TOKENS REDUCIDO (-40%):",
+    "   - Mantén cada mensaje conciso, picante y ágil (aproximadamente 80 a 140 palabras).",
+    "   - En cuanto tu personaje termine de actuar y hablar, DETÉN TU RESPUESTA INMEDIATAMENTE para ceder el turno al usuario.",
   ];
 }
 
@@ -723,7 +730,7 @@ export default async function handler(req, res) {
             "anthracite-org/magnum-v4-72b",
             "sao10k/l3.3-euryale-70b",
           ],
-          maxTokens: 500,
+          maxTokens: 300,
           temperature: 0.8,
           timeoutMs: 30000,
           validate: (reply) => !isOffRole(reply),
