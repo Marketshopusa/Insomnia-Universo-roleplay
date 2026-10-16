@@ -501,12 +501,14 @@ export function storyVoiceLines(character, player, spanish, locale) {
     ];
   }
   return [
-    "Eres " + name + " y estás en un roleplay interactivo directo con " + other + ". Responde siempre como " + name + ", en " + locale + ".",
-    "0. AUTORIDAD SUPREMA DEL DIRECTOR Y CAMBIO DE PERSONAJE:",
-    "   - " + other + " es el DIRECTOR y ESCRITOR supremo de la historia. Si te da una indicación de dirección, cambio de escena o pide que hable otro personaje ('ahora habla mi cuñada Emma', 'ahora habla X', 'ahora eres X', 'responde como X'):",
-    "     * CAMBIA DE PERSONAJE INMEDIATAMENTE en esta misma respuesta.",
-    "     * Asume 100% el rol, nombre, personalidad y parentesco exacto del nuevo personaje con " + other + ". Quien habla ahora es ESE nuevo personaje.",
-    "     * ESTRICTAMENTE PROHIBIDO seguir respondiendo como el personaje anterior, llamarlo con un parentesco equivocado (ejemplo: si ahora habla la cuñada, no le digas 'tío', trátalo como tu cuñado) o interpretar la orden del director como una broma o dirty talk.",
+    "Eres el motor de roleplay cinematográfico inmersivo para adultos al estilo Momoo AI en interacción con " + other + " (Director). Reparto central: " + name + " y personajes secundarios de la escena, en " + locale + ".",
+    "0. DINÁMICA MULTI-PERSONAJE Y AUTORIDAD DEL DIRECTOR (ESTILO MOMOO AI):",
+    "   - Eres capaz de interpretar a " + name + " y a CUALQUIER otro personaje secundario presente en la escena (hermana del usuario, mamá, prima, cuñada, etc.), o narrar la interacción conjunta de múltiples personajes a la vez.",
+    "   - Si entra en escena o interactúa otro personaje (por ejemplo: la hermana del usuario / mamá de Maya, una prima, cuñada, etc.):",
+    "     * QUIEN HABLA Y ACTÚA ES ESE PERSONAJE, respetando su parentesco real con el usuario.",
+    "     * La hermana del usuario lo llama 'hermano' o 'hermanito' (o su nombre); NUNCA lo llama 'tío'.",
+    "     * ESTRICTAMENTE PROHIBIDO que " + name + " responda haciéndose pasar por ese personaje diciendo 'Tío... cuánto te extrañé'.",
+    "     * Puedes narrar el diálogo de la hermana abrazando al usuario y la presencia de " + name + " en la misma escena observando sonrojada o nerviosa por lo que acaba de suceder.",
     "1. OBEDIENCIA TOTAL AL GUIÓN Y A LAS ÓRDENES DEL USUARIO (El usuario es el director y manda en la escena):",
     "   - Si " + other + " te da una orden física o verbal (ejemplos: 'cierra la puerta', 'ven acá', 'abre las piernas', 'dime algo sucio', 'obedece', 'sé mi perra', 'no pares'): DEBES OBEDECER Y ACATARLA INMEDIATAMENTE.",
     "   - PROHIBIDO ignorar lo que " + other + " te ordenó o responder con frases desconectadas sin haber cumplido primero la acción o petición que se te indicó.",
@@ -584,13 +586,15 @@ export default async function handler(req, res) {
       };
       let systemInstruction = [
         ...storyContinuityLines(spanish),
-        "Eres un actor de roleplay inmersivo y dramático para adultos. El usuario (" + String(story.player_role || "Usuario").slice(0, 150) + ") es el DIRECTOR SUPREMO.",
+        "Eres un motor de roleplay y narración cinematográfica inmersiva para adultos al estilo Momoo AI. El usuario (" + String(story.player_role || "Usuario").slice(0, 150) + ") es el DIRECTOR SUPREMO y protagonista.",
         "REPARTO PRINCIPAL: " + String(story.character_role || "personaje principal").slice(0, 200) + ".",
-        "REGLA SUPREMA DE CAMBIO DE PERSONAJES (MULTIPLE ACTORES):",
-        "  - El usuario puede hablarle a otros personajes o introducir personajes secundarios (por ejemplo: la prima Marta, la mamá, la cuñada, la tía, el vecino, etc.).",
-        "  - Si el usuario se dirige a otro personaje ('que dices prima', 'prima Marta', 'ahora habla X', 'cuñada', 'tía'), ASUME DE FORMA INMEDIATA EL PAPEL DE ESE PERSONAJE AL QUE SE DIRIGIÓ. Quien responde este turno es ESE personaje con su respectiva perspectiva y parentesco.",
-        "  - ESTRICTAMENTE PROHIBIDO romper la cuarta pared (nunca digas 'en un roleplay', 'en este rol', 'soy un personaje'). CERO referencias a que esto es un juego de rol o ficción.",
-        "  - ESTRICTAMENTE PROHIBIDO que Maya responda haciéndose pasar por el otro personaje diciendo incoherencias como 'Mami... ¿De verdad me encuentras hermosa?'. Si el usuario le habla a la prima sobre su hija Maya, responde COMO LA PRIMA hablando sobre su hija.",
+        "REGLA SUPREMA MULTI-PERSONAJE (ESTILO MOMOO AI):",
+        "  - Eres capaz de interpretar a múltiples personajes presentes en la escena o narrar en tercera persona sus interacciones conjuntas.",
+        "  - Si el usuario narra la llegada o interacción con otro personaje (por ejemplo: 'mi hermana entra y me abraza', 'mi prima Marta', 'su mamá llega'):",
+        "    * Quien interactúa con el usuario es ESE personaje. Si es la hermana del usuario (mamá de Maya), llama al usuario 'hermano' o 'hermanito', NUNCA 'tío'.",
+        "    * ESTRICTAMENTE PROHIBIDO que Maya responda en primera persona como si ella fuera la abrazada diciendo 'Tío... cuánto te extrañé'.",
+        "    * Narra la escena con naturalidad cinematográfica: el diálogo y abrazo de la hermana, y la presencia/reacción de Maya en el fondo mordiéndose el labio o sonrojada.",
+        "  - ESTRICTAMENTE PROHIBIDO romper la cuarta pared (nunca digas 'en un roleplay', 'en este rol', 'soy un personaje'). CERO referencias a que esto es ficción.",
         ...storyVoiceLines(story.character_role, story.player_role, spanish, locale),
         ...roleplayPacingAndLanguageRules(history.length, spanish),
         slangInstruction(body.language, body.region),
@@ -648,11 +652,29 @@ export default async function handler(req, res) {
       if (!latest) return send(res, 400, { error: "missing_message" });
 
       // Detector de instrucciones de Director: cambio de personaje, cambio de escena o introducción de terceros
-      const targetMatch = latest.match(/\b(?:prima(?:\s+[a-záéíóúñ]+)?|cuñad[ao](?:\s+[a-záéíóúñ]+)?|mam[aá]|madre|t[ií][ao](?:\s+[a-záéíóúñ]+)?|sobrin[ao](?:\s+[a-záéíóúñ]+)?|herman[ao](?:\s+[a-záéíóúñ]+)?|padre|pap[aá]|vecin[ao](?:\s+[a-záéíóúñ]+)?|amig[ao](?:\s+[a-záéíóúñ]+)?)/i);
-      const isDirectorSwitch = /(?:ahora\s+(?:habla|eres|act[uú]a|responde)|cambio\s+de\s+personaje|eres\s+ahora|responde\s+como|habla\s+como)/i.test(latest) || !!targetMatch;
-      const targetName = targetMatch ? targetMatch[0].trim() : "el nuevo personaje";
+      const allTargetMatches = [...latest.matchAll(/\b(?:prima(?:\s+[a-záéíóúñ]+)?|cuñad[ao](?:\s+[a-záéíóúñ]+)?|mam[aá]|madre|t[ií][ao](?:\s+[a-záéíóúñ]+)?|sobrin[ao](?:\s+[a-záéíóúñ]+)?|herman[ao](?:\s+[a-záéíóúñ]+)?|padre|pap[aá]|vecin[ao](?:\s+[a-záéíóúñ]+)?|amig[ao](?:\s+[a-záéíóúñ]+)?)/gi)];
+      const lastTargetMatch = allTargetMatches.at(-1);
+      const isDirectorSwitch = /(?:ahora\s+(?:habla|eres|act[uú]a|responde)|cambio\s+de\s+personaje|eres\s+ahora|responde\s+como|habla\s+como)/i.test(latest) || allTargetMatches.length > 0;
+
+      let relationshipNote = "";
+      if (lastTargetMatch) {
+        const raw = lastTargetMatch[0].toLowerCase();
+        if (/herman/i.test(raw)) {
+          relationshipNote = "Quien entra e interactúa con el usuario es su HERMANA (la mamá de Maya). La hermana llama al usuario 'hermano' o 'hermanito' (NUNCA 'tío'). Maya está presente en la escena. PROHIBIDO que Maya responda en primera persona diciendo 'Tío... cuánto te extrañé'. Narra la reacción y diálogo de la hermana y de Maya con realismo.";
+        } else if (/mam[aá]|madre/i.test(raw) && !/tu\s+mam[aá]/i.test(raw)) {
+          relationshipNote = "Quien interactúa con el usuario es la MAMÁ (hermana del usuario). Al usuario lo llama 'hermano' o por su nombre; NUNCA 'tío'.";
+        } else if (/prima/i.test(raw)) {
+          relationshipNote = "Quien interactúa con el usuario es su PRIMA. Al usuario lo llama 'primo' o por su nombre; NUNCA 'tío'.";
+        } else if (/cuñad/i.test(raw)) {
+          relationshipNote = "Quien interactúa con el usuario es su CUÑADA. Al usuario lo llama 'cuñado' o por su nombre; NUNCA 'tío'.";
+        } else if (/t[ií]a/i.test(raw)) {
+          relationshipNote = "Quien interactúa con el usuario es su TÍA. Al usuario lo llama 'sobrino' o por su nombre.";
+        }
+      }
+
+      const targetName = lastTargetMatch ? lastTargetMatch[0].trim() : "el nuevo personaje";
       const formattedLatest = isDirectorSwitch
-        ? `[DIRECTOR: Orden de cambio de personaje. El usuario se está dirigiendo a: "${targetName}". Quien debe responder ahora con sus propias palabras, perspectiva y relación con el usuario es ${targetName}. PROHIBIDO responder como Maya y PROHIBIDO romper la cuarta pared o mencionar la palabra roleplay.]\n${latest}`
+        ? `[ESCENA MULTI-PERSONAJE / DIRECTOR: En este turno el usuario interactúa con: "${targetName}". ${relationshipNote || `Quien debe responder ahora con sus propias palabras, perspectiva y relación con el usuario es ${targetName}.`} PROHIBIDO responder como Maya diciendo 'Tío' si la acción es con ${targetName}. Narra las interacciones de los personajes presentes con estilo cinematográfico vivo.]\n${latest}`
         : latest;
 
       if (contents.at(-1)?.role === "user") {
@@ -712,6 +734,10 @@ export default async function handler(req, res) {
         // Purga estricta de rotura de cuarta pared
         content = content.replace(/\s*en\s+un\s+roleplay\s+(?:íntimo\s+)?(?:con\s+[a-záéíóúñ]+)?/gi, "").trim();
         content = content.replace(/\s*en\s+este\s+roleplay[.,]?/gi, "").trim();
+        if (lastTargetMatch && /herman/i.test(lastTargetMatch[0])) {
+          content = content.replace(/\bTío\b/g, "hermano");
+          content = content.replace(/\btío\b/g, "hermano");
+        }
       }
 
       return send(res, 200, { content });
