@@ -13,7 +13,13 @@ type FunctionResult<T> = { data: T | null; error: ({ message: string; context: R
 const ownAi = new Set(["story-chat", "translate", "speech-to-text", "generate-narrative", "generate-novel", "generate-studio-draft", "generate-shorts-series", "illustrate-scene"]);
 async function callOwnAi<T>(name: string, body: unknown): Promise<FunctionResult<T>> {
   try {
-    const { data: { session } } = await supabase.auth.getSession();
+    let { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) {
+      try {
+        const { data: refreshed } = await supabase.auth.refreshSession();
+        if (refreshed?.session) session = refreshed.session;
+      } catch { /* session unauthenticated */ }
+    }
     const response = await fetch(name === "illustrate-scene" ? "/api/illustrate" : "/api/ai", {
       method: "POST",
       headers: {

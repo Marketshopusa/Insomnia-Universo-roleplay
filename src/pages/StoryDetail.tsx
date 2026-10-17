@@ -366,6 +366,11 @@ type Mode = "select" | "read" | "roleplay";
       const code = status === 402 ? "credits_exhausted" : (data as any)?.error;
       if (code === "rate_limited") toast({ title: t("mode.rateLimited"), variant: "destructive" });
       else if (code === "credits_exhausted") toast({ title: t("mode.creditsExhausted"), variant: "destructive" });
+      else if (code === "login_required" || status === 401) toast({
+        title: language === "es" ? "Inicia sesión en tu celular" : "Please log in to continue",
+        description: language === "es" ? "Debes iniciar sesión con tu cuenta para que la IA en la nube responda en tu celular." : "Please sign in with your account to chat with cloud AI.",
+        variant: "destructive",
+      });
       else if (code === "local_chat_unavailable") toast({
         title: language === "es" ? "Kineva local no está disponible" : "Local Kineva is unavailable",
         description: data?.message,
