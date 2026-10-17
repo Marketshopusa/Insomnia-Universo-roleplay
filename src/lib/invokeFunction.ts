@@ -44,8 +44,66 @@ async function callOwnAi<T>(name: string, body: unknown): Promise<FunctionResult
   }
 }
 
+async function callLocalLlama<T>(body: unknown): Promise<FunctionResult<T> | null> {
+  try {
+    const input = body as {
+      story?: { title?: string; description?: string; story_context?: string; character_role?: string; player_role?: string };
+      userMessage?: string;
+      history?: { role: string; content: string }[];
+      language?: string;
+    };
+    const health = await fetch("http://127.0.0.1:8788/health", { signal: AbortSignal.timeout(400) }).catch(() => null);
+    if (!health?.ok) return null;
+
+    const characterName = input.story?.character_role || "Personaje";
+    const playerName = input.story?.player_role || "Usuario";
+    const systemPrompt = `Eres ${characterName} en un roleplay cinematográfico inmersivo para adultos al estilo Momoo AI interactuando con ${playerName} (Director).
+REGLA SUPREMA: 100% español nativo.
+PROPORCIÓN: 70% diálogo hablado directo / 30% acotaciones breves en primera persona (*acción*).
+Alterna: *gesto breve o sonido de 3 a 8 palabras* -> Diálogo hablado -> *reacción corporal/sonido* -> Diálogo hablado.
+NUNCA hables ni actúes por ${playerName}. Detén tu respuesta en cuanto tu personaje termine de actuar y hablar.`;
+
+    const messages = [
+      { role: "system", content: systemPrompt },
+      ...(input.history || []).slice(-12).map((m) => ({
+        role: m.role === "assistant" ? "assistant" : "user",
+        content: m.content,
+      })),
+      { role: "user", content: input.userMessage || "" },
+    ];
+
+    const res = await fetch("http://127.0.0.1:8788/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "magnum-v4-12b",
+        messages,
+        max_tokens: 280,
+        temperature: 0.8,
+      }),
+      signal: AbortSignal.timeout(25000),
+    });
+
+    if (!res.ok) return null;
+    const data = await res.json();
+    let content = data?.choices?.[0]?.message?.content?.trim();
+    if (content) {
+      content = content.replace(/[\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff\u3040-\u30ff]/g, "").trim();
+      return { data: { content } as T, error: null };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 /** Retries only transient network, rate-limit, and server failures once. */
 export async function invokeFunctionWithRetry<T>(name: string, body: unknown): Promise<FunctionResult<T>> {
+  if (name === "story-chat") {
+    // 1. If local llama-server (PC GPU on port 8788) is online, use it directly (0 credits, instant response)
+    const local = await callLocalLlama<T>(body);
+    if (local?.data) return local;
+  }
   if (ownAi.has(name)) {
     return callOwnAi<T>(name, body);
   }

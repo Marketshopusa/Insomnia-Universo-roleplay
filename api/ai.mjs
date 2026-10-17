@@ -68,6 +68,12 @@ export async function generateOpenRouter(messages, options = {}) {
       });
       if (!response.ok) {
         console.warn("OpenRouter model error", model, response.status);
+        if (response.status === 402) {
+          throw Object.assign(new Error("Créditos de OpenRouter agotados (Error 402). Por favor recarga saldo en https://openrouter.ai/settings/credits o usa tu modelo local en la PC."), {
+            status: 402,
+            code: "credits_exhausted"
+          });
+        }
         continue;
       }
       const data = await response.json();
@@ -737,6 +743,9 @@ export default async function handler(req, res) {
         });
       } catch (err) {
         console.warn("OpenRouter roleplay invocation failed:", err.message);
+        if (err.status === 402 || err.code === "credits_exhausted") {
+          return send(res, 402, { error: "credits_exhausted", message: err.message });
+        }
       }
 
       if (!content) {
