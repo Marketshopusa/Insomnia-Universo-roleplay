@@ -143,3 +143,180 @@ export function compactRoleplayReply(input: string): string {
   return text;
 }
 
+const NON_NAME_WORDS = new Set([
+  "abre", "abrio", "abrió", "entra", "entro", "entró", "llega", "llego", "llegó", "dice", "dijo",
+  "me", "te", "se", "nos", "le", "les", "lo", "la", "el", "los", "las", "un", "una", "unos", "unas",
+  "mi", "mis", "tu", "tus", "su", "sus", "que", "quien", "como", "cuando", "donde", "mientras", "pero",
+  "sin", "con", "por", "para", "sobre", "entre", "hacia", "hasta", "desde", "en", "de", "del", "al",
+  "y", "e", "o", "u", "ni", "no", "si", "sí", "ya", "muy", "mas", "más", "tan", "tanto", "toda", "todo",
+  "mayor", "menor", "pequeña", "grande", "hermosa", "bella", "linda", "caliente", "desnuda", "vestida",
+  "viene", "vino", "sale", "salió", "va", "fue", "era", "es", "son", "está", "esta", "estaba", "tiene",
+  "hace", "hizo", "ve", "vio", "mira", "miró", "besa", "besó", "abraza", "abrazó", "toca", "tocó",
+  "salta", "saltó", "camina", "corre", "grita", "gime", "llora", "ríe", "sonríe", "pregunta", "responde",
+  "cierra", "cerró", "pide", "pidió", "quiere", "quería", "puede", "pudo", "sabe", "sabía", "allí", "alli", "aquí", "aqui",
+]);
+
+export interface ActiveCharacterInfo {
+  isSwitched: boolean;
+  name: string;
+  role: string;
+  fullLabel: string;
+  addressTerm: string;
+  defaultFirstName: string;
+  playerFirstName: string;
+}
+
+function capitalizeWord(word: string): string {
+  if (!word) return "";
+  return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+}
+
+export function resolveActiveCharacter(
+  userMessage: string,
+  history: { role: string; content?: string; text?: string }[] = [],
+  defaultCharacterRole = "Personaje",
+  playerRole = "Usuario",
+): ActiveCharacterInfo {
+  const defaultFirstName = (defaultCharacterRole.match(/[A-ZÁÉÍÓÚÑ][a-záéíóúñ]{2,}/)?.[0] || defaultCharacterRole.split(/[\s,()]+/)[0] || "Personaje").trim();
+  const playerFirstName = (playerRole.match(/[A-ZÁÉÍÓÚÑ][a-záéíóúñ]{2,}/)?.[0] || playerRole.split(/[\s,()]+/)[0] || "Usuario").trim();
+  const defaultIsSobrina = /sobrin/i.test(defaultCharacterRole) || /t[ií][oa]/i.test(playerRole);
+
+  const knownByName = new Map<string, { name: string; role: string; addressTerm: string }>();
+
+  const parseLine = (line: string): { isDefault: boolean; name: string; role: string; addressTerm: string } | null => {
+    const text = String(line || "").trim();
+    if (!text) return null;
+
+    // Check "Nombre, mi hermana" pattern first
+    const preNamed = text.match(/\b([A-ZÁÉÍÓÚÑ][a-záéíóúñ]{2,15})\s*,?\s*(?:mi|su|la)\s+(hermana|hermanita|prima|primita|cuñada|mam[aá]|madre|t[ií]a|vecina|amiga|sobrina)\b/i);
+    const kinMatches = [...text.matchAll(/\b((?:su|la|mi)\s+mam[aá]|(?:su|la|mi)\s+madre|mam[aá]|madre|herman[ao]|hermanit[ao]|prim[ao]|primit[ao]|cuñad[ao]|t[ií][ao]|sobrin[ao]|vecin[ao]|amig[ao]|suegr[ao]|esposa|novia|jefa|secretaria|profesora|enfermera|doctora)(?:\s+(?:llamad[ao]\s+)?([A-ZÁÉÍÓÚÑa-záéíóúñ]{3,15}))?\b/gi)];
+
+    let rawKin = "";
+    let candidateName = "";
+
+    if (preNamed) {
+      candidateName = capitalizeWord(preNamed[1]);
+      rawKin = preNamed[2].toLowerCase();
+    } else if (kinMatches.length > 0) {
+      const last = kinMatches[kinMatches.length - 1];
+      rawKin = (last[1] || "").toLowerCase().trim();
+      const afterWord = (last[2] || "").trim();
+      if (afterWord && !NON_NAME_WORDS.has(afterWord.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")) && !NON_NAME_WORDS.has(afterWord.toLowerCase())) {
+        candidateName = capitalizeWord(afterWord);
+      }
+    }
+
+    if (rawKin) {
+      if (/sobrin/i.test(rawKin) && defaultIsSobrina) {
+        return { isDefault: true, name: defaultFirstName, role: "sobrina", addressTerm: "Tío" };
+      }
+      let role = "personaje";
+      let addressTerm = playerFirstName;
+      if (/herman/i.test(rawKin) || ((/su\s+mam|su\s+madre|la\s+mam|la\s+madre/i.test(rawKin) || (/^(?:mam[aá]|madre)$/i.test(rawKin) && defaultIsSobrina)) && !/mi\s+mam|mi\s+madre/i.test(rawKin))) {
+        role = `la hermana de ${playerFirstName}`;
+        addressTerm = "hermano";
+      } else if (/mam[aá]|madre/i.test(rawKin)) {
+        role = `la mamá de ${playerFirstName}`;
+        addressTerm = "hijo";
+      } else if (/prim/i.test(rawKin)) {
+        role = `la prima de ${playerFirstName}`;
+        addressTerm = "primo";
+      } else if (/cuñad/i.test(rawKin)) {
+        role = `la cuñada de ${playerFirstName}`;
+        addressTerm = "cuñado";
+      } else if (/t[ií]a/i.test(rawKin)) {
+        role = `la tía de ${playerFirstName}`;
+        addressTerm = "sobrino";
+      } else if (/vecin/i.test(rawKin)) {
+        role = `la vecina de ${playerFirstName}`;
+        addressTerm = "vecino";
+      } else if (/amig/i.test(rawKin)) {
+        role = `la amiga de ${playerFirstName}`;
+        addressTerm = playerFirstName;
+      } else if (/suegr/i.test(rawKin)) {
+        role = `la suegra de ${playerFirstName}`;
+        addressTerm = playerFirstName;
+      } else {
+        role = rawKin;
+        addressTerm = playerFirstName;
+      }
+
+      const prevForRole = [...knownByName.values()].find((v) => v.role === role);
+      const finalName = candidateName || prevForRole?.name || "";
+      const info = { isDefault: false, name: finalName, role, addressTerm };
+      if (finalName) knownByName.set(finalName.toLowerCase(), { name: finalName, role, addressTerm });
+      return info;
+    }
+
+    // Check if user mentioned a known secondary character by name (e.g. "Gabriela")
+    for (const [key, val] of knownByName.entries()) {
+      if (new RegExp(`\\b${key}\\b`, "i").test(text)) {
+        return { isDefault: false, ...val };
+      }
+    }
+
+    // Check if user explicitly mentioned the default character's name to switch back
+    if (defaultFirstName && new RegExp(`\\b${defaultFirstName}\\b`, "i").test(text)) {
+      return { isDefault: true, name: defaultFirstName, role: defaultCharacterRole, addressTerm: defaultIsSobrina ? "Tío" : playerFirstName };
+    }
+
+    return null;
+  };
+
+  let active: { isDefault: boolean; name: string; role: string; addressTerm: string } | null = null;
+  for (const turn of history) {
+    if (turn.role === "user") {
+      const parsed = parseLine(turn.content || turn.text || "");
+      if (parsed) active = parsed;
+    }
+  }
+  const latestParsed = parseLine(userMessage);
+  if (latestParsed) active = latestParsed;
+
+  if (!active || active.isDefault) {
+    return {
+      isSwitched: false,
+      name: defaultFirstName,
+      role: defaultCharacterRole,
+      fullLabel: defaultCharacterRole,
+      addressTerm: defaultIsSobrina ? "Tío" : playerFirstName,
+      defaultFirstName,
+      playerFirstName,
+    };
+  }
+
+  const fullLabel = active.name ? `${active.name} (${active.role})` : active.role;
+  return {
+    isSwitched: true,
+    name: active.name || active.role,
+    role: active.role,
+    fullLabel,
+    addressTerm: active.addressTerm,
+    defaultFirstName,
+    playerFirstName,
+  };
+}
+
+export function sanitizeSwitchedReply(reply: string, info: ActiveCharacterInfo): string {
+  if (!info.isSwitched || !reply) return reply;
+  let cleaned = reply;
+
+  // 1. Remove lines where the niece says "Mami..." or speaks in 3rd person as the old character
+  if (info.defaultFirstName && info.defaultFirstName.toLowerCase() !== info.name.toLowerCase()) {
+    const escapedDefault = info.defaultFirstName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    cleaned = cleaned.replace(new RegExp(`\\*[^*]*\\b${escapedDefault}\\b[^*]*\\*`, "gi"), "*Me aprieto contra ti*");
+    cleaned = cleaned.replace(new RegExp(`\\b${escapedDefault}\\b`, "gi"), info.name);
+  }
+  cleaned = cleaned.replace(/(?:^|\n)\s*Mami\b[^.!?\n]*[.!?]+\s*/gi, " ");
+  cleaned = cleaned.replace(/\bMami\b[,…]?\s*/gi, "");
+
+  // 2. Replace "Tío" / "tío" with the correct relationship address term (e.g. "hermano")
+  if (info.addressTerm.toLowerCase() !== "tío" && info.addressTerm.toLowerCase() !== "tio") {
+    cleaned = cleaned.replace(/\bTío\b/g, info.addressTerm);
+    cleaned = cleaned.replace(/\btío\b/g, info.addressTerm.toLowerCase());
+  }
+
+  return compactRoleplayReply(cleaned);
+}
+
+

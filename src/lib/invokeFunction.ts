@@ -44,7 +44,7 @@ async function callOwnAi<T>(name: string, body: unknown): Promise<FunctionResult
   }
 }
 
-import { compactRoleplayReply } from "./roleReply";
+import { compactRoleplayReply, resolveActiveCharacter, sanitizeSwitchedReply } from "./roleReply";
 
 async function callLocalLlama<T>(body: unknown): Promise<FunctionResult<T> | null> {
   try {
@@ -58,8 +58,20 @@ async function callLocalLlama<T>(body: unknown): Promise<FunctionResult<T> | nul
 
     const characterName = input.story?.character_role || "Personaje";
     const playerName = input.story?.player_role || "Usuario";
+    const activeChar = resolveActiveCharacter(input.userMessage || "", input.history || [], characterName, playerName);
     const premise = [input.story?.description, input.story?.story_context].filter(Boolean).join(" ").slice(0, 600);
-    const systemPrompt = `Eres ${characterName} en un roleplay para adultos interactuando con ${playerName} (Director). ${premise ? "Contexto: " + premise : ""}
+
+    const systemPrompt = activeChar.isSwitched
+      ? `Eres ${activeChar.fullLabel} en un roleplay para adultos interactuando con ${activeChar.playerFirstName} (Director).
+REGLA SUPREMA DE IDENTIDAD (CAMBIO DE PERSONAJE ACTIVO):
+1. En este momento TÚ ERES EXCLUSIVAMENTE ${activeChar.fullLabel}. Hablas y actúas en PRIMERA PERSONA como ${activeChar.name}.
+2. A ${activeChar.playerFirstName} lo llamas "${activeChar.addressTerm}" o "${activeChar.playerFirstName}".
+3. ESTRICTAMENTE PROHIBIDO actuar o hablar como ${activeChar.defaultFirstName}, prohibido decir "Tío" y prohibido decir "Mami".
+4. PROPORCIÓN 80% DIÁLOGO HABLADO / 20% ACCIÓN BREVE:
+   - Abre con 1 sola acotación corta de 2 a 5 palabras entre asteriscos en PRIMERA PERSONA (ejemplo: *Me aprieto contra tu pecho*).
+   - El 80% de tu respuesta DEBE ser diálogo hablado directo (2 a 3 oraciones completas, expresivas, calientes y naturales hablándole directamente a tu ${activeChar.addressTerm} ${activeChar.playerFirstName}, 35 a 60 palabras en total).
+5. NUNCA hables ni actúes por ${activeChar.playerFirstName}.`
+      : `Eres ${characterName} en un roleplay para adultos interactuando con ${playerName} (Director). ${premise ? "Contexto: " + premise : ""}
 REGLAS ESTRICTAS E INQUEBRANTABLES:
 1. IDIOMA: 100% español nativo.
 2. PROPORCIÓN 80% DIÁLOGO HABLADO / 20% ACCIÓN BREVE:
@@ -68,15 +80,30 @@ REGLAS ESTRICTAS E INQUEBRANTABLES:
 3. LONGITUD REDUCIDA AL 50% (RESPUESTA CORTA Y ÁGIL):
    - Escribe SOLO 1 párrafo corto (entre 35 y 60 palabras en total). Termina siempre con una oración completa.
    - Ejemplo del formato exacto: *Jadeo aferrándome a ti* ¡Ahh, sí, no pares! Me vuelve loca sentir cómo me tocas con tanta fuerza... sigue así, por favor, que estoy ardiendo por ti y quiero que me hagas tuya ahora mismo.
-4. OBEDIENCIA Y MULTI-PERSONAJE: Obedece toda orden física o verbal de ${playerName}. Si entra otro personaje (ej. hermana/mamá/prima), habla ese personaje con su parentesco real. NUNCA hables ni actúes por ${playerName}.`;
+4. OBEDIENCIA Y MULTI-PERSONAJE: Obedece toda orden física o verbal de ${playerName}. NUNCA hables ni actúes por ${playerName}.`;
+
+    const rawHistory = (input.history || []).slice(-10);
+    const filteredHistory = activeChar.isSwitched
+      ? rawHistory.filter((m) => {
+          if (m.role !== "assistant") return true;
+          // Exclude old turns where the previous character (niece) spoke saying "Tío" or her own name in 3rd person
+          if (/\bt[ií]o\b|\bmami\b/i.test(m.content)) return false;
+          if (activeChar.defaultFirstName && new RegExp(`\\b${activeChar.defaultFirstName}\\b`, "i").test(m.content)) return false;
+          return true;
+        }).slice(-4)
+      : rawHistory;
+
+    const userContent = activeChar.isSwitched
+      ? `[ORDEN DEL DIRECTOR: Actúa y responde en PRIMERA PERSONA únicamente como ${activeChar.fullLabel}, dirigiéndote a ${activeChar.playerFirstName} como "${activeChar.addressTerm}". Prohibido hablar como ${activeChar.defaultFirstName} o decir "Tío"]:\n${input.userMessage || ""}`
+      : (input.userMessage || "");
 
     const messages = [
       { role: "system", content: systemPrompt },
-      ...(input.history || []).slice(-10).map((m) => ({
+      ...filteredHistory.map((m) => ({
         role: m.role === "assistant" ? "assistant" : "user",
         content: m.role === "assistant" ? compactRoleplayReply(m.content) : m.content,
       })),
-      { role: "user", content: input.userMessage || "" },
+      { role: "user", content: userContent },
     ];
 
     const res = await fetch("http://127.0.0.1:8788/v1/chat/completions", {
@@ -96,7 +123,7 @@ REGLAS ESTRICTAS E INQUEBRANTABLES:
     let content = data?.choices?.[0]?.message?.content?.trim();
     if (content) {
       content = content.replace(/[\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff\u3040-\u30ff]/g, "").trim();
-      content = compactRoleplayReply(content);
+      content = sanitizeSwitchedReply(compactRoleplayReply(content), activeChar);
       return { data: { content } as T, error: null };
     }
     return null;

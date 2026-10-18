@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeAssistantReply } from "./roleReply";
+import { normalizeAssistantReply, resolveActiveCharacter, sanitizeSwitchedReply } from "./roleReply";
 import { performSpeech } from "./ttsStream";
 
 describe("role reply presentation", () => {
@@ -43,5 +43,26 @@ describe("role reply presentation", () => {
     for (const act of actions) {
       expect(act.split(/\s+/).length).toBeLessThanOrEqual(7);
     }
+  });
+  it("detects when the user introduces another character like sister Gabriela and sanitizes niece leaks", () => {
+    const userLine = "Mi hermana Gabriela abre la puerta. Y me conseguí allí en toallas sin importar las altas sobre mí para darme un abrazote Y apretarse fuente contra mí de la emoción";
+    const info = resolveActiveCharacter(userLine, [], "Estefanía (la sobrina)", "William (el tío)");
+    expect(info.isSwitched).toBe(true);
+    expect(info.name).toBe("Gabriela");
+    expect(info.role).toBe("la hermana de William");
+    expect(info.fullLabel).toBe("Gabriela (la hermana de William)");
+    expect(info.addressTerm).toBe("hermano");
+
+    // Keeps Gabriela active on subsequent turn when no other character is named
+    const nextInfo = resolveActiveCharacter("La abrazo fuerte contra mi pecho", [{ role: "user", content: userLine }], "Estefanía (la sobrina)", "William (el tío)");
+    expect(nextInfo.isSwitched).toBe(true);
+    expect(nextInfo.name).toBe("Gabriela");
+
+    const leaked = "*Estefanía se sonroja y mira*\nMami... no me digas eso. Me da vergüenza.\n*Se muerde el labio, nerviosa*\nYo también te extrañé mucho, Tío.";
+    const cleaned = sanitizeSwitchedReply(leaked, info);
+    expect(cleaned).not.toContain("Estefanía");
+    expect(cleaned).not.toContain("Mami");
+    expect(cleaned).not.toContain("Tío");
+    expect(cleaned).toContain("hermano");
   });
 });
