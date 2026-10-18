@@ -32,7 +32,7 @@ const forms = [
   ["sigh", "suspir(?:o|a|é|ó|ando|ar)|resopl(?:o|a|é|ó|ando)|sigh(?:s|ed|ing)?"],
   ["gasp", "boque(?:o|a|ó|ando)|aspir(?:o|a|ó)\\s+(?:aire\\s+)?(?:de\\s+golpe|bruscamente)|gasp(?:s|ed|ing)?"],
   ["pant", "jade(?:os?|a|ó|ando|ar)|respir(?:o|a|ó|ando)\\s+(?:agitadamente|con\\s+dificultad)|pant(?:s|ed|ing)?"],
-  ["groan", "g(?:imo|ime|emí|imió|imiendo)|gemidos?|moan(?:s|ed|ing)?|groan(?:s|ed|ing)?|mord(?:iendo|er|ió|e|í|erme)\\w*\\s+(?:el\\s+)?labio|ard(?:iendo|er)\\s+de\\s+(?:excitaci[oó]n|deseo)|estremec(?:er|iendo|ió|e|imiento)|tembl(?:ando|or|ar|ó)"],
+  ["groan", "g(?:imo|ime|emí|imió|imiendo)|gemidos?|moan(?:s|ed|ing)?|groan(?:s|ed|ing)?"],
   ["grunt", "gruñ(?:o|e|ó|endo)|gruñidos?|grunt(?:s|ed|ing)?"],
   ["growl", "rug(?:e|ió|iendo)|sonido\\s+gutural|growl(?:s|ed|ing)?"],
   ["cough", "tos(?:o|e|ió|iendo)|cough(?:s|ed|ing)?"],
@@ -150,7 +150,7 @@ export function prepareExpressiveSpeech(input, { roleplay = false } = {}) {
         const nextAction = matches[matches.indexOf(match) + 1]?.index ?? sentence.length;
         const context = sentence.slice(cursor, nextAction);
         const prefixText = sentence.slice(cursor, match.index);
-        const leavesDanglingGrammar = /\b(?:un|una|el|la|los|las|su|sus|mi|mis|tu|tus|de|del|al)\s*$/iu.test(prefixText);
+        const leavesDanglingGrammar = /\b(?:un|una|el|la|los|las|su|sus|mi|mis|tu|tus|de|del|al|entre|con|por|en|sin)\s*$/iu.test(prefixText);
         if (leavesDanglingGrammar || (marked && sentence.length > 50)) {
           addText(sentence.slice(cursor, end + tail.length), "narration");
         } else {
@@ -171,7 +171,12 @@ export function prepareExpressiveSpeech(input, { roleplay = false } = {}) {
     }
     processAction(body.slice(cursor), marked);
   };
-  const raw = String(input || "");
+  let raw = String(input || "");
+  // If there is an unclosed single asterisk at the end (e.g. truncated *Murmura entre jade), close it so stage parsing stays intact
+  const singleAsterisks = (raw.replace(/\*\*/g, "").match(/\*/g) || []).length;
+  if (singleAsterisks % 2 === 1) {
+    raw = raw.trimEnd() + "*";
+  }
   const units = new RegExp(STAGES.source + "|" + QUOTES.source, "gu");
   let cursor = 0;
   for (const match of raw.matchAll(units)) {

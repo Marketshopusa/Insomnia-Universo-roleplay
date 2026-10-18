@@ -94,10 +94,11 @@ async function receivePcmOnce(text: string, voice: string, language: string, reg
   } finally {
     reader.releaseLock();
   }
-  if (!receivedDone || byteCarry.length > 0 || totalBytes === 0) throw new Error("tts_stream_incomplete");
   const score = roleplay ? prepareExpressiveSpeech(text) : null;
   const onlyVocalEvent = !!score?.reactions.length && score.segments.every((part) => part.kind === "reaction");
-  if (totalBytes / 2 / PCM_SAMPLE_RATE < (onlyVocalEvent ? 0.1 : 0.35)) throw new Error("tts_audio_too_short");
+  const minDuration = onlyVocalEvent ? 0.1 : 0.35;
+  if (totalBytes === 0 || (!receivedDone && totalBytes / 2 / PCM_SAMPLE_RATE < minDuration)) throw new Error("tts_stream_incomplete");
+  if (totalBytes / 2 / PCM_SAMPLE_RATE < minDuration) throw new Error("tts_audio_too_short");
 }
 
 async function receivePcm(text: string, voice: string, language: string, region: string, performance: Performance, roleplay: boolean, signal: AbortSignal, onChunk: (bytes: Uint8Array) => void) {

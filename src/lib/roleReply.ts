@@ -47,8 +47,99 @@ export function normalizeAssistantReply(value: unknown): string | null {
       .replace(/^["“«']|["”»']$/g, "")
       .replace(/\s+/g, " ")
       .trim();
-    if (stripped) return stripped;
+    if (stripped) return compactRoleplayReply(stripped);
   }
 
-  return unfenced;
+  return compactRoleplayReply(unfenced);
 }
+
+const DANGLING_TAIL = /\b(?:de|del|al|a|en|con|por|para|sin|sobre|entre|hacia|hasta|como|mientras|cuando|que|y|e|o|u|ni|pero|un|una|unos|unas|el|la|los|las|su|sus|mi|mis|tu|tus|me|te|se|nos|le|les|lo)\s*$/iu;
+
+function trimActionCue(rawAction: string): string {
+  const firstSentence = rawAction
+    .replace(/\s+/g, " ")
+    .trim()
+    .split(/(?<=[.!?…])\s+/)[0]
+    .replace(/[.!?…]+$/, "")
+    .trim();
+  const words = firstSentence.split(/\s+/).filter(Boolean);
+  if (words.length <= 7) return firstSentence;
+  // Prefer cutting at a comma if the first clause is 2..7 words
+  const commaClause = firstSentence.split(",")[0].trim();
+  const commaWords = commaClause.split(/\s+/).filter(Boolean);
+  let sliced = commaWords.length >= 2 && commaWords.length <= 7
+    ? commaWords.join(" ")
+    : words.slice(0, 6).join(" ");
+  while (DANGLING_TAIL.test(sliced) && sliced.includes(" ")) {
+    sliced = sliced.replace(/\s+\S+$/, "").trim();
+  }
+  return sliced.replace(/[,;:\s]+$/, "").trim();
+}
+
+/**
+ * Enforces:
+ * 1. No unclosed asterisks or mid-sentence cutoffs at the end of a reply.
+ * 2. Strictly ~20% action (*...*) / ~80% spoken dialogue (actions capped to brief cues).
+ * 3. Compact length (-50% reduction, max ~380 chars / ~65 words) so replies are fast and engaging.
+ */
+export function compactRoleplayReply(input: string): string {
+  let text = String(input || "").trim();
+  if (!text) return "";
+
+  // 1. Remove any trailing unclosed *action fragment (e.g. "... increíble, Tío. *Murmura entre jade")
+  const asteriskCount = (text.replace(/\*\*/g, "").match(/\*/g) || []).length;
+  if (asteriskCount % 2 === 1) {
+    const lastStar = text.lastIndexOf("*");
+    const beforeStar = text.slice(0, lastStar).trim();
+    if (beforeStar.length >= 15) {
+      text = beforeStar;
+    } else {
+      text = text + "*";
+    }
+  }
+
+  // 2. If text was cut off mid-sentence at max_tokens, trim back to the last complete sentence
+  if (text.length > 80 && !/[.!?…"”»*)\]]$/.test(text)) {
+    const lastPunct = Math.max(
+      text.lastIndexOf("."),
+      text.lastIndexOf("!"),
+      text.lastIndexOf("?"),
+      text.lastIndexOf("…"),
+      text.lastIndexOf("*"),
+    );
+    if (lastPunct >= 25) {
+      text = text.slice(0, lastPunct + 1).trim();
+    }
+  }
+
+  // 3. Shorten bloated *action* blocks to brief 2-6 word cues and keep at most 2 action cues total
+  let actionCount = 0;
+  text = text.replace(/\*([^*\n]+)\*/g, (_match, inner: string) => {
+    actionCount += 1;
+    if (actionCount > 2) return "";
+    const shortCue = trimActionCue(inner);
+    return shortCue ? `*${shortCue}*` : "";
+  });
+
+  // 4. Collapse whitespace and cap total length to ~380 chars at a clean sentence boundary
+  text = text.replace(/[ \t]{2,}/g, " ").replace(/\n{2,}/g, "\n").trim();
+  if (text.length > 380) {
+    const sentences = text.match(/[^.!?…]+[.!?…]+["'»”*)]*(?:\s+|$)/gu);
+    if (sentences && sentences.length > 1) {
+      let acc = "";
+      for (const s of sentences) {
+        if ((acc + s).length > 380 && acc.length >= 80) break;
+        acc += s;
+      }
+      if (acc.trim()) text = acc.trim();
+    }
+  }
+
+  // Ensure balanced asterisks after any slicing
+  if (((text.replace(/\*\*/g, "").match(/\*/g) || []).length) % 2 === 1) {
+    text = text.replace(/\*[^*]*$/, "").trim();
+  }
+
+  return text;
+}
+

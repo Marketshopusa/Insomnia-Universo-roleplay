@@ -44,30 +44,37 @@ async function callOwnAi<T>(name: string, body: unknown): Promise<FunctionResult
   }
 }
 
+import { compactRoleplayReply } from "./roleReply";
+
 async function callLocalLlama<T>(body: unknown): Promise<FunctionResult<T> | null> {
   try {
+    if ((import.meta as any).env?.VITEST) return null;
     const input = body as {
       story?: { title?: string; description?: string; story_context?: string; character_role?: string; player_role?: string };
       userMessage?: string;
       history?: { role: string; content: string }[];
       language?: string;
     };
-    const health = await fetch("http://127.0.0.1:8788/health", { signal: AbortSignal.timeout(400) }).catch(() => null);
-    if (!health?.ok) return null;
 
     const characterName = input.story?.character_role || "Personaje";
     const playerName = input.story?.player_role || "Usuario";
-    const systemPrompt = `Eres ${characterName} en un roleplay cinematográfico inmersivo para adultos al estilo Momoo AI interactuando con ${playerName} (Director).
-REGLA SUPREMA: 100% español nativo.
-PROPORCIÓN: 70% diálogo hablado directo / 30% acotaciones breves en primera persona (*acción*).
-Alterna: *gesto breve o sonido de 3 a 8 palabras* -> Diálogo hablado -> *reacción corporal/sonido* -> Diálogo hablado.
-NUNCA hables ni actúes por ${playerName}. Detén tu respuesta en cuanto tu personaje termine de actuar y hablar.`;
+    const premise = [input.story?.description, input.story?.story_context].filter(Boolean).join(" ").slice(0, 600);
+    const systemPrompt = `Eres ${characterName} en un roleplay para adultos interactuando con ${playerName} (Director). ${premise ? "Contexto: " + premise : ""}
+REGLAS ESTRICTAS E INQUEBRANTABLES:
+1. IDIOMA: 100% español nativo.
+2. PROPORCIÓN 80% DIÁLOGO HABLADO / 20% ACCIÓN BREVE:
+   - ACCIÓN (*...*): MÁXIMO 1 o 2 acotaciones ultra-cortas de 2 a 5 palabras en PRIMERA PERSONA (ejemplo: *Jadeo arqueando mi espalda* o *Me muerdo el labio*). PROHIBIDO escribir oraciones largas en asteriscos y PROHIBIDO narrar en tercera persona.
+   - DIÁLOGO HABLADO: El 80% de tu respuesta DEBE ser diálogo hablado directo en primera persona (2 a 3 oraciones seguidas, expresivas, calientes y naturales hablándole directamente a ${playerName}).
+3. LONGITUD REDUCIDA AL 50% (RESPUESTA CORTA Y ÁGIL):
+   - Escribe SOLO 1 párrafo corto (entre 35 y 60 palabras en total). Termina siempre con una oración completa.
+   - Ejemplo del formato exacto: *Jadeo aferrándome a ti* ¡Ahh, sí, no pares! Me vuelve loca sentir cómo me tocas con tanta fuerza... sigue así, por favor, que estoy ardiendo por ti y quiero que me hagas tuya ahora mismo.
+4. OBEDIENCIA Y MULTI-PERSONAJE: Obedece toda orden física o verbal de ${playerName}. Si entra otro personaje (ej. hermana/mamá/prima), habla ese personaje con su parentesco real. NUNCA hables ni actúes por ${playerName}.`;
 
     const messages = [
       { role: "system", content: systemPrompt },
-      ...(input.history || []).slice(-12).map((m) => ({
+      ...(input.history || []).slice(-10).map((m) => ({
         role: m.role === "assistant" ? "assistant" : "user",
-        content: m.content,
+        content: m.role === "assistant" ? compactRoleplayReply(m.content) : m.content,
       })),
       { role: "user", content: input.userMessage || "" },
     ];
@@ -78,10 +85,10 @@ NUNCA hables ni actúes por ${playerName}. Detén tu respuesta en cuanto tu pers
       body: JSON.stringify({
         model: "magnum-v4-12b",
         messages,
-        max_tokens: 280,
-        temperature: 0.8,
+        max_tokens: 145,
+        temperature: 0.78,
       }),
-      signal: AbortSignal.timeout(25000),
+      signal: AbortSignal.timeout(15000),
     });
 
     if (!res.ok) return null;
@@ -89,6 +96,7 @@ NUNCA hables ni actúes por ${playerName}. Detén tu respuesta en cuanto tu pers
     let content = data?.choices?.[0]?.message?.content?.trim();
     if (content) {
       content = content.replace(/[\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff\u3040-\u30ff]/g, "").trim();
+      content = compactRoleplayReply(content);
       return { data: { content } as T, error: null };
     }
     return null;

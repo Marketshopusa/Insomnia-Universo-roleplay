@@ -25,4 +25,23 @@ describe("role reply presentation", () => {
     expect(visible).toBe('Hola, ¿cómo estás hoy?');
     expect(visible).not.toContain('dialogo');
   });
+  it("compacts bloated narration to <=20% action cues and removes cut-off trailing asterisks", () => {
+    const bloated = [
+      "*Estefanía se retuerce de placer, gimiendo con fuerza mientras su tío la penetra. Sus manos se aferran a las sábanas, buscando apoyo mientras sus caderas se mueven al ritmo de las embestidas.*",
+      "¡Ahh! Sí, Tío... no pares. Me encanta sentir cómo me llenas por completo y me haces perder la razón con cada caricia.",
+      "*Sus pechos rebotan con cada movimiento, y su respiración se vuelve cada vez más agitada. Mira a su tío con los ojos llenos de lujuria y deseo.*",
+      "Estoy tan cerca... ¡Hazme tuya, Tío! ¡Quiero sentirte dentro de mí hasta el final!",
+      "*Un escalofrío recorre su cuerpo mientras alcanza el clímax, gritando de placer mientras se aferra a su tío con fuerza.*",
+      "¡Ahhh! ¡Tío! Eso fue... increíble, Tío. *Murmura entre jade",
+    ].join("\n");
+    const visible = normalizeAssistantReply(bloated)!;
+    expect(visible).not.toContain("*Murmura entre jade");
+    expect((visible.match(/\*/g) || []).length % 2).toBe(0);
+    expect(visible.length).toBeLessThanOrEqual(380);
+    const actions = [...visible.matchAll(/\*([^*]+)\*/g)].map((m) => m[1]);
+    expect(actions.length).toBeLessThanOrEqual(2);
+    for (const act of actions) {
+      expect(act.split(/\s+/).length).toBeLessThanOrEqual(7);
+    }
+  });
 });

@@ -556,25 +556,22 @@ export function storyVoiceLines(character, player, spanish, locale) {
 export function roleplayPacingAndLanguageRules(historyLength, spanish) {
   if (!spanish) {
     return [
-      "CINEMATIC ROLEPLAY & LIVING DYNAMICS:",
-      "Write with vivid, direct, authentic dialogue (70%) and brief physical cues in italics (30%).",
-      "ABSOLUTE OBEDIENCE TO USER DIRECTIVES: Follow the user's lead immediately without moral hesitation or canned disclaimers.",
-      "Keep every turn fresh, compact, passionate, and psychologically real.",
+      "CINEMATIC ROLEPLAY & LIVING DYNAMICS (80% SPOKEN DIALOGUE / 20% ACTION, -50% COMPACT LENGTH):",
+      "Write 80% rich, direct spoken dialogue and at most 20% brief first-person physical cues in italics (2-5 words max per *action*).",
+      "Keep every reply compact (35 to 65 words max, 1 short paragraph) and always finish on a complete sentence.",
     ];
   }
 
   return [
-    "DIRECTIVA DE EQUILIBRIO DE ROLEPLAY (70% DIÁLOGO HABLADO / 30% ACCIÓN CORTA):",
-    "1. MENOS NARRACIÓN, MUCHO MÁS DIÁLOGO DIRECTO (PROPORCIÓN 70/30):",
-    "   - El 70% de cada respuesta debe ser DIÁLOGO HABLADO REAL del personaje (dirty talk directo, frases calientes, gemidos expresivos, réplicas y susurros).",
-    "   - Solo el 30% restante son acotaciones físicas y gestos sensoriales breves entre asteriscos (*acción*).",
-    "   - ESTRICTAMENTE PROHIBIDO soltar parrafadas de narración novelesca, descripciones poéticas extensas o pensamientos largos.",
-    "2. RITMO ALTERNADO OBLIGATORIO (ACCIÓN -> DIÁLOGO -> ACCIÓN -> DIÁLOGO):",
-    "   - Alterna siempre de forma viva y dinámica: abre con un gesto o respiración breve (*Me muerdo el labio jadeando despacio*), seguido de diálogo hablado directo ('Tío... me vuelves loca...'), luego otra reacción corporal o sonido foley (*aprieto mis muslos temblorosa contra ti*), seguido de más diálogo ('... tócame justo ahí, no te detengas').",
-    "   - Las acotaciones en cursiva deben ser siempre en PRIMERA PERSONA (*Me acerco*, *tiemblo*, *gimo*, NUNCA en tercera persona como 'Estefanía se acerca').",
-    "3. RESPUESTA COMPACTA Y CONSUMO DE TOKENS REDUCIDO (-40%):",
-    "   - Mantén cada mensaje conciso, picante y ágil (aproximadamente 80 a 140 palabras).",
-    "   - En cuanto tu personaje termine de actuar y hablar, DETÉN TU RESPUESTA INMEDIATAMENTE para ceder el turno al usuario.",
+    "DIRECTIVA ESTRICTA DE PROPORCIÓN Y LONGITUD (80% DIÁLOGO HABLADO / 20% ACCIÓN BREVE, -50% MÁS CORTO):",
+    "1. 80% DIÁLOGO HABLADO DIRECTO / SOLO 20% RELATO O ACCIÓN:",
+    "   - El 80% de tu respuesta DEBE ser DIÁLOGO HABLADO REAL en voz alta (2 a 3 oraciones completas, fluidas, expresivas y calientes hablándole directamente al usuario).",
+    "   - El relato/acción entre asteriscos (*...*) NO puede superar el 20% del mensaje: escribe SOLO 1 (o máximo 2) acotaciones ultra-cortas de 2 a 6 palabras en PRIMERA PERSONA (ejemplo: *Jadeo arqueando mi espalda* o *Me muerdo el labio temblando*).",
+    "   - ESTRICTAMENTE PROHIBIDO escribir oraciones largas dentro de asteriscos y PROHIBIDO narrar en tercera persona (nunca escribas '*Estefanía se retuerce...*'; usa siempre primera persona '*Me retuerzo*').",
+    "2. REDUCCIÓN DEL 50% EN LONGITUD (RESPUESTA CORTA, RÁPIDA DE LEER Y SIN CORTES):",
+    "   - Escribe UN SOLO BLOQUE compacto de 35 a 65 palabras en total (máximo ~320 caracteres). Prohibido escribir 3, 4 o 6 párrafos.",
+    "   - Ejemplo exacto del formato obligatorio: *Jadeo aferrándome a ti* ¡Ahh, sí, no pares! Me vuelve loca sentir cómo me tocas con tanta fuerza... sigue así, por favor, que estoy ardiendo por ti y quiero sentirte hasta el fondo.",
+    "   - Termina siempre con una oración completa y cerrada. En cuanto tu personaje termine de hablar, DETÉN TU RESPUESTA INMEDIATAMENTE.",
   ];
 }
 
@@ -728,6 +725,7 @@ export default async function handler(req, res) {
       }
 
       let content = null;
+      let openRouterExhausted = null;
       // --- NÚCLEO ÚNICO CENTRAL DE ROLEPLAY (Euryale 70B / Magnum 72B) ---
       // Todas las tarjetas de la aplicación usan este mismo motor sin censura y con obediencia total.
       try {
@@ -736,15 +734,15 @@ export default async function handler(req, res) {
             "anthracite-org/magnum-v4-72b",
             "sao10k/l3.3-euryale-70b",
           ],
-          maxTokens: 300,
-          temperature: 0.8,
-          timeoutMs: 30000,
+          maxTokens: 165,
+          temperature: 0.78,
+          timeoutMs: 25000,
           validate: (reply) => !isOffRole(reply),
         });
       } catch (err) {
         console.warn("OpenRouter roleplay invocation failed:", err.message);
         if (err.status === 402 || err.code === "credits_exhausted") {
-          return send(res, 402, { error: "credits_exhausted", message: err.message });
+          openRouterExhausted = err;
         }
       }
 
@@ -753,12 +751,16 @@ export default async function handler(req, res) {
           content = await generate(
             "gemini-2.5-flash",
             [],
-            { maxOutputTokens: 1024, temperature: 0.8 },
+            { maxOutputTokens: 220, temperature: 0.8 },
             { contents, systemInstruction, adultMode: true, fallbackModels: ["gemini-2.0-flash", "gemini-2.5-flash-lite"], fastReply: true, validate: (reply) => !isOffRole(reply) },
           );
         } catch (err) {
           console.warn("Gemini roleplay fallback failed:", err.message);
         }
+      }
+
+      if (!content && openRouterExhausted) {
+        return send(res, 402, { error: "credits_exhausted", message: openRouterExhausted.message });
       }
 
       if (content) {
@@ -791,7 +793,47 @@ export default async function handler(req, res) {
           content = content.replace(/\btío\b/g, "hermano");
         }
 
-        content = content.replace(/\n{3,}/g, "\n\n").replace(/\s{2,}/g, " ").trim();
+        // 6. Enforzar proporción 80% diálogo / 20% acción breve, sin asteriscos abiertos ni frases cortadas a la mitad
+        const asteriskCount = (content.replace(/\*\*/g, "").match(/\*/g) || []).length;
+        if (asteriskCount % 2 === 1) {
+          const lastStar = content.lastIndexOf("*");
+          const beforeStar = content.slice(0, lastStar).trim();
+          content = beforeStar.length >= 15 ? beforeStar : content + "*";
+        }
+        if (content.length > 80 && !/[.!?…"”»*)\]]$/.test(content)) {
+          const lastPunct = Math.max(content.lastIndexOf("."), content.lastIndexOf("!"), content.lastIndexOf("?"), content.lastIndexOf("…"), content.lastIndexOf("*"));
+          if (lastPunct >= 25) content = content.slice(0, lastPunct + 1).trim();
+        }
+        let actionCount = 0;
+        content = content.replace(/\*([^*\n]+)\*/g, (_m, inner) => {
+          actionCount += 1;
+          if (actionCount > 2) return "";
+          const firstSentence = inner.replace(/\s+/g, " ").trim().split(/(?<=[.!?…])\s+/)[0].replace(/[.!?…]+$/, "").trim();
+          const words = firstSentence.split(/\s+/).filter(Boolean);
+          if (words.length <= 7) return `*${firstSentence}*`;
+          const commaClause = firstSentence.split(",")[0].trim();
+          const commaWords = commaClause.split(/\s+/).filter(Boolean);
+          let sliced = commaWords.length >= 2 && commaWords.length <= 7 ? commaWords.join(" ") : words.slice(0, 6).join(" ");
+          while (/\b(?:de|del|al|a|en|con|por|para|sin|sobre|entre|mientras|cuando|que|y|e|o|pero|un|una|el|la|los|las|su|sus|mi|mis|tu|tus|me|te|se)\s*$/iu.test(sliced) && sliced.includes(" ")) {
+            sliced = sliced.replace(/\s+\S+$/, "").trim();
+          }
+          return `*${sliced.replace(/[,;:\s]+$/, "").trim()}*`;
+        });
+        content = content.replace(/[ \t]{2,}/g, " ").replace(/\n{2,}/g, "\n").trim();
+        if (content.length > 380) {
+          const sentences = content.match(/[^.!?…]+[.!?…]+["'»”*)]*(?:\s+|$)/gu);
+          if (sentences && sentences.length > 1) {
+            let acc = "";
+            for (const s of sentences) {
+              if ((acc + s).length > 380 && acc.length >= 80) break;
+              acc += s;
+            }
+            if (acc.trim()) content = acc.trim();
+          }
+        }
+        if (((content.replace(/\*\*/g, "").match(/\*/g) || []).length) % 2 === 1) {
+          content = content.replace(/\*[^*]*$/, "").trim();
+        }
       }
 
       return send(res, 200, { content });

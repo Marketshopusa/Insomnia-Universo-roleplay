@@ -3,7 +3,7 @@ const clips = new Map();
 /** Same-voice neural sounds, verified without dialogue or spoken cue names. */
 export function vocalSample(voice, language = "es", event, direction = "") {
   if (bank.verification !== "automated_pass" || voice !== bank.voice || language !== bank.language) return null;
-  const alias = { cry: "sob", chuckle: "laugh", scream: "pain_scream" }[event] || event;
+  const alias = { cry: "sob", chuckle: "laugh", scream: "pain_scream", pleasure_moan: "pant", groan: "sigh" }[event] || event;
   const encoded = bank.clips[alias];
   if (!encoded) return null;
   if (!clips.has(alias)) clips.set(alias, Buffer.from(encoded, "base64"));
