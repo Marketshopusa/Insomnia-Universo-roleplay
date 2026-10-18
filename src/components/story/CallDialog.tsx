@@ -6,7 +6,9 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import { toast } from "@/hooks/use-toast";
 import { startWavRecording, blobToBase64, type WavRecorder } from "@/lib/wavRecorder";
 import { streamSpeech, type SpeechStream } from "@/lib/ttsStream";
+import { browserSpeechLocale } from "@/lib/regions";
 import { invokeFunctionWithRetry } from "@/lib/invokeFunction";
+import { normalizeAssistantReply } from "@/lib/roleReply";
 import { selectStoryMemory } from "@/lib/storyMemory";
 
 type CallState = "idle" | "listening" | "thinking" | "speaking";
@@ -14,6 +16,18 @@ type CallState = "idle" | "listening" | "thinking" | "speaking";
 interface Turn {
   role: "user" | "assistant";
   content: string;
+}
+
+interface BrowserRecognition {
+  lang: string;
+  continuous: boolean;
+  interimResults: boolean;
+  onresult: ((event: { results: ArrayLike<{ 0: { transcript: string }; isFinal: boolean }> }) => void) | null;
+  onerror: (() => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+  abort: () => void;
 }
 
 interface CallDialogProps {
@@ -26,17 +40,8 @@ interface CallDialogProps {
   onTurn: (userText: string, assistantText: string | null) => void;
 }
 
-const SILENCE_MS = 1200;
-const MAX_TURN_MS = 16000;
-
-function audioUrlFromBase64(content: string, mimeType: string) {
-  const binary = window.atob(content);
-  const bytes = new Uint8Array(binary.length);
-  for (let index = 0; index < binary.length; index += 1) {
-    bytes[index] = binary.charCodeAt(index);
-  }
-  return URL.createObjectURL(new Blob([bytes], { type: mimeType }));
-}
+const SILENCE_MS = 1350;
+const MAX_TURN_MS = 25000;
 
 export const CallDialog = ({
   story,
@@ -50,6 +55,7 @@ export const CallDialog = ({
   const { t } = useLanguage();
   const es = language === "es";
   const [state, setState] = useState<CallState>("idle");
+  const [liveTranscript, setLiveTranscript] = useState("");
   const recorderRef = useRef<WavRecorder | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioUrlRef = useRef<string | null>(null);
@@ -59,6 +65,9 @@ export const CallDialog = ({
   const timersRef = useRef<number[]>([]);
   const sessionCountRef = useRef(0);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const recognitionRef = useRef<BrowserRecognition | null>(null);
+  const transcriptRef = useRef("");
+
   useEffect(() => {
     historyRef.current = history;
   }, [history]);
@@ -89,6 +98,10 @@ export const CallDialog = ({
     stopSpeaking();
     recorderRef.current?.cancel();
     recorderRef.current = null;
+    try { recognitionRef.current?.abort(); } catch { /* noop */ }
+    recognitionRef.current = null;
+    transcriptRef.current = "";
+    setLiveTranscript("");
     setState("idle");
   };
 
@@ -143,7 +156,7 @@ export const CallDialog = ({
       }
       return { content: "", error: data?.error, message: data?.message };
     }
-    return { content: data.content, error: undefined, message: undefined };
+    return { content: normalizeAssistantReply(data.content) || data.content, error: undefined, message: undefined };
   };
 
   const recoverTurn = () => {
@@ -160,6 +173,8 @@ export const CallDialog = ({
     try {
       activeRef.current = true;
       stopSpeaking();
+      transcriptRef.current = "";
+      setLiveTranscript("");
       setState("listening");
       const recorder = await startWavRecording();
       if (!activeRef.current) {
@@ -170,17 +185,73 @@ export const CallDialog = ({
 
       let silentFor = 0;
       let heardVoice = false;
-      let recordedMs = 0;
+      let peakLevel = 0;
+      let lastSpeechChangeAt = Date.now();
+      let hasFinalResult = false;
+
+      // Restore original Lovable Browser SpeechRecognition for instant real-time transcription
+      const browser = window as Window & {
+        SpeechRecognition?: new () => BrowserRecognition;
+        webkitSpeechRecognition?: new () => BrowserRecognition;
+      };
+      const Recognition = browser.SpeechRecognition || browser.webkitSpeechRecognition;
+      if (Recognition) {
+        try {
+          const recognition = new Recognition();
+          recognition.lang = browserSpeechLocale(language, region);
+          recognition.continuous = true;
+          recognition.interimResults = true;
+          recognition.onresult = (event) => {
+            const resultsArr = Array.from(event.results);
+            const text = resultsArr
+              .map((result) => result[0]?.transcript || "")
+              .join(" ")
+              .trim();
+            if (text) {
+              if (text !== transcriptRef.current) {
+                lastSpeechChangeAt = Date.now();
+              }
+              transcriptRef.current = text;
+              setLiveTranscript(text);
+              heardVoice = true;
+              silentFor = 0;
+              if (resultsArr[resultsArr.length - 1]?.isFinal) {
+                hasFinalResult = true;
+              }
+            }
+          };
+          recognition.onerror = () => {
+            if (recognitionRef.current === recognition) recognitionRef.current = null;
+          };
+          recognition.onend = () => {
+            if (activeRef.current && recognitionRef.current === recognition && recorderRef.current) {
+              try { recognition.start(); } catch { recognitionRef.current = null; }
+            }
+          };
+          recognition.start();
+          recognitionRef.current = recognition;
+        } catch {
+          recognitionRef.current = null;
+        }
+      }
+
       const meter = window.setInterval(() => {
         const level = recorder.getLevel();
-        recordedMs += 150;
-        if (level > 0.0012) {
+        if (level > peakLevel) peakLevel = level;
+        const activeThreshold = Math.max(0.015, peakLevel * 0.38);
+        if (level > activeThreshold) {
           heardVoice = true;
           silentFor = 0;
         } else {
           silentFor += 150;
         }
-        if (heardVoice && silentFor >= SILENCE_MS && recordedMs >= 800) {
+        const hasTranscript = transcriptRef.current.trim().length > 0;
+        const msSinceTranscriptChange = Date.now() - lastSpeechChangeAt;
+        const transcriptDone = hasTranscript && (
+          (hasFinalResult && msSinceTranscriptChange >= 650) ||
+          msSinceTranscriptChange >= 1450
+        );
+        if (transcriptDone || ((heardVoice || hasTranscript) && silentFor >= SILENCE_MS)) {
           window.clearInterval(meter);
           void finishTurn().catch(recoverTurn);
         }
@@ -208,57 +279,57 @@ export const CallDialog = ({
     clearTimers();
     if (!recorder) return;
     setState("thinking");
+
+    const activeRecognition = recognitionRef.current;
+    recognitionRef.current = null;
+    try { activeRecognition?.stop(); } catch { /* noop */ }
+
     const spoke = recorder.heardSpeech();
     const blob = await recorder.stop();
     if (!activeRef.current) return;
 
-    if (!spoke) {
-      if (activeRef.current) void listen();
-      return;
+    // Brief 180ms grace period for browser SpeechRecognition to flush its final word after stop()
+    if (!transcriptRef.current.trim() && activeRecognition) {
+      await new Promise((r) => window.setTimeout(r, 180));
     }
+
+    let userText = transcriptRef.current.trim();
+    transcriptRef.current = "";
+    setLiveTranscript("");
 
     const turnSession = sessionCountRef.current;
     abortControllerRef.current = new AbortController();
 
-    const audio = await blobToBase64(blob);
-    if (!activeRef.current || sessionCountRef.current !== turnSession) return;
-
-    const { data, error } = await invokeFunctionWithRetry<{ text?: string; error?: string; message?: string; details?: string }>("speech-to-text", {
-      audio,
-      mimeType: "audio/wav",
-      language: es ? "es" : "en",
-      region,
-    });
-    if (!activeRef.current || sessionCountRef.current !== turnSession) return;
-
-    if (error || data?.error) {
-      const status = (error as { context?: Response } | null)?.context?.status;
-      const isPermanent = status === 404 || status === 400 || status === 401 || status === 403
-        || data?.error === "gemini_not_configured"
-        || data?.error === "invalid_audio"
-        || (data?.error === "stt_failed" && (status === 404 || status === 400))
-        || /no está disponible|no disponible|no configurado/i.test(data?.message || "");
-
-      if (isPermanent) {
-        hangUp();
-        toast({
-          title: es ? "Llamada finalizada" : "Call ended",
-          description: data?.message || error?.message || (es ? "El servicio de transcripción no está disponible." : "Voice service unavailable."),
-          variant: "destructive",
-        });
+    // If browser SpeechRecognition did not produce text, fall back to server WAV transcription
+    if (!userText) {
+      if (!spoke && blob.size < 4096) {
+        if (activeRef.current && sessionCountRef.current === turnSession) void listen();
         return;
       }
 
-      toast({
-        title: t("call.cantTranscribe"),
-        description: data?.message || error?.message || t("call.noVoice"),
-        variant: "destructive",
+      const audio = await blobToBase64(blob);
+      if (!activeRef.current || sessionCountRef.current !== turnSession) return;
+
+      const { data, error } = await invokeFunctionWithRetry<{ text?: string; error?: string; message?: string; details?: string }>("speech-to-text", {
+        audio,
+        mimeType: "audio/wav",
+        language: es ? "es" : "en",
+        region,
       });
-      if (activeRef.current && sessionCountRef.current === turnSession) void listen();
-      return;
+      if (!activeRef.current || sessionCountRef.current !== turnSession) return;
+
+      if (error || data?.error) {
+        toast({
+          title: t("call.cantTranscribe"),
+          description: data?.message || error?.message || t("call.noVoice"),
+          variant: "destructive",
+        });
+        if (activeRef.current && sessionCountRef.current === turnSession) void listen();
+        return;
+      }
+      userText = (data?.text || "").trim();
     }
 
-    const userText = (data?.text || "").trim();
     if (!userText) {
       if (activeRef.current && sessionCountRef.current === turnSession) void listen();
       return;
@@ -301,7 +372,7 @@ export const CallDialog = ({
 
   const active = state !== "idle";
   const status = state === "listening"
-    ? (es ? "Escuchando... habla ahora" : "Listening... speak now")
+    ? (liveTranscript ? liveTranscript : (es ? "Escuchando... habla ahora" : "Listening... speak now"))
     : state === "thinking"
       ? t("call.answering")
       : state === "speaking"

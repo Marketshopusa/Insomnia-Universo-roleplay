@@ -83,10 +83,9 @@ export async function startWavRecording(): Promise<WavRecorder> {
       count += 1;
     }
     level = Math.sqrt(sum / Math.max(1, count));
-    // Require sustained voice energy over time (~250ms) to filter out single noise pops while preserving soft voices (threshold 0.0012)
-    if (level > 0.0012) {
+    if (level > 0.01) {
       voiceFrames += 1;
-      if (voiceFrames >= 3) spoke = true;
+      if (voiceFrames >= 2) spoke = true;
     } else {
       voiceFrames = Math.max(0, voiceFrames - 1);
     }
