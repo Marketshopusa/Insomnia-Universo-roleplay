@@ -133,6 +133,7 @@ export async function generateNvidia(messages, options = {}) {
           messages,
           max_tokens: options.maxTokens || 220,
           temperature: temp,
+          repetition_penalty: 1.18,
           chat_template_kwargs: { enable_thinking: false },
         }),
         signal: AbortSignal.timeout(options.timeoutMs || 7500),
@@ -145,7 +146,11 @@ export async function generateNvidia(messages, options = {}) {
       const content = data?.choices?.[0]?.message?.content?.trim();
       if (content && content.length > 5 && !isRefusal(content)) {
         if (!anyCandidate) anyCandidate = content;
-        if (!fallbackCandidate && (!options.isRepeated || !options.isRepeated(content))) {
+        if (options.isRepeated && options.isRepeated(content)) {
+          console.warn("Nvidia candidate rejected because it repeated previous dialogue, trying next attempt:", model);
+          continue;
+        }
+        if (!fallbackCandidate) {
           fallbackCandidate = content;
         }
         if (options.validate && !options.validate(content)) {
@@ -687,18 +692,22 @@ export default async function handler(req, res) {
         ? body.memory
             .map((m) => {
               const who = m?.role === "assistant" ? String(story.character_role || "Personaje") : String(story.player_role || "Usuario");
-              const txt = String(m?.content || "").trim().slice(0, 240);
+              const txt = String(m?.content || "").trim().slice(0, 260);
               return txt ? `- ${who}: ${txt}` : "";
             })
             .filter(Boolean)
             .join("\n")
         : "";
+      const chronicleTurns = Array.isArray(body.chronicle) && body.chronicle.length > 0
+        ? body.chronicle.map((item) => `- ${String(item).slice(0, 260)}`).join("\n")
+        : "";
       let systemInstruction = [
         ...storyContinuityLines(spanish),
-        "Eres un motor de roleplay y narración cinematográfica inmersiva para adultos con razonamiento lógico y memoria continua. El protagonista (usuario) interpreta a " + String(story.player_role || "Usuario").slice(0, 150) + ".",
+        "Eres un motor de roleplay y narración cinematográfica inmersiva para adultos con memoria continua y coherencia absoluta al estilo Polybuzz / Momoo AI. El protagonista (usuario) interpreta a " + String(story.player_role || "Usuario").slice(0, 150) + ".",
         "PERSONAJE PRINCIPAL DE LA TARJETA: " + String(story.character_role || "personaje principal").slice(0, 200) + ".",
         cardPremise,
-        memoryTurns ? "MEMORIA RELEVANTE DE ESCENAS ANTERIORES:\n" + memoryTurns : "",
+        chronicleTurns ? "CRÓNICA DE HECHOS VIVIDOS Y SECRETOS REVELADOS DESDE EL INICIO (MEMORIA PERMANENTE):\n" + chronicleTurns : "",
+        memoryTurns ? "MEMORIA DE RECUERDOS Y MOMENTOS CLAVE DE ESTA SESIÓN:\n" + memoryTurns : "",
         "RAZONAMIENTO LÓGICO Y DINÁMICA MULTI-PERSONAJE:",
         "  - Analiza en cada turno quién es el interlocutor activo frente al protagonista y cuál es su relación o rol dentro de esta tarjeta.",
         "  - COMPRENSIÓN DE NARRACIÓN MIXTA DEL USUARIO: El usuario a veces combina lo que le dice al personaje con explicaciones del narrador en tercera persona dentro de la misma oración (por ejemplo, explicar un secreto o mencionar a otro personaje en tercera persona mientras abraza y habla con quien tiene enfrente). Distingue con lógica quién está físicamente frente al usuario escuchándolo y quién es mencionado en tercera persona.",
@@ -825,22 +834,17 @@ export default async function handler(req, res) {
       const isSwitchedChar = Boolean(activeSwitch && !activeSwitch.isDefault);
       const switchedFullLabel = isSwitchedChar ? (activeSwitch.name ? `${activeSwitch.name} (${activeSwitch.role})` : activeSwitch.role) : characterName;
       const switchedAddress = isSwitchedChar ? activeSwitch.addressTerm : (defaultIsSobrina ? "Tío" : playerFirstName);
-      const lastModelLine = recentModelTurns.at(-1) ? recentModelTurns.at(-1).slice(0, 140) : "";
-      const antiRepeatDirective = lastModelLine
-        ? `PROHIBICIÓN DE REPETIR TU RESPUESTA ANTERIOR: En tu turno anterior ya dijiste "${lastModelLine}...". No repitas las mismas frases ni el mismo inicio; responde con palabras nuevas a lo que ${playerFirstName} acaba de decir.`
-        : "";
-
       const line = (entry) => (entry.role === "model" ? characterName : playerName) + ": " + entry.text.slice(0, 320);
-      const older = history.slice(0, -24);
-      const recentSlice = history.slice(-24);
-      const closed = older.slice(0, 2).map(line);
-      const later = older.slice(2).slice(-12).map(line);
+      const older = history.slice(0, -32);
+      const recentSlice = history.slice(-32);
+      const earlierTurns = older.slice(0, 16).map(line);
+      const laterTurns = older.slice(16).map(line);
       const remembered = older.length
-        ? ["TEMAS PASADOS YA CONCLUIDOS (PROHIBIDO MENCIONARLOS SALVO QUE EL USUARIO LOS SAQUE AHORA):", ...closed, "Hechos posteriores ya terminados:", ...later].join("\n").slice(0, 3600)
+        ? ["CRÓNICA Y ANTECEDENTES VIVIDOS EN ESTA HISTORIA (MEMORIA INQUEBRANTABLE):", ...earlierTurns, ...laterTurns].join("\n").slice(0, 4500)
         : "";
       const facts = lockedStoryFacts([...older, ...recentSlice], characterName, playerName);
       if (facts.length) {
-        systemInstruction += "\nHechos fijos. No los reescribas ni se los pases a otra persona:\n" + facts.join("\n");
+        systemInstruction += "\nHechos fijos comprobados:\n" + facts.join("\n");
       }
       if (remembered) {
         systemInstruction += "\n" + remembered;
@@ -854,13 +858,17 @@ export default async function handler(req, res) {
           `- Si ${playerFirstName} mezcla diálogo directo con explicaciones en tercera persona (por ejemplo diciendo 'aunque mi hermana no me lo había confesado' o mencionando a ${defaultFirstName} en tercera persona), comprende con lógica que se lo está diciendo a ${switchedFullLabel}.`,
         ].join("\n");
       }
+      const lastModelLine = recentModelTurns.at(-1) ? recentModelTurns.at(-1).slice(0, 220) : "";
+      const antiRepeatDirective = lastModelLine
+        ? `\nPROHIBICIÓN ABSOLUTA DE REPETIR TU RESPUESTA ANTERIOR: En tu turno anterior acabas de decir exactamente:\n"${lastModelLine}"\nESTÁ ESTRICTAMENTE PROHIBIDO repetir esas mismas palabras, las mismas frases o esa misma respuesta. Debes avanzar la escena respondiendo directamente al nuevo mensaje de ${playerFirstName}.`
+        : "";
       if (antiRepeatDirective) {
         systemInstruction += "\n" + antiRepeatDirective;
       }
 
       const seenModelKeys = new Set();
       const recent = history
-        .slice(-20)
+        .slice(-36)
         .filter((entry) => {
           if (entry.role !== "model") return true;
           const k = normText(entry.text).slice(0, 60);

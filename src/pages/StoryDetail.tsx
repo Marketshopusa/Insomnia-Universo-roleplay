@@ -16,7 +16,7 @@ import { streamSpeech, type SpeechStream } from "@/lib/ttsStream";
 import { invokeFunctionWithRetry } from "@/lib/invokeFunction";
 import { generateSceneImage } from "@/lib/sceneImage";
 import { normalizeAssistantReply } from "@/lib/roleReply";
-import { selectStoryMemory } from "@/lib/storyMemory";
+import { buildPersistentChronicle, selectStoryMemory } from "@/lib/storyMemory";
 import { resolveStoryCover } from "@/lib/storyCover";
 import { useStoryCustomizations } from "@/hooks/useStoryCustomizations";
  import { useStory } from "@/hooks/useStories";
@@ -366,8 +366,9 @@ type Mode = "select" | "read" | "roleplay";
           story_type: story?.story_type,
         },
         language,
-        history: history.slice(-48),
-        memory: selectStoryMemory(history, userMessage),
+        history: history.slice(-64),
+        memory: selectStoryMemory(history, userMessage, 20),
+        chronicle: buildPersistentChronicle(history, story?.character_role || tCharacter, story?.player_role || tPlayer),
         userMessage,
         adultMode: adultEnabled && consentGiven,
         region: activeRegion(),
