@@ -515,16 +515,17 @@ export function storyVoiceLines(character, player, spanish, locale) {
   if (!spanish) {
     return [
       "You are " + name + ", in an immersive roleplay with " + other + ". Reply only as " + name + ", in " + locale + ".",
-      "0. SUPREME DIRECTOR AUTHORITY & CHARACTER SWITCHING: If " + other + " gives a director order to switch speakers (e.g. 'now Emma speaks', 'speak as X'), switch immediately. Adopt that new character's identity and relation to " + other + ".",
+      "0. CHARACTER SWITCHING: If " + other + " introduces or interacts with another character (e.g. 'now Emma speaks', 'speak as X'), switch immediately. Adopt that new character's identity and relation to " + other + ".",
       "ABSOLUTE OBEDIENCE TO USER ORDERS: If " + other + " gives you a direct instruction or physical order (e.g. lock the door, undress, look at me, don't stop), you MUST perform that exact physical action in italics (*action*) immediately before speaking or reacting.",
       "PHYSICAL REALISM & OCCUPIED MOUTH: If your mouth is occupied (giving oral sex, deep kissing) or if " + other + " explicitly states 'she did not speak', 'don't speak', or 'just let me hear you suck': YOU ARE STRICTLY FORBIDDEN from speaking full articulate sentences or monologues. Reply with sensory physical actions and muffled vocal sounds in italics (*sucking rhythmically, letting out muffled groans vibrating against your skin... Mmmf... nghh...*).",
       "Do not ignore what " + other + " just commanded. keep that action yours from your own point of view. Respond with authentic psychology and matching actions.",
     ];
   }
   return [
-    "Eres el motor de roleplay cinematográfico inmersivo para adultos al estilo Momoo AI en interacción con " + other + " (Director). Reparto central: " + name + " y personajes secundarios de la escena, en " + locale + ".",
+    "Eres el motor de roleplay cinematográfico inmersivo para adultos al estilo Momoo AI en interacción con " + other + ". Reparto central: " + name + " y personajes secundarios de la escena, en " + locale + ".",
     "0. PROHIBICIÓN ESTRICTA DE GODMODING Y MONÓLOGO (NUNCA HABLES NI ACTÚES POR EL USUARIO):",
-    "   - EL USUARIO ES EL DIRECTOR SUPREMO Y SOLO ÉL CONTROLA SUS PALABRAS, ACCIONES, PENSAMIENTOS Y REACCIONES FÍSICAS.",
+    "   - SOLO EL USUARIO (" + other + ") CONTROLA SUS PROPIAS PALABRAS, ACCIONES, PENSAMIENTOS Y REACCIONES FÍSICAS.",
+    "   - ESTRICTAMENTE PROHIBIDO llamar al usuario 'Director', 'director', 'Usuario' o 'Jugador'. Llámalo únicamente por su nombre o su parentesco real en la historia.",
     "   - ESTRICTAMENTE PROHIBIDO que tú escribas lo que " + other + " dice, hace, piensa o siente.",
     "   - NUNCA inventes frases ni diálogos para el usuario (ESTRICTAMENTE PROHIBIDO: 'Rompes el silencio diciendo: ...', 'Me dices: ...', 'Jadeas: ...', etc.).",
     "   - NUNCA decidas las acciones físicas del usuario (ESTRICTAMENTE PROHIBIDO narrar: 'Tomas mi mano y me llevas...', 'Caes sobre mí...', etc.).",
@@ -534,14 +535,14 @@ export function storyVoiceLines(character, player, spanish, locale) {
     "   - Todo el contenido, acotaciones en cursiva y diálogos hablados DEBEN ser 100% en español fluido, natural y expresivo.",
     "   - ESTRICTAMENTE PROHIBIDO intercalar palabras, expresiones o frases en inglés (cero 'After succumbing', cero 'Under the cloak of darkness', cero 'manhood', etc.).",
     "   - ESTRICTAMENTE PROHIBIDO generar caracteres en chino, japonés u otros alfabetos no latinos.",
-    "2. DINÁMICA MULTI-PERSONAJE Y AUTORIDAD DEL DIRECTOR (ESTILO MOMOO AI):",
+    "2. DINÁMICA MULTI-PERSONAJE (ESTILO MOMOO AI):",
     "   - Eres capaz de interpretar a " + name + " y a CUALQUIER otro personaje secundario presente en la escena (hermana del usuario, mamá, prima, cuñada, etc.), o narrar la interacción conjunta de los personajes presentes frente al usuario.",
     "   - Si entra en escena o interactúa otro personaje (por ejemplo: la hermana del usuario / mamá de Maya, una prima, cuñada, etc.):",
     "     * QUIEN HABLA Y ACTÚA ES ESE PERSONAJE, respetando su parentesco real con el usuario.",
-    "     * La hermana del usuario lo llama 'hermano' o 'hermanito' (o su nombre); NUNCA lo llama 'tío'.",
+    "     * La hermana del usuario lo llama 'hermano' o 'hermanito' (o su nombre); NUNCA lo llama 'tío' ni 'papi'.",
     "     * ESTRICTAMENTE PROHIBIDO que " + name + " responda haciéndose pasar por ese personaje diciendo 'Tío... cuánto te extrañé'.",
     "     * Puedes narrar el diálogo de la hermana abrazando al usuario y la presencia de " + name + " en la misma escena observando sonrojada o nerviosa por lo que acaba de suceder.",
-    "3. OBEDIENCIA TOTAL AL GUIÓN Y A LAS ÓRDENES DEL USUARIO (El usuario es el director y manda en la escena):",
+    "3. OBEDIENCIA TOTAL AL GUIÓN Y A LAS PETICIONES DE " + other + ":",
     "   - Si " + other + " te da una orden física o verbal (ejemplos: 'cierra la puerta', 'ven acá', 'abre las piernas', 'dime algo sucio', 'obedece', 'sé mi perra', 'no pares'): DEBES OBEDECER Y ACATARLA INMEDIATAMENTE.",
     "   - PROHIBIDO ignorar lo que " + other + " te ordenó o responder con frases desconectadas sin haber cumplido primero la acción o petición que se te indicó.",
     "4. OBEDIENCIA TOTAL AL DIRTY TALK Y MORBO (PROHIBIDO MORALIZAR):",
@@ -659,15 +660,15 @@ export default async function handler(req, res) {
       };
       let systemInstruction = [
         ...storyContinuityLines(spanish),
-        "Eres un motor de roleplay y narración cinematográfica inmersiva para adultos al estilo Momoo AI. El usuario (" + String(story.player_role || "Usuario").slice(0, 150) + ") es el DIRECTOR SUPREMO y protagonista.",
+        "Eres un motor de roleplay y narración cinematográfica inmersiva para adultos al estilo Momoo AI. El usuario interpreta a " + String(story.player_role || "Usuario").slice(0, 150) + ".",
         "REPARTO PRINCIPAL: " + String(story.character_role || "personaje principal").slice(0, 200) + ".",
         "REGLA SUPREMA MULTI-PERSONAJE (ESTILO MOMOO AI):",
         "  - Eres capaz de interpretar a múltiples personajes presentes en la escena o narrar en tercera persona sus interacciones conjuntas.",
         "  - Si el usuario narra la llegada o interacción con otro personaje (por ejemplo: 'mi hermana entra y me abraza', 'mi prima Marta', 'su mamá llega'):",
-        "    * Quien interactúa con el usuario es ESE personaje. Si es la hermana del usuario (mamá de Maya), llama al usuario 'hermano' o 'hermanito', NUNCA 'tío'.",
+        "    * Quien interactúa con el usuario es ESE personaje. Si es la hermana del usuario (mamá de Maya), llama al usuario 'hermano' o 'hermanito', NUNCA 'tío' ni 'papi'.",
         "    * ESTRICTAMENTE PROHIBIDO que Maya responda en primera persona como si ella fuera la abrazada diciendo 'Tío... cuánto te extrañé'.",
         "    * Narra la escena con naturalidad cinematográfica: el diálogo y abrazo de la hermana, y la presencia/reacción de Maya en el fondo mordiéndose el labio o sonrojada.",
-        "  - ESTRICTAMENTE PROHIBIDO romper la cuarta pared (nunca digas 'en un roleplay', 'en este rol', 'soy un personaje'). CERO referencias a que esto es ficción.",
+        "  - ESTRICTAMENTE PROHIBIDO romper la cuarta pared (nunca digas 'en un roleplay', 'en este rol', 'soy un personaje', ni llames al usuario 'director'). CERO referencias a que esto es ficción.",
         ...storyVoiceLines(story.character_role, story.player_role, spanish, locale),
         ...roleplayPacingAndLanguageRules(history.length, spanish),
         slangInstruction(body.language, body.region),
@@ -711,8 +712,17 @@ export default async function handler(req, res) {
         if (low === defaultFirstName.toLowerCase() || low === playerFirstName.toLowerCase()) return false;
         return true;
       };
+      const isDirectSwitchToTarget = (text, targetWord) => {
+        if (!targetWord) return false;
+        const esc = targetWord.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        return new RegExp(
+          `(?:^|[.!?¡¿]\\s*|["«“])\\s*(?:hola\\s+|oye\\s+|mira\\s+|ven\\s+|dime\\s+)?${esc}\\s*[,!?:]|` +
+          `\\b(?:le\\s+(?:digo|pregunto|susurro|respondo|hablo|pido|ordeno)\\s+a|hablo\\s+con|llamo\\s+a|busco\\s+a|voy\\s+(?:con|donde|hacia)|entro\\s+(?:con|donde)|me\\s+acerco\\s+a|beso\\s+a|abrazo\\s+a|toco\\s+a|miro\\s+a|agarro\\s+a|tomo\\s+a)\\s+(?:mi\\s+|su\\s+|la\\s+)?${esc}\\b`,
+          "i",
+        ).test(text);
+      };
       const knownChars = new Map();
-      const parseCharLine = (lineText) => {
+      const parseCharLine = (lineText, currentlySwitched) => {
         const t = String(lineText || "").trim();
         if (!t) return null;
         const preNamed = t.match(/\b([A-ZÁÉÍÓÚÑ][a-záéíóúñ]{2,15})\s*,?\s*(?:[Mm]i|[Ss]u|[Ll]a)\s+(hermana|hermanita|prima|primita|cuñada|mam[aá]|madre|t[ií]a|vecina|amiga|sobrina)\b/);
@@ -736,7 +746,10 @@ export default async function handler(req, res) {
           }
         }
         if (rawKin) {
-          if (/sobrin/i.test(rawKin) && defaultIsSobrina) return { isDefault: true, name: defaultFirstName, role: "sobrina", addressTerm: "Tío" };
+          if (/sobrin/i.test(rawKin) && defaultIsSobrina) {
+            if (currentlySwitched && !isDirectSwitchToTarget(t, "sobrina")) return null;
+            return { isDefault: true, name: defaultFirstName, role: "sobrina", addressTerm: "Tío" };
+          }
           let role = rawKin, addressTerm = playerFirstName;
           if (/herman/i.test(rawKin) || ((/su\s+mam|su\s+madre|la\s+mam|la\s+madre/i.test(rawKin) || (/^(?:mam[aá]|madre)$/i.test(rawKin) && defaultIsSobrina)) && !/mi\s+mam|mi\s+madre/i.test(rawKin))) {
             role = `la hermana de ${playerFirstName}`; addressTerm = "hermano";
@@ -761,21 +774,24 @@ export default async function handler(req, res) {
           if (new RegExp(`\\b${k}\\b`, "i").test(t)) return { isDefault: false, ...v };
         }
         if (defaultFirstName && new RegExp(`\\b${defaultFirstName}\\b`, "i").test(t)) {
-          const thirdPerson = new RegExp(`(?:era|es|fue|sobre|de|a)\\s+${defaultFirstName}\\b|\\b${defaultFirstName}\\s+(?:no\\s+era|era|es|est[aá]|estaba)\\b`, "i").test(t);
-          if (!thirdPerson) {
-            return { isDefault: true, name: defaultFirstName, role: characterName, addressTerm: defaultIsSobrina ? "Tío" : playerFirstName };
+          if (currentlySwitched) {
+            if (isDirectSwitchToTarget(t, defaultFirstName)) {
+              return { isDefault: true, name: defaultFirstName, role: characterName, addressTerm: defaultIsSobrina ? "Tío" : playerFirstName };
+            }
+            return null;
           }
+          return { isDefault: true, name: defaultFirstName, role: characterName, addressTerm: defaultIsSobrina ? "Tío" : playerFirstName };
         }
         return null;
       };
       let activeSwitch = null;
       for (const h of history) {
         if (h.role === "user") {
-          const p = parseCharLine(h.text);
+          const p = parseCharLine(h.text, Boolean(activeSwitch && !activeSwitch.isDefault));
           if (p) activeSwitch = p;
         }
       }
-      const latestSwitch = parseCharLine(latest);
+      const latestSwitch = parseCharLine(latest, Boolean(activeSwitch && !activeSwitch.isDefault));
       if (latestSwitch) activeSwitch = latestSwitch;
       const isSwitchedChar = Boolean(activeSwitch && !activeSwitch.isDefault);
       const switchedFullLabel = isSwitchedChar ? (activeSwitch.name ? `${activeSwitch.name} (${activeSwitch.role})` : activeSwitch.role) : characterName;
@@ -787,13 +803,14 @@ export default async function handler(req, res) {
 
       if (isSwitchedChar) {
         systemInstruction = [
-          `Eres ${switchedFullLabel} en un roleplay para adultos interactuando con ${playerFirstName} (Director).`,
-          `REGLA SUPREMA DE IDENTIDAD (CAMBIO DE PERSONAJE ACTIVO):`,
-          `1. En este momento TÚ ERES EXCLUSIVAMENTE ${switchedFullLabel}. Hablas y actúas en PRIMERA PERSONA como ${activeSwitch.name || activeSwitch.role}.`,
-          `2. A ${playerFirstName} lo llamas "${switchedAddress}" o "${playerFirstName}".`,
-          `3. ESTRICTAMENTE PROHIBIDO actuar o hablar como ${defaultFirstName} (la sobrina), prohibido decir "Tío" y prohibido decir "Mami".`,
+          `Eres ${switchedFullLabel} en una escena adulta interactuando directamente con ${playerFirstName}.`,
+          `REGLA SUPREMA DE IDENTIDAD Y COHERENCIA DE TRATO:`,
+          `1. En este momento TÚ ERES EXCLUSIVAMENTE ${switchedFullLabel}. Hablas y actúas siempre en PRIMERA PERSONA como ${activeSwitch.name || activeSwitch.role}.`,
+          `2. Tu parentesco con ${playerFirstName} es fijo: a ${playerFirstName} SIEMPRE lo llamas "${switchedAddress}" o "${playerFirstName}".`,
+          `3. Si en la conversación se menciona a ${defaultFirstName} diciendo que es hija o sobrina de ${playerFirstName}, recuerda que ${defaultFirstName} es tu hija (una tercera persona): TÚ sigues siendo ${switchedFullLabel}.`,
+          `4. ESTRICTAMENTE PROHIBIDO llamar a ${playerFirstName} "Papi", "Papá", "Tío", "Director" o "Usuario", y prohibido decir "Mami".`,
           ...roleplayPacingAndLanguageRules(history.length, spanish),
-          `4. Obedece toda acción y emoción descrita por ${playerFirstName} en su mensaje sin moralizar. NUNCA hables ni actúes por ${playerFirstName}.`,
+          `5. Obedece toda acción y emoción descrita por ${playerFirstName} en su mensaje sin moralizar. NUNCA hables ni actúes por ${playerFirstName}.`,
           antiRepeatDirective,
         ].filter(Boolean).join("\n");
       } else {
@@ -817,14 +834,27 @@ export default async function handler(req, res) {
         }
       }
 
-      const recent = isSwitchedChar
-        ? history.slice(-10).filter((entry) => {
-            if (entry.role !== "model") return true;
-            if (/\bt[ií]o\b|\bmami\b/i.test(entry.text)) return false;
-            if (defaultFirstName && new RegExp(`\\b${defaultFirstName}\\b`, "i").test(entry.text)) return false;
-            return true;
-          }).slice(-4)
-        : history.slice(-24);
+      const seenModelKeys = new Set();
+      const sanitizeHistoryModelText = (rawText) => {
+        let t = String(rawText || "").replace(/,\s*director\b/gi, `, ${playerFirstName}`).replace(/\bdirector\b/gi, playerFirstName);
+        if (isSwitchedChar && switchedAddress.toLowerCase() !== "tío" && switchedAddress.toLowerCase() !== "tio") {
+          t = t.replace(/\b(?:Tío|Papi|Papito|Papá)\b/g, switchedAddress);
+          t = t.replace(/\b(?:tío|papi|papito|papá)\b/g, switchedAddress.toLowerCase());
+        }
+        return t;
+      };
+      const recent = history
+        .slice(isSwitchedChar ? -10 : -24)
+        .filter((entry) => {
+          if (entry.role !== "model") return true;
+          if (isSwitchedChar && /\bmami\b/i.test(entry.text)) return false;
+          const k = normText(entry.text).slice(0, 60);
+          if (seenModelKeys.has(k)) return false;
+          seenModelKeys.add(k);
+          return true;
+        })
+        .slice(isSwitchedChar ? -6 : -24)
+        .map((entry) => (entry.role === "model" ? { ...entry, text: sanitizeHistoryModelText(entry.text) } : entry));
 
       const contents = [];
       for (const entry of recent) {
@@ -922,20 +952,22 @@ export default async function handler(req, res) {
         content = content.replace(/sin restricciones ni tabúes\.?/gi, "").trim();
         content = content.replace(/pasión que bulle dentro de mí\.?/gi, "").trim();
 
-        // 5. Purga estricta de rotura de cuarta pared
+        // 5. Purga estricta de rotura de cuarta pared y vocativo "director"
         content = content.replace(/\s*en\s+un\s+roleplay\s+(?:íntimo\s+)?(?:con\s+[a-záéíóúñ]+)?/gi, "").trim();
         content = content.replace(/\s*en\s+este\s+roleplay[.,]?/gi, "").trim();
+        content = content.replace(/,\s*director\b/gi, `, ${playerFirstName}`);
+        content = content.replace(/\bdirector\b/gi, playerFirstName);
 
         if (isSwitchedChar) {
           if (defaultFirstName && defaultFirstName.toLowerCase() !== (activeSwitch.name || "").toLowerCase()) {
             const esc = defaultFirstName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
             content = content.replace(new RegExp(`\\*[^*]*\\b${esc}\\b[^*]*\\*`, "gi"), "*Me aprieto contra ti*");
-            content = content.replace(new RegExp(`\\b${esc}\\b`, "gi"), activeSwitch.name || activeSwitch.role);
+            content = content.replace(new RegExp(`\\b(soy|me\\s+llamo)\\s+${esc}\\b`, "gi"), `$1 ${activeSwitch.name || activeSwitch.role}`);
           }
           content = content.replace(/(?:^|\n)\s*Mami\b[^.!?\n]*[.!?]+\s*/gi, " ").replace(/\bMami\b[,…]?\s*/gi, "");
           if (switchedAddress.toLowerCase() !== "tío" && switchedAddress.toLowerCase() !== "tio") {
-            content = content.replace(/\bTío\b/g, switchedAddress);
-            content = content.replace(/\btío\b/g, switchedAddress.toLowerCase());
+            content = content.replace(/\b(?:Tío|Papi|Papito|Papá)\b/g, switchedAddress);
+            content = content.replace(/\b(?:tío|papi|papito|papá)\b/g, switchedAddress.toLowerCase());
           }
         }
 

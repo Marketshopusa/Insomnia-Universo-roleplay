@@ -68,12 +68,20 @@ describe("role reply presentation", () => {
   it("keeps sister active when user mentions Estefanía/sobrina in third person and ignores lowercase words before mi hermana", () => {
     const turn1 = "La abrazo por la cintura la pego hacia mí, le digo yo también te extrañé mucho hermana pero tú sabes que tuvimos algo más que una relación como hermanos";
     const turn2 = "le digo claro que no olvidaría un momento así si el mejor efecto de ese momento lo tuve hace unos minutos atrás y ese efecto era Estefanía porque aunque mi hermana no me lo había confesado, Estefanía no era mi sobrina, era mi hija";
-    const info = resolveActiveCharacter(turn2, [{ role: "user", content: turn1 }], "Estefanía", "Willian");
+    const turn3 = "tú sabes que Estefanía tiene mis mismos ojos y cuando Estefanía me abrazó sentí la verdad";
+    const info = resolveActiveCharacter(turn3, [{ role: "user", content: turn1 }, { role: "user", content: turn2 }], "Estefanía", "Willian");
     expect(info.isSwitched).toBe(true);
     expect(info.name).toBe("la hermana de Willian");
     expect(info.role).toBe("la hermana de Willian");
     expect(info.fullLabel).toBe("la hermana de Willian");
     expect(info.addressTerm).toBe("hermano");
+
+    // Sanitizer removes "Papi", "Tío", "director" while preserving "Estefanía" when the sister talks about her daughter
+    const polluted = "*Me estremezco* Sí, Papi, como digas, director. Tío, Estefanía es fruto de nuestro secreto.";
+    const cleaned = sanitizeSwitchedReply(polluted, info);
+    expect(cleaned).not.toMatch(/\b(?:Papi|Tío|director)\b/i);
+    expect(cleaned).toContain("hermano");
+    expect(cleaned).toContain("Estefanía");
   });
   it("detects verbatim and near-duplicate assistant replies in history", () => {
     const prevReply = "*Me estremezco al escuchar tus palabras, hermano* Willian, no puedes borrar lo que pasó entre nosotros esa noche; el deseo me sigue quemando por dentro cada vez que me tocas así.";

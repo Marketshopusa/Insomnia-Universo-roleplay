@@ -121,6 +121,11 @@ export function compactRoleplayReply(input: string): string {
     return shortCue ? `*${shortCue}*` : "";
   });
 
+  // Strip leaked meta-role vocatives like ", director" or "mi director"
+  text = text.replace(/,\s*director\b([.!?…])/gi, "$1");
+  text = text.replace(/,\s*director\b/gi, "");
+  text = text.replace(/\bmi\s+director\b/gi, "mi amor");
+
   // 4. Collapse whitespace and cap total length to ~380 chars at a clean sentence boundary
   text = text.replace(/[ \t]{2,}/g, " ").replace(/\n{2,}/g, "\n").trim();
   if (text.length > 380) {
@@ -198,7 +203,17 @@ export function resolveActiveCharacter(
 
   const knownByName = new Map<string, { name: string; role: string; addressTerm: string }>();
 
-  const parseLine = (line: string): { isDefault: boolean; name: string; role: string; addressTerm: string } | null => {
+  const isDirectSwitchToTarget = (text: string, targetWord: string): boolean => {
+    if (!targetWord) return false;
+    const esc = targetWord.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return new RegExp(
+      `(?:^|[.!?¡¿]\\s*|["«“])\\s*(?:hola\\s+|oye\\s+|mira\\s+|ven\\s+|dime\\s+)?${esc}\\s*[,!?:]|` +
+      `\\b(?:le\\s+(?:digo|pregunto|susurro|respondo|hablo|pido|ordeno)\\s+a|hablo\\s+con|llamo\\s+a|busco\\s+a|voy\\s+(?:con|donde|hacia)|entro\\s+(?:con|donde)|me\\s+acerco\\s+a|beso\\s+a|abrazo\\s+a|toco\\s+a|miro\\s+a|agarro\\s+a|tomo\\s+a)\\s+(?:mi\\s+|su\\s+|la\\s+)?${esc}\\b`,
+      "i",
+    ).test(text);
+  };
+
+  const parseLine = (line: string, currentlySwitched: boolean): { isDefault: boolean; name: string; role: string; addressTerm: string } | null => {
     const text = String(line || "").trim();
     if (!text) return null;
 
@@ -231,6 +246,9 @@ export function resolveActiveCharacter(
 
     if (rawKin) {
       if (/sobrin/i.test(rawKin) && defaultIsSobrina) {
+        if (currentlySwitched && !isDirectSwitchToTarget(text, "sobrina")) {
+          return null;
+        }
         return { isDefault: true, name: defaultFirstName, role: "sobrina", addressTerm: "Tío" };
       }
       let role = "personaje";
@@ -278,12 +296,15 @@ export function resolveActiveCharacter(
       }
     }
 
-    // Check if user explicitly addressed the default character (not just mentioning her in 3rd person like "era Estefanía")
+    // Check if user explicitly switched back to the default character (not just mentioning her in 3rd person while talking to the sister)
     if (defaultFirstName && new RegExp(`\\b${defaultFirstName}\\b`, "i").test(text)) {
-      const thirdPersonMention = new RegExp(`(?:era|es|fue|sobre|de|a)\\s+${defaultFirstName}\\b|\\b${defaultFirstName}\\s+(?:no\\s+era|era|es|est[aá]|estaba)\\b`, "i").test(text);
-      if (!thirdPersonMention) {
-        return { isDefault: true, name: defaultFirstName, role: defaultCharacterRole, addressTerm: defaultIsSobrina ? "Tío" : playerFirstName };
+      if (currentlySwitched) {
+        if (isDirectSwitchToTarget(text, defaultFirstName)) {
+          return { isDefault: true, name: defaultFirstName, role: defaultCharacterRole, addressTerm: defaultIsSobrina ? "Tío" : playerFirstName };
+        }
+        return null;
       }
+      return { isDefault: true, name: defaultFirstName, role: defaultCharacterRole, addressTerm: defaultIsSobrina ? "Tío" : playerFirstName };
     }
 
     return null;
@@ -292,11 +313,11 @@ export function resolveActiveCharacter(
   let active: { isDefault: boolean; name: string; role: string; addressTerm: string } | null = null;
   for (const turn of history) {
     if (turn.role === "user") {
-      const parsed = parseLine(turn.content || turn.text || "");
+      const parsed = parseLine(turn.content || turn.text || "", Boolean(active && !active.isDefault));
       if (parsed) active = parsed;
     }
   }
-  const latestParsed = parseLine(userMessage);
+  const latestParsed = parseLine(userMessage, Boolean(active && !active.isDefault));
   if (latestParsed) active = latestParsed;
 
   if (!active || active.isDefault) {
@@ -379,25 +400,31 @@ export function isRepeatedAssistantReply(
 }
 
 export function sanitizeSwitchedReply(reply: string, info: ActiveCharacterInfo): string {
-  if (!info.isSwitched || !reply) return reply;
+  if (!reply) return reply;
   let cleaned = reply;
+  // Always strip leaked "director" / "Director" vocatives
+  cleaned = cleaned.replace(/,\s*director\b/gi, `, ${info.playerFirstName}`);
+  cleaned = cleaned.replace(/\bdirector\b/gi, info.playerFirstName);
 
-  // 1. Remove lines where the niece says "Mami..." or speaks in 3rd person as the old character
+  if (!info.isSwitched) return compactRoleplayReply(cleaned);
+
+  // 1. Remove lines where the niece says "Mami..." or narrates in 3rd person inside *action* as the old character
   if (info.defaultFirstName && info.defaultFirstName.toLowerCase() !== info.name.toLowerCase()) {
     const escapedDefault = info.defaultFirstName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     cleaned = cleaned.replace(new RegExp(`\\*[^*]*\\b${escapedDefault}\\b[^*]*\\*`, "gi"), "*Me aprieto contra ti*");
-    cleaned = cleaned.replace(new RegExp(`\\b${escapedDefault}\\b`, "gi"), info.name);
+    cleaned = cleaned.replace(new RegExp(`\\b(soy|me\\s+llamo)\\s+${escapedDefault}\\b`, "gi"), `$1 ${info.name}`);
   }
   cleaned = cleaned.replace(/(?:^|\n)\s*Mami\b[^.!?\n]*[.!?]+\s*/gi, " ");
   cleaned = cleaned.replace(/\bMami\b[,…]?\s*/gi, "");
 
-  // 2. Replace "Tío" / "tío" with the correct relationship address term (e.g. "hermano")
+  // 2. Replace wrong relationship address terms ("Tío", "Papi", "Papá", "Papito") with the active character's addressTerm (e.g. "hermano")
   if (info.addressTerm.toLowerCase() !== "tío" && info.addressTerm.toLowerCase() !== "tio") {
-    cleaned = cleaned.replace(/\bTío\b/g, info.addressTerm);
-    cleaned = cleaned.replace(/\btío\b/g, info.addressTerm.toLowerCase());
+    cleaned = cleaned.replace(/\b(?:Tío|Papi|Papito|Papá)\b/g, info.addressTerm);
+    cleaned = cleaned.replace(/\b(?:tío|papi|papito|papá)\b/g, info.addressTerm.toLowerCase());
   }
 
   return compactRoleplayReply(cleaned);
 }
+
 
 
