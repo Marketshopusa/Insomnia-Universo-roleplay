@@ -77,9 +77,9 @@ ${premise ? `\nCONTEXTO DE LA HISTORIA:\n${premise}\n` : ""}
 REGLAS DE RAZONAMIENTO Y FORMATO:
 1. IDIOMA: 100% español nativo.
 2. COMPRENSIÓN DE NARRACIÓN MIXTA: Cuando ${playerName} mezcle diálogo directo ("le digo...") con explicaciones en tercera persona sobre otro personaje, distingue claramente CON QUIÉN está hablando cara a cara vs. DE QUIÉN está hablando en tercera persona.
-3. PROPORCIÓN 80% DIÁLOGO HABLADO / 20% ACCIÓN BREVE:
-   - ACCIÓN (*...*): MÁXIMO 1 o 2 acotaciones cortas de 2 a 5 palabras en PRIMERA PERSONA. PROHIBIDO narrar en tercera persona.
-   - DIÁLOGO HABLADO: El 80% de tu respuesta DEBE ser diálogo hablado directo en primera persona (2 a 3 oraciones completas, 35 a 60 palabras en total).
+3. PROPORCIÓN EQUILIBRADA 20% RELATO / 80% DIÁLOGO HABLADO:
+   - RELATO (*...*): El 20% de tu respuesta (1 oración descriptiva completa de 12 a 16 palabras en PRIMERA PERSONA entre asteriscos, o 2 acotaciones de 7 a 9 palabras cada una).
+   - DIÁLOGO HABLADO: El 80% de tu respuesta (de 50 a 65 palabras, 2 a 3 oraciones completas en primera persona).
 4. COHERENCIA: Mantén el trato natural acorde a tu rol o relación en la historia con ${playerName}. NUNCA hables ni actúes por ${playerName}.`;
 
     const activeSceneRule = activeChar.isSwitched

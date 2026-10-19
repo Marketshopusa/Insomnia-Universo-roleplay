@@ -37,11 +37,12 @@ describe("role reply presentation", () => {
     const visible = normalizeAssistantReply(bloated)!;
     expect(visible).not.toContain("*Murmura entre jade");
     expect((visible.match(/\*/g) || []).length % 2).toBe(0);
-    expect(visible.length).toBeLessThanOrEqual(380);
+    expect(visible.length).toBeLessThanOrEqual(440);
     const actions = [...visible.matchAll(/\*([^*]+)\*/g)].map((m) => m[1]);
     expect(actions.length).toBeLessThanOrEqual(2);
     for (const act of actions) {
-      expect(act.split(/\s+/).length).toBeLessThanOrEqual(7);
+      expect(act.split(/\s+/).length).toBeGreaterThanOrEqual(8);
+      expect(act.split(/\s+/).length).toBeLessThanOrEqual(16);
     }
   });
   it("detects when the user introduces another character like sister Gabriela and sanitizes niece leaks", () => {

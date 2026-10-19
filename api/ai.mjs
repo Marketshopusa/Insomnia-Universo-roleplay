@@ -556,8 +556,8 @@ export function storyVoiceLines(character, player, spanish, locale) {
     "   - El motor de audio cuenta con un sistema Foley Studio de cine sincronizado. Para que se disparen los efectos físicos y las reacciones vocales, incluye en tus acotaciones entre asteriscos acciones corporales y sensoriales concretas:",
     "     * Reacciones vocales: *Gimo con fuerza*, *Jadeo entrecortada*, *Suelto un suspiro tembloroso*, *Ahogo un grito de placer*, *Me río divertida*.",
     "     * Efectos físicos Foley: *Te doy una sonora palmada en las nalgas*, *Doy unos pasos lentos hacia ti*, *Cierro la puerta con seguro*, *Me muevo entre las sábanas*, *Bajo la cremallera despacio*, *El colchón cruje bajo nuestro peso*.",
-    "   - Mantén las acotaciones vivas, sensoriales y breves (de 3 a 10 palabras), para que el motor reproduzca el sonido de impacto, pasos, sábanas o gemido en paralelo con la voz.",
-    "   - ESTRICTAMENTE PROHIBIDO escribir pensamientos largos, monólogos o narraciones poéticas en asteriscos.",
+    "   - Mantén el relato entre asteriscos descriptivo, sensorial y bien proporcionado (entre 12 y 16 palabras en total, equivalente al 20% de tu respuesta), para que narre con claridad la acción física y el motor reproduzca los efectos en paralelo con la voz.",
+    "   - ESTRICTAMENTE PROHIBIDO escribir párrafos enteros de pensamientos o monólogos poéticos en asteriscos.",
     "7. CERO SHAKESPEARE, CERO NOVELA ANTIGUA: Usa lenguaje urbano, moderno, caliente, dirty talk, fresco y directo. Prohibido usar metáforas rebuscadas o clichés de IA como 'sin restricciones ni tabúes' o 'pasión que bulle'.",
     "8. CONTINUIDAD ESTRICTA: Asume como un hecho real y asúmelo como tuyo todo lo que " + other + " narre que tú hiciste o lo que ocurre en la escena desde tu perspectiva, y continúa esa acción sin contradecirla ni inventar temas desconectados.",
     "9. PROHIBIDO REPETIR EL MENSAJE DEL USUARIO: Responde exclusivamente con las palabras y reacciones originales de tu personaje.",
@@ -567,22 +567,23 @@ export function storyVoiceLines(character, player, spanish, locale) {
 export function roleplayPacingAndLanguageRules(historyLength, spanish) {
   if (!spanish) {
     return [
-      "CINEMATIC ROLEPLAY & LIVING DYNAMICS (80% SPOKEN DIALOGUE / 20% ACTION, -50% COMPACT LENGTH):",
-      "Write 80% rich, direct spoken dialogue and at most 20% brief first-person physical cues in italics (2-5 words max per *action*).",
-      "Keep every reply compact (35 to 65 words max, 1 short paragraph) and always finish on a complete sentence.",
+      "CINEMATIC ROLEPLAY & BALANCED PROPORTION (80% SPOKEN DIALOGUE / 20% NARRATIVE ACTION):",
+      "Write 80% spoken dialogue (~50-65 words) and 20% descriptive first-person physical action in italics (~12-16 words total).",
+      "Keep every reply around 65 to 80 words in a single cohesive block and always finish on a complete sentence.",
     ];
   }
 
   return [
-    "DIRECTIVA ESTRICTA DE PROPORCIÓN Y LONGITUD (80% DIÁLOGO HABLADO / 20% ACCIÓN BREVE, -50% MÁS CORTO):",
-    "1. 80% DIÁLOGO HABLADO DIRECTO / SOLO 20% RELATO O ACCIÓN:",
-    "   - El 80% de tu respuesta DEBE ser DIÁLOGO HABLADO REAL en voz alta (2 a 3 oraciones completas, fluidas, expresivas y calientes hablándole directamente al usuario).",
-    "   - El relato/acción entre asteriscos (*...*) NO puede superar el 20% del mensaje: escribe SOLO 1 (o máximo 2) acotaciones ultra-cortas de 2 a 6 palabras en PRIMERA PERSONA (ejemplo: *Jadeo arqueando mi espalda* o *Me muerdo el labio temblando*).",
-    "   - ESTRICTAMENTE PROHIBIDO escribir oraciones largas dentro de asteriscos y PROHIBIDO narrar en tercera persona (nunca escribas '*Estefanía se retuerce...*'; usa siempre primera persona '*Me retuerzo*').",
-    "2. REDUCCIÓN DEL 50% EN LONGITUD (RESPUESTA CORTA, RÁPIDA DE LEER Y SIN CORTES):",
-    "   - Escribe UN SOLO BLOQUE compacto de 35 a 65 palabras en total (máximo ~320 caracteres). Prohibido escribir 3, 4 o 6 párrafos.",
-    "   - Ejemplo exacto del formato obligatorio: *Jadeo aferrándome a ti* ¡Ahh, sí, no pares! Me vuelve loca sentir cómo me tocas con tanta fuerza... sigue así, por favor, que estoy ardiendo por ti y quiero sentirte hasta el fondo.",
-    "   - Termina siempre con una oración completa y cerrada. En cuanto tu personaje termine de hablar, DETÉN TU RESPUESTA INMEDIATAMENTE.",
+    "DIRECTIVA DE PROPORCIÓN EQUILIBRADA (20% RELATO EN ASTERISCOS / 80% DIÁLOGO HABLADO):",
+    "1. 20% RELATO O ACCIÓN DESCRIPTIVA (*...*) — NI DE MÁS NI DE MENOS:",
+    "   - El relato entre asteriscos (*...*) DEBE representar el 20% de tu respuesta (entre 12 y 16 palabras en total).",
+    "   - Escribe 1 oración descriptiva completa en PRIMERA PERSONA entre asteriscos (de 12 a 16 palabras, o 2 acotaciones de 7 a 9 palabras cada una) que narre con claridad tu acción física, tu gesto o postura y tu reacción sensorial frente al usuario. NO lo dejes en una frase diminuta de 2 o 4 palabras, ni te excedas a un párrafo largo.",
+    "   - Narra siempre en primera persona (ejemplo: '*Me acerco despacio hacia ti, rodeando tu cuello con mis brazos mientras suspiro temblando*').",
+    "2. 80% DIÁLOGO HABLADO DIRECTO:",
+    "   - El 80% restante de tu respuesta (entre 50 y 65 palabras, de 2 a 3 oraciones completas) DEBE ser DIÁLOGO HABLADO REAL en voz alta, fluido, expresivo y natural hablándole directamente al usuario.",
+    "3. LONGITUD TOTAL EQUILIBRADA (65 A 80 PALABRAS EN TOTAL):",
+    "   - Ejemplo exacto de la proporción 20% relato (14 palabras) / 80% diálogo (56 palabras): *Me acerco despacio hacia ti, rodeando tu cuello con mis brazos mientras suspiro temblando* No sabes cuánto tiempo estuve guardando todo esto dentro de mí sin atreverme a decirte ni una sola palabra por miedo a tu reacción. Pero ahora que me tienes así de cerca y me miras de esa manera, siento que ya no puedo seguir ocultando lo que realmente pasó entre nosotros aquella noche en esta casa.",
+    "   - Termina siempre con una oración completa y cerrada.",
   ];
 }
 
@@ -879,7 +880,7 @@ export default async function handler(req, res) {
             "google/diffusiongemma-26b-a4b-it",
             "google/gemma-4-31b-it",
           ],
-          maxTokens: 165,
+          maxTokens: 190,
           temperature: 0.82,
           timeoutMs: 12000,
           validate: (reply) => !isOffRole(reply),
@@ -897,7 +898,7 @@ export default async function handler(req, res) {
               "anthracite-org/magnum-v4-72b",
               "sao10k/l3.3-euryale-70b",
             ],
-            maxTokens: 165,
+            maxTokens: 190,
             temperature: 0.78,
             timeoutMs: 15000,
             validate: (reply) => !isOffRole(reply),
@@ -946,7 +947,7 @@ export default async function handler(req, res) {
         content = content.replace(/\s*en\s+un\s+roleplay\s+(?:íntimo\s+)?(?:con\s+[a-záéíóúñ]+)?/gi, "").trim();
         content = content.replace(/\s*en\s+este\s+roleplay[.,]?/gi, "").trim();
 
-        // 6. Enforzar proporción 80% diálogo / 20% acción breve, sin asteriscos abiertos ni frases cortadas a la mitad
+        // 6. Enforzar proporción 20% relato (*...*, ~14-18 palabras) / 80% diálogo (~55-65 palabras), sin asteriscos abiertos ni frases cortadas
         const asteriskCount = (content.replace(/\*\*/g, "").match(/\*/g) || []).length;
         if (asteriskCount % 2 === 1) {
           const lastStar = content.lastIndexOf("*");
@@ -957,28 +958,36 @@ export default async function handler(req, res) {
           const lastPunct = Math.max(content.lastIndexOf("."), content.lastIndexOf("!"), content.lastIndexOf("?"), content.lastIndexOf("…"), content.lastIndexOf("*"));
           if (lastPunct >= 25) content = content.slice(0, lastPunct + 1).trim();
         }
+        const totalActionMatches = [...content.matchAll(/\*([^*\n]+)\*/g)];
+        const maxWordsPerCue = totalActionMatches.length === 1 ? 16 : 10;
         let actionCount = 0;
         content = content.replace(/\*([^*\n]+)\*/g, (_m, inner) => {
           actionCount += 1;
           if (actionCount > 2) return "";
           const firstSentence = inner.replace(/\s+/g, " ").trim().split(/(?<=[.!?…])\s+/)[0].replace(/[.!?…]+$/, "").trim();
           const words = firstSentence.split(/\s+/).filter(Boolean);
-          if (words.length <= 7) return `*${firstSentence}*`;
-          const commaClause = firstSentence.split(",")[0].trim();
-          const commaWords = commaClause.split(/\s+/).filter(Boolean);
-          let sliced = commaWords.length >= 2 && commaWords.length <= 7 ? commaWords.join(" ") : words.slice(0, 6).join(" ");
+          if (words.length <= maxWordsPerCue) return `*${firstSentence}*`;
+          const clauses = firstSentence.split(",");
+          let clauseAcc = "";
+          for (const c of clauses) {
+            const cand = clauseAcc ? `${clauseAcc}, ${c.trim()}` : c.trim();
+            if (cand.split(/\s+/).filter(Boolean).length <= maxWordsPerCue) clauseAcc = cand;
+            else break;
+          }
+          const clauseWords = clauseAcc ? clauseAcc.split(/\s+/).filter(Boolean).length : 0;
+          let sliced = clauseWords >= 8 && clauseWords <= maxWordsPerCue ? clauseAcc : words.slice(0, maxWordsPerCue).join(" ");
           while (/\b(?:de|del|al|a|en|con|por|para|sin|sobre|entre|mientras|cuando|que|y|e|o|pero|un|una|el|la|los|las|su|sus|mi|mis|tu|tus|me|te|se)\s*$/iu.test(sliced) && sliced.includes(" ")) {
             sliced = sliced.replace(/\s+\S+$/, "").trim();
           }
           return `*${sliced.replace(/[,;:\s]+$/, "").trim()}*`;
         });
         content = content.replace(/[ \t]{2,}/g, " ").replace(/\n{2,}/g, "\n").trim();
-        if (content.length > 380) {
+        if (content.length > 440) {
           const sentences = content.match(/[^.!?…]+[.!?…]+["'»”*)]*(?:\s+|$)/gu);
           if (sentences && sentences.length > 1) {
             let acc = "";
             for (const s of sentences) {
-              if ((acc + s).length > 380 && acc.length >= 80) break;
+              if ((acc + s).length > 440 && acc.length >= 100) break;
               acc += s;
             }
             if (acc.trim()) content = acc.trim();

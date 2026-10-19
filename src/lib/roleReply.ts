@@ -55,7 +55,7 @@ export function normalizeAssistantReply(value: unknown): string | null {
 
 const DANGLING_TAIL = /\b(?:de|del|al|a|en|con|por|para|sin|sobre|entre|hacia|hasta|como|mientras|cuando|que|y|e|o|u|ni|pero|un|una|unos|unas|el|la|los|las|su|sus|mi|mis|tu|tus|me|te|se|nos|le|les|lo)\s*$/iu;
 
-function trimActionCue(rawAction: string): string {
+function trimActionCue(rawAction: string, maxWords = 16): string {
   const firstSentence = rawAction
     .replace(/\s+/g, " ")
     .trim()
@@ -63,13 +63,23 @@ function trimActionCue(rawAction: string): string {
     .replace(/[.!?…]+$/, "")
     .trim();
   const words = firstSentence.split(/\s+/).filter(Boolean);
-  if (words.length <= 7) return firstSentence;
-  // Prefer cutting at a comma if the first clause is 2..7 words
-  const commaClause = firstSentence.split(",")[0].trim();
-  const commaWords = commaClause.split(/\s+/).filter(Boolean);
-  let sliced = commaWords.length >= 2 && commaWords.length <= 7
-    ? commaWords.join(" ")
-    : words.slice(0, 6).join(" ");
+  if (words.length <= maxWords) return firstSentence;
+  // Prefer cutting at a comma clause if it has a natural 8..maxWords length
+  const clauses = firstSentence.split(",");
+  let clauseAcc = "";
+  for (const c of clauses) {
+    const candidate = clauseAcc ? `${clauseAcc}, ${c.trim()}` : c.trim();
+    const count = candidate.split(/\s+/).filter(Boolean).length;
+    if (count <= maxWords) {
+      clauseAcc = candidate;
+    } else {
+      break;
+    }
+  }
+  const clauseWords = clauseAcc ? clauseAcc.split(/\s+/).filter(Boolean).length : 0;
+  let sliced = clauseWords >= 8 && clauseWords <= maxWords
+    ? clauseAcc
+    : words.slice(0, maxWords).join(" ");
   while (DANGLING_TAIL.test(sliced) && sliced.includes(" ")) {
     sliced = sliced.replace(/\s+\S+$/, "").trim();
   }
@@ -79,8 +89,8 @@ function trimActionCue(rawAction: string): string {
 /**
  * Enforces:
  * 1. No unclosed asterisks or mid-sentence cutoffs at the end of a reply.
- * 2. Strictly ~20% action (*...*) / ~80% spoken dialogue (actions capped to brief cues).
- * 3. Compact length (-50% reduction, max ~380 chars / ~65 words) so replies are fast and engaging.
+ * 2. Balanced 20% action (*...*, ~14-18 words total) / 80% spoken dialogue (~55-65 words).
+ * 3. Compact length (max ~440 chars / ~75 words) so replies are complete and well-proportioned.
  */
 export function compactRoleplayReply(input: string): string {
   let text = String(input || "").trim();
@@ -112,23 +122,25 @@ export function compactRoleplayReply(input: string): string {
     }
   }
 
-  // 3. Shorten bloated *action* blocks to brief 2-6 word cues and keep at most 2 action cues total
+  // 3. Keep ~20% narration (*...*): up to 16 words if 1 cue, or up to 10 words each if 2 cues (~14-18 words total)
+  const totalMatches = [...text.matchAll(/\*([^*\n]+)\*/g)];
+  const maxWordsPerCue = totalMatches.length === 1 ? 16 : 10;
   let actionCount = 0;
   text = text.replace(/\*([^*\n]+)\*/g, (_match, inner: string) => {
     actionCount += 1;
     if (actionCount > 2) return "";
-    const shortCue = trimActionCue(inner);
+    const shortCue = trimActionCue(inner, maxWordsPerCue);
     return shortCue ? `*${shortCue}*` : "";
   });
 
-  // 4. Collapse whitespace and cap total length to ~380 chars at a clean sentence boundary
+  // 4. Collapse whitespace and cap total length to ~440 chars at a clean sentence boundary
   text = text.replace(/[ \t]{2,}/g, " ").replace(/\n{2,}/g, "\n").trim();
-  if (text.length > 380) {
+  if (text.length > 440) {
     const sentences = text.match(/[^.!?…]+[.!?…]+["'»”*)]*(?:\s+|$)/gu);
     if (sentences && sentences.length > 1) {
       let acc = "";
       for (const s of sentences) {
-        if ((acc + s).length > 380 && acc.length >= 80) break;
+        if ((acc + s).length > 440 && acc.length >= 100) break;
         acc += s;
       }
       if (acc.trim()) text = acc.trim();
