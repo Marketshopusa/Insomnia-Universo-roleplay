@@ -135,11 +135,11 @@ En este momento de la escena, ${activeChar.playerFirstName} está interactuando 
       body: JSON.stringify({
         model: "magnum-v4-12b",
         messages,
-        max_tokens: 145,
+        max_tokens: 180,
         temperature: 0.85,
         repeat_penalty: 1.18,
       }),
-      signal: AbortSignal.timeout(15000),
+      signal: AbortSignal.timeout(22000),
     });
 
     if (!res.ok) return null;
@@ -148,7 +148,7 @@ En este momento de la escena, ${activeChar.playerFirstName} está interactuando 
     if (content) {
       content = content.replace(/[\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff\u3040-\u30ff]/g, "").trim();
       content = sanitizeSwitchedReply(compactRoleplayReply(content), activeChar);
-      if (!isRepeatedAssistantReply(content, historyList)) {
+      if (content) {
         return { data: { content } as T, error: null };
       }
     }
@@ -161,8 +161,20 @@ En este momento de la escena, ${activeChar.playerFirstName} está interactuando 
 /** Retries only transient network, rate-limit, and server failures once. */
 export async function invokeFunctionWithRetry<T>(name: string, body: unknown): Promise<FunctionResult<T>> {
   if (ownAi.has(name)) {
-    const cloudResult = await callOwnAi<T>(name, body);
-    if (cloudResult.data && !cloudResult.error) return cloudResult;
+    const needsContent = name === "story-chat" || name === "generate-narrative";
+    let cloudResult = await callOwnAi<T>(name, body);
+    const okFirst = !cloudResult.error && (needsContent ? Boolean((cloudResult.data as any)?.content) : Boolean(cloudResult.data));
+    if (okFirst) return cloudResult;
+
+    const firstStatus = cloudResult.error?.context?.status ?? 503;
+    if (firstStatus !== 404 && firstStatus !== 401 && firstStatus !== 402) {
+      await wait(450);
+      const retryCloud = await callOwnAi<T>(name, body);
+      const okRetry = !retryCloud.error && (needsContent ? Boolean((retryCloud.data as any)?.content) : Boolean(retryCloud.data));
+      if (okRetry) return retryCloud;
+      cloudResult = retryCloud;
+    }
+
     if (name === "story-chat") {
       const local = await callLocalLlama<T>(body);
       if (local?.data) return local;
