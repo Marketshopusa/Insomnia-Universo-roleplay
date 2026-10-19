@@ -121,11 +121,6 @@ export function compactRoleplayReply(input: string): string {
     return shortCue ? `*${shortCue}*` : "";
   });
 
-  // Strip leaked meta-role vocatives like ", director" or "mi director"
-  text = text.replace(/,\s*director\b([.!?…])/gi, "$1");
-  text = text.replace(/,\s*director\b/gi, "");
-  text = text.replace(/\bmi\s+director\b/gi, "mi amor");
-
   // 4. Collapse whitespace and cap total length to ~380 chars at a clean sentence boundary
   text = text.replace(/[ \t]{2,}/g, " ").replace(/\n{2,}/g, "\n").trim();
   if (text.length > 380) {
@@ -400,27 +395,13 @@ export function isRepeatedAssistantReply(
 }
 
 export function sanitizeSwitchedReply(reply: string, info: ActiveCharacterInfo): string {
-  if (!reply) return reply;
+  if (!info.isSwitched || !reply) return reply;
   let cleaned = reply;
-  // Always strip leaked "director" / "Director" vocatives
-  cleaned = cleaned.replace(/,\s*director\b/gi, `, ${info.playerFirstName}`);
-  cleaned = cleaned.replace(/\bdirector\b/gi, info.playerFirstName);
 
-  if (!info.isSwitched) return compactRoleplayReply(cleaned);
-
-  // 1. Remove lines where the niece says "Mami..." or narrates in 3rd person inside *action* as the old character
+  // Only convert 3rd-person *DefaultCharacterName ...* action cues if the model narrated the switched character using the default character's name
   if (info.defaultFirstName && info.defaultFirstName.toLowerCase() !== info.name.toLowerCase()) {
     const escapedDefault = info.defaultFirstName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    cleaned = cleaned.replace(new RegExp(`\\*[^*]*\\b${escapedDefault}\\b[^*]*\\*`, "gi"), "*Me aprieto contra ti*");
-    cleaned = cleaned.replace(new RegExp(`\\b(soy|me\\s+llamo)\\s+${escapedDefault}\\b`, "gi"), `$1 ${info.name}`);
-  }
-  cleaned = cleaned.replace(/(?:^|\n)\s*Mami\b[^.!?\n]*[.!?]+\s*/gi, " ");
-  cleaned = cleaned.replace(/\bMami\b[,…]?\s*/gi, "");
-
-  // 2. Replace wrong relationship address terms ("Tío", "Papi", "Papá", "Papito") with the active character's addressTerm (e.g. "hermano")
-  if (info.addressTerm.toLowerCase() !== "tío" && info.addressTerm.toLowerCase() !== "tio") {
-    cleaned = cleaned.replace(/\b(?:Tío|Papi|Papito|Papá)\b/g, info.addressTerm);
-    cleaned = cleaned.replace(/\b(?:tío|papi|papito|papá)\b/g, info.addressTerm.toLowerCase());
+    cleaned = cleaned.replace(new RegExp(`\\*[^*]*\\b${escapedDefault}\\b[^*]*\\*`, "gi"), "*Me acerco a ti*");
   }
 
   return compactRoleplayReply(cleaned);

@@ -58,14 +58,13 @@ describe("role reply presentation", () => {
     expect(nextInfo.isSwitched).toBe(true);
     expect(nextInfo.name).toBe("Gabriela");
 
-    const leaked = "*Estefanía se sonroja y mira*\nMami... no me digas eso. Me da vergüenza.\n*Se muerde el labio, nerviosa*\nYo también te extrañé mucho, Tío.";
+    const leaked = "*Estefanía se sonroja y mira*\nTe extrañé mucho, hermano.";
     const cleaned = sanitizeSwitchedReply(leaked, info);
-    expect(cleaned).not.toContain("Estefanía");
-    expect(cleaned).not.toContain("Mami");
-    expect(cleaned).not.toContain("Tío");
+    expect(cleaned).not.toContain("*Estefanía");
+    expect(cleaned).toContain("*Me acerco a ti*");
     expect(cleaned).toContain("hermano");
   });
-  it("keeps sister active when user mentions Estefanía/sobrina in third person and ignores lowercase words before mi hermana", () => {
+  it("keeps sister active when user mentions Estefanía/sobrina in third person and does not block vocabulary words", () => {
     const turn1 = "La abrazo por la cintura la pego hacia mí, le digo yo también te extrañé mucho hermana pero tú sabes que tuvimos algo más que una relación como hermanos";
     const turn2 = "le digo claro que no olvidaría un momento así si el mejor efecto de ese momento lo tuve hace unos minutos atrás y ese efecto era Estefanía porque aunque mi hermana no me lo había confesado, Estefanía no era mi sobrina, era mi hija";
     const turn3 = "tú sabes que Estefanía tiene mis mismos ojos y cuando Estefanía me abrazó sentí la verdad";
@@ -76,11 +75,11 @@ describe("role reply presentation", () => {
     expect(info.fullLabel).toBe("la hermana de Willian");
     expect(info.addressTerm).toBe("hermano");
 
-    // Sanitizer removes "Papi", "Tío", "director" while preserving "Estefanía" when the sister talks about her daughter
-    const polluted = "*Me estremezco* Sí, Papi, como digas, director. Tío, Estefanía es fruto de nuestro secreto.";
-    const cleaned = sanitizeSwitchedReply(polluted, info);
-    expect(cleaned).not.toMatch(/\b(?:Papi|Tío|director)\b/i);
-    expect(cleaned).toContain("hermano");
+    // Does NOT block or strip legitimate words like "director", "papá", "tío", or "Estefanía"
+    const replyText = "*Me estremezco* Willian, Estefanía sigue pensando que eres su tío y el director del colegio nos vio llegar.";
+    const cleaned = sanitizeSwitchedReply(replyText, info);
+    expect(cleaned).toContain("director");
+    expect(cleaned).toContain("tío");
     expect(cleaned).toContain("Estefanía");
   });
   it("detects verbatim and near-duplicate assistant replies in history", () => {

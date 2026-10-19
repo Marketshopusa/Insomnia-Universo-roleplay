@@ -62,47 +62,48 @@ async function callLocalLlama<T>(body: unknown): Promise<FunctionResult<T> | nul
     const playerName = input.story?.player_role || "Usuario";
     const historyList = input.history || [];
     const activeChar = resolveActiveCharacter(input.userMessage || "", historyList, characterName, playerName);
-    const premise = [input.story?.description, input.story?.story_context].filter(Boolean).join(" ").slice(0, 600);
+    const premise = [
+      input.story?.title ? `Título: ${input.story.title}` : "",
+      input.story?.description ? `Sinopsis: ${input.story.description}` : "",
+      input.story?.story_context ? `Contexto: ${input.story.story_context}` : "",
+    ].filter(Boolean).join("\n").slice(0, 1200);
     const lastAssistant = [...historyList].reverse().find((m) => m.role === "assistant")?.content?.slice(0, 140) || "";
     const noRepeatRule = lastAssistant
-      ? `\nPROHIBICIÓN ABSOLUTA DE REPETIR TU RESPUESTA ANTERIOR: En tu mensaje anterior ya dijiste "${lastAssistant}...". Está ESTRICTAMENTE PROHIBIDO repetir esas frases o usar el mismo inicio. Responde directamente a las nuevas palabras y confesiones de ${activeChar.playerFirstName}.`
+      ? `\nPROHIBICIÓN DE REPETIR TU RESPUESTA ANTERIOR: En tu turno anterior dijiste "${lastAssistant}...". No repitas esa respuesta; reacciona directamente a las nuevas palabras de ${activeChar.playerFirstName}.`
       : "";
 
-    const systemPrompt = (activeChar.isSwitched
-      ? `Eres ${activeChar.fullLabel} en una escena adulta interactuando con ${activeChar.playerFirstName}.
-REGLA SUPREMA DE IDENTIDAD Y COHERENCIA DE TRATO:
-1. En este momento TÚ ERES EXCLUSIVAMENTE ${activeChar.fullLabel}. Hablas y actúas siempre en PRIMERA PERSONA como ${activeChar.name}.
-2. Tu parentesco con ${activeChar.playerFirstName} es fijo: a ${activeChar.playerFirstName} SIEMPRE lo llamas "${activeChar.addressTerm}" o "${activeChar.playerFirstName}".
-3. Si en la conversación se menciona a ${activeChar.defaultFirstName} diciendo que es hija o sobrina de ${activeChar.playerFirstName}, recuerda que ${activeChar.defaultFirstName} es tu hija (una tercera persona): TÚ sigues siendo ${activeChar.fullLabel}.
-4. ESTRICTAMENTE PROHIBIDO llamar a ${activeChar.playerFirstName} "Papi", "Papá", "Tío", "Director" o "Usuario", y prohibido decir "Mami".
-5. PROPORCIÓN 80% DIÁLOGO HABLADO / 20% ACCIÓN BREVE:
-   - Abre con 1 sola acotación corta de 2 a 5 palabras entre asteriscos en PRIMERA PERSONA (ejemplo: *Me aprieto contra tu pecho*).
-   - El 80% de tu respuesta DEBE ser diálogo hablado directo (2 a 3 oraciones completas, expresivas, calientes y naturales hablándole directamente a tu ${activeChar.addressTerm} ${activeChar.playerFirstName}, 35 a 60 palabras en total).
-6. NUNCA hables ni actúes por ${activeChar.playerFirstName}.`
-      : `Eres ${characterName} en una escena adulta interactuando con ${playerName}. ${premise ? "Contexto: " + premise : ""}
-REGLAS ESTRICTAS E INQUEBRANTABLES:
+    const baseSystemPrompt = `Eres un motor de roleplay interactivo con memoria narrativa y razonamiento lógico. Interpretas a ${characterName} interactuando con ${playerName}.
+${premise ? `\nCONTEXTO DE LA HISTORIA:\n${premise}\n` : ""}
+REGLAS DE RAZONAMIENTO Y FORMATO:
 1. IDIOMA: 100% español nativo.
-2. PROPORCIÓN 80% DIÁLOGO HABLADO / 20% ACCIÓN BREVE:
-   - ACCIÓN (*...*): MÁXIMO 1 o 2 acotaciones ultra-cortas de 2 a 5 palabras en PRIMERA PERSONA (ejemplo: *Jadeo arqueando mi espalda* o *Me muerdo el labio*). PROHIBIDO escribir oraciones largas en asteriscos y PROHIBIDO narrar en tercera persona.
-   - DIÁLOGO HABLADO: El 80% de tu respuesta DEBE ser diálogo hablado directo en primera persona (2 a 3 oraciones seguidas, expresivas, calientes y naturales hablándole directamente a ${playerName}).
-3. LONGITUD REDUCIDA AL 50% (RESPUESTA CORTA Y ÁGIL):
-   - Escribe SOLO 1 párrafo corto (entre 35 y 60 palabras en total). Termina siempre con una oración completa.
-   - Ejemplo del formato exacto: *Jadeo aferrándome a ti* ¡Ahh, sí, no pares! Me vuelve loca sentir cómo me tocas con tanta fuerza... sigue así, por favor, que estoy ardiendo por ti y quiero que me hagas tuya ahora mismo.
-4. COHERENCIA Y OBEDIENCIA: Obedece toda acción o petición de ${playerName}. PROHIBIDO llamarlo "Director" o "Usuario". NUNCA hables ni actúes por ${playerName}.`) + noRepeatRule;
+2. COMPRENSIÓN DE NARRACIÓN MIXTA: Cuando ${playerName} mezcle diálogo directo ("le digo...") con explicaciones en tercera persona sobre otro personaje, distingue claramente CON QUIÉN está hablando cara a cara vs. DE QUIÉN está hablando en tercera persona.
+3. PROPORCIÓN 80% DIÁLOGO HABLADO / 20% ACCIÓN BREVE:
+   - ACCIÓN (*...*): MÁXIMO 1 o 2 acotaciones cortas de 2 a 5 palabras en PRIMERA PERSONA. PROHIBIDO narrar en tercera persona.
+   - DIÁLOGO HABLADO: El 80% de tu respuesta DEBE ser diálogo hablado directo en primera persona (2 a 3 oraciones completas, 35 a 60 palabras en total).
+4. COHERENCIA: Mantén el trato natural acorde a tu rol o relación en la historia con ${playerName}. NUNCA hables ni actúes por ${playerName}.`;
 
-    const rawHistory = historyList.slice(-10);
+    const activeSceneRule = activeChar.isSwitched
+      ? `\nESTADO ACTUAL DE LA ESCENA (INTERLOCUTOR ACTIVO):
+En este momento de la escena, ${activeChar.playerFirstName} está interactuando cara a cara con ${activeChar.fullLabel}.
+- Responde en PRIMERA PERSONA como ${activeChar.fullLabel} (${activeChar.name}).
+- Mantén coherencia con tu vínculo con ${activeChar.playerFirstName}${activeChar.addressTerm ? ` (trato natural: "${activeChar.addressTerm}" o "${activeChar.playerFirstName}")` : ""}.
+- Si en la conversación se menciona a ${activeChar.defaultFirstName} en tercera persona, recuerda que ${activeChar.defaultFirstName} es otra persona de la historia y tú eres ${activeChar.fullLabel}.`
+      : "";
+
+    const systemPrompt = baseSystemPrompt + activeSceneRule + noRepeatRule;
+
+    const rawHistory = historyList.slice(-16);
     const seenAssistant = new Set<string>();
     const filteredHistory = rawHistory.filter((m) => {
       if (m.role !== "assistant") return true;
-      if (activeChar.isSwitched && /\bmami\b/i.test(m.content)) return false;
       const key = m.content.trim().toLowerCase().slice(0, 60);
       if (seenAssistant.has(key)) return false;
       seenAssistant.add(key);
       return true;
-    }).slice(activeChar.isSwitched ? -6 : -10);
+    });
 
     const userContent = activeChar.isSwitched
-      ? `[Responde en primera persona como ${activeChar.fullLabel} hablándole a tu ${activeChar.addressTerm} ${activeChar.playerFirstName} con palabras 100% nuevas sobre lo que acaba de decirte]:\n${input.userMessage || ""}`
+      ? `[Escena actual: ${activeChar.playerFirstName} le habla directamente a ${activeChar.fullLabel}. Responde en primera persona como ${activeChar.name}]:\n${input.userMessage || ""}`
       : (input.userMessage || "");
 
     // Merge consecutive messages of the same role so llama-server Jinja template never throws HTTP 400

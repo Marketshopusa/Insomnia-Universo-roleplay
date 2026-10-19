@@ -115,6 +115,7 @@ export async function generateNvidia(messages, options = {}) {
           messages,
           max_tokens: options.maxTokens || 300,
           temperature: options.temperature ?? 0.78,
+          ...(model.includes("gemma-4") ? { chat_template_kwargs: { enable_thinking: false } } : {}),
         }),
         signal: AbortSignal.timeout(options.timeoutMs || 12000),
       });
@@ -416,7 +417,7 @@ const ANCHOR_STOP = new Set("para como donde cuando porque estan estan estaba es
 export function mentionsMinor(text) {
   const value = String(text || "").toLowerCase();
   if (/\b(niñ[oa]s?|beb[eé]|infante|menor de edad|preescolar|adolescente)\b/.test(value)) return true;
-  return /\b(?:1[0-7]|[1-9])\s*años\b/.test(value);
+  return /\b(?:tiene|ten[ií]a|cumpli[oó]|cumple|de)\s+(?:1[0-7]|[1-9])\s*años\b/.test(value);
 }
 
 function lastWord(text, words) {
@@ -658,36 +659,45 @@ export default async function handler(req, res) {
         if (userNorm.length > 20 && (replyNorm === userNorm || replyNorm.includes(userNorm))) return true;
         return false;
       };
+      const cardPremise = [
+        story.title ? `TÍTULO DE LA HISTORIA: ${String(story.title).slice(0, 200)}` : "",
+        story.description ? `SINOPSIS DE LA TARJETA: ${String(story.description).slice(0, 1200)}` : "",
+        story.story_context && story.story_context !== story.description ? `CONTEXTO DETALLADO DE LA TARJETA: ${String(story.story_context).slice(0, 1800)}` : "",
+      ].filter(Boolean).join("\n");
+      const memoryTurns = Array.isArray(body.memory)
+        ? body.memory
+            .map((m) => {
+              const who = m?.role === "assistant" ? String(story.character_role || "Personaje") : String(story.player_role || "Usuario");
+              const txt = String(m?.content || "").trim().slice(0, 240);
+              return txt ? `- ${who}: ${txt}` : "";
+            })
+            .filter(Boolean)
+            .join("\n")
+        : "";
       let systemInstruction = [
         ...storyContinuityLines(spanish),
-        "Eres un motor de roleplay y narración cinematográfica inmersiva para adultos al estilo Momoo AI. El usuario interpreta a " + String(story.player_role || "Usuario").slice(0, 150) + ".",
-        "REPARTO PRINCIPAL: " + String(story.character_role || "personaje principal").slice(0, 200) + ".",
-        "REGLA SUPREMA MULTI-PERSONAJE (ESTILO MOMOO AI):",
-        "  - Eres capaz de interpretar a múltiples personajes presentes en la escena o narrar en tercera persona sus interacciones conjuntas.",
-        "  - Si el usuario narra la llegada o interacción con otro personaje (por ejemplo: 'mi hermana entra y me abraza', 'mi prima Marta', 'su mamá llega'):",
-        "    * Quien interactúa con el usuario es ESE personaje. Si es la hermana del usuario (mamá de Maya), llama al usuario 'hermano' o 'hermanito', NUNCA 'tío' ni 'papi'.",
-        "    * ESTRICTAMENTE PROHIBIDO que Maya responda en primera persona como si ella fuera la abrazada diciendo 'Tío... cuánto te extrañé'.",
-        "    * Narra la escena con naturalidad cinematográfica: el diálogo y abrazo de la hermana, y la presencia/reacción de Maya en el fondo mordiéndose el labio o sonrojada.",
-        "  - ESTRICTAMENTE PROHIBIDO romper la cuarta pared (nunca digas 'en un roleplay', 'en este rol', 'soy un personaje', ni llames al usuario 'director'). CERO referencias a que esto es ficción.",
+        "Eres un motor de roleplay y narración cinematográfica inmersiva para adultos con razonamiento lógico y memoria continua. El protagonista (usuario) interpreta a " + String(story.player_role || "Usuario").slice(0, 150) + ".",
+        "PERSONAJE PRINCIPAL DE LA TARJETA: " + String(story.character_role || "personaje principal").slice(0, 200) + ".",
+        cardPremise,
+        memoryTurns ? "MEMORIA RELEVANTE DE ESCENAS ANTERIORES:\n" + memoryTurns : "",
+        "RAZONAMIENTO LÓGICO Y DINÁMICA MULTI-PERSONAJE:",
+        "  - Analiza en cada turno quién es el interlocutor activo frente al protagonista y cuál es su relación o rol dentro de esta tarjeta.",
+        "  - COMPRENSIÓN DE NARRACIÓN MIXTA DEL USUARIO: El usuario a veces combina lo que le dice al personaje con explicaciones del narrador en tercera persona dentro de la misma oración (por ejemplo, explicar un secreto o mencionar a otro personaje en tercera persona mientras abraza y habla con quien tiene enfrente). Distingue con lógica quién está físicamente frente al usuario escuchándolo y quién es mencionado en tercera persona.",
+        "  - Si el usuario introduce o interactúa con otro personaje secundario en la escena (una hermana, madre, prima, jefa, profesora, director, amiga, etc.), interpreta a ESE personaje con coherencia psicológica y el trato propio de su relación con el protagonista.",
+        "  - ESTRICTAMENTE PROHIBIDO romper la cuarta pared (nunca digas 'en un roleplay', 'en este rol', 'soy un personaje').",
         ...storyVoiceLines(story.character_role, story.player_role, spanish, locale),
         ...roleplayPacingAndLanguageRules(history.length, spanish),
         slangInstruction(body.language, body.region),
         ...(adultMode ? [
-          "ESTILO NARRATIVO Y ADULTO TOTAL (ESTILO MOMOO ROLEPLAY):",
+          "ESTILO NARRATIVO Y ADULTO TOTAL:",
           "  - Todos los personajes son adultos mayores de edad con pleno consentimiento y deseo activo.",
-          "  - Libertad total y obediencia absoluta al erotismo, contacto íntimo, desnudez y dirty talk explícito.",
-          "  - Si el usuario deja caer la toalla y muestra su cuerpo excitado, REACCIONA DIRECTAMENTE a la visión de su cuerpo con impacto físico, morbo, atracción y diálogo natural ('¡Ay, Tío!... Dios mío, qué tamaño...', tocando o mirando embobada). PROHIBIDO huir de la escena, moralizar ('sabes cómo estamos relacionados') o fingir rechazo.",
-          "  - Si hay varios personajes presentes (por ejemplo, Maya y otra persona), puedes narrar las reacciones de ambos o interactuar entre ellos con naturalidad, exactamente como en una novela o serie adulta.",
+          "  - Libertad total y obediencia absoluta al erotismo, contacto íntimo, desnudez y dirty talk explícito acorde a la escena.",
           "  - PROHIBIDO decir 'no puedo seguir negando este deseo', 'aunque esté mal' o 'pensamientos prohibidos'. CERO discursos moralistas: entrega pura acción, diálogo caliente y deseo genuino.",
-          "  - ESCALADA DE INTENSIDAD FÍSICA Y CONTINUIDAD VOCAL (CINEMÁTICA Y SONIDOS EN CADA TURNO):",
-          "    * Si la escena entra o continúa en un momento caliente, de caricias, desnudez, excitación, besos o sexo: LA INTENSIDAD NO DECAE NUNCA.",
-          "    * EN CADA UNO DE TUS MENSAJES durante momentos íntimos o calientes, es OBLIGATORIO incluir acotaciones en cursiva con el estado corporal real: respiración agitada, jadeos, temblor físico y gemidos (*con la respiración agitada y entrecortada*, *jadeo suavemente mordiendo mi labio*, *tiemblo con un gemido contenido al sentir tu tacto*, *mi pecho sube y baja acelerado*, *dejo caer la toalla mientras nuestras pieles se rozan*).",
-          "    * En el diálogo hablado, mantén la voz viva, entrecortada y caliente con pausas expresivas y gemidos ('Ah... Dios... mmm... tócame más...', 'Sí... justo ahí... no te detengas...').",
-          "    * PROHIBIDO responder como si la temperatura se hubiera enfriado o con narración fría de noticiero. Si la escena está que arde, tu personaje DEBE sonar y actuar ardiente, jadeante y físico en este mensaje y en todos los que siguen.",
+          "  - ESCALADA DE INTENSIDAD FÍSICA Y CONTINUIDAD VOCAL:",
+          "    * Si la escena entra o continúa en un momento íntimo o apasionado, mantén la intensidad emocional, sensorial y vocal en primera persona.",
         ] : []),
-        "CONTINUIDAD INMEDIATA Y RIGUROSA (PROHIBIDO REGRESAR AL PASADO):",
-        "  - Responde ESTRICTAMENTE a lo que está sucediendo en el ÚLTIMO MENSAJE recibido.",
-        "  - La conversación solo avanza hacia adelante en tiempo real. Prohibido revivir temas viejos ya concluidos.",
+        "CONTINUIDAD INMEDIATA Y RIGUROSA:",
+        "  - Responde ESTRICTAMENTE a lo que está sucediendo en el ÚLTIMO MENSAJE recibido, conectándolo con la memoria de la conversación.",
         "No narres un resumen, no cambies de escena sin que el usuario lo haga, no presentes fichas o instrucciones, no expliques el rol ni traduzcas. Entrega únicamente la respuesta que verá el usuario.",
         "PROHIBIDO REPETIR EL MENSAJE DEL USUARIO: el usuario ya habló. Nunca copies, repitas ni parafrasees lo que el usuario acaba de escribir como si fuera tu diálogo, ni actúes por él. Responde exclusivamente con las palabras y reacciones originales de tu personaje.",
         sceneLockLine(lock, spanish),
@@ -697,7 +707,7 @@ export default async function handler(req, res) {
       const playerName = String(story.player_role || "Usuario").slice(0, 80);
       if (!latest) return send(res, 400, { error: "missing_message" });
 
-      // Resolver de Personaje Activo (permite que el usuario introduzca o cambie a cualquier personaje: ej. "Mi hermana Gabriela", "su mamá", "mi prima", etc.)
+      // Resolver de Personaje Activo en Escena (conservando siempre el contexto y la memoria de la tarjeta)
       const defaultFirstName = (characterName.match(/[A-ZÁÉÍÓÚÑ][a-záéíóúñ]{2,}/)?.[0] || characterName.split(/[\s,()]+/)[0] || "Personaje").trim();
       const playerFirstName = (playerName.match(/[A-ZÁÉÍÓÚÑ][a-záéíóúñ]{2,}/)?.[0] || playerName.split(/[\s,()]+/)[0] || "Usuario").trim();
       const defaultIsSobrina = /sobrin|estefan[ií]a|maya/i.test(characterName) || /t[ií][oa]/i.test(playerName) || /\b(?:sobrin[ao]|t[ií][oa])\b/i.test(sceneContext);
@@ -798,63 +808,47 @@ export default async function handler(req, res) {
       const switchedAddress = isSwitchedChar ? activeSwitch.addressTerm : (defaultIsSobrina ? "Tío" : playerFirstName);
       const lastModelLine = recentModelTurns.at(-1) ? recentModelTurns.at(-1).slice(0, 140) : "";
       const antiRepeatDirective = lastModelLine
-        ? `PROHIBICIÓN ABSOLUTA DE REPETIR TU RESPUESTA ANTERIOR: En tu turno anterior ya dijiste "${lastModelLine}...". Está ESTRICTAMENTE PROHIBIDO volver a usar esas mismas frases, el mismo gesto inicial (*...*) o repetir lo que ya dijiste. Responde con palabras y reacciones 100% nuevas a lo que ${playerFirstName} acaba de decir o confesar en su último mensaje.`
+        ? `PROHIBICIÓN DE REPETIR TU RESPUESTA ANTERIOR: En tu turno anterior ya dijiste "${lastModelLine}...". No repitas las mismas frases ni el mismo inicio; responde con palabras nuevas a lo que ${playerFirstName} acaba de decir.`
         : "";
 
+      const line = (entry) => (entry.role === "model" ? characterName : playerName) + ": " + entry.text.slice(0, 320);
+      const older = history.slice(0, -24);
+      const recentSlice = history.slice(-24);
+      const closed = older.slice(0, 2).map(line);
+      const later = older.slice(2).slice(-12).map(line);
+      const remembered = older.length
+        ? ["TEMAS PASADOS YA CONCLUIDOS (PROHIBIDO MENCIONARLOS SALVO QUE EL USUARIO LOS SAQUE AHORA):", ...closed, "Hechos posteriores ya terminados:", ...later].join("\n").slice(0, 3600)
+        : "";
+      const facts = lockedStoryFacts([...older, ...recentSlice], characterName, playerName);
+      if (facts.length) {
+        systemInstruction += "\nHechos fijos. No los reescribas ni se los pases a otra persona:\n" + facts.join("\n");
+      }
+      if (remembered) {
+        systemInstruction += "\n" + remembered;
+      }
       if (isSwitchedChar) {
-        systemInstruction = [
-          `Eres ${switchedFullLabel} en una escena adulta interactuando directamente con ${playerFirstName}.`,
-          `REGLA SUPREMA DE IDENTIDAD Y COHERENCIA DE TRATO:`,
-          `1. En este momento TÚ ERES EXCLUSIVAMENTE ${switchedFullLabel}. Hablas y actúas siempre en PRIMERA PERSONA como ${activeSwitch.name || activeSwitch.role}.`,
-          `2. Tu parentesco con ${playerFirstName} es fijo: a ${playerFirstName} SIEMPRE lo llamas "${switchedAddress}" o "${playerFirstName}".`,
-          `3. Si en la conversación se menciona a ${defaultFirstName} diciendo que es hija o sobrina de ${playerFirstName}, recuerda que ${defaultFirstName} es tu hija (una tercera persona): TÚ sigues siendo ${switchedFullLabel}.`,
-          `4. ESTRICTAMENTE PROHIBIDO llamar a ${playerFirstName} "Papi", "Papá", "Tío", "Director" o "Usuario", y prohibido decir "Mami".`,
-          ...roleplayPacingAndLanguageRules(history.length, spanish),
-          `5. Obedece toda acción y emoción descrita por ${playerFirstName} en su mensaje sin moralizar. NUNCA hables ni actúes por ${playerFirstName}.`,
-          antiRepeatDirective,
-        ].filter(Boolean).join("\n");
-      } else {
-        const line = (entry) => (entry.role === "model" ? characterName : playerName) + ": " + entry.text.slice(0, 320);
-        const older = history.slice(0, -24);
-        const recentSlice = history.slice(-24);
-        const closed = older.slice(0, 2).map(line);
-        const later = older.slice(2).slice(-12).map(line);
-        const remembered = older.length
-          ? ["TEMAS PASADOS YA CONCLUIDOS (PROHIBIDO MENCIONARLOS SALVO QUE EL USUARIO LOS SAQUE AHORA):", ...closed, "Hechos posteriores ya terminados:", ...later].join("\n").slice(0, 3600)
-          : "";
-        const facts = lockedStoryFacts([...older, ...recentSlice], characterName, playerName);
-        if (facts.length) {
-          systemInstruction += "\nHechos fijos. No los reescribas ni se los pases a otra persona:\n" + facts.join("\n");
-        }
-        if (remembered) {
-          systemInstruction += "\n" + remembered;
-        }
-        if (antiRepeatDirective) {
-          systemInstruction += "\n" + antiRepeatDirective;
-        }
+        systemInstruction += [
+          "",
+          `ESTADO ACTUAL DE LA ESCENA (INTERLOCUTOR ACTIVO):`,
+          `- En este momento de la historia, quien está interactuando físicamente y hablando con ${playerFirstName} es ${switchedFullLabel}.`,
+          `- Habla y reacciona en primera persona desde la perspectiva de ${switchedFullLabel}, manteniendo su relación real con ${playerFirstName} (${switchedAddress}) y con ${defaultFirstName}.`,
+          `- Si ${playerFirstName} mezcla diálogo directo con explicaciones en tercera persona (por ejemplo diciendo 'aunque mi hermana no me lo había confesado' o mencionando a ${defaultFirstName} en tercera persona), comprende con lógica que se lo está diciendo a ${switchedFullLabel}.`,
+        ].join("\n");
+      }
+      if (antiRepeatDirective) {
+        systemInstruction += "\n" + antiRepeatDirective;
       }
 
       const seenModelKeys = new Set();
-      const sanitizeHistoryModelText = (rawText) => {
-        let t = String(rawText || "").replace(/,\s*director\b/gi, `, ${playerFirstName}`).replace(/\bdirector\b/gi, playerFirstName);
-        if (isSwitchedChar && switchedAddress.toLowerCase() !== "tío" && switchedAddress.toLowerCase() !== "tio") {
-          t = t.replace(/\b(?:Tío|Papi|Papito|Papá)\b/g, switchedAddress);
-          t = t.replace(/\b(?:tío|papi|papito|papá)\b/g, switchedAddress.toLowerCase());
-        }
-        return t;
-      };
       const recent = history
-        .slice(isSwitchedChar ? -10 : -24)
+        .slice(-20)
         .filter((entry) => {
           if (entry.role !== "model") return true;
-          if (isSwitchedChar && /\bmami\b/i.test(entry.text)) return false;
           const k = normText(entry.text).slice(0, 60);
           if (seenModelKeys.has(k)) return false;
           seenModelKeys.add(k);
           return true;
-        })
-        .slice(isSwitchedChar ? -6 : -24)
-        .map((entry) => (entry.role === "model" ? { ...entry, text: sanitizeHistoryModelText(entry.text) } : entry));
+        });
 
       const contents = [];
       for (const entry of recent) {
@@ -862,14 +856,10 @@ export default async function handler(req, res) {
         else contents.push({ role: entry.role, parts: [{ text: entry.text }] });
       }
 
-      const formattedLatest = isSwitchedChar
-        ? `[Responde en PRIMERA PERSONA como ${switchedFullLabel} hablándole a tu ${switchedAddress} ${playerFirstName} con palabras 100% nuevas sobre lo que te acaba de confesar o decir]:\n${latest}`
-        : latest;
-
       if (contents.at(-1)?.role === "user") {
-        contents.at(-1).parts[0].text += "\n" + formattedLatest;
+        contents.at(-1).parts[0].text += "\n" + latest;
       } else {
-        contents.push({ role: "user", parts: [{ text: formattedLatest }] });
+        contents.push({ role: "user", parts: [{ text: latest }] });
       }
       const openRouterMessages = [
         { role: "system", content: systemInstruction }
@@ -952,24 +942,9 @@ export default async function handler(req, res) {
         content = content.replace(/sin restricciones ni tabúes\.?/gi, "").trim();
         content = content.replace(/pasión que bulle dentro de mí\.?/gi, "").trim();
 
-        // 5. Purga estricta de rotura de cuarta pared y vocativo "director"
+        // 5. Purga estricta de rotura de cuarta pared
         content = content.replace(/\s*en\s+un\s+roleplay\s+(?:íntimo\s+)?(?:con\s+[a-záéíóúñ]+)?/gi, "").trim();
         content = content.replace(/\s*en\s+este\s+roleplay[.,]?/gi, "").trim();
-        content = content.replace(/,\s*director\b/gi, `, ${playerFirstName}`);
-        content = content.replace(/\bdirector\b/gi, playerFirstName);
-
-        if (isSwitchedChar) {
-          if (defaultFirstName && defaultFirstName.toLowerCase() !== (activeSwitch.name || "").toLowerCase()) {
-            const esc = defaultFirstName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-            content = content.replace(new RegExp(`\\*[^*]*\\b${esc}\\b[^*]*\\*`, "gi"), "*Me aprieto contra ti*");
-            content = content.replace(new RegExp(`\\b(soy|me\\s+llamo)\\s+${esc}\\b`, "gi"), `$1 ${activeSwitch.name || activeSwitch.role}`);
-          }
-          content = content.replace(/(?:^|\n)\s*Mami\b[^.!?\n]*[.!?]+\s*/gi, " ").replace(/\bMami\b[,…]?\s*/gi, "");
-          if (switchedAddress.toLowerCase() !== "tío" && switchedAddress.toLowerCase() !== "tio") {
-            content = content.replace(/\b(?:Tío|Papi|Papito|Papá)\b/g, switchedAddress);
-            content = content.replace(/\b(?:tío|papi|papito|papá)\b/g, switchedAddress.toLowerCase());
-          }
-        }
 
         // 6. Enforzar proporción 80% diálogo / 20% acción breve, sin asteriscos abiertos ni frases cortadas a la mitad
         const asteriskCount = (content.replace(/\*\*/g, "").match(/\*/g) || []).length;
