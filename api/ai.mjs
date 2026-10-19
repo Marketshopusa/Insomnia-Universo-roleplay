@@ -647,20 +647,19 @@ export default async function handler(req, res) {
       const normText = (s) => String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^\w\s]/g, " ").replace(/\s+/g, " ").trim();
       const stripActions = (s) => String(s || "").replace(/\*[^*]*\*/g, " ").trim();
       const recentModelTurns = history.filter((h) => h.role === "model").map((h) => h.text).slice(-6);
+      const lastModelTurn = recentModelTurns.at(-1) || "";
       const isRepeatedReply = (text) => {
         const raw = String(text || "").trim();
         if (!raw) return true;
+        if (!lastModelTurn) return false;
         const candFull = normText(raw);
+        const prevFull = normText(lastModelTurn);
+        if (candFull === prevFull) return true;
         const candDial = normText(stripActions(raw));
-        const candAct = normText((raw.match(/\*([^*]+)\*/)?.[1]) || "");
-        for (const prev of recentModelTurns) {
-          const prevFull = normText(prev);
-          const prevDial = normText(stripActions(prev));
-          const prevAct = normText((prev.match(/\*([^*]+)\*/)?.[1]) || "");
-          if (candFull === prevFull) return true;
-          if (candDial.length >= 20 && candDial === prevDial) return true;
-          if (candDial.length >= 30 && prevDial.length >= 30 && candDial.slice(0, 32) === prevDial.slice(0, 32)) return true;
-          if (candAct.length >= 18 && candAct === prevAct && candDial.slice(0, 20) === prevDial.slice(0, 20)) return true;
+        const prevDial = normText(stripActions(lastModelTurn));
+        if (candDial && prevDial) {
+          if (candDial === prevDial) return true;
+          if (candDial.length >= 25 && prevDial.length >= 25 && candDial.slice(0, 30) === prevDial.slice(0, 30) && candDial.slice(-25) === prevDial.slice(-25)) return true;
           const cw = candDial.split(" ").filter(Boolean);
           const pw = prevDial.split(" ").filter(Boolean);
           if (cw.length >= 8 && pw.length >= 8) {
@@ -670,7 +669,7 @@ export default async function handler(req, res) {
             for (let i = 0; i <= cw.length - 4; i++) {
               if (pset.has(cw.slice(i, i + 4).join(" "))) hits++;
             }
-            if (hits / (cw.length - 3) >= 0.4) return true;
+            if (hits / (cw.length - 3) >= 0.75) return true;
           }
         }
         return false;
@@ -970,7 +969,7 @@ export default async function handler(req, res) {
               models: nvidiaModels,
               maxTokens: targetTokens,
               temperature: 0.82,
-              timeoutMs: 7500,
+              timeoutMs: 10000,
               apiKey: nvidiaApiKey || undefined,
               validate: (reply) => !isOffRole(reply),
               isRepeated: isRepeatedReply,
@@ -985,7 +984,7 @@ export default async function handler(req, res) {
             models: nvidiaModels,
             maxTokens: targetTokens,
             temperature: 0.82,
-            timeoutMs: 7500,
+            timeoutMs: 10000,
             apiKey: nvidiaApiKey || undefined,
             validate: (reply) => !isOffRole(reply),
             isRepeated: isRepeatedReply,
@@ -1013,11 +1012,15 @@ export default async function handler(req, res) {
       // 3. Respaldo Gemini
       if (!content) {
         try {
+          const geminiContents = contents.map((c) => ({ role: c.role, parts: [...(c.parts || [])] }));
+          if (geminiContents[0]?.role === "model") {
+            geminiContents.unshift({ role: "user", parts: [{ text: "Continúa la escena." }] });
+          }
           content = await generate(
             "gemini-2.5-flash",
             [],
             { maxOutputTokens: Math.max(220, targetTokens), temperature: 0.8 },
-            { contents, systemInstruction, adultMode: true, fallbackModels: ["gemini-2.0-flash", "gemini-2.5-flash-lite"], fastReply: true, validate: (reply) => !isOffRole(reply) },
+            { contents: geminiContents, systemInstruction, adultMode: true, fallbackModels: ["gemini-2.0-flash", "gemini-2.5-flash-lite"], fastReply: true, validate: (reply) => !isOffRole(reply) },
           );
         } catch (err) {
           console.warn("Gemini roleplay fallback failed:", err.message);
