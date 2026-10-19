@@ -114,6 +114,8 @@ import { AdultConsentDialog } from "@/components/adult/AdultConsentDialog";
  
            {/* Mobile Menu Button */}
            <button
+             type="button"
+             aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
              className="md:hidden p-2"
              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
            >

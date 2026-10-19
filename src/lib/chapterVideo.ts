@@ -12,16 +12,19 @@ export async function attachFinishedVideos(
     markReady: (episodeId: string, path: string) => Promise<void>;
   },
 ) {
-  for (const video of job.videos || []) {
-    if (attached.has(video.episode) || video.approved === false) continue;
-    const episodeId = episodeIds[video.episode - 1];
-    if (!episodeId || !video.url) continue;
-    const blob = await deps.fetchVideo(localVideoSrc(video.url));
-    if (!blob.size) throw new Error("ComfyUI no entregó el archivo de este capítulo.");
-    const path = await deps.upload(episodeId, blob);
-    await deps.markReady(episodeId, path);
-    attached.add(video.episode);
-  }
+  const pendingVideos = (job.videos || []).filter(
+    (video) => !attached.has(video.episode) && video.approved !== false && !!episodeIds[video.episode - 1] && !!video.url,
+  );
+  await Promise.all(
+    pendingVideos.map(async (video) => {
+      const episodeId = episodeIds[video.episode - 1];
+      const blob = await deps.fetchVideo(localVideoSrc(video.url!));
+      if (!blob.size) throw new Error("ComfyUI no entregó el archivo de este capítulo.");
+      const path = await deps.upload(episodeId, blob);
+      await deps.markReady(episodeId, path);
+      attached.add(video.episode);
+    }),
+  );
 }
 
 /** Renders each written chapter on this PC and stores the file on its episode. */

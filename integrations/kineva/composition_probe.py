@@ -30,10 +30,12 @@ def duration_seconds(video: Path, ffprobe: str) -> float:
 
 
 def grayscale_frame(video: Path, second: float, ffmpeg: str) -> bytes:
+    timestamp = format(float(second), ".4f")
+    scale_filter = "scale=" + str(WIDTH) + ":" + str(HEIGHT) + ",format=gray"
     result = subprocess.run(
         [ffmpeg, "-nostdin", "-hide_banner", "-loglevel", "error",
-         "-ss", f"{second:.4f}", "-i", str(video), "-frames:v", "1",
-         "-vf", f"scale={WIDTH}:{HEIGHT},format=gray",
+         "-ss", timestamp, "-i", str(video), "-frames:v", "1",
+         "-vf", scale_filter,
          "-f", "rawvideo", "-pix_fmt", "gray", "-"],
         capture_output=True, check=True, timeout=60,
     )

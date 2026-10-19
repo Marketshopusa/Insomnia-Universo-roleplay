@@ -28,6 +28,7 @@ async function callOwnAi<T>(name: string, body: unknown): Promise<FunctionResult
       },
       body: JSON.stringify({ action: name, body }),
     });
+    const isOk = response.ok;
     let data: any = null;
     const text = await response.text();
     try {
@@ -35,7 +36,7 @@ async function callOwnAi<T>(name: string, body: unknown): Promise<FunctionResult
     } catch {
       data = { error: text || "Respuesta no disponible del servidor." };
     }
-    return response.ok
+    return isOk
       ? { data: data as T, error: null }
       : { data: data as T, error: { message: data?.message || data?.error || "La función no está disponible.", context: response } };
   } catch (err) {

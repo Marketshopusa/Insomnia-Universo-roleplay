@@ -1,6 +1,6 @@
 import { invokeFunctionWithRetry } from "@/lib/invokeFunction";
 import { seriesStatus } from "@/lib/shortsCatalog";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
@@ -38,7 +38,7 @@ const Shorts = () => {
   const [open, setOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [premise, setPremise] = useState("");
-  const [referenceImage, setReferenceImage] = useState<File | null>(null);
+  const referenceImageRef = useRef<File | null>(null);
   const [category, setCategory] = useState("romance");
   const [isAdult, setIsAdult] = useState(adultEnabled);
   const [episodes, setEpisodes] = useState(3);
@@ -54,14 +54,14 @@ const Shorts = () => {
     }
     setCreating(true);
     try {
-      const referencePath = await uploadKinevaReference(user.id, premise, referenceImage);
+      const referencePath = await uploadKinevaReference(user.id, premise, referenceImageRef.current);
       const { data, error } = await invokeFunctionWithRetry<{ error?: string; message?: string }>(
         "generate-shorts-series", { premise, category, isAdult, episodes, referencePath });
       if (error || data?.error) throw new Error(createError(data?.message || data?.error || error?.message || "No se pudo generar la serie"));
       toast.success("Serie creada. Entra en la portada para ver los capítulos.");
       setOpen(false);
       setPremise("");
-      setReferenceImage(null);
+      referenceImageRef.current = null;
       reload();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "No se pudo generar la serie");
@@ -111,7 +111,7 @@ const Shorts = () => {
                 <div className="space-y-2">
                   <Label htmlFor="shorts-reference">Imagen de referencia (opcional)</Label>
                   <Input id="shorts-reference" type="file" accept="image/png,image/jpeg,image/webp"
-                    onChange={(event) => setReferenceImage(event.target.files?.[0] ?? null)}
+                    onChange={(event) => { referenceImageRef.current = event.target.files?.[0] ?? null; }}
                     className="rounded-none" />
                   <p className="text-xs text-muted-foreground">Sin foto, la serie igual se guarda. El video la pide cuando vayas a producirlo.</p>
                 </div>
@@ -163,7 +163,7 @@ const Shorts = () => {
             {series.map((item, index) => {
               const status = seriesStatus(item.episodes);
               return (
-                <Link key={item.id} to={`/shorts/${item.id}`} className="group relative overflow-hidden border border-border/60 bg-card/60 transition-all duration-300 hover:-translate-y-1 hover:border-primary/60">
+                <Link key={item.id} to={`/shorts/${item.id}`} className="group relative overflow-hidden border border-border/60 bg-card/60 transition-transform duration-300 hover:-translate-y-1 hover:border-primary/60">
                   <div className="relative aspect-[4/5] overflow-hidden bg-muted">
                     <SeriesCover series={item} className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-110" />
                     <div className="absolute inset-0 bg-gradient-to-t from-background via-background/20 to-transparent" />

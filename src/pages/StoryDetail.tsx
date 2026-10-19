@@ -55,7 +55,9 @@ type Mode = "select" | "read" | "roleplay";
    
    const [messages, setMessages] = useState<Message[]>([]);
   const messagesRef = useRef<Message[]>([]);
-  messagesRef.current = messages;
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
   const [inputMessage, setInputMessage] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
    const [isTyping, setIsTyping] = useState(false);
@@ -135,18 +137,23 @@ type Mode = "select" | "read" | "roleplay";
      const rows = (data as any[]) || [];
      setGallery(rows);
      const next: Record<string, string> = { ...gallerySigned };
-     for (const row of rows) {
-       if (row.status === "ready" && row.storage_path && !next[row.id]) {
+     const resolved = await Promise.all(
+       rows.map(async (row) => {
+         if (row.status !== "ready" || !row.storage_path || next[row.id]) return null;
          const cached = galleryUrlCache.current[row.id];
-         if (cached) { next[row.id] = cached; continue; }
+         if (cached) return [row.id, cached] as const;
          const { data: signed } = await supabase.storage
            .from("story-gallery")
            .createSignedUrl(row.storage_path, 60 * 60 * 24 * 7);
          if (signed?.signedUrl) {
            galleryUrlCache.current[row.id] = signed.signedUrl;
-           next[row.id] = signed.signedUrl;
+           return [row.id, signed.signedUrl] as const;
          }
-       }
+         return null;
+       }),
+     );
+     for (const entry of resolved) {
+       if (entry) next[entry[0]] = entry[1];
      }
      setGallerySigned(next);
    };
@@ -155,7 +162,8 @@ type Mode = "select" | "read" | "roleplay";
      setGallery([]);
      setGallerySigned({});
      setGalleryOpen(false);
-     loadGallery();
+     void loadGallery();
+     // eslint-disable-next-line react-hooks/exhaustive-deps
    }, [storyId]);
 
    const galleryPending = gallery.some((r) => r.status === "pending");
@@ -172,6 +180,7 @@ type Mode = "select" | "read" | "roleplay";
        }
      }, 5000);
      return () => clearInterval(iv);
+     // eslint-disable-next-line react-hooks/exhaustive-deps
    }, [galleryPending, storyId]);
 
    const startGallery = async () => {
@@ -212,7 +221,7 @@ type Mode = "select" | "read" | "roleplay";
        } catch {}
      };
      window.addEventListener("click", unlock, { once: false });
-     window.addEventListener("touchstart", unlock, { once: false });
+     window.addEventListener("touchstart", unlock, { once: false, passive: true });
      return () => {
        window.removeEventListener("click", unlock);
        window.removeEventListener("touchstart", unlock);
@@ -262,14 +271,14 @@ type Mode = "select" | "read" | "roleplay";
   }, [user, storyId]);
 
   // Preserve the order of saves: a slow earlier request must not overwrite a newer turn.
-  const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const saveQueueRef = useRef<Promise<void> | null>(null);
   const saveSession = (
     nextMessages: Message[],
     nextNarrative: string | null,
     nextMode: Mode
   ): Promise<void> => {
     if (!user || !storyId) return Promise.resolve();
-    const userId = user.id;
+    const accountKey = user.id;
     const currentStoryId = storyId;
     const serializable = nextMessages
       .filter((m) => m.id !== "intro")
@@ -279,20 +288,22 @@ type Mode = "select" | "read" | "roleplay";
         content: m.content,
         timestamp: m.timestamp.toISOString(),
       }));
-    saveQueueRef.current = saveQueueRef.current.catch(() => {}).then(async () => {
-      const { error } = await supabase.from("story_sessions").upsert(
-        {
-          user_id: userId,
-          story_id: currentStoryId,
-          messages: serializable,
-          narrative: nextNarrative,
-          last_mode: nextMode,
-        },
-        { onConflict: "user_id,story_id" }
-      );
+    const sessionRow = {
+      user_id: accountKey,
+      story_id: currentStoryId,
+      messages: serializable,
+      narrative: nextNarrative,
+      last_mode: nextMode,
+    };
+    const previous = saveQueueRef.current ?? Promise.resolve();
+    const nextSave = previous.catch(() => {}).then(async () => {
+      const { error } = await supabase
+        .from("story_sessions")
+        .upsert(sessionRow, { onConflict: "user_id,story_id" });
       if (error) console.error("Could not save story turn:", error.message);
     });
-    return saveQueueRef.current;
+    saveQueueRef.current = nextSave;
+    return nextSave;
   };
 
    const scrollToBottom = () => {
@@ -442,12 +453,12 @@ type Mode = "select" | "read" | "roleplay";
        timestamp: new Date(),
      };
  
-     setMessages((current) => {
-       const base = current.some((item) => item.id === userMessage.id) ? current : [...current, userMessage];
-       const next = base.some((item) => item.id === assistantMessage.id) ? base : [...base, assistantMessage];
-       void saveSession(next, narrative || null, mode);
-       return next;
-     });
+     const current = messagesRef.current;
+     const base = current.some((item) => item.id === userMessage.id) ? current : [...current, userMessage];
+     const next = base.some((item) => item.id === assistantMessage.id) ? base : [...base, assistantMessage];
+     messagesRef.current = next;
+     setMessages(next);
+     void saveSession(next, narrative || null, mode);
      setIsTyping(false);
      if (!isMuted) void playAudio(responseContent, assistantMessage.id);
    };
@@ -833,11 +844,12 @@ type Mode = "select" | "read" | "roleplay";
                             href={gallerySigned[img.id]}
                             target="_blank"
                             rel="noreferrer"
+                            aria-label={`${tGalleryTitle} ${img.sort_order ?? ""}`.trim()}
                             className="block aspect-[3/4] overflow-hidden border border-border"
                           >
                             <img
                               src={gallerySigned[img.id]}
-                              alt=""
+                              alt={`${tGalleryTitle} ${img.sort_order ?? ""}`.trim()}
                               loading="lazy"
                               className="w-full h-full object-cover transition-transform duration-500 hover:scale-105"
                             />
@@ -879,7 +891,7 @@ type Mode = "select" | "read" | "roleplay";
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <button
                     onClick={() => setMode("read")}
-                    className="text-left p-6 rounded-lg border border-border bg-secondary/40 hover:bg-secondary hover:border-primary transition-all"
+                    className="text-left p-6 rounded-lg border border-border bg-secondary/40 hover:bg-secondary hover:border-primary transition-colors"
                   >
                     <BookOpen className="w-8 h-8 text-primary mb-3" />
                     <h3 className="font-display text-lg mb-2">{t("mode.read")}</h3>
@@ -887,7 +899,7 @@ type Mode = "select" | "read" | "roleplay";
                   </button>
                   <button
                     onClick={() => setMode("roleplay")}
-                    className="text-left p-6 rounded-lg border border-border bg-secondary/40 hover:bg-secondary hover:border-primary transition-all"
+                    className="text-left p-6 rounded-lg border border-border bg-secondary/40 hover:bg-secondary hover:border-primary transition-colors"
                   >
                     <MessageSquare className="w-8 h-8 text-primary mb-3" />
                     <h3 className="font-display text-lg mb-2">{t("mode.roleplay")}</h3>
@@ -994,19 +1006,19 @@ type Mode = "select" | "read" | "roleplay";
                         .filter((message) => message.id !== "intro")
                         .map((message) => ({ role: message.role, content: message.content }))}
                       onTurn={(userText, assistantText) => {
-                        setMessages((previous) => {
-                          const last = previous[previous.length - 1];
-                          const spoken = last?.role === "user" && last.content === userText;
-                          const next: Message[] = spoken ? [...previous] : [
-                            ...previous,
-                            { id: `${Date.now()}-u`, role: "user", content: userText, timestamp: new Date() },
-                          ];
-                           if (assistantText) {
-                             next.push({ id: `${Date.now()}-a`, role: "assistant", content: assistantText, timestamp: new Date() });
-                           }
-                          saveSession(next, narrative || null, mode);
-                          return next;
-                        });
+                        const previous = messagesRef.current;
+                        const last = previous[previous.length - 1];
+                        const spoken = last?.role === "user" && last.content === userText;
+                        const next: Message[] = spoken ? [...previous] : [
+                          ...previous,
+                          { id: `${Date.now()}-u`, role: "user", content: userText, timestamp: new Date() },
+                        ];
+                        if (assistantText) {
+                          next.push({ id: `${Date.now()}-a`, role: "assistant", content: assistantText, timestamp: new Date() });
+                        }
+                        messagesRef.current = next;
+                        setMessages(next);
+                        void saveSession(next, narrative || null, mode);
                       }}
                     />
                    <Button
@@ -1022,6 +1034,7 @@ type Mode = "select" | "read" | "roleplay";
                    <Button
                      variant="ghost"
                      size="icon"
+                     aria-label={isMuted ? (language === "es" ? "Activar voz" : "Unmute voice") : (language === "es" ? "Silenciar voz" : "Mute voice")}
                      onClick={() => setIsMuted(!isMuted)}
                    >
                      {isMuted ? (

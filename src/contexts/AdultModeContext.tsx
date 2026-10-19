@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, ReactNode } from "react";
 
 interface AdultModeContextType {
   enabled: boolean;
@@ -23,29 +23,32 @@ export const AdultModeProvider = ({ children }: { children: ReactNode }) => {
     setEnabled(localStorage.getItem(STORAGE_KEY) === "true");
   }, []);
 
-  const enable = () => {
+  const enable = useCallback(() => {
     setEnabled(true);
     localStorage.setItem(STORAGE_KEY, "true");
-  };
-  const disable = () => {
+  }, []);
+  const disable = useCallback(() => {
     setEnabled(false);
     localStorage.setItem(STORAGE_KEY, "false");
-  };
-  const grantConsent = () => {
+  }, []);
+  const grantConsent = useCallback(() => {
     setConsentGiven(true);
     localStorage.setItem(CONSENT_KEY, "true");
-  };
-  const revokeConsent = () => {
+  }, []);
+  const revokeConsent = useCallback(() => {
     setConsentGiven(false);
     setEnabled(false);
     localStorage.removeItem(CONSENT_KEY);
     localStorage.setItem(STORAGE_KEY, "false");
-  };
+  }, []);
+
+  const value = useMemo(
+    () => ({ enabled, consentGiven, enable, disable, grantConsent, revokeConsent }),
+    [enabled, consentGiven, enable, disable, grantConsent, revokeConsent],
+  );
 
   return (
-    <AdultModeContext.Provider
-      value={{ enabled, consentGiven, enable, disable, grantConsent, revokeConsent }}
-    >
+    <AdultModeContext.Provider value={value}>
       {children}
     </AdultModeContext.Provider>
   );

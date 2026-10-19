@@ -32,12 +32,14 @@ export function StudioProduction({ userId, refreshKey, onEdit }: {
     const results = await Promise.all((data || []).map(async (row) => {
       const series = row as unknown as ProductionSeries;
       const episodes = [...(series.episodes || [])].sort((a, b) => a.episode_number - b.episode_number);
-      const videos: Record<string, string> = {};
-      for (const episode of episodes) {
-        if (!episode.video_url) continue;
-        const { data: signed } = await supabase.storage.from("shorts-media").createSignedUrl(episode.video_url, 3600);
-        if (signed?.signedUrl) videos[episode.id] = signed.signedUrl;
-      }
+      const signedEntries = await Promise.all(
+        episodes.map(async (episode) => {
+          if (!episode.video_url) return null;
+          const { data: signed } = await supabase.storage.from("shorts-media").createSignedUrl(episode.video_url, 3600);
+          return signed?.signedUrl ? ([episode.id, signed.signedUrl] as const) : null;
+        }),
+      );
+      const videos = Object.fromEntries(signedEntries.filter((entry): entry is readonly [string, string] => entry !== null));
       return { ...series, episodes, videos };
     }));
     setDrafts(results);
@@ -47,7 +49,7 @@ export function StudioProduction({ userId, refreshKey, onEdit }: {
       title: "No se pudo abrir Producción", description: error instanceof Error ? error.message : undefined,
       variant: "destructive",
     }));
-  }, [load, refreshKey]);
+  }, [load, refreshKey, toast]);
 
   const edit = async (series: ProductionSeries) => {
     setBusy(series.id);
@@ -71,8 +73,10 @@ export function StudioProduction({ userId, refreshKey, onEdit }: {
     }
     setBusy(series.id);
     try {
+      const authorKey = userId;
+      const publishPatch = { is_published: true };
       const { data, error } = await supabase.from("shorts_series")
-        .update({ is_published: true }).eq("id", series.id).eq("created_by", userId)
+        .update(publishPatch).eq("id", series.id).eq("created_by", authorKey)
         .eq("is_published", false).select("id").single();
       if (error || !data) throw error || new Error("La serie ya no está disponible.");
       await load();

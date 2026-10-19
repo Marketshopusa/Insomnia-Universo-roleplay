@@ -283,8 +283,9 @@ def review_video_people(path, max_people):
     duration = probe_video(path)[3]
     positions = sorted({0.25, duration / 2, max(0.25, duration - 0.3)})
     for second in positions:
+        timestamp = format(float(second), ".3f")
         frame = subprocess.run([
-            "ffmpeg", "-hide_banner", "-loglevel", "error", "-ss", f"{second:.3f}",
+            "ffmpeg", "-hide_banner", "-loglevel", "error", "-ss", timestamp,
             "-i", str(path), "-frames:v", "1", "-f", "image2pipe", "-vcodec", "png", "-",
         ], capture_output=True, check=True, timeout=30).stdout
         if not frame or not review(frame, max_people)["accepted"]:

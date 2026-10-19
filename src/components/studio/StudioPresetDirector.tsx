@@ -134,21 +134,26 @@ export function StudioPresetDirector({
             return (
               <div
                 key={preset.id}
-                onClick={() => setSelectedPreset(preset)}
-                className={`cursor-pointer rounded-lg border p-2.5 text-left transition-all ${
+                className={`rounded-lg border p-2.5 text-left transition-colors ${
                   isSelected
                     ? "border-primary bg-primary/10 ring-1 ring-primary shadow-sm"
                     : "border-border/80 bg-background/50 hover:border-border hover:bg-muted/40"
                 }`}
               >
-                <div className="flex items-center justify-between gap-1 mb-1">
-                  <span className="text-base">{preset.icon}</span>
-                  <Badge variant="secondary" className="text-[10px] px-1.5 py-0 font-normal">
-                    {preset.badge}
-                  </Badge>
-                </div>
-                <p className="text-xs font-semibold truncate leading-tight">{preset.title}</p>
-                <p className="text-[10px] text-muted-foreground truncate mt-0.5">{preset.camera}</p>
+                <button
+                  type="button"
+                  onClick={() => setSelectedPreset(preset)}
+                  className="w-full text-left"
+                >
+                  <div className="flex items-center justify-between gap-1 mb-1">
+                    <span className="text-base">{preset.icon}</span>
+                    <Badge variant="secondary" className="text-[10px] px-1.5 py-0 font-normal">
+                      {preset.badge}
+                    </Badge>
+                  </div>
+                  <p className="text-xs font-semibold truncate leading-tight">{preset.title}</p>
+                  <p className="text-[10px] text-muted-foreground truncate mt-0.5">{preset.camera}</p>
+                </button>
 
                 {/* Acciones directas para asignar a un capítulo */}
                 {isSelected && (

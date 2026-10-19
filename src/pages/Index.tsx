@@ -290,7 +290,7 @@ const Index = () => {
                 <Link
                   key={item.id}
                   to={`/shorts/${item.id}`}
-                  className="group overflow-hidden border border-border/60 bg-card/60 transition-all hover:-translate-y-1 hover:border-primary/60"
+                  className="group overflow-hidden border border-border/60 bg-card/60 transition-transform hover:-translate-y-1 hover:border-primary/60"
                 >
                   <div className="relative aspect-[4/5] overflow-hidden bg-muted">
                     <SeriesCover

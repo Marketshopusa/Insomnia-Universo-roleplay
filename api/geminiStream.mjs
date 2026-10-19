@@ -13,8 +13,10 @@ export async function ttsStreamClientReady() {
 
 async function streamingService() {
   if (cachedService) return cachedService;
-  const grpc = await import("@grpc/grpc-js");
-  const protoLoader = await import("@grpc/proto-loader");
+  const [grpc, protoLoader] = await Promise.all([
+    import("@grpc/grpc-js"),
+    import("@grpc/proto-loader"),
+  ]);
   const directory = mkdtempSync(path.join(tmpdir(), "insomnia-tts-"));
   const protoPath = path.join(directory, "tts-stream.proto");
   writeFileSync(protoPath, TTS_STREAM_PROTO);

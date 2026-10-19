@@ -21,24 +21,26 @@ import { useLanguage } from "@/contexts/LanguageContext";
    const handleSubmit = async (e: React.FormEvent) => {
      e.preventDefault();
      setLoading(true);
- 
-     const { error } = await signUp(email, password, username);
- 
-     if (error) {
-       toast({
-        title: t("common.error"),
-         description: error.message,
-         variant: "destructive",
-       });
-     } else {
-       toast({
-        title: t("auth.accountCreated"),
-        description: t("auth.accountCreatedDesc"),
-       });
-       navigate("/login");
+
+     try {
+       const { error } = await signUp(email, password, username);
+
+       if (error) {
+         toast({
+           title: t("common.error"),
+           description: error.message,
+           variant: "destructive",
+         });
+       } else {
+         toast({
+           title: t("auth.accountCreated"),
+           description: t("auth.accountCreatedDesc"),
+         });
+         navigate("/login");
+       }
+     } finally {
+       setLoading(false);
      }
- 
-     setLoading(false);
    };
  
    return (

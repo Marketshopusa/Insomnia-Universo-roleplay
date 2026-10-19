@@ -732,10 +732,8 @@ const chapterOptions = [3, 5, 7, 10, 12];
 
    const handleDeleteProjects = async () => {
      if (projects) {
-       for (const project of projects) {
-         await deleteProject.mutateAsync(project.id);
-       }
-      toast({ title: t("studio.toast.allDeleted") });
+       await Promise.all(projects.map((project) => deleteProject.mutateAsync(project.id)));
+       toast({ title: t("studio.toast.allDeleted") });
        setCurrentProjectId(null);
        setDescription("");
      }

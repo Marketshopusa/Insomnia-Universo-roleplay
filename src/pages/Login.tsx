@@ -20,24 +20,26 @@ import { useLanguage } from "@/contexts/LanguageContext";
    const handleSubmit = async (e: React.FormEvent) => {
      e.preventDefault();
      setLoading(true);
- 
-     const { error } = await signIn(email, password);
- 
-     if (error) {
-       toast({
-        title: t("common.error"),
-         description: error.message,
-         variant: "destructive",
-       });
-     } else {
-       toast({
-        title: t("auth.welcomeToast"),
-        description: t("auth.welcomeToastDesc"),
-       });
-       navigate("/");
+
+     try {
+       const { error } = await signIn(email, password);
+
+       if (error) {
+         toast({
+           title: t("common.error"),
+           description: error.message,
+           variant: "destructive",
+         });
+       } else {
+         toast({
+           title: t("auth.welcomeToast"),
+           description: t("auth.welcomeToastDesc"),
+         });
+         navigate("/");
+       }
+     } finally {
+       setLoading(false);
      }
- 
-     setLoading(false);
    };
  
    return (

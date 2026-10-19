@@ -60,8 +60,6 @@ export const StoryConfigDialog = ({ story, open, onOpenChange, onSaved }: StoryC
   const queryClient = useQueryClient();
   const { language } = useLanguage();
   const es = language === "es";
-  const [ownerId, setOwnerId] = useState<string | null>(story?.created_by ?? null);
-  const isOwner = !!user && !!(ownerId || story?.created_by) && (ownerId || story?.created_by) === user.id;
 
   const { data: availableCategories } = useCategories();
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
@@ -74,7 +72,7 @@ export const StoryConfigDialog = ({ story, open, onOpenChange, onSaved }: StoryC
   const [explicit, setExplicit] = useState(false);
   const [coverUrl, setCoverUrl] = useState<string | null>(null);
   const [coverType, setCoverType] = useState<string | null>(null);
-  const [voice, setVoice] = useState(getStoryVoice(story?.id));
+  const [voice, setVoice] = useState(() => getStoryVoice(story?.id));
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -82,7 +80,6 @@ export const StoryConfigDialog = ({ story, open, onOpenChange, onSaved }: StoryC
   useEffect(() => {
     if (!open || !story) return;
 
-    setOwnerId(story.created_by ?? null);
     setTitle(story.title ?? "");
     setDescription(story.description ?? "");
     // If story_context is missing or empty, fall back to description so the development prompt is never empty
@@ -107,7 +104,6 @@ export const StoryConfigDialog = ({ story, open, onOpenChange, onSaved }: StoryC
       if (cancelled) return;
 
       if (dbStory) {
-        if (dbStory.created_by) setOwnerId(dbStory.created_by);
         setTitle(dbStory.title ?? "");
         setDescription(dbStory.description ?? "");
         // Resolve development prompt: prefer story_context, fall back to description
@@ -162,6 +158,7 @@ export const StoryConfigDialog = ({ story, open, onOpenChange, onSaved }: StoryC
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, story?.id, user?.id]);
 
   const uploadCover = async (file: File) => {
@@ -271,6 +268,8 @@ export const StoryConfigDialog = ({ story, open, onOpenChange, onSaved }: StoryC
     }
   };
 
+  const selectedCategorySet = new Set(selectedCategories);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] overflow-y-auto">
@@ -349,17 +348,18 @@ export const StoryConfigDialog = ({ story, open, onOpenChange, onSaved }: StoryC
               <Label className="mb-1.5 block text-xs">{es ? "Categorías de la historia" : "Story categories"}</Label>
               <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto p-2 border border-border/60 rounded-md bg-muted/20">
                 {availableCategories.map((cat) => {
-                  const isSelected = selectedCategories.includes(cat.id);
+                  const isSelected = selectedCategorySet.has(cat.id);
                   return (
                     <button
                       key={cat.id}
                       type="button"
                       onClick={() => {
-                        setSelectedCategories((prev) =>
-                          prev.includes(cat.id)
-                            ? prev.filter((id) => id !== cat.id)
-                            : [...prev, cat.id]
-                        );
+                        setSelectedCategories((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(cat.id)) next.delete(cat.id);
+                          else next.add(cat.id);
+                          return Array.from(next);
+                        });
                       }}
                       className={cn(
                         "text-xs px-2.5 py-1 rounded-full border transition-colors",
@@ -409,6 +409,7 @@ export const StoryConfigDialog = ({ story, open, onOpenChange, onSaved }: StoryC
                   type="button"
                   size="icon"
                   variant="destructive"
+                  aria-label={es ? "Quitar portada" : "Remove cover"}
                   className="h-8 w-8"
                   onClick={() => {
                     setCoverUrl(null);

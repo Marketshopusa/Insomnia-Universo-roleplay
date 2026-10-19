@@ -47,24 +47,27 @@ export const useShorts = (adultEnabled: boolean) => {
 
   const load = useCallback(async () => {
     setLoading(true);
-    let query = supabase
-      .from("shorts_series")
-      .select("*, episodes:shorts_episodes(*)")
-      .eq("is_published", true)
-      .order("created_at", { ascending: false });
+    try {
+      let query = supabase
+        .from("shorts_series")
+        .select("*, episodes:shorts_episodes(*)")
+        .eq("is_published", true)
+        .order("created_at", { ascending: false });
 
-    if (!adultEnabled) query = query.eq("is_adult", false);
+      if (!adultEnabled) query = query.eq("is_adult", false);
 
-    const { data, error } = await query;
-    if (!error && data) {
-      setSeries(
-        (data as unknown as SeriesWithEpisodes[]).map((s) => ({
-          ...s,
-          episodes: [...(s.episodes ?? [])].sort((a, b) => a.episode_number - b.episode_number),
-        })),
-      );
+      const { data, error } = await query;
+      if (!error && data) {
+        setSeries(
+          (data as unknown as SeriesWithEpisodes[]).map((s) => ({
+            ...s,
+            episodes: [...(s.episodes ?? [])].sort((a, b) => a.episode_number - b.episode_number),
+          })),
+        );
+      }
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, [adultEnabled]);
 
   useEffect(() => {
@@ -86,21 +89,24 @@ export const useShortSeries = (seriesId: string) => {
       return;
     }
     setLoading(true);
-    const { data, error } = await supabase
-      .from("shorts_series")
-      .select("*, episodes:shorts_episodes(*)")
-      .eq("id", seriesId)
-      .maybeSingle();
-    if (!error && data) {
-      const item = data as unknown as SeriesWithEpisodes;
-      setSeries({
-        ...item,
-        episodes: [...(item.episodes ?? [])].sort((a, b) => a.episode_number - b.episode_number),
-      });
-    } else {
-      setSeries(null);
+    try {
+      const { data, error } = await supabase
+        .from("shorts_series")
+        .select("*, episodes:shorts_episodes(*)")
+        .eq("id", seriesId)
+        .maybeSingle();
+      if (!error && data) {
+        const item = data as unknown as SeriesWithEpisodes;
+        setSeries({
+          ...item,
+          episodes: [...(item.episodes ?? [])].sort((a, b) => a.episode_number - b.episode_number),
+        });
+      } else {
+        setSeries(null);
+      }
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, [seriesId]);
 
   useEffect(() => {

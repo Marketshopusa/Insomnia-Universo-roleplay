@@ -10,7 +10,8 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "doctor": "npx react-doctor@latest"
   },
   "dependencies": {
     "@grpc/grpc-js": "^1.14.5",

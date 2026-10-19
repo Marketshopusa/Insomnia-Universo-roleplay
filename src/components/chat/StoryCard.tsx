@@ -44,9 +44,21 @@ export const StoryCard = ({ story, onClick, index, onConfigure, onDelete, coverO
   return (
     <article
       onClick={onClick}
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={
+        onClick
+          ? (event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                onClick();
+              }
+            }
+          : undefined
+      }
       className={cn(
         "group relative cursor-pointer overflow-hidden border border-border/60",
-        "bg-card/60 backdrop-blur-sm transition-all duration-300",
+        "bg-card/60 backdrop-blur-sm transition-transform duration-300",
         "hover:border-primary/60 hover:-translate-y-1",
         "hover:shadow-[0_20px_40px_-15px_hsl(var(--primary)/0.4)]"
       )}
@@ -164,7 +176,7 @@ export const StoryCard = ({ story, onClick, index, onConfigure, onDelete, coverO
           <span className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
             {story.image_count > 0 ? `${story.image_count} ${t("chat.images")}` : "Insomnia"}
           </span>
-          <ArrowUpRight className="w-3.5 h-3.5 text-muted-foreground group-hover:text-primary group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all" />
+          <ArrowUpRight className="w-3.5 h-3.5 text-muted-foreground group-hover:text-primary group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
         </div>
       </div>
     </article>

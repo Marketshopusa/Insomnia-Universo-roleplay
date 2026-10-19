@@ -186,71 +186,73 @@ export const ReadingHistory = () => {
               return (
                 <div
                   key={item.id}
-                  className="group relative cursor-pointer border border-border/60 bg-card/60 backdrop-blur-sm overflow-hidden hover:border-primary/60 hover:-translate-y-1 hover:shadow-[0_20px_40px_-15px_hsl(var(--primary)/0.4)] transition-all duration-300"
-                  onClick={() => navigate(`/story/${item.story_id}`)}
+                  className="group relative border border-border/60 bg-card/60 backdrop-blur-sm overflow-hidden hover:border-primary/60 hover:-translate-y-1 hover:shadow-[0_20px_40px_-15px_hsl(var(--primary)/0.4)] transition-transform duration-300"
                 >
-                  <div className="aspect-[4/5] relative bg-muted overflow-hidden">
-                    {media ? (
-                      mediaTypeOf(media) === "video" ? (
-                        <video src={media} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" muted loop playsInline autoPlay />
-                      ) : (
-                        <img src={media} alt={story.title} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
-                      )
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center text-4xl bg-gradient-to-br from-secondary to-muted">
-                        📖
-                      </div>
-                    )}
-                    <div className="absolute inset-0 bg-gradient-to-t from-background via-background/30 to-transparent" />
+                  {/* Botón papelera para eliminar de historial */}
+                  <button
+                    type="button"
+                    aria-label="Eliminar del historial"
+                    title="Eliminar del historial"
+                    className="absolute top-0 right-0 z-20 flex h-8 w-8 items-center justify-center border-l border-b border-border/60 bg-background/85 text-destructive backdrop-blur transition-colors hover:bg-destructive hover:text-destructive-foreground"
+                    onClick={() => setConfirmDeleteId(item.story_id)}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
 
-                    {/* Botón papelera para eliminar de historial */}
-                    <button
-                      type="button"
-                      aria-label="Eliminar del historial"
-                      title="Eliminar del historial"
-                      className="absolute top-0 right-0 z-10 flex h-8 w-8 items-center justify-center border-l border-b border-border/60 bg-background/85 text-destructive backdrop-blur transition-colors hover:bg-destructive hover:text-destructive-foreground"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setConfirmDeleteId(item.story_id);
-                      }}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-
-                    {/* Clasificación: +18 vs SFW */}
-                    <div className="absolute top-2 left-2 flex items-center gap-1 z-10">
-                      {isAdult ? (
-                        <span className="px-1.5 py-0.5 rounded text-[10px] font-bold tracking-wider bg-destructive/90 text-destructive-foreground uppercase shadow-sm">
-                          +18
-                        </span>
+                  <button
+                    type="button"
+                    className="w-full text-left"
+                    onClick={() => navigate(`/story/${item.story_id}`)}
+                  >
+                    <div className="aspect-[4/5] relative bg-muted overflow-hidden">
+                      {media ? (
+                        mediaTypeOf(media) === "video" ? (
+                          <video src={media} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" muted loop playsInline autoPlay />
+                        ) : (
+                          <img src={media} alt={story.title} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
+                        )
                       ) : (
-                        <span className="px-1.5 py-0.5 rounded text-[10px] font-medium tracking-wider bg-background/80 text-foreground/80 border border-border/60 uppercase shadow-sm">
-                          SFW
-                        </span>
+                        <div className="w-full h-full flex items-center justify-center text-4xl bg-gradient-to-br from-secondary to-muted">
+                          📖
+                        </div>
                       )}
+                      <div className="absolute inset-0 bg-gradient-to-t from-background via-background/30 to-transparent" />
+
+                      {/* Clasificación: +18 vs SFW */}
+                      <div className="absolute top-2 left-2 flex items-center gap-1 z-10">
+                        {isAdult ? (
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold tracking-wider bg-destructive/90 text-destructive-foreground uppercase shadow-sm">
+                            +18
+                          </span>
+                        ) : (
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-medium tracking-wider bg-background/80 text-foreground/80 border border-border/60 uppercase shadow-sm">
+                            SFW
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Modo: Roleplay vs Lectura */}
+                      <div className="absolute bottom-2 left-2 right-2 flex items-center gap-1 text-[10px] uppercase tracking-wider text-accent">
+                        <Play className="w-3 h-3" />
+                        {item.last_mode === "roleplay" ? "Roleplay" : "Lectura"}
+                      </div>
                     </div>
 
-                    {/* Modo: Roleplay vs Lectura */}
-                    <div className="absolute bottom-2 left-2 right-2 flex items-center gap-1 text-[10px] uppercase tracking-wider text-accent">
-                      <Play className="w-3 h-3" />
-                      {item.last_mode === "roleplay" ? "Roleplay" : "Lectura"}
+                    <div className="p-3 space-y-1.5">
+                      <h3 className="font-display text-sm leading-tight line-clamp-2 group-hover:text-primary transition-colors">
+                        {story?.title}
+                      </h3>
+                      {story?.character_role && (
+                        <p className="text-[11px] text-muted-foreground truncate">
+                          <span className="text-accent/80">▸</span> {story.character_role}
+                        </p>
+                      )}
+                      <div className="flex items-center justify-between pt-1.5 border-t border-border/40 text-[10px] text-muted-foreground">
+                        <span>{new Date(item.updated_at).toLocaleDateString()}</span>
+                        <ArrowUpRight className="w-3 h-3 group-hover:text-primary transition-transform" />
+                      </div>
                     </div>
-                  </div>
-
-                  <div className="p-3 space-y-1.5">
-                    <h3 className="font-display text-sm leading-tight line-clamp-2 group-hover:text-primary transition-colors">
-                      {story?.title}
-                    </h3>
-                    {story?.character_role && (
-                      <p className="text-[11px] text-muted-foreground truncate">
-                        <span className="text-accent/80">▸</span> {story.character_role}
-                      </p>
-                    )}
-                    <div className="flex items-center justify-between pt-1.5 border-t border-border/40 text-[10px] text-muted-foreground">
-                      <span>{new Date(item.updated_at).toLocaleDateString()}</span>
-                      <ArrowUpRight className="w-3 h-3 group-hover:text-primary transition-transform" />
-                    </div>
-                  </div>
+                  </button>
                 </div>
               );
             })}

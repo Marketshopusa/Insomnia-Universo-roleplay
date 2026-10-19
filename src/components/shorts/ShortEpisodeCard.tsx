@@ -28,7 +28,7 @@ export const ShortEpisodeCard = ({
   const kineva = series.video_provider === "kineva";
   const renderFunction = kineva ? "kineva-video" : "shorts-video";
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
-  const [generating, setGenerating] = useState(["generating", "assembling"].includes(episode.status));
+  const [generating, setGenerating] = useState(() => ["generating", "assembling"].includes(episode.status));
   const [localBusy, setLocalBusy] = useState(false);
   const [shotNumber, setShotNumber] = useState(1);
   const [progress, setProgress] = useState("");
@@ -102,8 +102,10 @@ export const ShortEpisodeCard = ({
           const signed = await supabase.storage.from("kineva-references").createSignedUrl(series.kineva_reference_image_path, 600);
           if (signed.data?.signedUrl) {
             const fileResponse = await fetch(signed.data.signedUrl);
-            const blob = await fileResponse.blob();
-            image = await encodeLocalImage(new File([blob], "referencia.png", { type: blob.type || "image/png" }));
+            if (fileResponse.ok) {
+              const blob = await fileResponse.blob();
+              image = await encodeLocalImage(new File([blob], "referencia.png", { type: blob.type || "image/png" }));
+            }
           }
         } catch {
           image = null;
@@ -239,6 +241,8 @@ export const ShortEpisodeCard = ({
         </span>
         {videoUrl && (
           <button
+            type="button"
+            aria-label={muted ? "Activar sonido" : "Silenciar video"}
             onClick={() => setMuted((value) => !value)}
             className="absolute right-3 top-3 border border-border bg-background/70 p-2"
           >

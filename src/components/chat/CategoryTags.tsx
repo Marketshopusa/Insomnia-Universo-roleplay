@@ -49,48 +49,47 @@ export const CategoryTags = ({
     selectedCategories.forEach((id) => onCategoryToggle(id));
   };
 
+  const selectedSet = useMemo(() => new Set(selectedCategories), [selectedCategories]);
+
   return (
     <div className="rounded-none border border-border/60 bg-card/40 backdrop-blur-sm">
       {/* Header */}
-      <button
-        onClick={() => setOpen((v) => !v)}
-        className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left hover:bg-card/70 transition-colors"
-      >
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 flex items-center justify-center bg-primary/15 border border-primary/30">
-            <Tag className="w-4 h-4 text-primary" />
-          </div>
-          <div>
-            <div className="text-sm font-medium tracking-wide">{t("categories.title")}</div>
-            <div className="text-[11px] text-muted-foreground uppercase tracking-[0.2em]">
-              {selectedCategories.length > 0
-                ? `${selectedCategories.length} ${t("categories.selected")}`
-                : `${categories.length} ${t("categories.available")}`}
+      <div className="w-full flex items-center justify-between gap-3 px-4 py-3 hover:bg-card/70 transition-colors">
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          className="flex-1 flex items-center justify-between gap-3 text-left"
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 flex items-center justify-center bg-primary/15 border border-primary/30">
+              <Tag className="w-4 h-4 text-primary" />
+            </div>
+            <div>
+              <div className="text-sm font-medium tracking-wide">{t("categories.title")}</div>
+              <div className="text-[11px] text-muted-foreground uppercase tracking-[0.2em]">
+                {selectedCategories.length > 0
+                  ? `${selectedCategories.length} ${t("categories.selected")}`
+                  : `${categories.length} ${t("categories.available")}`}
+              </div>
             </div>
           </div>
-        </div>
-        <div className="flex items-center gap-2">
-          {selectedCategories.length > 0 && (
-            <span
-              role="button"
-              tabIndex={0}
-              onClick={(e) => {
-                e.stopPropagation();
-                clearAll();
-              }}
-              className="text-xs px-2 py-1 border border-border hover:border-destructive/50 hover:text-destructive transition-colors"
-            >
-              {t("categories.clear")}
-            </span>
-          )}
           <ChevronDown
             className={cn(
               "w-4 h-4 text-muted-foreground transition-transform",
               open && "rotate-180"
             )}
           />
-        </div>
-      </button>
+        </button>
+        {selectedCategories.length > 0 && (
+          <button
+            type="button"
+            onClick={clearAll}
+            className="text-xs px-2 py-1 border border-border hover:border-destructive/50 hover:text-destructive transition-colors"
+          >
+            {t("categories.clear")}
+          </button>
+        )}
+      </div>
 
       {/* Body */}
       {open && (
@@ -106,6 +105,8 @@ export const CategoryTags = ({
             />
             {query && (
               <button
+                type="button"
+                aria-label={t("categories.clear")}
                 onClick={() => setQuery("")}
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
               >
@@ -116,13 +117,14 @@ export const CategoryTags = ({
 
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-1.5 max-h-72 overflow-y-auto pr-1">
             {filtered.map((category) => {
-              const active = selectedCategories.includes(category.id);
+              const active = selectedSet.has(category.id);
               return (
                 <button
+                  type="button"
                   key={category.id}
                   onClick={() => onCategoryToggle(category.id)}
                   className={cn(
-                    "px-2.5 py-1.5 text-xs font-medium border transition-all text-left truncate",
+                    "px-2.5 py-1.5 text-xs font-medium border transition-colors text-left truncate",
                     active
                       ? "bg-primary/20 border-primary text-foreground shadow-[inset_0_-2px_0_hsl(var(--primary))]"
                       : "bg-background/40 border-border/60 text-muted-foreground hover:border-primary/40 hover:text-foreground"

@@ -91,7 +91,7 @@ export function CastGallery({ userId, onPrimary, onSecondary, onSupporting }: {
       title: "No se pudo abrir el reparto guardado.",
       description: error instanceof Error ? error.message : undefined, variant: "destructive",
     }));
-  }, [reload]);
+  }, [reload, toast]);
 
   const selectFiles = async (files: FileList | null) => {
     if (!files?.length) return;
@@ -101,13 +101,17 @@ export function CastGallery({ userId, onPrimary, onSecondary, onSupporting }: {
     }
     setBusy(true);
     try {
-      const selected: Pending[] = [];
-      for (const source of Array.from(files)) {
+      const sources = Array.from(files);
+      for (const source of sources) {
         if (source.size > 10 * 1024 * 1024 || !["image/png", "image/jpeg", "image/webp"].includes(source.type))
           throw new Error("Cada foto debe ser PNG, JPEG o WebP y pesar menos de 10 MB.");
-        const portrait = await portraitFrom(source);
-        selected.push({ source, portrait, url: URL.createObjectURL(portrait) });
       }
+      const selected = await Promise.all(
+        sources.map(async (source) => {
+          const portrait = await portraitFrom(source);
+          return { source, portrait, url: URL.createObjectURL(portrait) };
+        }),
+      );
       setPending((current) => [...current, ...selected]);
     } catch (error) {
       toast({ title: "No pude preparar las fotos.", description: error instanceof Error ? error.message : undefined, variant: "destructive" });
@@ -118,13 +122,15 @@ export function CastGallery({ userId, onPrimary, onSecondary, onSupporting }: {
     setBusy(true);
     let saved = 0;
     try {
-      for (const item of pending) {
-        const actorName = (pending.length === 1 && name.trim() ? name.trim() : item.source.name.replace(/\.[^.]+$/, "")).slice(0, 80);
-        const path = userId + "/cast_" + crypto.randomUUID() + "_" + role + "_" + encodeName(actorName) + ".jpg";
-        const { error } = await supabase.storage.from(BUCKET).upload(path, item.portrait, { contentType: "image/jpeg", upsert: false });
-        if (error) throw error;
-        saved += 1;
-      }
+      await Promise.all(
+        pending.map(async (item) => {
+          const actorName = (pending.length === 1 && name.trim() ? name.trim() : item.source.name.replace(/\.[^.]+$/, "")).slice(0, 80);
+          const path = userId + "/cast_" + crypto.randomUUID() + "_" + role + "_" + encodeName(actorName) + ".jpg";
+          const { error } = await supabase.storage.from(BUCKET).upload(path, item.portrait, { contentType: "image/jpeg", upsert: false });
+          if (error) throw error;
+          saved += 1;
+        }),
+      );
       pending.forEach((item) => URL.revokeObjectURL(item.url));
       setPending([]); setName("");
       await reload();
@@ -138,7 +144,7 @@ export function CastGallery({ userId, onPrimary, onSecondary, onSupporting }: {
       toast({ title: "No se pudo guardar todo el elenco.", description: error instanceof Error ? error.message : undefined, variant: "destructive" });
     } finally { setBusy(false); }
   };
-  const useMember = async (entry: Member, position: "primary" | "secondary" | "supporting") => {
+  const applyMember = async (entry: Member, position: "primary" | "secondary" | "supporting") => {
     setBusy(true);
     try {
       const { data, error } = await supabase.storage.from(BUCKET).download(entry.path);
@@ -196,9 +202,9 @@ export function CastGallery({ userId, onPrimary, onSecondary, onSupporting }: {
         <div className="truncate font-medium">{entry.name}</div>
         <div className="text-xs text-muted-foreground">{entry.role === "m" ? "Mujer" : entry.role === "h" ? "Hombre" : "Reparto"}</div>
         <div className="mt-2 flex flex-wrap gap-1">
-          <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void useMember(entry, "primary")}>Principal</Button>
-          <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void useMember(entry, "secondary")}>Segundo</Button>
-          <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void useMember(entry, "supporting")}>Reparto</Button>
+          <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void applyMember(entry, "primary")}>Principal</Button>
+          <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void applyMember(entry, "secondary")}>Segundo</Button>
+          <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void applyMember(entry, "supporting")}>Reparto</Button>
           <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={() => void remove(entry)}>Quitar</Button>
         </div>
       </div>)}

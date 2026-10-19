@@ -49,6 +49,52 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 
+const CoverPicker = ({
+  url,
+  type,
+  uploading,
+  onPick,
+  onClear,
+}: {
+  url: string | null;
+  type: string | null;
+  uploading: boolean;
+  onPick: () => void;
+  onClear: () => void;
+}) => (
+  <>
+    {url ? (
+      <div className="relative rounded-md overflow-hidden border border-border">
+        {type === "video" ? (
+          <video src={url} className="w-full max-h-56 object-cover" controls />
+        ) : (
+          <img src={url} alt="cover" className="w-full max-h-56 object-cover" />
+        )}
+        <div className="absolute top-2 right-2 flex gap-2">
+          <Button type="button" size="sm" variant="secondary" onClick={onPick} disabled={uploading}>
+            {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Cambiar"}
+          </Button>
+          <Button
+            type="button"
+            size="icon"
+            variant="destructive"
+            aria-label="Quitar portada"
+            className="h-8 w-8"
+            onClick={onClear}
+          >
+            <X className="w-4 h-4" />
+          </Button>
+        </div>
+      </div>
+    ) : (
+      <Button type="button" variant="outline" className="w-full gap-2" onClick={onPick} disabled={uploading}>
+        {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <ImagePlus className="w-4 h-4" />}
+        Agregar portada (imagen, gif o video)
+      </Button>
+    )}
+  </>
+);
+
 const MyStories = () => {
   const { user, loading: authLoading } = useAuth();
   const { toast } = useToast();
@@ -239,43 +285,6 @@ const MyStories = () => {
     }
   };
 
-  const CoverPicker = ({
-    url,
-    type,
-    onPick,
-    onClear,
-  }: {
-    url: string | null;
-    type: string | null;
-    onPick: () => void;
-    onClear: () => void;
-  }) => (
-    <>
-      {url ? (
-        <div className="relative rounded-md overflow-hidden border border-border">
-          {type === "video" ? (
-            <video src={url} className="w-full max-h-56 object-cover" controls />
-          ) : (
-            <img src={url} alt="cover" className="w-full max-h-56 object-cover" />
-          )}
-          <div className="absolute top-2 right-2 flex gap-2">
-            <Button type="button" size="sm" variant="secondary" onClick={onPick} disabled={uploading}>
-              {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Cambiar"}
-            </Button>
-            <Button type="button" size="icon" variant="destructive" className="h-8 w-8" onClick={onClear}>
-              <X className="w-4 h-4" />
-            </Button>
-          </div>
-        </div>
-      ) : (
-        <Button type="button" variant="outline" className="w-full gap-2" onClick={onPick} disabled={uploading}>
-          {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <ImagePlus className="w-4 h-4" />}
-          Agregar portada (imagen, gif o video)
-        </Button>
-      )}
-    </>
-  );
-
   if (authLoading) {
     return (
       <MainLayout>
@@ -413,6 +422,7 @@ const MyStories = () => {
                 <CoverPicker
                   url={newCoverUrl}
                   type={newCoverType}
+                  uploading={uploading}
                   onPick={() => newFileRef.current?.click()}
                   onClear={() => {
                     setNewCoverUrl(null);
@@ -466,6 +476,7 @@ const MyStories = () => {
                     <Button
                       variant="secondary"
                       size="icon"
+                      aria-label={`Opciones de ${story.title}`}
                       className="absolute top-10 right-2 h-7 w-7 opacity-0 group-hover:opacity-100 transition z-10"
                       onClick={(e) => e.stopPropagation()}
                     >
