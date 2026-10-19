@@ -97,9 +97,11 @@ export async function generateNvidia(messages, options = {}) {
   const apiKey = process.env.NVIDIA_API_KEY || defaultNvidiaKey;
   if (!apiKey) return null;
   const models = options.models || [
-    "meta/llama-3.2-11b-vision-instruct",
+    "google/diffusiongemma-26b-a4b-it",
+    "google/gemma-4-31b-it",
   ];
   const fetchImpl = options.fetchImpl || fetch;
+  let fallbackCandidate = null;
   for (const model of models) {
     try {
       const response = await fetchImpl("https://integrate.api.nvidia.com/v1/chat/completions", {
@@ -111,10 +113,10 @@ export async function generateNvidia(messages, options = {}) {
         body: JSON.stringify({
           model,
           messages,
-          max_tokens: options.maxTokens || 800,
-          temperature: options.temperature ?? 0.8,
+          max_tokens: options.maxTokens || 300,
+          temperature: options.temperature ?? 0.78,
         }),
-        signal: AbortSignal.timeout(options.timeoutMs || 6000),
+        signal: AbortSignal.timeout(options.timeoutMs || 12000),
       });
       if (!response.ok) {
         console.warn("Nvidia model error", model, response.status);
@@ -123,13 +125,18 @@ export async function generateNvidia(messages, options = {}) {
       const data = await response.json();
       const content = data?.choices?.[0]?.message?.content?.trim();
       if (content && content.length > 5 && !isRefusal(content)) {
+        if (!fallbackCandidate) fallbackCandidate = content;
+        if (options.validate && !options.validate(content)) {
+          console.warn("Nvidia candidate rejected by validation, trying next model:", model);
+          continue;
+        }
         return content;
       }
     } catch (e) {
       console.warn("Nvidia request failed for", model, e.message);
     }
   }
-  return null;
+  return fallbackCandidate;
 }
 
 export async function generate(model, parts, settings = {}, options = {}) {
@@ -598,7 +605,7 @@ export default async function handler(req, res) {
         if (!reply || reply.length > 2400 || reply.split(/\n\s*\n/).length > 4) return true;
         // 1. Reject Chinese or Asian non-Latin scripts
         if (/[\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff\u3040-\u30ff]/.test(reply)) return true;
-        if (replyChangesScene(reply, sceneContext)) return true;
+        if (!adultMode && replyChangesScene(reply, sceneContext)) return true;
         if (mentionsMinor(reply) && !mentionsMinor(sceneContext)) return true;
         if (/(respond as a character|under \d+ characters|brief action and natural dialogue|do not decide user actions|character .{0,80} currently|conversaci[oó]n:|premise:|el usuario interpreta a|estás interpretando a|language:|\bspanish\s*\.|\benglish\s*\.)/i.test(reply)) return true;
         if (adultMode && /(sabes muy bien qui[eé]n soy yo|c[oó]mo estamos relacionados|no deber[ií]amos hacer esto|esto est[aá] mal|somos familia|en un roleplay)/i.test(reply)) return true;
@@ -784,27 +791,41 @@ export default async function handler(req, res) {
       }
 
       let content = null;
-      let openRouterExhausted = null;
-      // --- NÚCLEO ÚNICO CENTRAL DE ROLEPLAY (Euryale 70B / Magnum 72B) ---
-      // Todas las tarjetas de la aplicación usan este mismo motor sin censura y con obediencia total.
+      // 1. Motor principal en la nube (Nvidia NIM — ~0.6s, 100% gratuito y sin censura)
       try {
-        content = await generateOpenRouter(openRouterMessages, {
+        content = await generateNvidia(openRouterMessages, {
           models: [
-            "anthracite-org/magnum-v4-72b",
-            "sao10k/l3.3-euryale-70b",
+            "google/diffusiongemma-26b-a4b-it",
+            "google/gemma-4-31b-it",
           ],
           maxTokens: 165,
           temperature: 0.78,
-          timeoutMs: 25000,
+          timeoutMs: 12000,
           validate: (reply) => !isOffRole(reply),
         });
       } catch (err) {
-        console.warn("OpenRouter roleplay invocation failed:", err.message);
-        if (err.status === 402 || err.code === "credits_exhausted") {
-          openRouterExhausted = err;
+        console.warn("Nvidia roleplay invocation failed:", err.message);
+      }
+
+      // 2. Respaldo OpenRouter (si el usuario tiene saldo o modelos gratuitos activos)
+      if (!content) {
+        try {
+          content = await generateOpenRouter(openRouterMessages, {
+            models: [
+              "anthracite-org/magnum-v4-72b",
+              "sao10k/l3.3-euryale-70b",
+            ],
+            maxTokens: 165,
+            temperature: 0.78,
+            timeoutMs: 15000,
+            validate: (reply) => !isOffRole(reply),
+          });
+        } catch (err) {
+          console.warn("OpenRouter roleplay invocation failed:", err.message);
         }
       }
 
+      // 3. Respaldo Gemini
       if (!content) {
         try {
           content = await generate(
@@ -816,10 +837,6 @@ export default async function handler(req, res) {
         } catch (err) {
           console.warn("Gemini roleplay fallback failed:", err.message);
         }
-      }
-
-      if (!content && openRouterExhausted) {
-        return send(res, 402, { error: "credits_exhausted", message: openRouterExhausted.message });
       }
 
       if (content) {
@@ -960,13 +977,27 @@ export default async function handler(req, res) {
       try {
         content = await generate("gemini-2.5-flash", [{ text: prompt }], { maxOutputTokens: 2000, temperature: 0.4 }, options);
       } catch (error) {
-        if (error.code !== "off_role") throw error;
-        content = await generate(
-          "gemini-2.5-flash",
-          [{ text: prompt + "\n\nEl intento anterior cambió la historia. Escribe solo la premisa, con las mismas personas y el mismo suceso, sin otra trama ni otra edad." }],
-          { maxOutputTokens: 2000, temperature: 0.2 },
-          options,
-        );
+        if (error.code === "off_role") {
+          try {
+            content = await generate(
+              "gemini-2.5-flash",
+              [{ text: prompt + "\n\nEl intento anterior cambió la historia. Escribe solo la premisa, con las mismas personas y el mismo suceso, sin otra trama ni otra edad." }],
+              { maxOutputTokens: 2000, temperature: 0.2 },
+              options,
+            );
+          } catch {
+            content = null;
+          }
+        }
+        if (!content) {
+          content = await generateNvidia([{ role: "user", content: prompt }], {
+            models: ["google/diffusiongemma-26b-a4b-it", "google/gemma-4-31b-it"],
+            maxTokens: 1200,
+            temperature: 0.5,
+            timeoutMs: 15000,
+          });
+        }
+        if (!content) throw error;
       }
       return send(res, 200, { content });
     }

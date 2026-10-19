@@ -50,6 +50,7 @@ import { compactRoleplayReply, resolveActiveCharacter, sanitizeSwitchedReply } f
 async function callLocalLlama<T>(body: unknown): Promise<FunctionResult<T> | null> {
   try {
     if ((import.meta as any).env?.VITEST) return null;
+    if (typeof window !== "undefined" && window.location.protocol === "https:") return null;
     const input = body as {
       story?: { title?: string; description?: string; story_context?: string; character_role?: string; player_role?: string };
       userMessage?: string;
