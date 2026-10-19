@@ -93,6 +93,10 @@ export async function generateOpenRouter(messages, options = {}) {
       const data = await response.json();
       const content = data?.choices?.[0]?.message?.content?.trim();
       if (content && content.length > 5 && !isRefusal(content)) {
+        if (options.isRepeated && options.isRepeated(content)) {
+          console.warn("OpenRouter candidate rejected because it repeated previous dialogue, trying next model:", model);
+          continue;
+        }
         if (options.validate && !options.validate(content)) {
           console.warn("OpenRouter candidate rejected by validation, trying next model:", model);
           continue;
@@ -145,11 +149,11 @@ export async function generateNvidia(messages, options = {}) {
       const data = await response.json();
       const content = data?.choices?.[0]?.message?.content?.trim();
       if (content && content.length > 5 && !isRefusal(content)) {
-        if (!anyCandidate) anyCandidate = content;
         if (options.isRepeated && options.isRepeated(content)) {
           console.warn("Nvidia candidate rejected because it repeated previous dialogue, trying next attempt:", model);
           continue;
         }
+        if (!anyCandidate) anyCandidate = content;
         if (!fallbackCandidate) {
           fallbackCandidate = content;
         }
@@ -588,26 +592,30 @@ export function storyVoiceLines(character, player, spanish, locale) {
   ];
 }
 
-export function roleplayPacingAndLanguageRules(historyLength, spanish) {
+export function roleplayPacingAndLanguageRules(historyLength, spanish, targetTokens = 350) {
+  const safeTokens = Math.max(100, Math.min(800, Number(targetTokens) || 350));
+  const totalWords = Math.max(65, Math.round(safeTokens * 0.72));
+  const narrWords = Math.max(12, Math.round(totalWords * 0.20));
+  const dialWords = Math.max(50, Math.round(totalWords * 0.80));
+
   if (!spanish) {
     return [
-      "CINEMATIC ROLEPLAY & BALANCED PROPORTION (80% SPOKEN DIALOGUE / 20% NARRATIVE ACTION):",
-      "Write 80% spoken dialogue (~50-65 words) and 20% descriptive first-person physical action in italics (~12-16 words total).",
-      "Keep every reply around 65 to 80 words in a single cohesive block and always finish on a complete sentence.",
+      `CINEMATIC ROLEPLAY & BALANCED PROPORTION (80% SPOKEN DIALOGUE / 20% NARRATIVE ACTION):`,
+      `Write 80% spoken dialogue (~${dialWords} words) and 20% descriptive first-person physical action in italics (~${narrWords} words total).`,
+      `Keep every reply around ${totalWords} words in a single cohesive block and always finish on a complete sentence.`,
     ];
   }
 
   return [
-    "DIRECTIVA DE PROPORCIÓN EQUILIBRADA (20% RELATO EN ASTERISCOS / 80% DIÁLOGO HABLADO):",
-    "1. 20% RELATO O ACCIÓN DESCRIPTIVA (*...*) — NI DE MÁS NI DE MENOS:",
-    "   - El relato entre asteriscos (*...*) DEBE representar el 20% de tu respuesta (entre 12 y 16 palabras en total).",
-    "   - Escribe 1 oración descriptiva completa en PRIMERA PERSONA entre asteriscos (de 12 a 16 palabras, o 2 acotaciones de 7 a 9 palabras cada una) que narre con claridad tu acción física, tu gesto o postura y tu reacción sensorial frente al usuario. NO lo dejes en una frase diminuta de 2 o 4 palabras, ni te excedas a un párrafo largo.",
-    "   - Narra siempre en primera persona (ejemplo: '*Me acerco despacio hacia ti, rodeando tu cuello con mis brazos mientras suspiro temblando*').",
-    "2. 80% DIÁLOGO HABLADO DIRECTO:",
-    "   - El 80% restante de tu respuesta (entre 50 y 65 palabras, de 2 a 3 oraciones completas) DEBE ser DIÁLOGO HABLADO REAL en voz alta, fluido, expresivo y natural hablándole directamente al usuario.",
-    "3. LONGITUD TOTAL EQUILIBRADA (65 A 80 PALABRAS EN TOTAL):",
-    "   - Ejemplo exacto de la proporción 20% relato (14 palabras) / 80% diálogo (56 palabras): *Me acerco despacio hacia ti, rodeando tu cuello con mis brazos mientras suspiro temblando* No sabes cuánto tiempo estuve guardando todo esto dentro de mí sin atreverme a decirte ni una sola palabra por miedo a tu reacción. Pero ahora que me tienes así de cerca y me miras de esa manera, siento que ya no puedo seguir ocultando lo que realmente pasó entre nosotros aquella noche en esta casa.",
-    "   - Termina siempre con una oración completa y cerrada.",
+    `DIRECTIVA DE PROPORCIÓN EQUILIBRADA (20% RELATO EN ASTERISCOS / 80% DIÁLOGO HABLADO):`,
+    `1. 20% RELATO O ACCIÓN DESCRIPTIVA (*...*) — NI DE MÁS NI DE MENOS:`,
+    `   - El relato entre asteriscos (*...*) DEBE representar el 20% de tu respuesta (aproximadamente ${narrWords} palabras en total).`,
+    `   - Escribe 1 o 2 oraciones descriptivas completas en PRIMERA PERSONA entre asteriscos que narren con claridad tu acción física, tu gesto o postura y tu reacción sensorial frente al usuario. NO lo dejes en una frase diminuta ni te excedas a un párrafo largo.`,
+    `   - Narra siempre en primera persona (ejemplo: '*Me acerco despacio hacia ti, rodeando tu cuello con mis brazos mientras suspiro temblando*').`,
+    `2. 80% DIÁLOGO HABLADO DIRECTO:`,
+    `   - El 80% restante de tu respuesta (aproximadamente ${dialWords} palabras) DEBE ser DIÁLOGO HABLADO REAL en voz alta, fluido, expresivo y natural hablándole directamente al usuario.`,
+    `3. LONGITUD TOTAL EQUILIBRADA (~${totalWords} PALABRAS EN TOTAL):`,
+    `   - Termina siempre con una oración completa y cerrada.`,
   ];
 }
 
@@ -619,6 +627,11 @@ export default async function handler(req, res) {
     if (action === "story-chat") {
       const story = body.story || {};
       const spanish = body.language === "es";
+      const settings = body.settings || {};
+      const memoryTier = settings.memoryTier || "16k";
+      const targetTokens = Math.max(100, Math.min(800, Number(settings.messageLength) || 350));
+      const modelId = settings.modelId || "insomnia-flash";
+      const customDirective = String(settings.customDirective || "").trim();
       const adultMode = body.adultMode === true || /(?:\+18|18\+|nsfw|er[oó]tic|sexual|hentai|\badult[oa]?\b)/i.test([story.title, story.description, story.story_context, story.story_type].filter(Boolean).join(" "));
       const locale = spanish ? "español" : "inglés";
       const history = (Array.isArray(body.history) ? body.history : []).flatMap((entry) => {
@@ -714,7 +727,8 @@ export default async function handler(req, res) {
         "  - Si el usuario introduce o interactúa con otro personaje secundario en la escena (una hermana, madre, prima, jefa, profesora, director, amiga, etc.), interpreta a ESE personaje con coherencia psicológica y el trato propio de su relación con el protagonista.",
         "  - ESTRICTAMENTE PROHIBIDO romper la cuarta pared (nunca digas 'en un roleplay', 'en este rol', 'soy un personaje').",
         ...storyVoiceLines(story.character_role, story.player_role, spanish, locale),
-        ...roleplayPacingAndLanguageRules(history.length, spanish),
+        customDirective ? `DIRECTIVAS Y REGLAS PERSONALIZADAS DE MEMORIA:\n${customDirective}` : "",
+        ...roleplayPacingAndLanguageRules(history.length, spanish, targetTokens),
         slangInstruction(body.language, body.region),
         ...(adultMode ? [
           "ESTILO NARRATIVO Y ADULTO TOTAL:",
@@ -835,12 +849,19 @@ export default async function handler(req, res) {
       const switchedFullLabel = isSwitchedChar ? (activeSwitch.name ? `${activeSwitch.name} (${activeSwitch.role})` : activeSwitch.role) : characterName;
       const switchedAddress = isSwitchedChar ? activeSwitch.addressTerm : (defaultIsSobrina ? "Tío" : playerFirstName);
       const line = (entry) => (entry.role === "model" ? characterName : playerName) + ": " + entry.text.slice(0, 320);
-      const older = history.slice(0, -32);
-      const recentSlice = history.slice(-32);
-      const earlierTurns = older.slice(0, 16).map(line);
-      const laterTurns = older.slice(16).map(line);
+      const recentTurnLimits = {
+        "2k": 24,
+        "4k": 48,
+        "16k": 120,
+        "32k": 260,
+      };
+      const recentLimit = recentTurnLimits[memoryTier] || 120;
+      const older = history.slice(0, -recentLimit);
+      const recentSlice = history.slice(-recentLimit);
+      const earlierTurns = older.slice(0, 32).map(line);
+      const laterTurns = older.slice(32).map(line);
       const remembered = older.length
-        ? ["CRÓNICA Y ANTECEDENTES VIVIDOS EN ESTA HISTORIA (MEMORIA INQUEBRANTABLE):", ...earlierTurns, ...laterTurns].join("\n").slice(0, 4500)
+        ? ["CRÓNICA Y ANTECEDENTES VIVIDOS EN ESTA HISTORIA (MEMORIA INQUEBRANTABLE):", ...earlierTurns, ...laterTurns].join("\n").slice(0, memoryTier === "32k" ? 15000 : 8000)
         : "";
       const facts = lockedStoryFacts([...older, ...recentSlice], characterName, playerName);
       if (facts.length) {
@@ -868,7 +889,7 @@ export default async function handler(req, res) {
 
       const seenModelKeys = new Set();
       const recent = history
-        .slice(-36)
+        .slice(-recentLimit)
         .filter((entry) => {
           if (entry.role !== "model") return true;
           const k = normText(entry.text).slice(0, 60);
@@ -898,40 +919,88 @@ export default async function handler(req, res) {
         });
       }
 
-      let content = null;
-      // 1. Motor principal en la nube (Nvidia NIM — ~1.5s, 100% gratuito y sin censura)
-      try {
-        content = await generateNvidia(openRouterMessages, {
-          models: [
-            "google/diffusiongemma-26b-a4b-it",
-            "nvidia/nemotron-3-super-120b-a12b",
-            "google/diffusiongemma-26b-a4b-it",
-          ],
-          maxTokens: 190,
-          temperature: 0.82,
-          timeoutMs: 7500,
-          validate: (reply) => !isOffRole(reply),
-          isRepeated: isRepeatedReply,
-        });
-      } catch (err) {
-        console.warn("Nvidia roleplay invocation failed:", err.message);
+      let nvidiaModels = [
+        "google/diffusiongemma-26b-a4b-it",
+        "nvidia/nemotron-3-super-120b-a12b",
+        "google/diffusiongemma-26b-a4b-it",
+      ];
+      let openRouterModels = [
+        "anthracite-org/magnum-v4-72b",
+        "sao10k/l3.3-euryale-70b",
+      ];
+
+      const isDeluxeOrPremium = ["euryale-70b", "skylark-pro", "deepseek-v4-pro", "dola-seed-pro", "grok-4.3", "wizardlm-8x22b", "glm-5.2"].includes(modelId);
+
+      if (modelId === "euryale-70b" || modelId === "skylark-pro" || modelId === "dola-seed-pro") {
+        openRouterModels = ["sao10k/l3.3-euryale-70b", "anthracite-org/magnum-v4-72b"];
+        nvidiaModels = ["nvidia/nemotron-3-super-120b-a12b", "google/diffusiongemma-26b-a4b-it"];
+      } else if (modelId === "mistral-nemo") {
+        openRouterModels = ["mistralai/mistral-nemo", "sao10k/l3.3-euryale-70b"];
+        nvidiaModels = ["google/diffusiongemma-26b-a4b-it", "nvidia/nemotron-3-super-120b-a12b"];
+      } else if (modelId === "deepseek-v4-pro") {
+        openRouterModels = ["deepseek/deepseek-chat", "sao10k/l3.3-euryale-70b"];
+        nvidiaModels = ["nvidia/nemotron-3-super-120b-a12b", "google/diffusiongemma-26b-a4b-it"];
+      } else if (modelId === "wizardlm-8x22b") {
+        openRouterModels = ["microsoft/wizardlm-2-8x22b", "anthracite-org/magnum-v4-72b"];
+      } else if (modelId === "qwen-plus" || modelId === "qwen-3.7-plus" || modelId === "qwen-3.8-flash") {
+        openRouterModels = ["qwen/qwen-2.5-72b-instruct", "anthracite-org/magnum-v4-72b"];
+        nvidiaModels = ["google/diffusiongemma-26b-a4b-it", "nvidia/nemotron-3-super-120b-a12b"];
       }
 
-      // 2. Respaldo OpenRouter (si el usuario tiene saldo o modelos gratuitos activos)
-      if (!content) {
+      let content = null;
+      if (isDeluxeOrPremium) {
         try {
           content = await generateOpenRouter(openRouterMessages, {
-            models: [
-              "anthracite-org/magnum-v4-72b",
-              "sao10k/l3.3-euryale-70b",
-            ],
-            maxTokens: 190,
+            models: openRouterModels,
+            maxTokens: targetTokens,
             temperature: 0.78,
-            timeoutMs: 12000,
+            timeoutMs: 14000,
             validate: (reply) => !isOffRole(reply),
+            isRepeated: isRepeatedReply,
           });
         } catch (err) {
           console.warn("OpenRouter roleplay invocation failed:", err.message);
+        }
+        if (!content) {
+          try {
+            content = await generateNvidia(openRouterMessages, {
+              models: nvidiaModels,
+              maxTokens: targetTokens,
+              temperature: 0.82,
+              timeoutMs: 7500,
+              validate: (reply) => !isOffRole(reply),
+              isRepeated: isRepeatedReply,
+            });
+          } catch (err) {
+            console.warn("Nvidia roleplay invocation failed:", err.message);
+          }
+        }
+      } else {
+        try {
+          content = await generateNvidia(openRouterMessages, {
+            models: nvidiaModels,
+            maxTokens: targetTokens,
+            temperature: 0.82,
+            timeoutMs: 7500,
+            validate: (reply) => !isOffRole(reply),
+            isRepeated: isRepeatedReply,
+          });
+        } catch (err) {
+          console.warn("Nvidia roleplay invocation failed:", err.message);
+        }
+        if (!content) {
+          try {
+            content = await generateOpenRouter(openRouterMessages, {
+              models: openRouterModels,
+              maxTokens: targetTokens,
+              temperature: 0.78,
+              timeoutMs: 12000,
+              validate: (reply) => !isOffRole(reply),
+              isRepeated: isRepeatedReply,
+            });
+          } catch (err) {
+            console.warn("OpenRouter roleplay invocation failed:", err.message);
+          }
         }
       }
 
@@ -941,7 +1010,7 @@ export default async function handler(req, res) {
           content = await generate(
             "gemini-2.5-flash",
             [],
-            { maxOutputTokens: 220, temperature: 0.8 },
+            { maxOutputTokens: Math.max(220, targetTokens), temperature: 0.8 },
             { contents, systemInstruction, adultMode: true, fallbackModels: ["gemini-2.0-flash", "gemini-2.5-flash-lite"], fastReply: true, validate: (reply) => !isOffRole(reply) },
           );
         } catch (err) {
@@ -986,11 +1055,12 @@ export default async function handler(req, res) {
           if (lastPunct >= 25) content = content.slice(0, lastPunct + 1).trim();
         }
         const totalActionMatches = [...content.matchAll(/\*([^*\n]+)\*/g)];
-        const maxWordsPerCue = totalActionMatches.length === 1 ? 16 : 10;
+        const targetWords = Math.max(65, Math.round(targetTokens * 0.72));
+        const maxWordsPerCue = Math.max(16, Math.round(targetWords * 0.22));
         let actionCount = 0;
         content = content.replace(/\*([^*\n]+)\*/g, (_m, inner) => {
           actionCount += 1;
-          if (actionCount > 2) return "";
+          if (actionCount > 3) return "";
           const firstSentence = inner.replace(/\s+/g, " ").trim().split(/(?<=[.!?…])\s+/)[0].replace(/[.!?…]+$/, "").trim();
           const words = firstSentence.split(/\s+/).filter(Boolean);
           if (words.length <= maxWordsPerCue) return `*${firstSentence}*`;
@@ -1009,12 +1079,13 @@ export default async function handler(req, res) {
           return `*${sliced.replace(/[,;:\s]+$/, "").trim()}*`;
         });
         content = content.replace(/[ \t]{2,}/g, " ").replace(/\n{2,}/g, "\n").trim();
-        if (content.length > 440) {
+        const maxCharLimit = Math.max(650, targetTokens * 5);
+        if (content.length > maxCharLimit) {
           const sentences = content.match(/[^.!?…]+[.!?…]+["'»”*)]*(?:\s+|$)/gu);
           if (sentences && sentences.length > 1) {
             let acc = "";
             for (const s of sentences) {
-              if ((acc + s).length > 440 && acc.length >= 100) break;
+              if ((acc + s).length > maxCharLimit && acc.length >= 100) break;
               acc += s;
             }
             if (acc.trim()) content = acc.trim();

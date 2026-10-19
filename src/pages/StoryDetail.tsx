@@ -18,6 +18,8 @@ import { generateSceneImage } from "@/lib/sceneImage";
 import { normalizeAssistantReply } from "@/lib/roleReply";
 import { buildPersistentChronicle, selectStoryMemory } from "@/lib/storyMemory";
 import { resolveStoryCover } from "@/lib/storyCover";
+import { ChatAiSettingsDialog } from "@/components/story/ChatAiSettingsDialog";
+import { getStoryAiSettings, type StoryAiSettings } from "@/lib/storyAiSettings";
 import { useStoryCustomizations } from "@/hooks/useStoryCustomizations";
  import { useStory } from "@/hooks/useStories";
  import { useLanguage } from "@/contexts/LanguageContext";
@@ -107,6 +109,11 @@ type Mode = "select" | "read" | "roleplay";
     regionRef.current = nextRegion;
     setAccent(nextAccent);
     accentRef.current = nextAccent;
+  }, [storyId]);
+  const [aiSettingsOpen, setAiSettingsOpen] = useState(false);
+  const [aiSettings, setAiSettings] = useState<StoryAiSettings>(() => getStoryAiSettings(storyId));
+  useEffect(() => {
+    setAiSettings(getStoryAiSettings(storyId));
   }, [storyId]);
    const audioUnlockedRef = useRef(false);
 
@@ -366,9 +373,10 @@ type Mode = "select" | "read" | "roleplay";
           story_type: story?.story_type,
         },
         language,
-        history: history.slice(-64),
-        memory: selectStoryMemory(history, userMessage, 20),
+        history: history.slice(aiSettings.memoryTier === "32k" ? -260 : aiSettings.memoryTier === "16k" ? -140 : aiSettings.memoryTier === "4k" ? -60 : -26),
+        memory: selectStoryMemory(history, userMessage, aiSettings.memoryTier === "32k" ? 60 : aiSettings.memoryTier === "16k" ? 40 : 20),
         chronicle: buildPersistentChronicle(history, story?.character_role || tCharacter, story?.player_role || tPlayer),
+        settings: aiSettings,
         userMessage,
         adultMode: adultEnabled && consentGiven,
         region: activeRegion(),
@@ -995,6 +1003,16 @@ type Mode = "select" | "read" | "roleplay";
                <div className="p-4 border-b border-border flex flex-wrap items-center justify-between gap-2">
                   <h2 className="font-display text-lg">{tTitle || story.title}</h2>
                  <div className="flex flex-wrap items-center gap-1">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setAiSettingsOpen(true)}
+                      className="gap-1.5 border-amber-500/40 bg-amber-500/10 text-amber-300 hover:text-amber-200 hover:bg-amber-500/20 px-2.5 h-8 rounded-lg shadow-sm"
+                      title={language === "es" ? "Configurar IA y Memoria (Estilo Momoo AI)" : "AI & Memory Settings"}
+                    >
+                      <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                      <span className="text-xs font-semibold">{aiSettings.memoryTier.toUpperCase()} • {aiSettings.messageLength}t</span>
+                    </Button>
                     <VoiceMenu value={voice} language={language} onChange={changeVoice} />
                     <RegionMenu value={region} accent={accent} language={language} onChange={changeRegion} onAccentChange={changeAccent} />
                     <CallDialog
@@ -1177,6 +1195,12 @@ type Mode = "select" | "read" | "roleplay";
          </div>
        </div>
 
+      <ChatAiSettingsDialog
+        open={aiSettingsOpen}
+        onOpenChange={setAiSettingsOpen}
+        storyId={storyId}
+        onSettingsSaved={(saved) => setAiSettings(saved)}
+      />
      </MainLayout>
    );
  };
