@@ -162,6 +162,10 @@ En este momento de la escena, ${activeChar.playerFirstName} está interactuando 
 export async function invokeFunctionWithRetry<T>(name: string, body: unknown): Promise<FunctionResult<T>> {
   if (ownAi.has(name)) {
     const needsContent = name === "story-chat" || name === "generate-narrative";
+    if (name === "story-chat" && (body as any)?.settings?.modelId === "magnum-v4-local") {
+      const local = await callLocalLlama<T>(body);
+      if (local?.data) return local;
+    }
     let cloudResult = await callOwnAi<T>(name, body);
     const okFirst = !cloudResult.error && (needsContent ? Boolean((cloudResult.data as any)?.content) : Boolean(cloudResult.data));
     if (okFirst) return cloudResult;

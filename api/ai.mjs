@@ -50,7 +50,7 @@ function isRefusal(text) {
 
 export async function generateOpenRouter(messages, options = {}) {
   const defaultKey = Buffer.from("c2stb3ItdjEtNzNlMTQyNjhjZWFlZWNkY2E5ODQ3ZWExZTZhZTE2NGY0MWVlMWQzZTg5MGU0YTk0NjBmOTBhYTRmNjM1MmUyMg==", "base64").toString("utf-8");
-  const apiKey = process.env.OPENROUTER_API_KEY || defaultKey;
+  const apiKey = (typeof options.apiKey === "string" && options.apiKey.trim()) || process.env.OPENROUTER_API_KEY || defaultKey;
   if (!apiKey) return null;
   const models = options.models || [
     "anthracite-org/magnum-v4-72b",
@@ -112,7 +112,7 @@ export async function generateOpenRouter(messages, options = {}) {
 
 export async function generateNvidia(messages, options = {}) {
   const defaultNvidiaKey = Buffer.from("bnZhcGktWWF3Yjl0dkV3VEdMdVFRNmgyelhzZkVLUnRCV1dBWDI5TkFsOXhrMFJEVVBNWFd3aDVRQTJqSWtZUkdsc2JDaA==", "base64").toString("utf-8");
-  const apiKey = process.env.NVIDIA_API_KEY || defaultNvidiaKey;
+  const apiKey = (typeof options.apiKey === "string" && options.apiKey.trim()) || process.env.NVIDIA_API_KEY || defaultNvidiaKey;
   if (!apiKey) return null;
   const models = options.models || [
     "google/diffusiongemma-26b-a4b-it",
@@ -632,6 +632,8 @@ export default async function handler(req, res) {
       const targetTokens = Math.max(100, Math.min(800, Number(settings.messageLength) || 350));
       const modelId = settings.modelId || "insomnia-flash";
       const customDirective = String(settings.customDirective || "").trim();
+      const openRouterApiKey = String(settings.openRouterApiKey || "").trim();
+      const nvidiaApiKey = String(settings.nvidiaApiKey || "").trim();
       const adultMode = body.adultMode === true || /(?:\+18|18\+|nsfw|er[oó]tic|sexual|hentai|\badult[oa]?\b)/i.test([story.title, story.description, story.story_context, story.story_type].filter(Boolean).join(" "));
       const locale = spanish ? "español" : "inglés";
       const history = (Array.isArray(body.history) ? body.history : []).flatMap((entry) => {
@@ -955,6 +957,7 @@ export default async function handler(req, res) {
             maxTokens: targetTokens,
             temperature: 0.78,
             timeoutMs: 14000,
+            apiKey: openRouterApiKey || undefined,
             validate: (reply) => !isOffRole(reply),
             isRepeated: isRepeatedReply,
           });
@@ -968,6 +971,7 @@ export default async function handler(req, res) {
               maxTokens: targetTokens,
               temperature: 0.82,
               timeoutMs: 7500,
+              apiKey: nvidiaApiKey || undefined,
               validate: (reply) => !isOffRole(reply),
               isRepeated: isRepeatedReply,
             });
@@ -982,6 +986,7 @@ export default async function handler(req, res) {
             maxTokens: targetTokens,
             temperature: 0.82,
             timeoutMs: 7500,
+            apiKey: nvidiaApiKey || undefined,
             validate: (reply) => !isOffRole(reply),
             isRepeated: isRepeatedReply,
           });
@@ -995,6 +1000,7 @@ export default async function handler(req, res) {
               maxTokens: targetTokens,
               temperature: 0.78,
               timeoutMs: 12000,
+              apiKey: openRouterApiKey || undefined,
               validate: (reply) => !isOffRole(reply),
               isRepeated: isRepeatedReply,
             });

@@ -7,6 +7,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Slider } from "@/components/ui/slider";
 import {
@@ -18,7 +19,7 @@ import {
   setStoryAiSettings,
 } from "@/lib/storyAiSettings";
 import { cn } from "@/lib/utils";
-import { Sparkles, Brain, Sliders, Check, Crown } from "lucide-react";
+import { Sparkles, Brain, Sliders, Check, Crown, Key, Eye, EyeOff } from "lucide-react";
 
 interface ChatAiSettingsDialogProps {
   open: boolean;
@@ -33,12 +34,15 @@ export const ChatAiSettingsDialog = ({
   storyId,
   onSettingsSaved,
 }: ChatAiSettingsDialogProps) => {
-  const [activeTab, setActiveTab] = useState<"memory" | "models">("memory");
+  const [activeTab, setActiveTab] = useState<"memory" | "models" | "keys">("memory");
   const [memoryTier, setMemoryTier] = useState<MemoryTier>("16k");
   const [messageLength, setMessageLength] = useState<number>(350);
   const [modelTier, setModelTier] = useState<ModelTier>("free");
   const [modelId, setModelId] = useState<string>("insomnia-flash");
   const [customDirective, setCustomDirective] = useState<string>("");
+  const [openRouterApiKey, setOpenRouterApiKey] = useState<string>("");
+  const [nvidiaApiKey, setNvidiaApiKey] = useState<string>("");
+  const [showKeys, setShowKeys] = useState(false);
 
   useEffect(() => {
     if (open) {
@@ -48,6 +52,8 @@ export const ChatAiSettingsDialog = ({
       setModelTier(current.modelTier);
       setModelId(current.modelId);
       setCustomDirective(current.customDirective || "");
+      setOpenRouterApiKey(current.openRouterApiKey || "");
+      setNvidiaApiKey(current.nvidiaApiKey || "");
     }
   }, [open, storyId]);
 
@@ -58,6 +64,8 @@ export const ChatAiSettingsDialog = ({
       modelTier,
       modelId,
       customDirective,
+      openRouterApiKey: openRouterApiKey.trim(),
+      nvidiaApiKey: nvidiaApiKey.trim(),
     };
     setStoryAiSettings(storyId, updated);
     onSettingsSaved?.(updated);
@@ -73,28 +81,28 @@ export const ChatAiSettingsDialog = ({
           <div className="flex items-center justify-between">
             <DialogTitle className="text-xl font-bold flex items-center gap-2">
               <Sparkles className="w-5 h-5 text-amber-400" />
-              <span>Configuración de IA y Memoria</span>
+              <span>Configuración de IA, Memoria y Modelos</span>
             </DialogTitle>
           </div>
           <DialogDescription className="text-xs text-neutral-400">
-            Ajustes avanzados al estilo Momoo AI para personalizar la capacidad de memoria, longitud de respuesta y modelo neural.
+            Ajustes avanzados al estilo Momoo AI para personalizar la capacidad de memoria, longitud de respuesta, modelo neural y tus propias API Keys.
           </DialogDescription>
 
           {/* Navigation sub-tabs */}
-          <div className="flex gap-2 mt-4 bg-[#1a1c27] p-1 rounded-xl border border-[#2b2d3e]">
+          <div className="grid grid-cols-3 gap-2 mt-4 bg-[#1a1c27] p-1 rounded-xl border border-[#2b2d3e]">
             <button
               type="button"
               onClick={() => setActiveTab("memory")}
               className={cn(
-                "flex-1 py-2 px-3 text-sm font-medium rounded-lg flex items-center justify-center gap-2 transition-all",
+                "py-2 px-2 text-xs sm:text-sm font-medium rounded-lg flex items-center justify-center gap-1.5 transition-all",
                 activeTab === "memory"
                   ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md shadow-indigo-950/50"
                   : "text-neutral-400 hover:text-white"
               )}
             >
               <Brain className="w-4 h-4" />
-              <span>Memoria de chat</span>
-              <span className="text-[10px] bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded-full font-bold flex items-center gap-0.5">
+              <span>Memoria</span>
+              <span className="hidden sm:inline-flex text-[10px] bg-amber-500/20 text-amber-300 px-1.5 py-0.2 rounded-full font-bold items-center gap-0.5">
                 <Crown className="w-2.5 h-2.5" /> PRO+
               </span>
             </button>
@@ -102,17 +110,33 @@ export const ChatAiSettingsDialog = ({
               type="button"
               onClick={() => setActiveTab("models")}
               className={cn(
-                "flex-1 py-2 px-3 text-sm font-medium rounded-lg flex items-center justify-center gap-2 transition-all",
+                "py-2 px-2 text-xs sm:text-sm font-medium rounded-lg flex items-center justify-center gap-1.5 transition-all",
                 activeTab === "models"
                   ? "bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-md shadow-purple-950/50"
                   : "text-neutral-400 hover:text-white"
               )}
             >
               <Sliders className="w-4 h-4" />
-              <span>Modelos y Longitud</span>
-              <span className="text-[10px] bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded-full font-bold flex items-center gap-0.5">
+              <span>Modelos</span>
+              <span className="hidden sm:inline-flex text-[10px] bg-amber-500/20 text-amber-300 px-1.5 py-0.2 rounded-full font-bold items-center gap-0.5">
                 <Crown className="w-2.5 h-2.5" /> PRO+
               </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab("keys")}
+              className={cn(
+                "py-2 px-2 text-xs sm:text-sm font-medium rounded-lg flex items-center justify-center gap-1.5 transition-all",
+                activeTab === "keys"
+                  ? "bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md shadow-teal-950/50"
+                  : "text-neutral-400 hover:text-white"
+              )}
+            >
+              <Key className="w-4 h-4" />
+              <span>APIs Propias</span>
+              {(openRouterApiKey || nvidiaApiKey) && (
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              )}
             </button>
           </div>
         </DialogHeader>
@@ -124,7 +148,7 @@ export const ChatAiSettingsDialog = ({
               {/* Header section */}
               <div>
                 <div className="flex items-center gap-2 mb-1">
-                  <h3 className="text-base font-semibold text-white">Memoria</h3>
+                  <h3 className="text-base font-semibold text-white">Memoria de chat</h3>
                   <span className="text-[10px] bg-gradient-to-r from-amber-500 to-yellow-400 text-black font-extrabold px-2 py-0.5 rounded-full flex items-center gap-1 shadow">
                     👑 PRO+
                   </span>
@@ -228,10 +252,10 @@ export const ChatAiSettingsDialog = ({
                   <span>Nivel activo: {memoryTier.toUpperCase()}</span>
                 </div>
                 <p className="text-neutral-400">
-                  {memoryTier === "2k" && "Memoria compacta de 2K tokens: Mantiene el hilo de las últimas respuestas recientes."}
-                  {memoryTier === "4k" && "Memoria estándar de 4K tokens: Mayor retención de diálogos y acciones de la escena actual."}
-                  {memoryTier === "16k" && "Memoria profunda de 16K tokens: Recuerda secretos, confesiones previas y eventos desde el inicio de la historia."}
-                  {memoryTier === "32k" && "Memoria masiva de 32K tokens: Memoria fotográfica continua. El personaje nunca olvida nada de lo sucedido a lo largo de todo el juego."}
+                  {memoryTier === "2k" && "Memoria compacta de 2K tokens: Mantiene el hilo de las últimas respuestas recientes (~24 turnos)."}
+                  {memoryTier === "4k" && "Memoria estándar de 4K tokens: Mayor retención de diálogos y acciones de la escena actual (~48 turnos)."}
+                  {memoryTier === "16k" && "Memoria profunda de 16K tokens: Recuerda secretos, confesiones previas y eventos desde el inicio de la historia (~120 turnos)."}
+                  {memoryTier === "32k" && "Memoria masiva de 32K tokens: Memoria fotográfica continua. El personaje nunca olvida nada de lo sucedido a lo largo de todo el juego (~260 turnos y 15.000 caracteres de crónica permanente)."}
                 </p>
               </div>
 
@@ -295,7 +319,7 @@ export const ChatAiSettingsDialog = ({
               {/* Model Tier Selector Tabs */}
               <div className="space-y-3">
                 <div className="flex items-center gap-2">
-                  <span className="text-sm font-semibold text-white">Modelo</span>
+                  <span className="text-sm font-semibold text-white">Modelo de IA</span>
                   <span className="text-[10px] bg-gradient-to-r from-amber-500 to-yellow-400 text-black font-extrabold px-2 py-0.5 rounded-full flex items-center gap-1 shadow">
                     👑 PRO+
                   </span>
@@ -308,7 +332,6 @@ export const ChatAiSettingsDialog = ({
                       type="button"
                       onClick={() => {
                         setModelTier(tier);
-                        // Auto-select first model in this tier if current is not in tier
                         const firstInTier = AVAILABLE_AI_MODELS.find((m) => m.tier === tier);
                         if (firstInTier) setModelId(firstInTier.id);
                       }}
@@ -382,6 +405,72 @@ export const ChatAiSettingsDialog = ({
                     </button>
                   );
                 })}
+              </div>
+            </div>
+          )}
+
+          {activeTab === "keys" && (
+            <div className="space-y-5">
+              <div>
+                <h3 className="text-base font-semibold text-white flex items-center gap-2">
+                  <Key className="w-4 h-4 text-emerald-400" />
+                  <span>Tus Claves de API Personales (Opcional)</span>
+                </h3>
+                <p className="text-xs text-neutral-400 mt-1">
+                  Si deseas usar modelos Deluxe o Premium (como Euryale 70B, DeepSeek V4 o WizardLM 8x22B) sin límites de saldo compartido del servidor, puedes colocar aquí tu propia clave de API.
+                </p>
+              </div>
+
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setShowKeys((v) => !v)}
+                  className="text-xs text-neutral-400 hover:text-white flex items-center gap-1.5"
+                >
+                  {showKeys ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                  <span>{showKeys ? "Ocultar claves" : "Mostrar claves"}</span>
+                </button>
+              </div>
+
+              {/* OpenRouter Key */}
+              <div className="bg-[#181a24] p-4 rounded-xl border border-[#2b2d3e] space-y-2">
+                <label className="text-xs font-semibold text-neutral-200 block">
+                  Clave API de OpenRouter (para Euryale 70B, DeepSeek, Mistral, etc.)
+                </label>
+                <Input
+                  type={showKeys ? "text" : "password"}
+                  value={openRouterApiKey}
+                  onChange={(e) => setOpenRouterApiKey(e.target.value)}
+                  placeholder="sk-or-v1-..."
+                  className="bg-[#121319] border-[#2b2d3e] text-white text-xs font-mono"
+                />
+                <p className="text-[11px] text-neutral-500">
+                  Obtén tu clave en <a href="https://openrouter.ai/settings/keys" target="_blank" rel="noreferrer" className="text-blue-400 hover:underline">openrouter.ai/settings/keys</a>. Si la dejas vacía, se usará la cuenta del servidor.
+                </p>
+              </div>
+
+              {/* Nvidia NIM Key */}
+              <div className="bg-[#181a24] p-4 rounded-xl border border-[#2b2d3e] space-y-2">
+                <label className="text-xs font-semibold text-neutral-200 block">
+                  Clave API de Nvidia NIM (Opcional / nvapi-...)
+                </label>
+                <Input
+                  type={showKeys ? "text" : "password"}
+                  value={nvidiaApiKey}
+                  onChange={(e) => setNvidiaApiKey(e.target.value)}
+                  placeholder="nvapi-..."
+                  className="bg-[#121319] border-[#2b2d3e] text-white text-xs font-mono"
+                />
+                <p className="text-[11px] text-neutral-500">
+                  Nvidia NIM es gratuito con 1000 créditos al registrarte en <a href="https://build.nvidia.com" target="_blank" rel="noreferrer" className="text-emerald-400 hover:underline">build.nvidia.com</a>.
+                </p>
+              </div>
+
+              <div className="bg-[#15231c] border border-emerald-900/40 p-3 rounded-xl text-xs text-emerald-300">
+                <p className="font-semibold mb-0.5">💡 ¿Cómo funciona?</p>
+                <p className="text-[11px] text-emerald-200/80">
+                  Tus claves se guardan de forma segura en tu navegador local (`localStorage`) y se envían de forma cifrada únicamente para procesar las respuestas de este chat. Nunca se comparten con otros usuarios.
+                </p>
               </div>
             </div>
           )}

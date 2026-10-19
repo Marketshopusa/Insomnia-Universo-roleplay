@@ -26,6 +26,15 @@ export const AVAILABLE_AI_MODELS: AiModelOption[] = [
     nvidiaModel: "google/diffusiongemma-26b-a4b-it",
   },
   {
+    id: "magnum-v4-local",
+    name: "Magnum v4 (PC Local / 8788)",
+    tier: "free",
+    badge: "Local",
+    description: "Modelo LLaMA 3.x / Magnum corriendo localmente en tu propia computadora.",
+    bullet1: "Privacidad 100% local, cero censura y cero consumo de saldo en la nube.",
+    bullet2: "Usa el servidor de tu PC en http://127.0.0.1:8788 con velocidad nativa.",
+  },
+  {
     id: "mistral-nemo",
     name: "Mistral Nemo (12B)",
     tier: "free",
@@ -182,6 +191,8 @@ export interface StoryAiSettings {
   modelTier: ModelTier;
   modelId: string;
   customDirective: string;
+  openRouterApiKey?: string;
+  nvidiaApiKey?: string;
 }
 
 export const DEFAULT_AI_SETTINGS: StoryAiSettings = {
@@ -190,6 +201,8 @@ export const DEFAULT_AI_SETTINGS: StoryAiSettings = {
   modelTier: "free",
   modelId: "insomnia-flash",
   customDirective: "",
+  openRouterApiKey: "",
+  nvidiaApiKey: "",
 };
 
 const STORAGE_KEY_PREFIX = "insomnia_story_ai_settings_";
