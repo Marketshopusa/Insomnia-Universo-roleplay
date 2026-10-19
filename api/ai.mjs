@@ -115,9 +115,8 @@ export async function generateNvidia(messages, options = {}) {
   const apiKey = (typeof options.apiKey === "string" && options.apiKey.trim()) || process.env.NVIDIA_API_KEY || defaultNvidiaKey;
   if (!apiKey) return null;
   const models = options.models || [
-    "google/diffusiongemma-26b-a4b-it",
-    "nvidia/nemotron-3-super-120b-a12b",
-    "google/diffusiongemma-26b-a4b-it",
+    "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
+    "meta/llama-3.2-11b-vision-instruct",
   ];
   const fetchImpl = options.fetchImpl || fetch;
   let fallbackCandidate = null;
@@ -140,14 +139,20 @@ export async function generateNvidia(messages, options = {}) {
           repetition_penalty: 1.18,
           chat_template_kwargs: { enable_thinking: false },
         }),
-        signal: AbortSignal.timeout(options.timeoutMs || 7500),
+        signal: AbortSignal.timeout(options.timeoutMs || 4000),
       });
       if (!response.ok) {
         console.warn("Nvidia model error", model, response.status);
         continue;
       }
       const data = await response.json();
-      const content = data?.choices?.[0]?.message?.content?.trim();
+      const msg = data?.choices?.[0]?.message;
+      let content = msg?.content?.trim();
+      if (!content && typeof msg?.reasoning_content === "string") {
+        const reasoning = msg.reasoning_content.trim();
+        const match = reasoning.match(/(?:Respuesta|Output|Spanish|Scarlett|Personaje):\s*([\s\S]+)$/i);
+        if (match && match[1]?.trim()) content = match[1].trim();
+      }
       if (content && content.length > 5 && !isRefusal(content)) {
         if (options.isRepeated && options.isRepeated(content)) {
           console.warn("Nvidia candidate rejected because it repeated previous dialogue, trying next attempt:", model);
@@ -171,8 +176,8 @@ export async function generateNvidia(messages, options = {}) {
 }
 
 export async function generate(model, parts, settings = {}, options = {}) {
-  const key = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
-  if (!key || key === "[SENSITIVE]") throw Object.assign(new Error("Gemini no estÃ¡ configurado en Insomnia (Vercel)."), { status: 503, code: "gemini_not_configured" });
+  const key = (typeof options.apiKey === "string" && options.apiKey.trim()) || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+  if (!key || key === "[SENSITIVE]") throw Object.assign(new Error("Gemini no está configurado en Insomnia (Vercel)."), { status: 503, code: "gemini_not_configured" });
   const fetchImpl = options.fetchImpl || fetch;
   const choices = [...new Set([model, ...(options.fallbackModels || ["gemini-2.0-flash", "gemini-2.5-flash-lite"])])];
   let lastError;
@@ -634,6 +639,7 @@ export default async function handler(req, res) {
       const customDirective = String(settings.customDirective || "").trim();
       const openRouterApiKey = String(settings.openRouterApiKey || "").trim();
       const nvidiaApiKey = String(settings.nvidiaApiKey || "").trim();
+      const geminiApiKey = String(settings.geminiApiKey || "").trim();
       const adultMode = body.adultMode === true || /(?:\+18|18\+|nsfw|er[oó]tic|sexual|hentai|\badult[oa]?\b)/i.test([story.title, story.description, story.story_context, story.story_type].filter(Boolean).join(" "));
       const locale = spanish ? "español" : "inglés";
       const history = (Array.isArray(body.history) ? body.history : []).flatMap((entry) => {
@@ -921,11 +927,11 @@ export default async function handler(req, res) {
       }
 
       let nvidiaModels = [
-        "google/diffusiongemma-26b-a4b-it",
-        "nvidia/nemotron-3-super-120b-a12b",
-        "google/diffusiongemma-26b-a4b-it",
+        "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
+        "meta/llama-3.2-11b-vision-instruct",
       ];
       let openRouterModels = [
+        "nvidia/nemotron-3-ultra-550b-a55b:free",
         "anthracite-org/magnum-v4-72b",
         "sao10k/l3.3-euryale-70b",
       ];
@@ -934,96 +940,146 @@ export default async function handler(req, res) {
 
       if (modelId === "euryale-70b" || modelId === "skylark-pro" || modelId === "dola-seed-pro") {
         openRouterModels = ["sao10k/l3.3-euryale-70b", "anthracite-org/magnum-v4-72b"];
-        nvidiaModels = ["nvidia/nemotron-3-super-120b-a12b", "google/diffusiongemma-26b-a4b-it"];
+        nvidiaModels = ["nvidia/nemotron-3-nano-omni-30b-a3b-reasoning", "meta/llama-3.2-11b-vision-instruct"];
       } else if (modelId === "mistral-nemo") {
-        openRouterModels = ["mistralai/mistral-nemo", "sao10k/l3.3-euryale-70b"];
-        nvidiaModels = ["google/diffusiongemma-26b-a4b-it", "nvidia/nemotron-3-super-120b-a12b"];
+        openRouterModels = ["mistralai/mistral-nemo", "nvidia/nemotron-3-ultra-550b-a55b:free"];
+        nvidiaModels = ["nvidia/nemotron-3-nano-omni-30b-a3b-reasoning", "meta/llama-3.2-11b-vision-instruct"];
       } else if (modelId === "deepseek-v4-pro") {
         openRouterModels = ["deepseek/deepseek-chat", "sao10k/l3.3-euryale-70b"];
-        nvidiaModels = ["nvidia/nemotron-3-super-120b-a12b", "google/diffusiongemma-26b-a4b-it"];
+        nvidiaModels = ["nvidia/nemotron-3-nano-omni-30b-a3b-reasoning", "meta/llama-3.2-11b-vision-instruct"];
       } else if (modelId === "wizardlm-8x22b") {
         openRouterModels = ["microsoft/wizardlm-2-8x22b", "anthracite-org/magnum-v4-72b"];
       } else if (modelId === "qwen-plus" || modelId === "qwen-3.7-plus" || modelId === "qwen-3.8-flash") {
-        openRouterModels = ["qwen/qwen-2.5-72b-instruct", "anthracite-org/magnum-v4-72b"];
-        nvidiaModels = ["google/diffusiongemma-26b-a4b-it", "nvidia/nemotron-3-super-120b-a12b"];
+        openRouterModels = ["qwen/qwen-2.5-72b-instruct", "nvidia/nemotron-3-ultra-550b-a55b:free"];
+        nvidiaModels = ["nvidia/nemotron-3-nano-omni-30b-a3b-reasoning", "meta/llama-3.2-11b-vision-instruct"];
       }
 
       let content = null;
       if (isDeluxeOrPremium) {
+        // High-end models (Euryale 70B, DeepSeek, WizardLM, Grok)
         try {
           content = await generateOpenRouter(openRouterMessages, {
             models: openRouterModels,
             maxTokens: targetTokens,
             temperature: 0.78,
-            timeoutMs: 14000,
+            timeoutMs: 12000,
             apiKey: openRouterApiKey || undefined,
             validate: (reply) => !isOffRole(reply),
             isRepeated: isRepeatedReply,
           });
         } catch (err) {
-          console.warn("OpenRouter roleplay invocation failed:", err.message);
+          console.warn("OpenRouter invocation failed:", err.message);
         }
+      } else if (modelId === "mistral-nemo" || modelId === "qwen-3.8-flash" || modelId === "glm-5.3-flash") {
+        // Targeted free/open models
+        try {
+          content = await generateOpenRouter(openRouterMessages, {
+            models: openRouterModels,
+            maxTokens: targetTokens,
+            temperature: 0.78,
+            timeoutMs: 8000,
+            apiKey: openRouterApiKey || undefined,
+            validate: (reply) => !isOffRole(reply),
+            isRepeated: isRepeatedReply,
+          });
+        } catch (err) {
+          console.warn("OpenRouter free candidate failed:", err.message);
+        }
+      } else {
+        // Insomnia Flash: High-speed engine (Gemini 2.5 Flash if key available, else ultra-fast Nvidia NIM ~2.6s)
+        const canTryGemini = Boolean(geminiApiKey || (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== "[SENSITIVE]"));
+        if (canTryGemini) {
+          try {
+            const geminiContents = contents.map((c) => ({ role: c.role, parts: [...(c.parts || [])] }));
+            if (geminiContents[0]?.role === "model") {
+              geminiContents.unshift({ role: "user", parts: [{ text: "Continúa la escena." }] });
+            }
+            content = await generate(
+              "gemini-2.5-flash",
+              [],
+              { maxOutputTokens: Math.max(220, targetTokens), temperature: 0.8 },
+              {
+                contents: geminiContents,
+                systemInstruction,
+                adultMode: true,
+                apiKey: geminiApiKey || undefined,
+                timeoutMs: 4000,
+                fallbackModels: ["gemini-2.0-flash", "gemini-2.5-flash-lite"],
+                fastReply: true,
+                validate: (reply) => !isOffRole(reply)
+              },
+            );
+          } catch (err) {
+            console.warn("Gemini fast primary failed:", err.message);
+          }
+        }
+
+        // Fast primary fallback: Nvidia NIM (~2.5s response, highly coherent roleplay)
         if (!content) {
           try {
             content = await generateNvidia(openRouterMessages, {
               models: nvidiaModels,
               maxTokens: targetTokens,
               temperature: 0.82,
-              timeoutMs: 10000,
+              timeoutMs: 4500,
               apiKey: nvidiaApiKey || undefined,
               validate: (reply) => !isOffRole(reply),
               isRepeated: isRepeatedReply,
             });
           } catch (err) {
-            console.warn("Nvidia roleplay invocation failed:", err.message);
+            console.warn("Nvidia primary fallback failed:", err.message);
           }
         }
-      } else {
-        try {
-          content = await generateNvidia(openRouterMessages, {
-            models: nvidiaModels,
-            maxTokens: targetTokens,
-            temperature: 0.82,
-            timeoutMs: 10000,
-            apiKey: nvidiaApiKey || undefined,
-            validate: (reply) => !isOffRole(reply),
-            isRepeated: isRepeatedReply,
-          });
-        } catch (err) {
-          console.warn("Nvidia roleplay invocation failed:", err.message);
-        }
+
+        // Secondary fallback: OpenRouter free models
         if (!content) {
           try {
             content = await generateOpenRouter(openRouterMessages, {
-              models: openRouterModels,
+              models: ["nvidia/nemotron-3-ultra-550b-a55b:free", "liquid/lfm-2.5-2.6b:free", "openrouter/free"],
               maxTokens: targetTokens,
-              temperature: 0.78,
-              timeoutMs: 12000,
+              temperature: 0.8,
+              timeoutMs: 4500,
               apiKey: openRouterApiKey || undefined,
               validate: (reply) => !isOffRole(reply),
               isRepeated: isRepeatedReply,
             });
           } catch (err) {
-            console.warn("OpenRouter roleplay invocation failed:", err.message);
+            console.warn("OpenRouter secondary fallback failed:", err.message);
           }
         }
       }
 
-      // 3. Respaldo Gemini
+      // Fast fallback to Nvidia NIM if content is still null (for non-flash models)
       if (!content) {
         try {
-          const geminiContents = contents.map((c) => ({ role: c.role, parts: [...(c.parts || [])] }));
-          if (geminiContents[0]?.role === "model") {
-            geminiContents.unshift({ role: "user", parts: [{ text: "Continúa la escena." }] });
-          }
-          content = await generate(
-            "gemini-2.5-flash",
-            [],
-            { maxOutputTokens: Math.max(220, targetTokens), temperature: 0.8 },
-            { contents: geminiContents, systemInstruction, adultMode: true, fallbackModels: ["gemini-2.0-flash", "gemini-2.5-flash-lite"], fastReply: true, validate: (reply) => !isOffRole(reply) },
-          );
+          content = await generateNvidia(openRouterMessages, {
+            models: nvidiaModels,
+            maxTokens: targetTokens,
+            temperature: 0.82,
+            timeoutMs: 4000,
+            apiKey: nvidiaApiKey || undefined,
+            validate: (reply) => !isOffRole(reply),
+            isRepeated: isRepeatedReply,
+          });
         } catch (err) {
-          console.warn("Gemini roleplay fallback failed:", err.message);
+          console.warn("Nvidia fallback failed:", err.message);
+        }
+      }
+
+      // Final fallback to OpenRouter free models if still null
+      if (!content) {
+        try {
+          content = await generateOpenRouter(openRouterMessages, {
+            models: ["nvidia/nemotron-3-ultra-550b-a55b:free", "openrouter/free"],
+            maxTokens: targetTokens,
+            temperature: 0.82,
+            timeoutMs: 4500,
+            apiKey: openRouterApiKey || undefined,
+            validate: (reply) => !isOffRole(reply),
+            isRepeated: isRepeatedReply,
+          });
+        } catch (err) {
+          console.warn("Final OpenRouter fallback failed:", err.message);
         }
       }
 

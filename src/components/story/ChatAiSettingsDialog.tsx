@@ -42,6 +42,7 @@ export const ChatAiSettingsDialog = ({
   const [customDirective, setCustomDirective] = useState<string>("");
   const [openRouterApiKey, setOpenRouterApiKey] = useState<string>("");
   const [nvidiaApiKey, setNvidiaApiKey] = useState<string>("");
+  const [geminiApiKey, setGeminiApiKey] = useState<string>("");
   const [showKeys, setShowKeys] = useState(false);
 
   useEffect(() => {
@@ -54,6 +55,7 @@ export const ChatAiSettingsDialog = ({
       setCustomDirective(current.customDirective || "");
       setOpenRouterApiKey(current.openRouterApiKey || "");
       setNvidiaApiKey(current.nvidiaApiKey || "");
+      setGeminiApiKey(current.geminiApiKey || "");
     }
   }, [open, storyId]);
 
@@ -66,6 +68,7 @@ export const ChatAiSettingsDialog = ({
       customDirective,
       openRouterApiKey: openRouterApiKey.trim(),
       nvidiaApiKey: nvidiaApiKey.trim(),
+      geminiApiKey: geminiApiKey.trim(),
     };
     setStoryAiSettings(storyId, updated);
     onSettingsSaved?.(updated);
@@ -430,6 +433,26 @@ export const ChatAiSettingsDialog = ({
                   {showKeys ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                   <span>{showKeys ? "Ocultar claves" : "Mostrar claves"}</span>
                 </button>
+              </div>
+
+              {/* Google Gemini Key */}
+              <div className="bg-[#181a24] p-4 rounded-xl border border-[#2b2d3e] space-y-2">
+                <label className="text-xs font-semibold text-neutral-200 flex items-center justify-between">
+                  <span>Clave API de Google Gemini (Para Insomnia Flash ultra rápido ~1.0s)</span>
+                  <span className="text-[10px] text-emerald-400 font-bold bg-emerald-950/60 border border-emerald-800/40 px-2 py-0.5 rounded-full">
+                    100% GRATIS
+                  </span>
+                </label>
+                <Input
+                  type={showKeys ? "text" : "password"}
+                  value={geminiApiKey}
+                  onChange={(e) => setGeminiApiKey(e.target.value)}
+                  placeholder="AIzaSy..."
+                  className="bg-[#121319] border-[#2b2d3e] text-white text-xs font-mono"
+                />
+                <p className="text-[11px] text-neutral-500">
+                  Obtén tu clave gratuita en <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="text-cyan-400 hover:underline font-semibold">aistudio.google.com/app/apikey</a> (Google AI Studio). Cero tarjeta de crédito, ilimitado para chats.
+                </p>
               </div>
 
               {/* OpenRouter Key */}

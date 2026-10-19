@@ -193,6 +193,7 @@ export interface StoryAiSettings {
   customDirective: string;
   openRouterApiKey?: string;
   nvidiaApiKey?: string;
+  geminiApiKey?: string;
 }
 
 export const DEFAULT_AI_SETTINGS: StoryAiSettings = {
@@ -203,6 +204,7 @@ export const DEFAULT_AI_SETTINGS: StoryAiSettings = {
   customDirective: "",
   openRouterApiKey: "",
   nvidiaApiKey: "",
+  geminiApiKey: "",
 };
 
 const STORAGE_KEY_PREFIX = "insomnia_story_ai_settings_";
