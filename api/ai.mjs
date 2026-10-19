@@ -125,7 +125,9 @@ export async function generateNvidia(messages, options = {}) {
       const data = await response.json();
       const content = data?.choices?.[0]?.message?.content?.trim();
       if (content && content.length > 5 && !isRefusal(content)) {
-        if (!fallbackCandidate) fallbackCandidate = content;
+        if (!fallbackCandidate && (!options.isRepeated || !options.isRepeated(content))) {
+          fallbackCandidate = content;
+        }
         if (options.validate && !options.validate(content)) {
           console.warn("Nvidia candidate rejected by validation, trying next model:", model);
           continue;
@@ -600,9 +602,41 @@ export default async function handler(req, res) {
       const latest = String(body.userMessage || "").trim().slice(0, 1200);
       const sceneContext = [story.title, story.description, story.story_context, story.character_role, story.player_role, ...history.map((entry) => entry.text), latest].join("\n");
       const lock = sceneLock(history, latest);
+      const normText = (s) => String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^\w\s]/g, " ").replace(/\s+/g, " ").trim();
+      const stripActions = (s) => String(s || "").replace(/\*[^*]*\*/g, " ").trim();
+      const recentModelTurns = history.filter((h) => h.role === "model").map((h) => h.text).slice(-6);
+      const isRepeatedReply = (text) => {
+        const raw = String(text || "").trim();
+        if (!raw) return true;
+        const candFull = normText(raw);
+        const candDial = normText(stripActions(raw));
+        const candAct = normText((raw.match(/\*([^*]+)\*/)?.[1]) || "");
+        for (const prev of recentModelTurns) {
+          const prevFull = normText(prev);
+          const prevDial = normText(stripActions(prev));
+          const prevAct = normText((prev.match(/\*([^*]+)\*/)?.[1]) || "");
+          if (candFull === prevFull) return true;
+          if (candDial.length >= 20 && candDial === prevDial) return true;
+          if (candDial.length >= 30 && prevDial.length >= 30 && candDial.slice(0, 32) === prevDial.slice(0, 32)) return true;
+          if (candAct.length >= 18 && candAct === prevAct && candDial.slice(0, 20) === prevDial.slice(0, 20)) return true;
+          const cw = candDial.split(" ").filter(Boolean);
+          const pw = prevDial.split(" ").filter(Boolean);
+          if (cw.length >= 8 && pw.length >= 8) {
+            const pset = new Set();
+            for (let i = 0; i <= pw.length - 4; i++) pset.add(pw.slice(i, i + 4).join(" "));
+            let hits = 0;
+            for (let i = 0; i <= cw.length - 4; i++) {
+              if (pset.has(cw.slice(i, i + 4).join(" "))) hits++;
+            }
+            if (hits / (cw.length - 3) >= 0.4) return true;
+          }
+        }
+        return false;
+      };
       const isOffRole = (text) => {
         const reply = String(text || "").trim();
         if (!reply || reply.length > 2400 || reply.split(/\n\s*\n/).length > 4) return true;
+        if (isRepeatedReply(reply)) return true;
         // 1. Reject Chinese or Asian non-Latin scripts
         if (/[\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff\u3040-\u30ff]/.test(reply)) return true;
         if (!adultMode && replyChangesScene(reply, sceneContext)) return true;
@@ -665,23 +699,39 @@ export default async function handler(req, res) {
       // Resolver de Personaje Activo (permite que el usuario introduzca o cambie a cualquier personaje: ej. "Mi hermana Gabriela", "su mamá", "mi prima", etc.)
       const defaultFirstName = (characterName.match(/[A-ZÁÉÍÓÚÑ][a-záéíóúñ]{2,}/)?.[0] || characterName.split(/[\s,()]+/)[0] || "Personaje").trim();
       const playerFirstName = (playerName.match(/[A-ZÁÉÍÓÚÑ][a-záéíóúñ]{2,}/)?.[0] || playerName.split(/[\s,()]+/)[0] || "Usuario").trim();
-      const defaultIsSobrina = /sobrin/i.test(characterName) || /t[ií][oa]/i.test(playerName);
-      const nonNameWords = new Set(["abre","abrio","abrió","entra","entro","entró","llega","llego","llegó","dice","dijo","me","te","se","nos","le","les","lo","la","el","los","las","un","una","mi","mis","tu","tus","su","sus","que","como","cuando","donde","mientras","pero","sin","con","por","para","sobre","entre","en","de","del","al","y","e","o","no","si","sí","ya","muy","más","toda","todo","mayor","menor","pequeña","grande","hermosa","bella","caliente","desnuda","viene","sale","va","fue","era","es","está","estaba","tiene","hace","ve","mira","besa","abraza","toca","salta","camina","corre","grita","gime","llora","ríe","sonríe","cierra","allí","alli","aquí","aqui"]);
+      const defaultIsSobrina = /sobrin|estefan[ií]a|maya/i.test(characterName) || /t[ií][oa]/i.test(playerName) || /\b(?:sobrin[ao]|t[ií][oa])\b/i.test(sceneContext);
+      const nonNameWords = new Set(["abre","abrio","abrió","entra","entro","entró","llega","llego","llegó","dice","dijo","me","te","se","nos","le","les","lo","la","el","los","las","un","una","unos","unas","mi","mis","tu","tus","su","sus","que","quien","como","cuando","donde","mientras","pero","porque","aunque","acaso","dime","callate","cállate","bueno","claro","entonces","ahora","antes","despues","después","nunca","siempre","tambien","también","solo","sólo","casi","toda","todo","todos","todas","otro","otra","otros","otras","mismo","misma","ese","esa","eso","este","esta","esto","sin","con","por","para","sobre","entre","en","de","del","al","y","e","o","no","si","sí","ya","muy","más","mayor","menor","pequeña","grande","hermosa","bella","caliente","desnuda","viene","sale","va","fue","era","es","está","estaba","tiene","hace","ve","mira","besa","abraza","toca","salta","camina","corre","grita","gime","llora","ríe","sonríe","cierra","allí","alli","aquí","aqui"]);
+      const isValidFirstName = (w) => {
+        if (!w || w.length < 3 || w.length > 15) return false;
+        const c0 = w.charAt(0);
+        if (c0 !== c0.toUpperCase() || c0 === c0.toLowerCase()) return false;
+        const low = w.toLowerCase();
+        const asc = low.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        if (nonNameWords.has(low) || nonNameWords.has(asc)) return false;
+        if (low === defaultFirstName.toLowerCase() || low === playerFirstName.toLowerCase()) return false;
+        return true;
+      };
       const knownChars = new Map();
       const parseCharLine = (lineText) => {
         const t = String(lineText || "").trim();
         if (!t) return null;
-        const preNamed = t.match(/\b([A-ZÁÉÍÓÚÑ][a-záéíóúñ]{2,15})\s*,?\s*(?:mi|su|la)\s+(hermana|hermanita|prima|primita|cuñada|mam[aá]|madre|t[ií]a|vecina|amiga|sobrina)\b/i);
-        const kinMatches = [...t.matchAll(/\b((?:su|la|mi)\s+mam[aá]|(?:su|la|mi)\s+madre|mam[aá]|madre|herman[ao]|hermanit[ao]|prim[ao]|primit[ao]|cuñad[ao]|t[ií][ao]|sobrin[ao]|vecin[ao]|amig[ao]|suegr[ao]|esposa|novia|jefa|secretaria|profesora|enfermera|doctora)(?:\s+(?:llamad[ao]\s+)?([A-ZÁÉÍÓÚÑa-záéíóúñ]{3,15}))?\b/gi)];
+        const preNamed = t.match(/\b([A-ZÁÉÍÓÚÑ][a-záéíóúñ]{2,15})\s*,?\s*(?:[Mm]i|[Ss]u|[Ll]a)\s+(hermana|hermanita|prima|primita|cuñada|mam[aá]|madre|t[ií]a|vecina|amiga|sobrina)\b/);
+        const rawKinMatches = [...t.matchAll(/\b((?:su|la|mi)\s+mam[aá]|(?:su|la|mi)\s+madre|mam[aá]|madre|como\s+hermanos|herman[ao]s?|hermanit[ao]s?|prim[ao]|primit[ao]|cuñad[ao]|t[ií][ao]|sobrin[ao]|vecin[ao]|amig[ao]|suegr[ao]|esposa|novia|jefa|secretaria|profesora|enfermera|doctora)(?:\s+(?:llamad[ao]\s+)?([A-ZÁÉÍÓÚÑ][a-záéíóúñ]{2,15}))?\b/gi)];
+        const kinMatches = rawKinMatches.filter((m) => {
+          const idx = m.index ?? 0;
+          const prefix = t.slice(Math.max(0, idx - 25), idx);
+          return !/\bno\s+(?:era|es|fue)\s+(?:mi|tu|su|la)\s*$/i.test(prefix);
+        });
         let rawKin = "", candName = "";
-        if (preNamed) {
+        if (preNamed && isValidFirstName(preNamed[1])) {
           candName = preNamed[1].charAt(0).toUpperCase() + preNamed[1].slice(1).toLowerCase();
           rawKin = preNamed[2].toLowerCase();
         } else if (kinMatches.length > 0) {
-          const last = kinMatches.at(-1);
-          rawKin = (last[1] || "").toLowerCase().trim();
-          const afterWord = (last[2] || "").trim();
-          if (afterWord && !nonNameWords.has(afterWord.toLowerCase())) {
+          const nonDef = kinMatches.filter((m) => !/^(?:sobrin[ao]|t[ií]o)$/i.test((m[1] || "").trim()));
+          const chosen = nonDef.length > 0 ? nonDef.at(-1) : kinMatches.at(-1);
+          rawKin = (chosen[1] || "").toLowerCase().trim();
+          const afterWord = (chosen[2] || "").trim();
+          if (afterWord && isValidFirstName(afterWord)) {
             candName = afterWord.charAt(0).toUpperCase() + afterWord.slice(1).toLowerCase();
           }
         }
@@ -711,7 +761,10 @@ export default async function handler(req, res) {
           if (new RegExp(`\\b${k}\\b`, "i").test(t)) return { isDefault: false, ...v };
         }
         if (defaultFirstName && new RegExp(`\\b${defaultFirstName}\\b`, "i").test(t)) {
-          return { isDefault: true, name: defaultFirstName, role: characterName, addressTerm: defaultIsSobrina ? "Tío" : playerFirstName };
+          const thirdPerson = new RegExp(`(?:era|es|fue|sobre|de|a)\\s+${defaultFirstName}\\b|\\b${defaultFirstName}\\s+(?:no\\s+era|era|es|est[aá]|estaba)\\b`, "i").test(t);
+          if (!thirdPerson) {
+            return { isDefault: true, name: defaultFirstName, role: characterName, addressTerm: defaultIsSobrina ? "Tío" : playerFirstName };
+          }
         }
         return null;
       };
@@ -727,6 +780,10 @@ export default async function handler(req, res) {
       const isSwitchedChar = Boolean(activeSwitch && !activeSwitch.isDefault);
       const switchedFullLabel = isSwitchedChar ? (activeSwitch.name ? `${activeSwitch.name} (${activeSwitch.role})` : activeSwitch.role) : characterName;
       const switchedAddress = isSwitchedChar ? activeSwitch.addressTerm : (defaultIsSobrina ? "Tío" : playerFirstName);
+      const lastModelLine = recentModelTurns.at(-1) ? recentModelTurns.at(-1).slice(0, 140) : "";
+      const antiRepeatDirective = lastModelLine
+        ? `PROHIBICIÓN ABSOLUTA DE REPETIR TU RESPUESTA ANTERIOR: En tu turno anterior ya dijiste "${lastModelLine}...". Está ESTRICTAMENTE PROHIBIDO volver a usar esas mismas frases, el mismo gesto inicial (*...*) o repetir lo que ya dijiste. Responde con palabras y reacciones 100% nuevas a lo que ${playerFirstName} acaba de decir o confesar en su último mensaje.`
+        : "";
 
       if (isSwitchedChar) {
         systemInstruction = [
@@ -737,7 +794,8 @@ export default async function handler(req, res) {
           `3. ESTRICTAMENTE PROHIBIDO actuar o hablar como ${defaultFirstName} (la sobrina), prohibido decir "Tío" y prohibido decir "Mami".`,
           ...roleplayPacingAndLanguageRules(history.length, spanish),
           `4. Obedece toda acción y emoción descrita por ${playerFirstName} en su mensaje sin moralizar. NUNCA hables ni actúes por ${playerFirstName}.`,
-        ].join("\n");
+          antiRepeatDirective,
+        ].filter(Boolean).join("\n");
       } else {
         const line = (entry) => (entry.role === "model" ? characterName : playerName) + ": " + entry.text.slice(0, 320);
         const older = history.slice(0, -24);
@@ -753,6 +811,9 @@ export default async function handler(req, res) {
         }
         if (remembered) {
           systemInstruction += "\n" + remembered;
+        }
+        if (antiRepeatDirective) {
+          systemInstruction += "\n" + antiRepeatDirective;
         }
       }
 
@@ -772,7 +833,7 @@ export default async function handler(req, res) {
       }
 
       const formattedLatest = isSwitchedChar
-        ? `[ORDEN DEL DIRECTOR: Actúa y responde en PRIMERA PERSONA únicamente como ${switchedFullLabel}, dirigiéndote a ${playerFirstName} como "${switchedAddress}". Prohibido hablar como ${defaultFirstName} o decir "Tío"]:\n${latest}`
+        ? `[Responde en PRIMERA PERSONA como ${switchedFullLabel} hablándole a tu ${switchedAddress} ${playerFirstName} con palabras 100% nuevas sobre lo que te acaba de confesar o decir]:\n${latest}`
         : latest;
 
       if (contents.at(-1)?.role === "user") {
@@ -799,9 +860,10 @@ export default async function handler(req, res) {
             "google/gemma-4-31b-it",
           ],
           maxTokens: 165,
-          temperature: 0.78,
+          temperature: 0.82,
           timeoutMs: 12000,
           validate: (reply) => !isOffRole(reply),
+          isRepeated: isRepeatedReply,
         });
       } catch (err) {
         console.warn("Nvidia roleplay invocation failed:", err.message);

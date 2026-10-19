@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeAssistantReply, resolveActiveCharacter, sanitizeSwitchedReply } from "./roleReply";
+import { isRepeatedAssistantReply, normalizeAssistantReply, resolveActiveCharacter, sanitizeSwitchedReply } from "./roleReply";
 import { performSpeech } from "./ttsStream";
 
 describe("role reply presentation", () => {
@@ -65,4 +65,35 @@ describe("role reply presentation", () => {
     expect(cleaned).not.toContain("Tío");
     expect(cleaned).toContain("hermano");
   });
+  it("keeps sister active when user mentions Estefanía/sobrina in third person and ignores lowercase words before mi hermana", () => {
+    const turn1 = "La abrazo por la cintura la pego hacia mí, le digo yo también te extrañé mucho hermana pero tú sabes que tuvimos algo más que una relación como hermanos";
+    const turn2 = "le digo claro que no olvidaría un momento así si el mejor efecto de ese momento lo tuve hace unos minutos atrás y ese efecto era Estefanía porque aunque mi hermana no me lo había confesado, Estefanía no era mi sobrina, era mi hija";
+    const info = resolveActiveCharacter(turn2, [{ role: "user", content: turn1 }], "Estefanía", "Willian");
+    expect(info.isSwitched).toBe(true);
+    expect(info.name).toBe("la hermana de Willian");
+    expect(info.role).toBe("la hermana de Willian");
+    expect(info.fullLabel).toBe("la hermana de Willian");
+    expect(info.addressTerm).toBe("hermano");
+  });
+  it("detects verbatim and near-duplicate assistant replies in history", () => {
+    const prevReply = "*Me estremezco al escuchar tus palabras, hermano* Willian, no puedes borrar lo que pasó entre nosotros esa noche; el deseo me sigue quemando por dentro cada vez que me tocas así.";
+    const history = [
+      { role: "user", content: "yo también te extrañé mucho hermana" },
+      { role: "assistant", content: prevReply },
+    ];
+    expect(isRepeatedAssistantReply(prevReply, history)).toBe(true);
+    expect(
+      isRepeatedAssistantReply(
+        "*Me estremezco al escuchar tus palabras, hermano* Willian, no puedes borrar lo que pasó entre nosotros aquella vez.",
+        history,
+      ),
+    ).toBe(true);
+    expect(
+      isRepeatedAssistantReply(
+        "*Me quedo sin aliento y te miro con los ojos abiertos* ¿Cómo supiste la verdad, Willian? Guardé ese secreto durante años.",
+        history,
+      ),
+    ).toBe(false);
+  });
 });
+

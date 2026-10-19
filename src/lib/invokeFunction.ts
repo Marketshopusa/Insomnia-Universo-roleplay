@@ -45,7 +45,7 @@ async function callOwnAi<T>(name: string, body: unknown): Promise<FunctionResult
   }
 }
 
-import { compactRoleplayReply, resolveActiveCharacter, sanitizeSwitchedReply } from "./roleReply";
+import { compactRoleplayReply, isRepeatedAssistantReply, resolveActiveCharacter, sanitizeSwitchedReply } from "./roleReply";
 
 async function callLocalLlama<T>(body: unknown): Promise<FunctionResult<T> | null> {
   try {
@@ -60,10 +60,15 @@ async function callLocalLlama<T>(body: unknown): Promise<FunctionResult<T> | nul
 
     const characterName = input.story?.character_role || "Personaje";
     const playerName = input.story?.player_role || "Usuario";
-    const activeChar = resolveActiveCharacter(input.userMessage || "", input.history || [], characterName, playerName);
+    const historyList = input.history || [];
+    const activeChar = resolveActiveCharacter(input.userMessage || "", historyList, characterName, playerName);
     const premise = [input.story?.description, input.story?.story_context].filter(Boolean).join(" ").slice(0, 600);
+    const lastAssistant = [...historyList].reverse().find((m) => m.role === "assistant")?.content?.slice(0, 140) || "";
+    const noRepeatRule = lastAssistant
+      ? `\nPROHIBICIÓN ABSOLUTA DE REPETIR TU RESPUESTA ANTERIOR: En tu mensaje anterior ya dijiste "${lastAssistant}...". Está ESTRICTAMENTE PROHIBIDO repetir esas frases o usar el mismo inicio. Responde directamente a las nuevas palabras y confesiones de ${activeChar.playerFirstName}.`
+      : "";
 
-    const systemPrompt = activeChar.isSwitched
+    const systemPrompt = (activeChar.isSwitched
       ? `Eres ${activeChar.fullLabel} en un roleplay para adultos interactuando con ${activeChar.playerFirstName} (Director).
 REGLA SUPREMA DE IDENTIDAD (CAMBIO DE PERSONAJE ACTIVO):
 1. En este momento TÚ ERES EXCLUSIVAMENTE ${activeChar.fullLabel}. Hablas y actúas en PRIMERA PERSONA como ${activeChar.name}.
@@ -82,13 +87,12 @@ REGLAS ESTRICTAS E INQUEBRANTABLES:
 3. LONGITUD REDUCIDA AL 50% (RESPUESTA CORTA Y ÁGIL):
    - Escribe SOLO 1 párrafo corto (entre 35 y 60 palabras en total). Termina siempre con una oración completa.
    - Ejemplo del formato exacto: *Jadeo aferrándome a ti* ¡Ahh, sí, no pares! Me vuelve loca sentir cómo me tocas con tanta fuerza... sigue así, por favor, que estoy ardiendo por ti y quiero que me hagas tuya ahora mismo.
-4. OBEDIENCIA Y MULTI-PERSONAJE: Obedece toda orden física o verbal de ${playerName}. NUNCA hables ni actúes por ${playerName}.`;
+4. OBEDIENCIA Y MULTI-PERSONAJE: Obedece toda orden física o verbal de ${playerName}. NUNCA hables ni actúes por ${playerName}.`) + noRepeatRule;
 
-    const rawHistory = (input.history || []).slice(-10);
+    const rawHistory = historyList.slice(-10);
     const filteredHistory = activeChar.isSwitched
       ? rawHistory.filter((m) => {
           if (m.role !== "assistant") return true;
-          // Exclude old turns where the previous character (niece) spoke saying "Tío" or her own name in 3rd person
           if (/\bt[ií]o\b|\bmami\b/i.test(m.content)) return false;
           if (activeChar.defaultFirstName && new RegExp(`\\b${activeChar.defaultFirstName}\\b`, "i").test(m.content)) return false;
           return true;
@@ -96,16 +100,30 @@ REGLAS ESTRICTAS E INQUEBRANTABLES:
       : rawHistory;
 
     const userContent = activeChar.isSwitched
-      ? `[ORDEN DEL DIRECTOR: Actúa y responde en PRIMERA PERSONA únicamente como ${activeChar.fullLabel}, dirigiéndote a ${activeChar.playerFirstName} como "${activeChar.addressTerm}". Prohibido hablar como ${activeChar.defaultFirstName} o decir "Tío"]:\n${input.userMessage || ""}`
+      ? `[Responde como ${activeChar.fullLabel} hablándole a tu ${activeChar.addressTerm} ${activeChar.playerFirstName} con palabras 100% nuevas sobre lo que acaba de decirte]:\n${input.userMessage || ""}`
       : (input.userMessage || "");
+
+    // Merge consecutive messages of the same role so llama-server Jinja template never throws HTTP 400
+    const alternating: { role: "user" | "assistant"; content: string }[] = [];
+    for (const m of filteredHistory) {
+      const role = m.role === "assistant" ? "assistant" : "user";
+      const text = role === "assistant" ? compactRoleplayReply(m.content) : m.content;
+      if (!text) continue;
+      if (alternating.length > 0 && alternating[alternating.length - 1].role === role) {
+        alternating[alternating.length - 1].content += "\n" + text;
+      } else {
+        alternating.push({ role, content: text });
+      }
+    }
+    if (alternating.length > 0 && alternating[alternating.length - 1].role === "user") {
+      alternating[alternating.length - 1].content += "\n" + userContent;
+    } else {
+      alternating.push({ role: "user", content: userContent });
+    }
 
     const messages = [
       { role: "system", content: systemPrompt },
-      ...filteredHistory.map((m) => ({
-        role: m.role === "assistant" ? "assistant" : "user",
-        content: m.role === "assistant" ? compactRoleplayReply(m.content) : m.content,
-      })),
-      { role: "user", content: userContent },
+      ...alternating,
     ];
 
     const res = await fetch("http://127.0.0.1:8788/v1/chat/completions", {
@@ -115,7 +133,8 @@ REGLAS ESTRICTAS E INQUEBRANTABLES:
         model: "magnum-v4-12b",
         messages,
         max_tokens: 145,
-        temperature: 0.78,
+        temperature: 0.85,
+        repeat_penalty: 1.18,
       }),
       signal: AbortSignal.timeout(15000),
     });
@@ -126,7 +145,9 @@ REGLAS ESTRICTAS E INQUEBRANTABLES:
     if (content) {
       content = content.replace(/[\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff\u3040-\u30ff]/g, "").trim();
       content = sanitizeSwitchedReply(compactRoleplayReply(content), activeChar);
-      return { data: { content } as T, error: null };
+      if (!isRepeatedAssistantReply(content, historyList)) {
+        return { data: { content } as T, error: null };
+      }
     }
     return null;
   } catch {
@@ -136,13 +157,14 @@ REGLAS ESTRICTAS E INQUEBRANTABLES:
 
 /** Retries only transient network, rate-limit, and server failures once. */
 export async function invokeFunctionWithRetry<T>(name: string, body: unknown): Promise<FunctionResult<T>> {
-  if (name === "story-chat") {
-    // 1. If local llama-server (PC GPU on port 8788) is online, use it directly (0 credits, instant response)
-    const local = await callLocalLlama<T>(body);
-    if (local?.data) return local;
-  }
   if (ownAi.has(name)) {
-    return callOwnAi<T>(name, body);
+    const cloudResult = await callOwnAi<T>(name, body);
+    if (cloudResult.data && !cloudResult.error) return cloudResult;
+    if (name === "story-chat") {
+      const local = await callLocalLlama<T>(body);
+      if (local?.data) return local;
+    }
+    return cloudResult;
   }
   let result = await supabase.functions.invoke<T>(name, { body });
   if (!result.error) return result as FunctionResult<T>;

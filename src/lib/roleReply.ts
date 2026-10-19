@@ -147,8 +147,11 @@ const NON_NAME_WORDS = new Set([
   "abre", "abrio", "abrió", "entra", "entro", "entró", "llega", "llego", "llegó", "dice", "dijo",
   "me", "te", "se", "nos", "le", "les", "lo", "la", "el", "los", "las", "un", "una", "unos", "unas",
   "mi", "mis", "tu", "tus", "su", "sus", "que", "quien", "como", "cuando", "donde", "mientras", "pero",
+  "porque", "aunque", "acaso", "dime", "callate", "cállate", "bueno", "claro", "entonces", "ahora", "antes",
+  "despues", "después", "nunca", "siempre", "tambien", "también", "solo", "sólo", "casi", "toda", "todo",
+  "todos", "todas", "otro", "otra", "otros", "otras", "mismo", "misma", "ese", "esa", "eso", "este", "esta", "esto",
   "sin", "con", "por", "para", "sobre", "entre", "hacia", "hasta", "desde", "en", "de", "del", "al",
-  "y", "e", "o", "u", "ni", "no", "si", "sí", "ya", "muy", "mas", "más", "tan", "tanto", "toda", "todo",
+  "y", "e", "o", "u", "ni", "no", "si", "sí", "ya", "muy", "mas", "más", "tan", "tanto",
   "mayor", "menor", "pequeña", "grande", "hermosa", "bella", "linda", "caliente", "desnuda", "vestida",
   "viene", "vino", "sale", "salió", "va", "fue", "era", "es", "son", "está", "esta", "estaba", "tiene",
   "hace", "hizo", "ve", "vio", "mira", "miró", "besa", "besó", "abraza", "abrazó", "toca", "tocó",
@@ -171,6 +174,17 @@ function capitalizeWord(word: string): string {
   return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
 }
 
+function isProperFirstName(word: string, defaultFirstName: string, playerFirstName: string): boolean {
+  if (!word || word.length < 3 || word.length > 15) return false;
+  const firstChar = word.charAt(0);
+  if (firstChar !== firstChar.toUpperCase() || firstChar === firstChar.toLowerCase()) return false;
+  const lower = word.toLowerCase();
+  const ascii = lower.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  if (NON_NAME_WORDS.has(lower) || NON_NAME_WORDS.has(ascii)) return false;
+  if (lower === defaultFirstName.toLowerCase() || lower === playerFirstName.toLowerCase()) return false;
+  return true;
+}
+
 export function resolveActiveCharacter(
   userMessage: string,
   history: { role: string; content?: string; text?: string }[] = [],
@@ -179,7 +193,8 @@ export function resolveActiveCharacter(
 ): ActiveCharacterInfo {
   const defaultFirstName = (defaultCharacterRole.match(/[A-ZÁÉÍÓÚÑ][a-záéíóúñ]{2,}/)?.[0] || defaultCharacterRole.split(/[\s,()]+/)[0] || "Personaje").trim();
   const playerFirstName = (playerRole.match(/[A-ZÁÉÍÓÚÑ][a-záéíóúñ]{2,}/)?.[0] || playerRole.split(/[\s,()]+/)[0] || "Usuario").trim();
-  const defaultIsSobrina = /sobrin/i.test(defaultCharacterRole) || /t[ií][oa]/i.test(playerRole);
+  const allText = [defaultCharacterRole, playerRole, userMessage, ...history.map((h) => h.content || h.text || "")].join(" ");
+  const defaultIsSobrina = /sobrin|estefan[ií]a|maya/i.test(defaultCharacterRole) || /t[ií][oa]/i.test(playerRole) || /\b(?:sobrin[ao]|t[ií][oa])\b/i.test(allText);
 
   const knownByName = new Map<string, { name: string; role: string; addressTerm: string }>();
 
@@ -187,21 +202,29 @@ export function resolveActiveCharacter(
     const text = String(line || "").trim();
     if (!text) return null;
 
-    // Check "Nombre, mi hermana" pattern first
-    const preNamed = text.match(/\b([A-ZÁÉÍÓÚÑ][a-záéíóúñ]{2,15})\s*,?\s*(?:mi|su|la)\s+(hermana|hermanita|prima|primita|cuñada|mam[aá]|madre|t[ií]a|vecina|amiga|sobrina)\b/i);
-    const kinMatches = [...text.matchAll(/\b((?:su|la|mi)\s+mam[aá]|(?:su|la|mi)\s+madre|mam[aá]|madre|herman[ao]|hermanit[ao]|prim[ao]|primit[ao]|cuñad[ao]|t[ií][ao]|sobrin[ao]|vecin[ao]|amig[ao]|suegr[ao]|esposa|novia|jefa|secretaria|profesora|enfermera|doctora)(?:\s+(?:llamad[ao]\s+)?([A-ZÁÉÍÓÚÑa-záéíóúñ]{3,15}))?\b/gi)];
+    // 1. Check "Gabriela, mi hermana" pattern (case-sensitive on the capitalized name!)
+    const preNamed = text.match(/\b([A-ZÁÉÍÓÚÑ][a-záéíóúñ]{2,15})\s*,?\s*(?:[Mm]i|[Ss]u|[Ll]a)\s+(hermana|hermanita|prima|primita|cuñada|mam[aá]|madre|t[ií]a|vecina|amiga|sobrina)\b/);
+    const rawKinMatches = [...text.matchAll(/\b((?:su|la|mi)\s+mam[aá]|(?:su|la|mi)\s+madre|mam[aá]|madre|como\s+hermanos|herman[ao]s?|hermanit[ao]s?|prim[ao]|primit[ao]|cuñad[ao]|t[ií][ao]|sobrin[ao]|vecin[ao]|amig[ao]|suegr[ao]|esposa|novia|jefa|secretaria|profesora|enfermera|doctora)(?:\s+(?:llamad[ao]\s+)?([A-ZÁÉÍÓÚÑ][a-záéíóúñ]{2,15}))?\b/gi)];
+    // Ignore negated kinship statements like "no era mi sobrina"
+    const kinMatches = rawKinMatches.filter((m) => {
+      const idx = m.index ?? 0;
+      const prefix = text.slice(Math.max(0, idx - 25), idx);
+      return !/\bno\s+(?:era|es|fue)\s+(?:mi|tu|su|la)\s*$/i.test(prefix);
+    });
 
     let rawKin = "";
     let candidateName = "";
 
-    if (preNamed) {
+    if (preNamed && isProperFirstName(preNamed[1], defaultFirstName, playerFirstName)) {
       candidateName = capitalizeWord(preNamed[1]);
       rawKin = preNamed[2].toLowerCase();
     } else if (kinMatches.length > 0) {
-      const last = kinMatches[kinMatches.length - 1];
-      rawKin = (last[1] || "").toLowerCase().trim();
-      const afterWord = (last[2] || "").trim();
-      if (afterWord && !NON_NAME_WORDS.has(afterWord.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")) && !NON_NAME_WORDS.has(afterWord.toLowerCase())) {
+      // Prefer non-default kinship terms (e.g. "hermana", "hermano") over third-person mentions of "sobrina"/"tío" in the same message
+      const nonDefaultMatches = kinMatches.filter((m) => !/^(?:sobrin[ao]|t[ií]o)$/i.test((m[1] || "").trim()));
+      const chosen = nonDefaultMatches.length > 0 ? nonDefaultMatches[nonDefaultMatches.length - 1] : kinMatches[kinMatches.length - 1];
+      rawKin = (chosen[1] || "").toLowerCase().trim();
+      const afterWord = (chosen[2] || "").trim();
+      if (afterWord && isProperFirstName(afterWord, defaultFirstName, playerFirstName)) {
         candidateName = capitalizeWord(afterWord);
       }
     }
@@ -255,9 +278,12 @@ export function resolveActiveCharacter(
       }
     }
 
-    // Check if user explicitly mentioned the default character's name to switch back
+    // Check if user explicitly addressed the default character (not just mentioning her in 3rd person like "era Estefanía")
     if (defaultFirstName && new RegExp(`\\b${defaultFirstName}\\b`, "i").test(text)) {
-      return { isDefault: true, name: defaultFirstName, role: defaultCharacterRole, addressTerm: defaultIsSobrina ? "Tío" : playerFirstName };
+      const thirdPersonMention = new RegExp(`(?:era|es|fue|sobre|de|a)\\s+${defaultFirstName}\\b|\\b${defaultFirstName}\\s+(?:no\\s+era|era|es|est[aá]|estaba)\\b`, "i").test(text);
+      if (!thirdPersonMention) {
+        return { isDefault: true, name: defaultFirstName, role: defaultCharacterRole, addressTerm: defaultIsSobrina ? "Tío" : playerFirstName };
+      }
     }
 
     return null;
@@ -295,6 +321,61 @@ export function resolveActiveCharacter(
     defaultFirstName,
     playerFirstName,
   };
+}
+
+export function isRepeatedAssistantReply(
+  candidate: string,
+  history: { role: string; content?: string; text?: string }[] = [],
+): boolean {
+  const rawCand = String(candidate || "").trim();
+  if (!rawCand) return true;
+  const norm = (s: string) =>
+    s
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^\w\s]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  const stripAct = (s: string) => s.replace(/\*[^*]*\*/g, " ").trim();
+
+  const candFull = norm(rawCand);
+  const candDial = norm(stripAct(rawCand));
+  const candFirstAct = norm((rawCand.match(/\*([^*]+)\*/)?.[1]) || "");
+
+  const assistantTurns = history
+    .filter((h) => h.role === "assistant" || h.role === "model")
+    .map((h) => String(h.content || h.text || "").trim())
+    .filter(Boolean)
+    .slice(-6);
+
+  for (const prev of assistantTurns) {
+    const prevFull = norm(prev);
+    const prevDial = norm(stripAct(prev));
+    const prevFirstAct = norm((prev.match(/\*([^*]+)\*/)?.[1]) || "");
+
+    if (candFull === prevFull) return true;
+    if (candDial.length >= 20 && candDial === prevDial) return true;
+    if (candDial.length >= 30 && prevDial.length >= 30 && candDial.slice(0, 32) === prevDial.slice(0, 32)) return true;
+    if (candFirstAct.length >= 18 && candFirstAct === prevFirstAct && candDial.slice(0, 20) === prevDial.slice(0, 20)) return true;
+
+    // Check 4-gram overlap on spoken dialogue
+    const candWords = candDial.split(" ").filter(Boolean);
+    const prevWords = prevDial.split(" ").filter(Boolean);
+    if (candWords.length >= 8 && prevWords.length >= 8) {
+      const prevNgrams = new Set<string>();
+      for (let i = 0; i <= prevWords.length - 4; i++) {
+        prevNgrams.add(prevWords.slice(i, i + 4).join(" "));
+      }
+      let hits = 0;
+      const total = candWords.length - 3;
+      for (let i = 0; i <= candWords.length - 4; i++) {
+        if (prevNgrams.has(candWords.slice(i, i + 4).join(" "))) hits++;
+      }
+      if (hits / total >= 0.4) return true;
+    }
+  }
+  return false;
 }
 
 export function sanitizeSwitchedReply(reply: string, info: ActiveCharacterInfo): string {
