@@ -27,6 +27,7 @@ import {
   Square,
   Plus,
   Trash2,
+  RotateCcw,
   Upload,
   Check,
   Sparkles
@@ -64,6 +65,7 @@ interface ChatCharacterConfigDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSave: (updated: CharacterItem) => void;
+  onResetHistory?: () => void;
 }
 
 /** Reproduce de forma garantizada con voz femenina si no hay red local */
@@ -138,7 +140,8 @@ export const ChatCharacterConfigDialog: React.FC<ChatCharacterConfigDialogProps>
   isNew = false,
   open,
   onOpenChange,
-  onSave
+  onSave,
+  onResetHistory
 }) => {
   const { language } = useLanguage();
   const isEs = language === "es";
@@ -648,25 +651,42 @@ export const ChatCharacterConfigDialog: React.FC<ChatCharacterConfigDialogProps>
           </div>
         </Tabs>
 
-        <DialogFooter className="p-4 px-6 border-t border-[#202020] bg-[#121212] flex items-center justify-end gap-3">
-          <Button
-            variant="ghost"
-            onClick={() => {
-              stopVoicePreview();
-              onOpenChange(false);
-            }}
-            className="text-zinc-400 hover:text-white hover:bg-white/5 text-xs font-semibold"
-          >
-            {isEs ? "Cancelar" : "Cancel"}
-          </Button>
+        <DialogFooter className="p-4 px-6 border-t border-[#202020] bg-[#121212] flex items-center justify-between gap-3">
+          {!isNew && onResetHistory ? (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                stopVoicePreview();
+                onResetHistory();
+              }}
+              className="border-red-900/60 bg-red-950/40 hover:bg-red-900/60 text-red-300 hover:text-white text-xs font-bold flex items-center gap-1.5 transition-all"
+            >
+              <RotateCcw className="w-3.5 h-3.5 text-red-400" />
+              {isEs ? "Restablecer historia" : "Reset Story"}
+            </Button>
+          ) : <div />}
 
-          <Button
-            onClick={handleSave}
-            className="bg-[#ff8c00] hover:bg-amber-500 text-black font-extrabold text-xs px-6 shadow-lg shadow-[#ff8c00]/30 transition-all hover:scale-105 active:scale-95"
-          >
-            <Check className="w-4 h-4 stroke-[2.5] mr-1" />
-            {isNew ? (isEs ? "Crear Personaje" : "Create Character") : (isEs ? "Guardar Cambios" : "Save Changes")}
-          </Button>
+          <div className="flex items-center gap-3">
+            <Button
+              variant="ghost"
+              onClick={() => {
+                stopVoicePreview();
+                onOpenChange(false);
+              }}
+              className="text-zinc-400 hover:text-white hover:bg-white/5 text-xs font-semibold"
+            >
+              {isEs ? "Cancelar" : "Cancel"}
+            </Button>
+
+            <Button
+              onClick={handleSave}
+              className="bg-[#ff8c00] hover:bg-amber-500 text-black font-extrabold text-xs px-6 shadow-lg shadow-[#ff8c00]/30 transition-all hover:scale-105 active:scale-95"
+            >
+              <Check className="w-4 h-4 stroke-[2.5] mr-1" />
+              {isNew ? (isEs ? "Crear Personaje" : "Create Character") : (isEs ? "Guardar Cambios" : "Save Changes")}
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>

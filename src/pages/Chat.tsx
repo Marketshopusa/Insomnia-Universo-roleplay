@@ -3,11 +3,19 @@ import { useParams, useNavigate } from "react-router-dom";
 import { Header } from "@/components/layout/Header";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator
+} from "@/components/ui/dropdown-menu";
+import {
   Send,
   Video,
   Mic,
   MicOff,
   Volume2,
+  VolumeX,
   Copy,
   RotateCcw,
   User,
@@ -22,6 +30,7 @@ import {
   Flame,
   Info,
   MoreVertical,
+  Settings,
   Shuffle,
   Headphones,
   ArrowLeft,
@@ -518,6 +527,61 @@ export default function ChatPage() {
   const [playingAudioId, setPlayingAudioId] = useState<string | null>(null);
   const [activePhotoIdx, setActivePhotoIdx] = useState(0);
 
+  // Auto-Voice (Corneta): controls whether incoming chat messages automatically speak out loud
+  const [isChatMuted, setIsChatMuted] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    try {
+      const stored = localStorage.getItem("insomnia_chat_muted");
+      return stored ? JSON.parse(stored) : false;
+    } catch {
+      return false;
+    }
+  });
+
+  const toggleChatMute = () => {
+    setIsChatMuted((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem("insomnia_chat_muted", JSON.stringify(next));
+      } catch {}
+      if (next) {
+        stopAudio();
+      }
+      return next;
+    });
+  };
+
+  // Reset conversation for active character to original starter message
+  const handleResetCurrentHistory = () => {
+    if (!activeChar) return;
+    stopAudio();
+    const initialStarter: ChatMessage = {
+      id: `starter-${activeChar.id}`,
+      role: "assistant",
+      content: isEs
+        ? (activeChar.starterMessageEs || activeChar.starterMessage)
+        : (activeChar.starterMessageEn || activeChar.starterMessage),
+      timestamp: isEs ? "Inicio" : "Start"
+    };
+
+    setChatHistory((prev) => {
+      const next = { ...prev, [activeChar.id]: [initialStarter] };
+      try {
+        localStorage.setItem("insomnia_user_chat_history_v1", JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+
+    setIsConfigOpen(false);
+
+    toast({
+      title: isEs ? "Historia restablecida" : "Story reset",
+      description: isEs
+        ? `Se ha reiniciado la conversación con ${activeChar.name} desde el principio.`
+        : `Conversation with ${activeChar.name} has been reset to the beginning.`
+    });
+  };
+
   // Live Call & Continuous Speech State
   const [callActive, setCallActive] = useState(false);
   const [callViewMode, setCallViewMode] = useState<"full" | "chat">("chat");
@@ -754,6 +818,11 @@ export default function ChatPage() {
         ...prev,
         [activeChar.id]: [...(prev[activeChar.id] || []), assistantMsg]
       }));
+
+      // AUTO-VOICE: If corneta is active (!isChatMuted), automatically speak incoming message aloud!
+      if (!isChatMuted) {
+        void handlePlayAudio(assistantMsg.id, reply);
+      }
     } catch (e) {
       console.error(e);
     } finally {
@@ -783,7 +852,8 @@ export default function ChatPage() {
     stopAudio();
     setPlayingAudioId(messageId);
 
-    const spoken = text.replace(/\*.*?\*/g, "").trim() || text;
+    // Speak entire message (both narration and dialogue), removing asterisks so TTS sounds natural
+    const spoken = text.replace(/\*/g, "").replace(/\s+/g, " ").trim() || text;
     const voiceToUse = activeChar.voiceName || "Aoede";
 
     try {
@@ -839,7 +909,8 @@ export default function ChatPage() {
     if (!callActiveRef.current) return false;
     setCallState("speaking");
     setCallSpeakerText(text);
-    const spoken = text.replace(/\*.*?\*/g, "").trim() || text;
+    // Speak entire message (both narration and dialogue), removing asterisks so TTS sounds natural
+    const spoken = text.replace(/\*/g, "").replace(/\s+/g, " ").trim() || text;
     const voiceToUse = activeChar.voiceName || "Aoede";
 
     try {
@@ -1816,12 +1887,55 @@ export default function ChatPage() {
                     <span>{isEs ? "Llamada en vivo" : "Live Call"}</span>
                   </button>
 
+                  {/* 3-Dots Menu with Configure Character and Reset Story */}
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button
+                        className="p-1.5 rounded-xl bg-[#161616] border border-[#2b2b2b] text-zinc-300 hover:text-white transition-colors"
+                        title={isEs ? "Opciones del personaje" : "Character options"}
+                      >
+                        <MoreVertical className="w-4 h-4" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-56 bg-[#121212] border border-[#282828] text-zinc-200 shadow-2xl z-50">
+                      <DropdownMenuItem
+                        onClick={() => handleOpenEditConfig(activeChar)}
+                        className="flex items-center gap-2.5 cursor-pointer hover:bg-white/10 text-xs font-semibold py-2.5"
+                      >
+                        <Settings className="w-4 h-4 text-zinc-400" />
+                        <span>{isEs ? "Configurar personaje" : "Configure character"}</span>
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator className="bg-[#242424]" />
+                      <DropdownMenuItem
+                        onClick={handleResetCurrentHistory}
+                        className="flex items-center gap-2.5 cursor-pointer text-red-400 hover:text-red-300 hover:bg-red-950/40 text-xs font-bold py-2.5"
+                      >
+                        <RotateCcw className="w-4 h-4 text-red-400" />
+                        <span>{isEs ? "Restablecer historia" : "Reset story"}</span>
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+
+                  {/* Auto-Voice Corneta Toggle in Top Bar */}
                   <button
-                    onClick={() => handleOpenEditConfig(activeChar)}
-                    className="p-1.5 rounded-xl bg-[#161616] border border-[#2b2b2b] text-zinc-300 hover:text-white"
-                    title={isEs ? "Configurar personaje" : "Configure character"}
+                    type="button"
+                    onClick={toggleChatMute}
+                    className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${
+                      !isChatMuted
+                        ? "bg-[#1f160e] border border-[#ff8c00]/60 text-[#ff8c00] hover:scale-110 shadow-sm shadow-[#ff8c00]/20"
+                        : "bg-[#161616] border border-[#2b2b2b] text-zinc-500 hover:text-zinc-300 hover:scale-105"
+                    }`}
+                    title={
+                      !isChatMuted
+                        ? (isEs ? "Voz automática activada: se lee el chat en voz alta (Click para silenciar)" : "Auto-voice active: chat speaks automatically (Click to mute)")
+                        : (isEs ? "Voz automática desactivada: silencioso (Click para activar voz automática)" : "Auto-voice muted (Click to enable auto-voice)")
+                    }
                   >
-                    <MoreVertical className="w-4 h-4" />
+                    {!isChatMuted ? (
+                      <Volume2 className="w-4 h-4 text-[#ff8c00]" />
+                    ) : (
+                      <VolumeX className="w-4 h-4 text-zinc-500" />
+                    )}
                   </button>
                 </div>
               </div>
@@ -1972,9 +2086,26 @@ export default function ChatPage() {
             <aside className="w-[340px] lg:w-[380px] bg-[#000000] flex flex-col overflow-y-auto hidden md:flex flex-shrink-0 z-20">
               {/* Top Stats Bar */}
               <div className="h-12 px-4 bg-[#0a0a0a] border-b border-[#222222] flex items-center justify-between text-xs text-zinc-300 font-bold">
-                <span className="w-7 h-7 rounded-full bg-[#181818] flex items-center justify-center text-[#ff8c00]">
-                  <Volume2 className="w-3.5 h-3.5" />
-                </span>
+                <button
+                  type="button"
+                  onClick={toggleChatMute}
+                  className={`w-7 h-7 rounded-full flex items-center justify-center transition-all ${
+                    !isChatMuted
+                      ? "bg-[#1f160e] border border-[#ff8c00]/60 text-[#ff8c00] hover:scale-110 shadow-sm shadow-[#ff8c00]/20"
+                      : "bg-[#181818] border border-[#2e2e2e] text-zinc-500 hover:text-zinc-300 hover:scale-105"
+                  }`}
+                  title={
+                    !isChatMuted
+                      ? (isEs ? "Voz automática activada: se lee el chat en voz alta (Click para silenciar)" : "Auto-voice active: chat speaks automatically (Click to mute)")
+                      : (isEs ? "Voz automática desactivada: silencioso (Click para activar voz automática)" : "Auto-voice muted (Click to enable auto-voice)")
+                  }
+                >
+                  {!isChatMuted ? (
+                    <Volume2 className="w-3.5 h-3.5 text-[#ff8c00]" />
+                  ) : (
+                    <VolumeX className="w-3.5 h-3.5 text-zinc-500" />
+                  )}
+                </button>
                 <div className="flex items-center gap-3.5 text-xs font-semibold">
                   <span className="flex items-center gap-1">
                     <Camera className="w-3.5 h-3.5 text-[#ff8c00]" /> {activeChar.imageCount}
@@ -2121,6 +2252,7 @@ export default function ChatPage() {
         open={isConfigOpen}
         onOpenChange={setIsConfigOpen}
         onSave={handleSaveCharacter}
+        onResetHistory={handleResetCurrentHistory}
       />
 
       {/* =========================================================================
