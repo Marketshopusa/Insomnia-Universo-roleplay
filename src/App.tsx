@@ -44,6 +44,7 @@ const MyStories = lazyWithRetry(() => import("./pages/MyStories"));
 const Plans = lazyWithRetry(() => import("./pages/Plans"));
 const StoryDetail = lazyWithRetry(() => import("./pages/StoryDetail"));
 const Shorts = lazyWithRetry(() => import("./pages/Shorts"));
+const Chat = lazyWithRetry(() => import("./pages/Chat"));
 const ShortNovel = lazyWithRetry(() => import("./pages/ShortNovel"));
 const ShortSeries = lazyWithRetry(() => import("./pages/ShortSeries"));
 const ReadingHistory = lazyWithRetry(() => import("./pages/ReadingHistory"));
@@ -87,6 +88,8 @@ const App = () => (
                     <Route path="/history" element={<ReadingHistory />} />
                     <Route path="/plans" element={<Plans />} />
                     <Route path="/shorts" element={<Shorts />} />
+                    <Route path="/chat" element={<Chat />} />
+                    <Route path="/chat/:characterId" element={<Chat />} />
                     <Route path="/shorts/novel/:projectId" element={<ShortNovel />} />
                     <Route path="/shorts/:seriesId" element={<ShortSeries />} />
                     {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

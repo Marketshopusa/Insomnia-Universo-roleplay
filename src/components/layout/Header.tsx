@@ -46,6 +46,7 @@ import { AdultConsentDialog } from "@/components/adult/AdultConsentDialog";
  
    const navLinks = [
       { href: "/", label: t("nav.home") },
+      { href: "/chat", label: t("nav.chat") || "Chat" },
       { href: "/shorts", label: t("nav.shorts") },
       { href: "/studio", label: t("nav.novelStudio") },
       { href: "/my-stories", label: t("nav.myStories") },

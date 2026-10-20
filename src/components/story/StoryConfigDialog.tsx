@@ -199,6 +199,8 @@ export const StoryConfigDialog = ({ story, open, onOpenChange, onSaved }: StoryC
     if (!story || !user) return;
     if (!title.trim()) {
       toast({ title: es ? "Ponle un título" : "Add a title", variant: "destructive" });
+      return;
+    }
     if (characterAge < 18) {
       toast({
         title: es ? "Edad no permitida (+18)" : "Invalid age (18+)",
