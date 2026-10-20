@@ -27,14 +27,19 @@ import {
   ArrowLeft,
   Languages,
   PhoneOff,
-  MessageSquare
+  MessageSquare,
+  Crown,
+  Sparkles
 } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { useAuth } from "@/contexts/AuthContext";
 import { useAdultMode } from "@/contexts/AdultModeContext";
 import { invokeFunctionWithRetry } from "@/lib/invokeFunction";
 import { streamSpeech, type SpeechStream } from "@/lib/ttsStream";
 import { selectStoryMemory } from "@/lib/storyMemory";
 import { ChatCharacterConfigDialog, fallbackFemaleSpeech } from "@/components/chat/ChatCharacterConfigDialog";
+import { ChatAiSettingsDialog } from "@/components/story/ChatAiSettingsDialog";
+import { getStoryAiSettings, AVAILABLE_AI_MODELS } from "@/lib/storyAiSettings";
 import { toast } from "@/hooks/use-toast";
 
 // ==========================================
@@ -394,6 +399,7 @@ export default function ChatPage() {
   const { language } = useLanguage();
   const isEs = language === "es";
   const { enabled: adultEnabled } = useAdultMode();
+  const { isAdmin } = useAuth();
 
   // State: View Mode ('explore' for Catalog, 'room' for Chat Room)
   const [viewMode, setViewMode] = useState<"explore" | "room">(
@@ -402,6 +408,14 @@ export default function ChatPage() {
   const [selectedCharacterId, setSelectedCharacterId] = useState<string>(
     characterId || "olivia-adams"
   );
+
+  // AI Settings Dialog State (Momoo AI style models, memory tiers & token lengths)
+  const [isAiSettingsOpen, setIsAiSettingsOpen] = useState(false);
+  const activeAiSettings = useMemo(() => getStoryAiSettings(selectedCharacterId), [selectedCharacterId, isAiSettingsOpen]);
+  const currentAiModelName = useMemo(() => {
+    const found = AVAILABLE_AI_MODELS.find((m) => m.id === activeAiSettings.modelId);
+    return found?.name || "Insomnia Flash";
+  }, [activeAiSettings]);
 
   // Explore Filters
   const [activeGender, setActiveGender] = useState<"all" | "female" | "male" | "non-binary">("all");
@@ -619,6 +633,7 @@ export default function ChatPage() {
 
       const charBio = isEs ? (activeChar.bioEs || activeChar.bio) : (activeChar.bioEn || activeChar.bio);
       const charRole = isEs ? (activeChar.roleTitleEs || activeChar.roleTitle) : (activeChar.roleTitleEn || activeChar.roleTitle);
+      const charAiSettings = getStoryAiSettings(activeChar.id);
 
       const { data, error } = await invokeFunctionWithRetry<{ content?: string }>("story-chat", {
         story: {
@@ -635,7 +650,8 @@ export default function ChatPage() {
         memory: selectStoryMemory(historyPayload, text),
         userMessage: text,
         adultMode: adultEnabled,
-        region: "mx"
+        region: "mx",
+        settings: charAiSettings
       });
 
       let reply = "";
@@ -1083,6 +1099,25 @@ export default function ChatPage() {
 
                 {/* Right controls */}
                 <div className="flex items-center gap-2 sm:gap-2.5">
+                  {isAdmin && (
+                    <span
+                      className="hidden sm:flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-gradient-to-r from-amber-500/20 via-yellow-500/20 to-amber-500/20 border border-amber-500/50 text-amber-300 text-[10px] font-black uppercase tracking-wider shadow-sm"
+                      title="Administrador Maestro: marketshopusafl@gmail.com"
+                    >
+                      <Crown className="w-3 h-3 text-amber-400 fill-amber-400" />
+                      <span>ADMIN</span>
+                    </span>
+                  )}
+
+                  <button
+                    onClick={() => setIsAiSettingsOpen(true)}
+                    className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#181a24] hover:bg-[#222536] border border-[#2e3146] text-amber-300 font-bold text-xs shadow-md transition-all hover:scale-105 active:scale-95"
+                    title={isEs ? "Configurar Modelo de IA (Magnum v4, Euryale, Memoria 32K)" : "Configure AI Model (Magnum v4, Euryale, 32K Memory)"}
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                    <span className="hidden sm:inline text-[11px] truncate max-w-[120px]">{currentAiModelName}</span>
+                  </button>
+
                   <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-[#161616] border border-[#2b2b2b]">
                     <img
                       src={activeChar.avatar}
@@ -1338,7 +1373,11 @@ export default function ChatPage() {
                     <div
                       onClick={() => {
                         toast({
-                          description: isEs
+                          description: isAdmin
+                            ? (isEs
+                                ? `Acceso Administrador: Todas las fotos exclusivas de ${activeChar.name} están 100% desbloqueadas.`
+                                : `Administrator Access: All exclusive photos of ${activeChar.name} are 100% unlocked.`)
+                            : isEs
                             ? `Desbloquea ${activeChar.imageCount - 2}+ fotos exclusivas en modo Premium`
                             : `Unlock ${activeChar.imageCount - 2}+ exclusive photos in Premium mode`
                         });
@@ -1354,7 +1393,11 @@ export default function ChatPage() {
                 <div
                   onClick={() => {
                     toast({
-                      description: isEs
+                      description: isAdmin
+                        ? (isEs
+                            ? `Modo Administrador: Tienes acceso ilimitado a todas las fotos y videos premium de ${activeChar.name}.`
+                            : `Administrator Mode: You have unlimited access to all premium photos and videos of ${activeChar.name}.`)
+                        : isEs
                         ? `Acceso exclusivo a fotos y videos premium de ${activeChar.name}`
                         : `Exclusive access to premium photos and videos of ${activeChar.name}`
                     });
@@ -1366,11 +1409,18 @@ export default function ChatPage() {
                       <Flame className="w-4 h-4 fill-[#ff8c00]" />
                     </div>
                     <div>
-                      <h5 className="text-xs font-bold text-white">
-                        {isEs ? "Contenido Premium" : "Premium content"}
+                      <h5 className="text-xs font-bold text-white flex items-center gap-1.5">
+                        <span>{isEs ? "Contenido Premium" : "Premium content"}</span>
+                        {isAdmin && (
+                          <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 font-bold uppercase">
+                            Admin
+                          </span>
+                        )}
                       </h5>
                       <p className="text-[10px] text-zinc-400">
-                        {isEs ? "Fotos y videos exclusivos" : "Exclusive photos & videos"}
+                        {isAdmin
+                          ? (isEs ? "Desbloqueado para tu cuenta de Administrador" : "Unlocked for your Administrator account")
+                          : (isEs ? "Fotos y videos exclusivos" : "Exclusive photos & videos")}
                       </p>
                     </div>
                   </div>
@@ -1490,6 +1540,22 @@ export default function ChatPage() {
         open={isConfigOpen}
         onOpenChange={setIsConfigOpen}
         onSave={handleSaveCharacter}
+      />
+
+      {/* =========================================================================
+          AI MODEL & MEMORY SETTINGS DIALOG (Magnum v4, Euryale 70B, DeepSeek, 32K)
+         ========================================================================= */}
+      <ChatAiSettingsDialog
+        open={isAiSettingsOpen}
+        onOpenChange={setIsAiSettingsOpen}
+        storyId={activeChar.id}
+        onSettingsSaved={(settings) => {
+          toast({
+            description: isEs
+              ? `Modelo de IA guardado: ${currentAiModelName} • Memoria: ${settings.memoryTier.toUpperCase()}`
+              : `AI Model saved: ${currentAiModelName} • Memory: ${settings.memoryTier.toUpperCase()}`
+          });
+        }}
       />
     </div>
   );

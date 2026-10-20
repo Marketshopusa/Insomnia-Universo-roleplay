@@ -1,11 +1,14 @@
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Check } from "lucide-react";
+import { Check, Crown, Sparkles } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { useAuth } from "@/contexts/AuthContext";
 
 const Plans = () => {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
+  const isEs = language === "es";
+  const { isAdmin, adminEmail } = useAuth();
 
   const plans = [
     {
@@ -59,6 +62,33 @@ const Plans = () => {
   return (
     <MainLayout>
       <div className="container mx-auto px-4 py-16">
+        {/* Administrator Access Banner */}
+        {isAdmin && (
+          <div className="mb-10 max-w-4xl mx-auto p-5 rounded-2xl bg-gradient-to-r from-amber-950/40 via-yellow-950/30 to-amber-950/40 border-2 border-amber-500/60 shadow-2xl shadow-amber-950/40 flex items-center gap-4">
+            <div className="w-12 h-12 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 flex-shrink-0">
+              <Crown className="w-6 h-6 fill-amber-400" />
+            </div>
+            <div className="flex-1 space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-black uppercase tracking-wider px-2 py-0.5 rounded bg-amber-500 text-black">
+                  {isEs ? "Acceso Maestro Administrador" : "Master Admin Access"}
+                </span>
+                <span className="text-xs font-semibold text-amber-300">
+                  {adminEmail}
+                </span>
+              </div>
+              <h3 className="text-base font-bold text-white">
+                {isEs ? "Todos los Modelos Premium & Deluxe Están Desbloqueados" : "All Premium & Deluxe Models Are 100% Unlocked"}
+              </h3>
+              <p className="text-xs text-neutral-300 leading-relaxed">
+                {isEs
+                  ? "Como administrador de Insomnia Universo, tienes acceso ilimitado y gratuito a Magnum v4, Euryale 70B, DeepSeek V4, memoria masiva de 32K tokens, generación de videos en Shorts y todo el catálogo sin restricciones."
+                  : "As Insomnia Universo administrator, you have unlimited free access to Magnum v4, Euryale 70B, DeepSeek V4, 32K memory tier, Shorts video production, and the full catalog without restrictions."}
+              </p>
+            </div>
+          </div>
+        )}
+
         <div className="text-center mb-12">
           <h1 className="text-4xl font-display mb-4">{t("plans.title")}</h1>
           <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
@@ -72,7 +102,7 @@ const Plans = () => {
               key={plan.name}
               className={`relative ${
                 plan.popular ? "border-primary shadow-lg shadow-primary/20" : ""
-              }`}
+              } ${isAdmin ? "border-amber-500/40" : ""}`}
             >
               {plan.popular && (
                 <div className="absolute -top-3 left-1/2 -translate-x-1/2">
@@ -85,8 +115,8 @@ const Plans = () => {
                 <CardTitle className="text-2xl">{plan.name}</CardTitle>
                 <CardDescription>{plan.description}</CardDescription>
                 <div className="mt-4">
-                  <span className="text-4xl font-bold">{plan.price}</span>
-                  <span className="text-muted-foreground">{plan.period}</span>
+                  <span className="text-4xl font-bold">{isAdmin ? "$0 (Admin)" : plan.price}</span>
+                  <span className="text-muted-foreground">{isAdmin ? " / Permanente" : plan.period}</span>
                 </div>
               </CardHeader>
               <CardContent className="space-y-6">
@@ -99,10 +129,23 @@ const Plans = () => {
                   ))}
                 </ul>
                 <Button
-                  className="w-full"
-                  variant={plan.popular ? "default" : "outline"}
+                  className={`w-full font-bold ${
+                    isAdmin
+                      ? "bg-gradient-to-r from-amber-500 to-yellow-500 text-black hover:opacity-90 shadow-lg shadow-amber-500/20"
+                      : plan.popular
+                      ? "default"
+                      : "outline"
+                  }`}
+                  disabled={isAdmin}
                 >
-                  {plan.cta}
+                  {isAdmin ? (
+                    <span className="flex items-center justify-center gap-1.5">
+                      <Crown className="w-4 h-4 fill-black" />
+                      {isEs ? "Desbloqueado (Admin)" : "Unlocked (Admin)"}
+                    </span>
+                  ) : (
+                    plan.cta
+                  )}
                 </Button>
               </CardContent>
             </Card>

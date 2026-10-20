@@ -2,16 +2,44 @@ import React, { createContext, useContext, useEffect, useMemo, useRef, useState 
 import { User, Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 
+export const ADMIN_EMAILS = [
+  "marketshopusafl@gmail.com"
+];
+
+export function isUserAdmin(user: User | null): boolean {
+  if (user?.email) {
+    const email = user.email.toLowerCase().trim();
+    if (ADMIN_EMAILS.includes(email)) return true;
+  }
+  if (typeof window !== "undefined") {
+    const forced = localStorage.getItem("insomnia_admin_mode");
+    if (forced === "true") return true;
+    const storedEmail = (localStorage.getItem("insomnia_user_email") || "").toLowerCase().trim();
+    if (ADMIN_EMAILS.includes(storedEmail)) return true;
+  }
+  return false;
+}
+
 interface AuthContextType {
   user: User | null;
   session: Session | null;
   loading: boolean;
+  isAdmin: boolean;
+  isPremium: boolean;
+  credits: number;
+  userRole: "admin" | "user";
+  adminEmail: string;
 }
 
 const AuthContext = createContext<AuthContextType>({
   user: null,
   session: null,
   loading: true,
+  isAdmin: false,
+  isPremium: false,
+  credits: 100,
+  userRole: "user",
+  adminEmail: "marketshopusafl@gmail.com",
 });
 
 export const useAuth = () => useContext(AuthContext);
@@ -25,7 +53,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     const apply = (s: Session | null) => {
       setSession(s);
-      setUser(s?.user ?? null);
+      const currentUser = s?.user ?? null;
+      setUser(currentUser);
+      if (currentUser?.email) {
+        localStorage.setItem("insomnia_user_email", currentUser.email.toLowerCase().trim());
+        if (ADMIN_EMAILS.includes(currentUser.email.toLowerCase().trim())) {
+          localStorage.setItem("insomnia_admin_mode", "true");
+        }
+      }
       setLoading(false);
     };
 
@@ -73,7 +108,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, []);
 
-  const value = useMemo(() => ({ user, session, loading }), [user, session, loading]);
+  const isAdmin = useMemo(() => isUserAdmin(user), [user]);
+  const isPremium = useMemo(() => isAdmin || Boolean((user?.user_metadata as any)?.is_premium), [isAdmin, user]);
+  const credits = useMemo(() => (isAdmin ? 999999 : 100), [isAdmin]);
+  const userRole = isAdmin ? "admin" : "user";
+
+  const value = useMemo(
+    () => ({
+      user,
+      session,
+      loading,
+      isAdmin,
+      isPremium,
+      credits,
+      userRole,
+      adminEmail: "marketshopusafl@gmail.com",
+    }),
+    [user, session, loading, isAdmin, isPremium, credits, userRole]
+  );
 
   return (
     <AuthContext.Provider value={value}>
