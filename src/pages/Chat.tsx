@@ -518,13 +518,35 @@ export default function ChatPage() {
   const [playingAudioId, setPlayingAudioId] = useState<string | null>(null);
   const [activePhotoIdx, setActivePhotoIdx] = useState(0);
 
-  // Live Call Dialog & Continuous Speech State
-  const [isCallOpen, setIsCallOpen] = useState(false);
+  // Live Call & Continuous Speech State
   const [callActive, setCallActive] = useState(false);
+  const [callViewMode, setCallViewMode] = useState<"full" | "chat">("chat");
+  const [callSeconds, setCallSeconds] = useState(0);
   const [callState, setCallState] = useState<"idle" | "connecting" | "speaking" | "listening" | "thinking">("idle");
   const [liveTranscript, setLiveTranscript] = useState("");
   const [callSpeakerText, setCallSpeakerText] = useState("");
   const [isCallMuted, setIsCallMuted] = useState(false);
+
+  useEffect(() => {
+    let interval: any = null;
+    if (callActive) {
+      setCallSeconds(0);
+      interval = setInterval(() => {
+        setCallSeconds((s) => s + 1);
+      }, 1000);
+    } else {
+      setCallSeconds(0);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [callActive]);
+
+  const formatCallTime = (totalSec: number) => {
+    const m = Math.floor(totalSec / 60).toString().padStart(2, "0");
+    const s = (totalSec % 60).toString().padStart(2, "0");
+    return `${m}:${s}`;
+  };
 
   // Call Audio & Speech Refs
   const callRecorderRef = useRef<WavRecorder | null>(null);
@@ -583,6 +605,10 @@ export default function ChatPage() {
     if (foundChar) return foundChar;
     return characterList[0] || TALKIEMATE_CHARACTERS[0];
   }, [characterList, selectedCharacterId]);
+
+  // Active character full media (video or photo)
+  const activeMediaUrl = activeChar.gallery[activePhotoIdx] || activeChar.avatar;
+  const isVideoMedia = Boolean(activeMediaUrl && (activeMediaUrl.endsWith(".mp4") || activeMediaUrl.endsWith(".webm") || activeMediaUrl.includes("video")));
 
   // Messages for active character: Only clean starter message if no conversation yet
   const currentMessages = useMemo(() => {
@@ -668,7 +694,8 @@ export default function ChatPage() {
 
     try {
       const existingHistory = chatHistory[activeChar.id] || [initialStarter];
-      const historyPayload = [...existingHistory, userMsg].slice(-8).map((m) => ({
+      // Only PRIOR turns in historyPayload: latest message is passed via userMessage to prevent duplication!
+      const historyPayload = existingHistory.slice(-12).map((m) => ({
         role: m.role,
         content: m.content
       }));
@@ -802,7 +829,7 @@ export default function ChatPage() {
     setCallSpeakerText("");
     setCallState("idle");
     setCallActive(false);
-    setIsCallOpen(false);
+    setCallViewMode("chat");
   };
 
   // Speak character voice during call
@@ -830,7 +857,7 @@ export default function ChatPage() {
     }
   };
 
-  // Listen to microphone
+  // Listen to microphone with high-speed VAD
   const callListen = async () => {
     if (!callActiveRef.current) return;
     if (callMutedRef.current) {
@@ -859,7 +886,7 @@ export default function ChatPage() {
       let lastSpeechChangeAt = Date.now();
       let hasFinalResult = false;
 
-      // Browser SpeechRecognition for instant live feedback
+      // Browser SpeechRecognition for instant real-time live feedback
       const browser = window as Window & {
         SpeechRecognition?: any;
         webkitSpeechRecognition?: any;
@@ -905,9 +932,9 @@ export default function ChatPage() {
         }
       }
 
-      const SILENCE_MS = 1400;
       const MAX_TURN_MS = 25000;
 
+      // Fast-reacting VAD loop: checks every 100ms
       const meter = window.setInterval(() => {
         if (!callActiveRef.current) return;
         const level = recorder.getLevel();
@@ -918,21 +945,23 @@ export default function ChatPage() {
           heardVoice = true;
           silentFor = 0;
         } else {
-          silentFor += 150;
+          silentFor += 100;
         }
 
         const hasTranscript = callTranscriptRef.current.trim().length > 0;
         const msSinceTranscriptChange = Date.now() - lastSpeechChangeAt;
+
+        // Ultra-fast turn completion: 400ms after final word or 800ms of silence
         const transcriptDone = hasTranscript && (
-          (hasFinalResult && msSinceTranscriptChange >= 700) ||
-          msSinceTranscriptChange >= 1500
+          (hasFinalResult && msSinceTranscriptChange >= 400) ||
+          msSinceTranscriptChange >= 800
         );
 
-        if (transcriptDone || ((heardVoice || hasTranscript) && silentFor >= SILENCE_MS)) {
+        if (transcriptDone || ((heardVoice || hasTranscript) && silentFor >= 900)) {
           window.clearInterval(meter);
           void finishCallTurn();
         }
-      }, 150);
+      }, 100);
       callTimersRef.current.push(meter);
 
       const maxTimer = window.setTimeout(() => {
@@ -968,10 +997,6 @@ export default function ChatPage() {
     const spoke = recorder.heardSpeech();
     const blob = await recorder.stop();
     if (!callActiveRef.current) return;
-
-    if (!callTranscriptRef.current.trim() && activeRecognition) {
-      await new Promise((r) => window.setTimeout(r, 200));
-    }
 
     let userText = callTranscriptRef.current.trim();
     callTranscriptRef.current = "";
@@ -1014,7 +1039,13 @@ export default function ChatPage() {
       return;
     }
 
-    // 1. Add user speech directly to chat history in real time!
+    // 1. Prior history BEFORE userText to avoid prompt duplication
+    const priorHistory = (chatHistory[activeChar.id] || []).slice(-10).map((m) => ({
+      role: m.role,
+      content: m.content
+    }));
+
+    // 2. Save user speech directly to chat history in real time
     const userMsg: ChatMessage = {
       id: `u-call-${Date.now()}`,
       role: "user",
@@ -1022,58 +1053,58 @@ export default function ChatPage() {
       timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
     };
 
-    let updatedHistory: ChatMessage[] = [];
     setChatHistory((prev) => {
       const existing = prev[activeChar.id] || [];
-      updatedHistory = [...existing, userMsg];
       return {
         ...prev,
-        [activeChar.id]: updatedHistory
+        [activeChar.id]: [...existing, userMsg]
       };
     });
 
-    // 2. Request AI reply continuing the unbroken conversation
+    // 3. Request AI reply continuing the unbroken conversation
     try {
-      const historyPayload = updatedHistory.slice(-12).map((m) => ({
-        role: m.role,
-        content: m.content
-      }));
-
       const charBio = isEs ? (activeChar.bioEs || activeChar.bio) : (activeChar.bioEn || activeChar.bio);
       const charRole = isEs ? (activeChar.roleTitleEs || activeChar.roleTitle) : (activeChar.roleTitleEn || activeChar.roleTitle);
       const charAiSettings = getStoryAiSettings(activeChar.id);
+
+      // Fast call settings: 65 tokens max for instant snappy phone response (<0.8s)
+      const fastCallSettings = {
+        ...charAiSettings,
+        messageLength: 65
+      };
 
       const { data, error } = await invokeFunctionWithRetry<{ content?: string }>("story-chat", {
         story: {
           id: activeChar.id,
           title: activeChar.name,
           description: charBio,
-          story_context: `${charRole}. Bio: ${charBio}. [EN LLAMADA TELEFÓNICA EN VIVO: responde de forma oral, conversacional, natural, directa y expresiva, sin asteriscos largos de acciones teatrales, como en una llamada real].`,
+          story_context: `${charRole}. Bio: ${charBio}. [REGLA OBLIGATORIA DE LLAMADA TELEFÓNICA EN VIVO: Estás hablando por teléfono en directo. PROHIBIDO usar asteriscos ni narrar acciones físicas (*acciones*). Responde ÚNICAMENTE con tus palabras habladas en primera persona, como en una llamada real. Sé concisa, natural, expresiva y atenta al hilo de la conversación, respondiendo en 1 o 2 oraciones directas sin monólogos ni demoras].`,
           character_role: activeChar.name,
           player_role: isEs ? "Compañero" : "Partner",
           story_type: "roleplay"
         },
         language,
-        history: historyPayload,
-        memory: selectStoryMemory(historyPayload, userText),
+        history: priorHistory,
+        memory: selectStoryMemory(priorHistory, userText),
         userMessage: userText,
         adultMode: adultEnabled,
         region: "mx",
-        settings: charAiSettings
+        settings: fastCallSettings
       });
 
       let reply = "";
       if (!error && data?.content) {
-        reply = normalizeAssistantReply(data.content) || data.content;
+        const clean = normalizeAssistantReply(data.content) || data.content;
+        reply = clean.replace(/\*.*?\*/g, "").replace(/\s+/g, " ").trim() || clean;
       } else {
         reply = isEs
-          ? `Te escucho perfectamente cariño... me encanta escuchar tu voz. Dime más sobre eso.`
-          : `I hear you loud and clear honey... I love the sound of your voice. Tell me more.`;
+          ? `Te escucho cariño... me encanta tu voz. Cuéntame más.`
+          : `I'm listening honey... I love your voice. Tell me more.`;
       }
 
       if (!callActiveRef.current || callSessionRef.current !== currentCallSession) return;
 
-      // 3. Add character reply directly to chat history!
+      // 4. Add character reply directly to chat history!
       const assistantMsg: ChatMessage = {
         id: `a-call-${Date.now()}`,
         role: "assistant",
@@ -1086,7 +1117,7 @@ export default function ChatPage() {
         [activeChar.id]: [...(prev[activeChar.id] || []), assistantMsg]
       }));
 
-      // 4. Speak reply out loud
+      // 5. Speak reply out loud
       const stillActive = await callSpeak(reply);
       if (stillActive && callSessionRef.current === currentCallSession) {
         void callListen();
@@ -1102,8 +1133,8 @@ export default function ChatPage() {
   // Voice Call Entrypoint
   const handleStartCall = async () => {
     stopAudio();
-    setIsCallOpen(true);
     setCallActive(true);
+    setCallViewMode("full");
     setCallState("connecting");
     setLiveTranscript("");
     setCallSpeakerText("");
@@ -1128,15 +1159,15 @@ export default function ChatPage() {
         const charAiSettings = getStoryAiSettings(activeChar.id);
 
         const promptContext = isEs
-          ? `[El usuario te acaba de marcar por teléfono. Atiende la llamada saludándolo con cariño y continuando fluidamente lo que venían hablando recién en el chat. Sé breve, natural y conversacional como en una llamada real].`
-          : `[The user just called you. Pick up the call warmly and naturally, directly continuing what you were just talking about in the chat. Be brief, expressive and natural like in a real phone call].`;
+          ? `[El usuario te acaba de marcar por teléfono. Atiende la llamada saludándolo con cariño y continuando fluidamente lo que venían hablando recién en el chat. Responde en 1 sola oración breve hablada, sin asteriscos ni acciones].`
+          : `[The user just called you. Pick up warmly and naturally, directly continuing what you were just talking about in the chat. Reply in 1 brief spoken sentence, no asterisks].`;
 
         const { data, error } = await invokeFunctionWithRetry<{ content?: string }>("story-chat", {
           story: {
             id: activeChar.id,
             title: activeChar.name,
             description: charBio,
-            story_context: `${charRole}. Bio: ${charBio}`,
+            story_context: `${charRole}. Bio: ${charBio}. [LLAMADA DE VOZ: solo diálogo hablado en primera persona, breve y directo].`,
             character_role: activeChar.name,
             player_role: isEs ? "Compañero" : "Partner",
             story_type: "roleplay"
@@ -1147,11 +1178,12 @@ export default function ChatPage() {
           userMessage: promptContext,
           adultMode: adultEnabled,
           region: "mx",
-          settings: charAiSettings
+          settings: { ...charAiSettings, messageLength: 50 }
         });
 
         if (!error && data?.content) {
-          greetingText = normalizeAssistantReply(data.content) || data.content;
+          const clean = normalizeAssistantReply(data.content) || data.content;
+          greetingText = clean.replace(/\*.*?\*/g, "").replace(/\s+/g, " ").trim() || clean;
         }
       } catch (e) {
         console.warn("Failed to generate dynamic call intro:", e);
@@ -1533,9 +1565,159 @@ export default function ChatPage() {
             </aside>
 
             {/* ----------------------------------------------------
-                CENTER PANEL: Chat Feed
+                CENTER PANEL: Chat Feed or Full Live Call Screen
                ---------------------------------------------------- */}
-            <main className="flex-1 flex flex-col bg-[#0b0b0b] border-r border-[#222222] relative overflow-hidden">
+            {callActive && callViewMode === "full" ? (
+              <main className="flex-1 flex flex-col justify-between bg-black border-r border-[#222222] relative overflow-hidden select-none">
+                {/* Full Character Media in Background (Photo or Video) */}
+                <div className="absolute inset-0 z-0">
+                  {isVideoMedia ? (
+                    <video
+                      src={activeMediaUrl}
+                      autoPlay
+                      loop
+                      muted
+                      playsInline
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <img
+                      src={activeMediaUrl}
+                      alt={activeChar.name}
+                      className="w-full h-full object-cover"
+                    />
+                  )}
+                  {/* Subtle cinematic gradient overlay */}
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-transparent to-black/60 pointer-events-none" />
+                </div>
+
+                {/* Top Floating Info Bar */}
+                <div className="relative z-10 p-5 flex items-center justify-between">
+                  <div className="flex items-center gap-2.5 px-3.5 py-1.5 rounded-full bg-black/60 backdrop-blur-md border border-white/10 text-white text-xs font-semibold shadow-xl">
+                    <span className={`w-2.5 h-2.5 rounded-full ${
+                      callState === "speaking"
+                        ? "bg-emerald-400 animate-pulse"
+                        : callState === "listening"
+                        ? "bg-cyan-400 animate-ping"
+                        : "bg-amber-400 animate-pulse"
+                    }`} />
+                    <span className="font-bold text-sm tracking-wide">{activeChar.name}</span>
+                    <span className="text-zinc-400">·</span>
+                    <span className="text-emerald-400 font-mono text-xs font-bold">{formatCallTime(callSeconds)}</span>
+                  </div>
+
+                  <button
+                    onClick={() => setCallViewMode("chat")}
+                    className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-black/60 backdrop-blur-md border border-white/10 hover:border-white/30 text-zinc-200 hover:text-white text-xs font-bold transition-all shadow-xl hover:scale-105 active:scale-95"
+                    title={isEs ? "Ver conversación en el chat" : "View chat conversation"}
+                  >
+                    <MessageSquare className="w-3.5 h-3.5" />
+                    <span>{isEs ? "Ver Chat" : "View Chat"}</span>
+                  </button>
+                </div>
+
+                {/* Bottom Floating Call Controls Dock */}
+                <div className="relative z-10 p-6 pb-10 flex flex-col items-center space-y-4">
+                  {/* Discreet indicator pill */}
+                  {isCallMuted ? (
+                    <div className="px-3.5 py-1 rounded-full bg-red-950/80 border border-red-500/50 text-red-300 text-xs font-bold backdrop-blur-md animate-pulse shadow-lg">
+                      {isEs ? "Micrófono Silenciado" : "Microphone Muted"}
+                    </div>
+                  ) : callState === "listening" ? (
+                    <div className="px-3.5 py-1 rounded-full bg-cyan-950/70 border border-cyan-500/40 text-cyan-300 text-xs font-bold backdrop-blur-md shadow-lg">
+                      {isEs ? "Te escucha... Habla ahora" : "Listening... Speak now"}
+                    </div>
+                  ) : callState === "thinking" ? (
+                    <div className="px-3.5 py-1 rounded-full bg-purple-950/70 border border-purple-500/40 text-purple-300 text-xs font-bold backdrop-blur-md flex items-center gap-1.5 shadow-lg">
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                      <span>{isEs ? "Pensando..." : "Thinking..."}</span>
+                    </div>
+                  ) : (
+                    <div className="px-3.5 py-1 rounded-full bg-emerald-950/70 border border-emerald-500/40 text-emerald-300 text-xs font-bold backdrop-blur-md shadow-lg flex items-center gap-1.5">
+                      <Volume2 className="w-3.5 h-3.5 animate-bounce" />
+                      <span>{activeChar.name} {isEs ? "está hablando" : "is speaking"}</span>
+                    </div>
+                  )}
+
+                  {/* Clean circular action buttons */}
+                  <div className="flex items-center gap-6">
+                    {/* Mute Button */}
+                    <button
+                      onClick={toggleCallMute}
+                      className={`w-14 h-14 rounded-full flex items-center justify-center backdrop-blur-md border transition-transform hover:scale-105 active:scale-95 shadow-2xl ${
+                        isCallMuted
+                          ? "bg-red-500/80 border-red-400 text-white shadow-red-500/30"
+                          : "bg-black/60 border-white/20 text-white hover:bg-black/80"
+                      }`}
+                      title={isCallMuted ? (isEs ? "Activar micrófono" : "Unmute mic") : (isEs ? "Silenciar micrófono" : "Mute mic")}
+                    >
+                      {isCallMuted ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
+                    </button>
+
+                    {/* Central Status Indicator / Send speech now */}
+                    <button
+                      onClick={() => {
+                        if (callState === "listening") {
+                          void finishCallTurn();
+                        }
+                      }}
+                      disabled={callState !== "listening"}
+                      className={`w-16 h-16 rounded-full flex items-center justify-center backdrop-blur-md border shadow-2xl transition-all ${
+                        callState === "speaking"
+                          ? "bg-emerald-500/30 border-emerald-400 text-emerald-300 ring-4 ring-emerald-500/20 animate-pulse"
+                          : callState === "listening"
+                          ? "bg-cyan-500/30 border-cyan-400 text-cyan-300 ring-4 ring-cyan-500/20 hover:scale-105 active:scale-95 cursor-pointer"
+                          : "bg-purple-500/30 border-purple-400 text-purple-300 ring-4 ring-purple-500/20"
+                      }`}
+                      title={callState === "listening" ? (isEs ? "Toca para enviar ya" : "Tap to send now") : (isEs ? "En llamada" : "In call")}
+                    >
+                      {callState === "thinking" ? (
+                        <Loader2 className="w-7 h-7 animate-spin text-purple-400" />
+                      ) : callState === "listening" ? (
+                        <Mic className="w-7 h-7 text-cyan-300 animate-pulse" />
+                      ) : (
+                        <Phone className="w-7 h-7 text-emerald-300" />
+                      )}
+                    </button>
+
+                    {/* Hang Up Button */}
+                    <button
+                      onClick={handleEndCall}
+                      className="w-14 h-14 rounded-full bg-red-600 hover:bg-red-500 text-white flex items-center justify-center shadow-2xl shadow-red-600/50 transition-transform hover:scale-105 active:scale-95"
+                      title={isEs ? "Colgar llamada" : "Hang up call"}
+                    >
+                      <PhoneOff className="w-6 h-6" />
+                    </button>
+                  </div>
+                </div>
+              </main>
+            ) : (
+              <main className="flex-1 flex flex-col bg-[#0b0b0b] border-r border-[#222222] relative overflow-hidden">
+                {/* Active Call Banner inside Chat mode if minimized */}
+                {callActive && (
+                  <div className="h-10 px-4 bg-gradient-to-r from-emerald-950/80 via-black to-emerald-950/80 border-b border-emerald-500/30 flex items-center justify-between z-20 flex-shrink-0 backdrop-blur-md">
+                    <div className="flex items-center gap-2 text-xs font-bold text-emerald-300">
+                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                      <span>{isEs ? "En llamada con" : "Call with"} {activeChar.name}</span>
+                      <span className="text-zinc-400 font-mono">({formatCallTime(callSeconds)})</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setCallViewMode("full")}
+                        className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/30 transition-colors"
+                      >
+                        {isEs ? "Ver personaje" : "View character"}
+                      </button>
+                      <button
+                        onClick={handleEndCall}
+                        className="p-1 rounded-full bg-red-600/80 hover:bg-red-600 text-white transition-colors"
+                        title={isEs ? "Colgar" : "Hang up"}
+                      >
+                        <PhoneOff className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                )}
               {/* Top Bar of Active Chat */}
               <div className="h-14 px-5 bg-[#000000] border-b border-[#222222] flex items-center justify-between z-10 flex-shrink-0">
                 {/* Level & XP pill */}
@@ -1738,6 +1920,7 @@ export default function ChatPage() {
                 </button>
               </div>
             </main>
+          )}
 
             {/* ----------------------------------------------------
                 RIGHT PANEL: Character Dossier & Gallery
@@ -1884,188 +2067,6 @@ export default function ChatPage() {
           </div>
         </div>
       )}
-
-      {/* =========================================================================
-          LIVE CALL DIALOG (Connected to Chat history & Real Voice Recognition)
-         ========================================================================= */}
-      <Dialog
-        open={isCallOpen}
-        onOpenChange={(open) => {
-          if (!open) {
-            handleEndCall();
-          } else {
-            setIsCallOpen(true);
-          }
-        }}
-      >
-        <DialogContent className="max-w-md bg-[#0a0a0a] border border-[#262626] text-white p-6 rounded-3xl shadow-2xl">
-          <div className="flex flex-col items-center text-center space-y-5 py-2">
-            {/* Status badge */}
-            <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold tracking-wider uppercase border ${
-              callState === "connecting"
-                ? "bg-amber-500/10 border-amber-500/30 text-amber-400"
-                : callState === "speaking"
-                ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
-                : callState === "listening"
-                ? "bg-cyan-500/10 border-cyan-500/30 text-cyan-400"
-                : "bg-purple-500/10 border-purple-500/30 text-purple-300"
-            }`}>
-              <span className={`w-2 h-2 rounded-full ${
-                callState === "connecting"
-                  ? "bg-amber-400 animate-ping"
-                  : callState === "speaking"
-                  ? "bg-emerald-400 animate-pulse"
-                  : callState === "listening"
-                  ? "bg-cyan-400 animate-ping"
-                  : "bg-purple-400 animate-pulse"
-              }`} />
-              {callState === "connecting"
-                ? (isEs ? "Conectando llamada..." : "Connecting call...")
-                : callState === "speaking"
-                ? (isEs ? `${activeChar.name} está hablando` : `${activeChar.name} is speaking`)
-                : callState === "listening"
-                ? (isEs ? "Te está escuchando... Habla ahora" : "Listening to you... Speak now")
-                : (isEs ? "Pensando respuesta..." : "Thinking response...")}
-            </div>
-
-            {/* Glowing / Pulsing Avatar */}
-            <div className="relative">
-              <div
-                className={`w-32 h-32 rounded-full overflow-hidden ring-4 transition-all duration-500 ${
-                  callState === "speaking"
-                    ? "ring-emerald-500 shadow-[0_0_40px_rgba(16,185,129,0.45)] scale-105"
-                    : callState === "listening"
-                    ? "ring-cyan-500 shadow-[0_0_40px_rgba(6,182,212,0.45)] scale-105"
-                    : callState === "thinking"
-                    ? "ring-purple-500 shadow-[0_0_35px_rgba(168,85,247,0.35)]"
-                    : "ring-[#ff8c00] animate-pulse"
-                }`}
-              >
-                <img
-                  src={activeChar.avatar}
-                  alt={activeChar.name}
-                  className="w-full h-full object-cover"
-                />
-              </div>
-
-              {/* Status Badge Icon on Avatar */}
-              <div className={`absolute -bottom-1 -right-1 w-8 h-8 rounded-full flex items-center justify-center font-bold shadow-lg text-black transition-colors ${
-                callState === "speaking"
-                  ? "bg-emerald-500"
-                  : callState === "listening"
-                  ? "bg-cyan-400"
-                  : "bg-purple-400"
-              }`}>
-                {callState === "speaking" ? (
-                  <Volume2 className="w-4 h-4 animate-bounce text-black" />
-                ) : callState === "listening" ? (
-                  <Mic className="w-4 h-4 animate-pulse text-black" />
-                ) : callState === "thinking" ? (
-                  <Loader2 className="w-4 h-4 animate-spin text-black" />
-                ) : (
-                  <Phone className="w-4 h-4 text-black" />
-                )}
-              </div>
-            </div>
-
-            {/* Character Info */}
-            <div className="space-y-1">
-              <h3 className="text-xl font-extrabold text-white tracking-wide">{activeChar.name}</h3>
-              <p className="text-xs text-zinc-400">
-                {isEs ? (activeChar.roleTitleEs || activeChar.roleTitle) : (activeChar.roleTitleEn || activeChar.roleTitle)}
-              </p>
-            </div>
-
-            {/* Live Subtitle / Transcript box */}
-            <div className="w-full min-h-[54px] max-h-[80px] overflow-y-auto px-4 py-2 rounded-2xl bg-[#141414] border border-[#2a2a2a] flex items-center justify-center text-center">
-              {liveTranscript ? (
-                <p className="text-xs text-cyan-300 font-medium italic animate-pulse">
-                  "{liveTranscript}"
-                </p>
-              ) : callSpeakerText && callState === "speaking" ? (
-                <p className="text-xs text-zinc-300 font-normal leading-relaxed line-clamp-3">
-                  "{callSpeakerText}"
-                </p>
-              ) : callState === "listening" ? (
-                <p className="text-xs text-zinc-400 font-medium">
-                  {isCallMuted
-                    ? (isEs ? "Micrófono en silencio" : "Microphone muted")
-                    : (isEs ? "Puedes hablar, te está escuchando con atención..." : "You can speak, listening to you attentively...")}
-                </p>
-              ) : callState === "thinking" ? (
-                <div className="flex items-center gap-2 text-xs text-purple-300 font-medium">
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  <span>{isEs ? "Preparando respuesta en personaje..." : "Formulating response in character..."}</span>
-                </div>
-              ) : (
-                <span className="text-xs text-zinc-500">
-                  {isEs ? "Conectando con la voz de Insomnia..." : "Connecting with Insomnia voice..."}
-                </span>
-              )}
-            </div>
-
-            {/* Audio Wave Indicator */}
-            <div className="w-full min-h-[30px] flex items-center justify-center">
-              {callActive ? (
-                <div className="flex items-center gap-1.5 h-6">
-                  {[35, 75, 100, 60, 85, 40, 95, 70, 30].map((h, i) => (
-                    <span
-                      key={i}
-                      className={`w-1 rounded-full transition-all duration-200 ${
-                        callState === "speaking"
-                          ? "bg-emerald-400 animate-pulse"
-                          : callState === "listening"
-                          ? "bg-cyan-400 animate-bounce"
-                          : "bg-purple-400"
-                      }`}
-                      style={{
-                        height: callState === "listening" ? `${Math.max(25, (h * 0.8))}%` : `${h}%`,
-                        animationDuration: `${0.35 + (i % 4) * 0.15}s`
-                      }}
-                    />
-                  ))}
-                </div>
-              ) : (
-                <span className="text-xs text-zinc-500">...</span>
-              )}
-            </div>
-
-            {/* Call Action Controls */}
-            <div className="flex items-center gap-4 pt-1">
-              <button
-                onClick={toggleCallMute}
-                className={`w-12 h-12 rounded-full border flex items-center justify-center transition-colors ${
-                  isCallMuted
-                    ? "bg-red-500/20 border-red-500 text-red-400"
-                    : "bg-[#181818] border-[#2e2e2e] text-zinc-300 hover:text-white"
-                }`}
-                title={isCallMuted ? (isEs ? "Activar micrófono" : "Unmute mic") : (isEs ? "Silenciar micrófono" : "Mute mic")}
-              >
-                {isCallMuted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
-              </button>
-
-              {callState === "listening" && (
-                <button
-                  onClick={() => void finishCallTurn()}
-                  className="px-4 py-2.5 rounded-full bg-cyan-600/30 hover:bg-cyan-600/40 border border-cyan-500/40 text-cyan-300 font-bold text-xs flex items-center gap-1.5 transition-all hover:scale-105 active:scale-95"
-                  title={isEs ? "Enviar lo que dijiste ahora" : "Send speech now"}
-                >
-                  <Send className="w-3.5 h-3.5" />
-                  <span>{isEs ? "Enviar ya" : "Send now"}</span>
-                </button>
-              )}
-
-              <button
-                onClick={handleEndCall}
-                className="w-14 h-14 rounded-full bg-red-600 hover:bg-red-500 text-white flex items-center justify-center shadow-lg shadow-red-600/40 transition-transform hover:scale-105 active:scale-95"
-                title={isEs ? "Finalizar llamada" : "End call"}
-              >
-                <PhoneOff className="w-6 h-6" />
-              </button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
 
       {/* =========================================================================
           CHARACTER CONFIG DIALOG (Photos, Carousel, Voice, and Bio)
