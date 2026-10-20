@@ -369,6 +369,7 @@ type Mode = "select" | "read" | "roleplay";
           description: story?.description || tDescription,
           story_context: storyContext || tDescription,
           character_role: story?.character_role || tCharacter,
+          character_age: Math.max(18, Number(story?.character_age) || 21),
           player_role: story?.player_role || tPlayer,
           story_type: story?.story_type,
         },
@@ -404,6 +405,11 @@ type Mode = "select" | "read" | "roleplay";
       else if (code === "chat_status_unavailable" || code === "chat_job_expired") toast({
         title: language === "es" ? "No pudimos recuperar la respuesta" : "Could not retrieve the reply",
         description: data?.message,
+        variant: "destructive",
+      });
+      else if (code === "minor_safety_violation") toast({
+        title: language === "es" ? "Bloqueo de Seguridad (+18)" : "Safety Policy Block (+18)",
+        description: data?.message || (language === "es" ? "Está terminantemente prohibido cualquier contenido o rol que involucre o aluda a menores de edad. Todos los personajes deben ser mayores de 18 años." : "Content involving minors is strictly prohibited. All characters must be 18+."),
         variant: "destructive",
       });
       else if (code === "content_blocked") toast({
@@ -785,6 +791,15 @@ type Mode = "select" | "read" | "roleplay";
                           <span className="text-foreground">{tCharacter || story.character_role}</span>
                        </div>
                      )}
+                     <div className="flex items-center gap-2">
+                       <span className="text-muted-foreground">{language === "es" ? "Ficha de edad:" : "Character age:"}</span>
+                       <span className="text-rose-400 font-semibold flex items-center gap-1.5">
+                         {Math.max(18, Number((story as any).character_age) || 21)} {language === "es" ? "años" : "years"}
+                         <span className="text-[10px] bg-rose-950/80 border border-rose-800/40 text-rose-300 px-1.5 py-0.5 rounded font-bold">
+                           +18
+                         </span>
+                       </span>
+                     </div>
                   </div>
                  </div>
                </div>

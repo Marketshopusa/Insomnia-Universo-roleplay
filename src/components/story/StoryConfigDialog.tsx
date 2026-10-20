@@ -36,6 +36,7 @@ export interface ConfigurableStory {
   story_context?: string | null;
   cover_image?: string | null;
   character_role?: string | null;
+  character_age?: number | null;
   player_role?: string | null;
   story_type?: "adventure" | "roleplay" | "real_sex" | null;
   has_explicit_images?: boolean | null;
@@ -67,6 +68,7 @@ export const StoryConfigDialog = ({ story, open, onOpenChange, onSaved }: StoryC
   const [description, setDescription] = useState("");
   const [storyContext, setStoryContext] = useState("");
   const [character, setCharacter] = useState("");
+  const [characterAge, setCharacterAge] = useState<number>(21);
   const [player, setPlayer] = useState("");
   const [type, setType] = useState<"adventure" | "roleplay" | "real_sex">("roleplay");
   const [explicit, setExplicit] = useState(false);
@@ -86,6 +88,7 @@ export const StoryConfigDialog = ({ story, open, onOpenChange, onSaved }: StoryC
     const initialContext = (story.story_context || "").trim() || (story.description || "").trim();
     setStoryContext(initialContext);
     setCharacter(story.character_role ?? "");
+    setCharacterAge(story.character_age ? Math.max(18, Number(story.character_age)) : 21);
     setPlayer(story.player_role ?? "");
     setType((story.story_type as any) ?? "roleplay");
     setExplicit(!!story.has_explicit_images);
@@ -110,6 +113,7 @@ export const StoryConfigDialog = ({ story, open, onOpenChange, onSaved }: StoryC
         const resolvedContext = (dbStory.story_context || "").trim() || (dbStory.description || "").trim();
         setStoryContext(resolvedContext);
         setCharacter(dbStory.character_role ?? "");
+        setCharacterAge(dbStory.character_age ? Math.max(18, Number(dbStory.character_age)) : 21);
         setPlayer(dbStory.player_role ?? "");
         setType((dbStory.story_type as any) ?? "roleplay");
         setExplicit(!!dbStory.has_explicit_images);
@@ -195,8 +199,15 @@ export const StoryConfigDialog = ({ story, open, onOpenChange, onSaved }: StoryC
     if (!story || !user) return;
     if (!title.trim()) {
       toast({ title: es ? "Ponle un título" : "Add a title", variant: "destructive" });
+    if (characterAge < 18) {
+      toast({
+        title: es ? "Edad no permitida (+18)" : "Invalid age (18+)",
+        description: es ? "La edad del personaje debe ser de al menos 18 años. No se admiten personajes menores de edad." : "Character age must be at least 18.",
+        variant: "destructive",
+      });
       return;
     }
+
     setSaving(true);
     try {
       setStoryVoice(story.id, voice);
@@ -209,6 +220,7 @@ export const StoryConfigDialog = ({ story, open, onOpenChange, onSaved }: StoryC
         story_context: cleanContext,
         cover_image: coverUrl,
         character_role: character.trim() || null,
+        character_age: Math.max(18, characterAge),
         player_role: player.trim() || "hombre",
         story_type: (explicit ? "real_sex" : type) as "adventure" | "roleplay" | "real_sex",
         has_explicit_images: explicit,
@@ -295,7 +307,7 @@ export const StoryConfigDialog = ({ story, open, onOpenChange, onSaved }: StoryC
             <Label htmlFor="story-context" className="mb-1 block text-xs">{es ? "Desarrollo de la historia" : "Story development"}</Label>
             <Textarea id="story-context" value={storyContext} onChange={(event) => setStoryContext(event.target.value)} className="min-h-[180px]" placeholder={es ? "Contexto, personajes y hechos que debe conocer la IA." : "Context, characters and facts the AI should know."} />
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <Label className="mb-1 block text-xs">{es ? "Tu rol" : "Your role"}</Label>
               <Input value={player} onChange={(event) => setPlayer(event.target.value)} />
@@ -303,6 +315,19 @@ export const StoryConfigDialog = ({ story, open, onOpenChange, onSaved }: StoryC
             <div>
               <Label className="mb-1 block text-xs">{es ? "Personaje IA" : "AI character"}</Label>
               <Input value={character} onChange={(event) => setCharacter(event.target.value)} />
+            </div>
+            <div>
+              <Label className="mb-1 block text-xs font-semibold text-rose-400">
+                {es ? "Edad Personaje (Mín. 18)" : "Character Age (Min 18)"}
+              </Label>
+              <Input
+                type="number"
+                min={18}
+                max={120}
+                value={characterAge}
+                onChange={(event) => setCharacterAge(Math.max(18, parseInt(event.target.value, 10) || 18))}
+                className="border-rose-900/40 font-bold"
+              />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3 items-end">

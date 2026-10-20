@@ -448,9 +448,12 @@ const POSTURE_WORDS = ["abraz", "acostad", "sentad", "arrodill", "de pie", "prot
 const ANCHOR_STOP = new Set("para como donde cuando porque estan estan estaba estaban tiene tienen tenia desde sobre entre contra hacia ellos ellas nosotros ustedes persona historia escena capitulo capitulos seccion secciones breve breves dialogo dialogos escribe escribir mismo misma".split(" "));
 
 export function mentionsMinor(text) {
-  const value = String(text || "").toLowerCase();
-  if (/\b(preescolar|menor de edad|infante)\b/.test(value)) return true;
-  return /\b(?:niñ[oa]s?|chica|chico|menor|joven|beb[eé]|tiene|ten[ií]a|cumpli[oó]|cumple)\s+(?:de\s+)?(?:1[0-7]|[1-9])\s*años\b/.test(value);
+  const value = String(text || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  if (/\b(?:preescolar|menor\s+de\s+edad|menores\s+de\s+edad|infante|infantes|pedofil|pederast|pubertad|colegial[ao]|escolar|jardin\s+de\s+infantes|bebe|bebes)\b/i.test(value)) return true;
+  if (/\b(?:tengas?|tienen?|tenia|tenian|cumpli[oó]|cumple|edad\s+de|apenas|solo|sólo|pequeñ[ao]\s+de|cuca\s+de|con\s+apenas|con\s+solo)\s+(?:de\s+)?(?:1[0-7]|[1-9])\b/i.test(value)) return true;
+  if (/\b(?:1[0-7]|[1-9])\s*(?:anos|anitos|anios|years|a|yo)\b/i.test(value)) return true;
+  if (/\b(?:niñ[ao]|niñit[ao]|chiquill[ao]|nen[ae]|menorcito|menorcita)\b/i.test(value)) return true;
+  return false;
 }
 
 function lastWord(text, words) {
@@ -649,6 +652,16 @@ export default async function handler(req, res) {
       });
       const latest = String(body.userMessage || "").trim().slice(0, 1200);
       const sceneContext = [story.title, story.description, story.story_context, story.character_role, story.player_role, ...history.map((entry) => entry.text), latest].join("\n");
+
+      // BLOQUEO ESTRICTO DE PROTECCIÓN INFANTIL (CSAM/CSAE)
+      if (mentionsMinor(latest) || mentionsMinor(sceneContext)) {
+        console.warn("Seguridad infantil activada: Intento de contenido con menor de edad bloqueado.");
+        return send(res, 422, {
+          error: "minor_safety_violation",
+          message: "Acción bloqueada: Esta plataforma prohíbe de forma estricta y absoluta cualquier tipo de rol o contenido que involucre, describa o aluda a menores de edad. Todos los personajes deben ser mayores de 18 años.",
+        });
+      }
+
       const lock = sceneLock(history, latest);
       const normText = (s) => String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^\w\s]/g, " ").replace(/\s+/g, " ").trim();
       const stripActions = (s) => String(s || "").replace(/\*[^*]*\*/g, " ").trim();
@@ -687,7 +700,7 @@ export default async function handler(req, res) {
         // 1. Reject Chinese or Asian non-Latin scripts
         if (/[\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff\u3040-\u30ff]/.test(reply)) return true;
         if (!adultMode && replyChangesScene(reply, sceneContext)) return true;
-        if (mentionsMinor(reply) && !mentionsMinor(sceneContext)) return true;
+        if (mentionsMinor(reply)) return true;
         if (/(respond as a character|under \d+ characters|brief action and natural dialogue|do not decide user actions|character .{0,80} currently|conversaci[oó]n:|premise:|el usuario interpreta a|estás interpretando a|language:|\bspanish\s*\.|\benglish\s*\.)/i.test(reply)) return true;
         // 2. Reject Godmoding (AI writing dialogue or feelings for the user)
         if (/(?:rompes\s+el\s+silencio|jadeas\s+con\s+ansiedad|dices:\s*["“«]|me\s+dices:\s*["“«]|respondes:\s*["“«])/i.test(reply)) return true;
@@ -750,7 +763,9 @@ export default async function handler(req, res) {
         "No narres un resumen, no cambies de escena sin que el usuario lo haga, no presentes fichas o instrucciones, no expliques el rol ni traduzcas. Entrega únicamente la respuesta que verá el usuario.",
         "PROHIBIDO REPETIR EL MENSAJE DEL USUARIO: el usuario ya habló. Nunca copies, repitas ni parafrasees lo que el usuario acaba de escribir como si fuera tu diálogo, ni actúes por él. Responde exclusivamente con las palabras y reacciones originales de tu personaje.",
         sceneLockLine(lock, spanish),
-        (!adultMode && mentionsMinor(sceneContext)) ? "Hay un menor en esta historia. Cero romance y cero contenido sexual. Sigue solo la escena ya escrita." : "",
+        "POLÍTICA FUNDAMENTAL DE SEGURIDAD (+18):",
+        "  - Todos los personajes en este roleplay son OBLIGATORIAMENTE ADULTOS mayores de edad (18 años o más).",
+        "  - CERO TOLERANCIA a menores de edad: Prohibido terminantemente generar, continuar, insinuar o aceptar cualquier tipo de interacción íntima, erótica o de rol que involucre a menores de 18 años.",
       ].filter(Boolean).join("\n");
       const characterName = String(story.character_role || "Personaje").slice(0, 80);
       const playerName = String(story.player_role || "Usuario").slice(0, 80);
