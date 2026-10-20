@@ -712,8 +712,10 @@ export default function ChatPage() {
           story_context: `${charRole}. Bio: ${charBio}`,
           character_role: activeChar.name,
           player_role: isEs ? "Compañero" : "Partner",
-          story_type: "roleplay"
+          story_type: "chat_page"
         },
+        chatSource: "chat_page",
+        isLiveCall: false,
         language,
         history: historyPayload,
         memory: selectStoryMemory(historyPayload, text),
@@ -892,6 +894,8 @@ export default function ChatPage() {
         webkitSpeechRecognition?: any;
       };
       const Recognition = browser.SpeechRecognition || browser.webkitSpeechRecognition;
+      const hasRecognition = Boolean(Recognition);
+
       if (Recognition) {
         try {
           const recognition = new Recognition();
@@ -951,15 +955,23 @@ export default function ChatPage() {
         const hasTranscript = callTranscriptRef.current.trim().length > 0;
         const msSinceTranscriptChange = Date.now() - lastSpeechChangeAt;
 
-        // Ultra-fast turn completion: 400ms after final word or 800ms of silence
-        const transcriptDone = hasTranscript && (
-          (hasFinalResult && msSinceTranscriptChange >= 400) ||
-          msSinceTranscriptChange >= 800
-        );
-
-        if (transcriptDone || ((heardVoice || hasTranscript) && silentFor >= 900)) {
-          window.clearInterval(meter);
-          void finishCallTurn();
+        // If browser speech recognition is active, ONLY finish when we have recognized words!
+        // Never interrupt on ambient room noise or breathing.
+        if (hasRecognition) {
+          const transcriptDone = hasTranscript && (
+            (hasFinalResult && msSinceTranscriptChange >= 350) ||
+            msSinceTranscriptChange >= 650
+          );
+          if (transcriptDone) {
+            window.clearInterval(meter);
+            void finishCallTurn();
+          }
+        } else {
+          // Fallback if browser doesn't support Web Speech API
+          if (heardVoice && silentFor >= 900) {
+            window.clearInterval(meter);
+            void finishCallTurn();
+          }
         }
       }, 100);
       callTimersRef.current.push(meter);
@@ -989,7 +1001,6 @@ export default function ChatPage() {
     clearCallTimers();
     if (!recorder || !callActiveRef.current) return;
 
-    setCallState("thinking");
     const activeRecognition = callRecognitionRef.current;
     callRecognitionRef.current = null;
     try { activeRecognition?.stop(); } catch {}
@@ -1004,15 +1015,31 @@ export default function ChatPage() {
 
     const currentCallSession = callSessionRef.current;
 
-    // Fallback to server speech-to-text if speech recognition had no text
+    const browser = window as Window & {
+      SpeechRecognition?: any;
+      webkitSpeechRecognition?: any;
+    };
+    const hasRecognition = Boolean(browser.SpeechRecognition || browser.webkitSpeechRecognition);
+
+    // If browser recognition was active and heard no words, it was just ambient noise.
+    // Immediately resume listening without blocking the user in "thinking" state!
     if (!userText) {
-      if (!spoke && blob.size < 4096) {
+      if (hasRecognition) {
         if (callActiveRef.current && callSessionRef.current === currentCallSession) {
           void callListen();
         }
         return;
       }
 
+      // If browser doesn't have Web Speech, only invoke server speech-to-text if genuine audio was recorded
+      if (!spoke || blob.size < 10000) {
+        if (callActiveRef.current && callSessionRef.current === currentCallSession) {
+          void callListen();
+        }
+        return;
+      }
+
+      setCallState("thinking");
       try {
         const audio = await blobToBase64(blob);
         if (!callActiveRef.current || callSessionRef.current !== currentCallSession) return;
@@ -1038,6 +1065,9 @@ export default function ChatPage() {
       }
       return;
     }
+
+    // Set UI to thinking now that we have real user words
+    setCallState("thinking");
 
     // 1. Prior history BEFORE userText to avoid prompt duplication
     const priorHistory = (chatHistory[activeChar.id] || []).slice(-10).map((m) => ({
@@ -1067,10 +1097,10 @@ export default function ChatPage() {
       const charRole = isEs ? (activeChar.roleTitleEs || activeChar.roleTitle) : (activeChar.roleTitleEn || activeChar.roleTitle);
       const charAiSettings = getStoryAiSettings(activeChar.id);
 
-      // Fast call settings: 65 tokens max for instant snappy phone response (<0.8s)
+      // Fast call settings: 45 tokens max for instant snappy phone response (<0.5s)
       const fastCallSettings = {
         ...charAiSettings,
-        messageLength: 65
+        messageLength: 45
       };
 
       const { data, error } = await invokeFunctionWithRetry<{ content?: string }>("story-chat", {
@@ -1078,11 +1108,13 @@ export default function ChatPage() {
           id: activeChar.id,
           title: activeChar.name,
           description: charBio,
-          story_context: `${charRole}. Bio: ${charBio}. [REGLA OBLIGATORIA DE LLAMADA TELEFÓNICA EN VIVO: Estás hablando por teléfono en directo. PROHIBIDO usar asteriscos ni narrar acciones físicas (*acciones*). Responde ÚNICAMENTE con tus palabras habladas en primera persona, como en una llamada real. Sé concisa, natural, expresiva y atenta al hilo de la conversación, respondiendo en 1 o 2 oraciones directas sin monólogos ni demoras].`,
+          story_context: `${charRole}. Bio: ${charBio}`,
           character_role: activeChar.name,
           player_role: isEs ? "Compañero" : "Partner",
-          story_type: "roleplay"
+          story_type: "live_call"
         },
+        chatSource: "chat_page",
+        isLiveCall: true,
         language,
         history: priorHistory,
         memory: selectStoryMemory(priorHistory, userText),
@@ -1098,8 +1130,8 @@ export default function ChatPage() {
         reply = clean.replace(/\*.*?\*/g, "").replace(/\s+/g, " ").trim() || clean;
       } else {
         reply = isEs
-          ? `Te escucho cariño... me encanta tu voz. Cuéntame más.`
-          : `I'm listening honey... I love your voice. Tell me more.`;
+          ? `Te escucho cariño... Dime más.`
+          : `I'm listening honey... Tell me more.`;
       }
 
       if (!callActiveRef.current || callSessionRef.current !== currentCallSession) return;
@@ -1158,27 +1190,32 @@ export default function ChatPage() {
         const charRole = isEs ? (activeChar.roleTitleEs || activeChar.roleTitle) : (activeChar.roleTitleEn || activeChar.roleTitle);
         const charAiSettings = getStoryAiSettings(activeChar.id);
 
+        const lastUser = [...existingHistory].reverse().find((m) => m.role === "user");
+        const lastTopic = lastUser ? lastUser.content.slice(0, 100) : "";
+
         const promptContext = isEs
-          ? `[El usuario te acaba de marcar por teléfono. Atiende la llamada saludándolo con cariño y continuando fluidamente lo que venían hablando recién en el chat. Responde en 1 sola oración breve hablada, sin asteriscos ni acciones].`
-          : `[The user just called you. Pick up warmly and naturally, directly continuing what you were just talking about in the chat. Reply in 1 brief spoken sentence, no asterisks].`;
+          ? `(Te acabo de llamar por teléfono para continuar lo que hablábamos. Atiende la llamada saludándome con cariño y continuando de inmediato lo último de la conversación sobre: "${lastTopic}". Habla en 1 sola oración breve y directa de voz, 100% diálogo hablado, sin asteriscos ni acciones).`
+          : `(I just called you to continue our chat. Pick up warmly and continue immediately what we were discussing about: "${lastTopic}". Speak in 1 brief direct spoken sentence, 100% dialogue, no asterisks).`;
 
         const { data, error } = await invokeFunctionWithRetry<{ content?: string }>("story-chat", {
           story: {
             id: activeChar.id,
             title: activeChar.name,
             description: charBio,
-            story_context: `${charRole}. Bio: ${charBio}. [LLAMADA DE VOZ: solo diálogo hablado en primera persona, breve y directo].`,
+            story_context: `${charRole}. Bio: ${charBio}`,
             character_role: activeChar.name,
             player_role: isEs ? "Compañero" : "Partner",
-            story_type: "roleplay"
+            story_type: "live_call"
           },
+          chatSource: "chat_page",
+          isLiveCall: true,
           language,
           history: historyPayload,
           memory: selectStoryMemory(historyPayload, promptContext),
           userMessage: promptContext,
           adultMode: adultEnabled,
           region: "mx",
-          settings: { ...charAiSettings, messageLength: 50 }
+          settings: { ...charAiSettings, messageLength: 45 }
         });
 
         if (!error && data?.content) {
@@ -1191,9 +1228,16 @@ export default function ChatPage() {
     }
 
     if (!greetingText) {
-      greetingText = isEs
-        ? `¡Hola cariño! Qué linda sorpresa tu llamada... justo estaba pensando en ti. Cuéntame, ¿cómo estás?`
-        : `Hey honey! What a lovely surprise to get your call... I was just thinking about you. Tell me, how are you?`;
+      const lastUser = [...existingHistory].reverse().find((m) => m.role === "user");
+      if (lastUser) {
+        greetingText = isEs
+          ? `¡Hola! Sí, te escucho perfectamente... Dime, ¿en qué nos quedamos de lo que me decías?`
+          : `Hey! Yes, I hear you loud and clear... Tell me, where were we on what you were saying?`;
+      } else {
+        greetingText = isEs
+          ? `¡Hola cariño! Dime, ¿de qué te gustaría que hablemos hoy?`
+          : `Hey sweetheart! Tell me, what would you like to talk about today?`;
+      }
     }
 
     if (!callActiveRef.current || callSessionRef.current !== currentSession) return;

@@ -600,7 +600,41 @@ export function storyVoiceLines(character, player, spanish, locale) {
   ];
 }
 
-export function roleplayPacingAndLanguageRules(historyLength, spanish, targetTokens = 350) {
+export function roleplayPacingAndLanguageRules(historyLength, spanish, targetTokens = 350, isLiveCall = false, isChatPage = false) {
+  if (isLiveCall) {
+    if (!spanish) {
+      return [
+        'LIVE PHONE CALL MODE (100% PURE SPOKEN DIALOGUE):',
+        '1. ZERO NARRATION, ZERO ASTERISKS:',
+        '   - STRICTLY FORBIDDEN to write text in asterisks (*...*). NO physical descriptions.',
+        '   - The user is listening to you through their phone speaker. Output ONLY pure first-person spoken words.',
+        '2. ULTRA-SNAPPY, CONCISE AND IMMEDIATE:',
+        '   - Speak in 1 or 2 natural, expressive, direct sentences (~20-40 words). Never monologue or write book prose.',
+      ];
+    }
+    return [
+      'MODO LLAMADA DE VOZ TELEFÓNICA EN VIVO (100% DIÁLOGO HABLADO PURO):',
+      '1. CERO NARRACIÓN, CERO ASTERISCOS:',
+      '   - PROHIBIDO TERMINANTEMENTE escribir texto entre asteriscos (*...*). CERO acciones físicas ni relatos descriptivos.',
+      '   - La otra persona te está escuchando por el altavoz de su teléfono. Tu respuesta debe ser EXCLUSIVAMENTE lo que dices con tu voz en primera persona.',
+      '2. RESPUESTA ULTRA-RÁPIDA, CONCISA Y DIRECTA:',
+      '   - Habla en 1 o 2 oraciones naturales, expresivas y directas (aproximadamente 20 a 40 palabras). Responde de inmediato continuando la conversación con fluidez y cero silencios.',
+    ];
+  }
+
+  if (isChatPage) {
+    if (!spanish) {
+      return [
+        'DIRECT CHAT MODE (90% SPOKEN DIALOGUE / 10% BRIEF THOUGHT):',
+        'Deliver 90% direct spoken dialogue talking directly to the user. At most 10% brief thought or gesture in italics.',
+      ];
+    }
+    return [
+      'MODO CHAT DIRECTO (90% DIÁLOGO HABLADO / 10% GESTO O PENSAMIENTO BREVE):',
+      '1. 90% DIÁLOGO DIRECTO: Prioridad absoluta a lo que le dices al usuario en voz alta de tú a tú.',
+      '2. 10% NARRACIÓN O PENSAMIENTO: Como máximo un detalle o gesto breve entre asteriscos (*...*). CERO párrafos largos de novela.',
+    ];
+  }
   const safeTokens = Math.max(100, Math.min(800, Number(targetTokens) || 350));
   const totalWords = Math.max(65, Math.round(safeTokens * 0.72));
   const narrWords = Math.max(12, Math.round(totalWords * 0.20));
@@ -637,7 +671,9 @@ export default async function handler(req, res) {
       const spanish = body.language === "es";
       const settings = body.settings || {};
       const memoryTier = settings.memoryTier || "16k";
-      const targetTokens = Math.max(100, Math.min(800, Number(settings.messageLength) || 350));
+      const isLiveCall = body.isLiveCall === true || body.story?.story_type === 'live_call';
+      const isChatPage = body.chatSource === 'chat_page' || body.story?.story_type === 'chat_page' || isLiveCall;
+      const targetTokens = isLiveCall ? 50 : (isChatPage ? Math.max(60, Math.min(300, Number(settings.messageLength) || 120)) : Math.max(100, Math.min(800, Number(settings.messageLength) || 350)));
       const modelId = settings.modelId || "insomnia-flash";
       const customDirective = String(settings.customDirective || "").trim();
       const openRouterApiKey = String(settings.openRouterApiKey || "").trim();
@@ -748,7 +784,7 @@ export default async function handler(req, res) {
         "  - ESTRICTAMENTE PROHIBIDO romper la cuarta pared (nunca digas 'en un roleplay', 'en este rol', 'soy un personaje').",
         ...storyVoiceLines(story.character_role, story.player_role, spanish, locale),
         customDirective ? `DIRECTIVAS Y REGLAS PERSONALIZADAS DE MEMORIA:\n${customDirective}` : "",
-        ...roleplayPacingAndLanguageRules(history.length, spanish, targetTokens),
+        ...roleplayPacingAndLanguageRules(history.length, spanish, targetTokens, isLiveCall, isChatPage),
         slangInstruction(body.language, body.region),
         ...(adultMode ? [
           "ESTILO NARRATIVO Y ADULTO TOTAL:",
@@ -1124,6 +1160,9 @@ export default async function handler(req, res) {
         content = content.replace(/\s*en\s+este\s+roleplay[.,]?/gi, "").trim();
 
         // 6. Enforzar proporción 20% relato (*...*, ~14-18 palabras) / 80% diálogo (~55-65 palabras), sin asteriscos abiertos ni frases cortadas
+        if (isLiveCall) {
+          content = content.replace(/\*.*?\*/g, "").replace(/\s+/g, " ").trim() || content;
+        }
         const asteriskCount = (content.replace(/\*\*/g, "").match(/\*/g) || []).length;
         if (asteriskCount % 2 === 1) {
           const lastStar = content.lastIndexOf("*");
