@@ -336,8 +336,10 @@ export default function ChatPage() {
   const { language } = useLanguage();
   const { enabled: adultEnabled } = useAdultMode();
 
-  // State: View Mode ('explore' for Catalog Image 3, 'room' for Chat Room Image 2)
-  const [viewMode, setViewMode] = useState<"explore" | "room">("room");
+  // State: View Mode ('explore' for Catalog Image 1, 'room' for Chat Room Image 2)
+  const [viewMode, setViewMode] = useState<"explore" | "room">(
+    characterId ? "room" : "explore"
+  );
   const [selectedCharacterId, setSelectedCharacterId] = useState<string>(
     characterId || "olivia-adams"
   );
@@ -472,6 +474,8 @@ export default function ChatPage() {
       if (!openConversations.includes(characterId)) {
         setOpenConversations((prev) => [characterId, ...prev]);
       }
+    } else {
+      setViewMode("explore");
     }
   }, [characterId]);
 
@@ -896,7 +900,10 @@ export default function ChatPage() {
                   Conversations
                 </h3>
                 <button
-                  onClick={() => setViewMode("explore")}
+                  onClick={() => {
+                    setViewMode("explore");
+                    navigate("/chat");
+                  }}
                   className="text-xs text-[#ff8c00] hover:underline flex items-center gap-1 font-semibold"
                   title="Volver al catálogo"
                 >
