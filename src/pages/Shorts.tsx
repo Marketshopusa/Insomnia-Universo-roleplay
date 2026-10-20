@@ -46,6 +46,7 @@ import { SeriesCover } from "@/components/shorts/SeriesCover";
 import { seriesStatus } from "@/lib/shortsCatalog";
 import { useAdultMode } from "@/contexts/AdultModeContext";
 import { useAuth } from "@/contexts/AuthContext";
+import { useLanguage } from "@/contexts/LanguageContext";
 import { invokeFunctionWithRetry } from "@/lib/invokeFunction";
 import { uploadKinevaReference } from "@/lib/kinevaReference";
 import { toast } from "sonner";
@@ -53,6 +54,8 @@ import { toast } from "sonner";
 const Shorts = () => {
   const { enabled: adultEnabled } = useAdultMode();
   const { user } = useAuth();
+  const { language } = useLanguage();
+  const isEs = language === "es";
   const { series, loading, reload } = useShorts(adultEnabled);
 
   // Estados de navegación y filtros
@@ -94,7 +97,7 @@ const Shorts = () => {
     });
 
     const items = [
-      { id: "all", label: "Todas", count: series.length },
+      { id: "all", label: isEs ? "Todas" : "All", count: series.length },
       ...Object.entries(counts).map(([cat, count]) => ({
         id: cat,
         label: cat.charAt(0).toUpperCase() + cat.slice(1),
@@ -102,7 +105,7 @@ const Shorts = () => {
       })),
     ];
     return items;
-  }, [series]);
+  }, [series, isEs]);
 
   // Filtrado reactivo en memoria
   const filteredSeries = useMemo(() => {
@@ -301,11 +304,12 @@ const Shorts = () => {
                   <span>Candy Shorts Experience</span>
                 </div>
                 <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-white flex items-center gap-3">
-                  Series Cortas & Episodios
+                  {isEs ? "Series Cortas & Episodios" : "Short Series & Episodes"}
                 </h1>
                 <p className="text-sm text-neutral-400 mt-1 max-w-2xl leading-relaxed">
-                  Tus historias reales producidas en formato vertical 9:16. Haz clic en cualquier portada
-                  para abrir el reproductor inmersivo o gestionar la producción de capítulos.
+                  {isEs
+                    ? "Tus historias reales producidas en formato vertical 9:16. Haz clic en cualquier portada para abrir el reproductor inmersivo o gestionar la producción de capítulos."
+                    : "Your real stories produced in vertical 9:16 format. Click any cover to open the immersive player or manage episode production."}
                 </p>
               </div>
 
@@ -315,7 +319,7 @@ const Shorts = () => {
                   <Search className="w-4 h-4 text-neutral-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                   <Input
                     type="text"
-                    placeholder="Buscar en tus series..."
+                    placeholder={isEs ? "Buscar en tus series..." : "Search your series..."}
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="pl-10 pr-9 bg-[#1f1f1f] border-[#363636] text-white placeholder:text-neutral-500 rounded-full h-10 text-xs sm:text-sm focus-visible:ring-1 focus-visible:ring-[#ff2d78] focus-visible:border-[#ff2d78]"
@@ -335,35 +339,39 @@ const Shorts = () => {
                   <DialogTrigger asChild>
                     <Button className="rounded-full bg-gradient-to-r from-[#ff2d78] to-[#e93d82] hover:opacity-90 text-white font-semibold text-xs sm:text-sm h-10 px-5 shadow-lg shadow-[#ff2d78]/25 flex items-center gap-1.5 cursor-pointer">
                       <Plus className="w-4 h-4" />
-                      <span>Nueva Serie</span>
+                      <span>{isEs ? "Nueva Serie" : "New Series"}</span>
                     </Button>
                   </DialogTrigger>
                   <DialogContent className="max-w-md bg-[#181818] border-[#363636] text-white rounded-2xl">
                     <DialogHeader>
                       <DialogTitle className="text-xl font-bold flex items-center gap-2">
                         <Sparkles className="w-5 h-5 text-[#ff2d78]" />
-                        <span>Crear Serie de Shorts</span>
+                        <span>{isEs ? "Crear Serie de Shorts" : "Create Shorts Series"}</span>
                       </DialogTitle>
                       <DialogDescription className="text-neutral-400 text-xs">
-                        La IA redactará los guiones de cada capítulo y creará la portada vertical para tu catálogo.
+                        {isEs
+                          ? "La IA redactará los guiones de cada capítulo y creará la portada vertical para tu catálogo."
+                          : "AI will write each episode's script and create the vertical cover for your catalog."}
                       </DialogDescription>
                     </DialogHeader>
 
                     <div className="space-y-4 pt-2">
                       <div className="space-y-1.5">
-                        <Label className="text-xs font-semibold text-neutral-300">Premisa / Historia</Label>
+                        <Label className="text-xs font-semibold text-neutral-300">
+                          {isEs ? "Premisa / Historia" : "Premise / Story"}
+                        </Label>
                         <Textarea
                           value={premise}
                           onChange={(e) => setPremise(e.target.value)}
                           rows={3}
                           className="bg-[#222] border-[#363636] rounded-xl text-xs text-white placeholder:text-neutral-500"
-                          placeholder="Dos colegas de trabajo se quedan encerrados en la azotea del rascacielos durante una tormenta..."
+                          placeholder={isEs ? "Dos colegas de trabajo se quedan encerrados en la azotea del rascacielos durante una tormenta..." : "Two coworkers get trapped on the rooftop of a skyscraper during a rainstorm..."}
                         />
                       </div>
 
                       <div className="space-y-1.5">
                         <Label htmlFor="reference-img" className="text-xs font-semibold text-neutral-300">
-                          Foto de referencia para personajes (opcional)
+                          {isEs ? "Foto de referencia para personajes (opcional)" : "Character reference photo (optional)"}
                         </Label>
                         <Input
                           id="reference-img"
@@ -376,7 +384,7 @@ const Shorts = () => {
 
                       <div className="grid grid-cols-2 gap-3">
                         <div className="space-y-1.5">
-                          <Label className="text-xs font-semibold text-neutral-300">Categoría</Label>
+                          <Label className="text-xs font-semibold text-neutral-300">{isEs ? "Categoría" : "Category"}</Label>
                           <Input
                             value={category}
                             onChange={(e) => setCategory(e.target.value)}
@@ -384,7 +392,7 @@ const Shorts = () => {
                           />
                         </div>
                         <div className="space-y-1.5">
-                          <Label className="text-xs font-semibold text-neutral-300">Capítulos</Label>
+                          <Label className="text-xs font-semibold text-neutral-300">{isEs ? "Capítulos" : "Episodes"}</Label>
                           <Input
                             type="number"
                             min={1}
@@ -398,8 +406,8 @@ const Shorts = () => {
 
                       <div className="flex items-center justify-between p-3 rounded-xl bg-[#222] border border-[#333]">
                         <div>
-                          <p className="text-xs font-semibold text-white">Contenido 18+</p>
-                          <p className="text-[11px] text-neutral-400">Tensión adulta sugerida</p>
+                          <p className="text-xs font-semibold text-white">{isEs ? "Contenido 18+" : "18+ Content"}</p>
+                          <p className="text-[11px] text-neutral-400">{isEs ? "Tensión adulta sugerida" : "Suggested adult themes"}</p>
                         </div>
                         <Switch checked={isAdult} onCheckedChange={setIsAdult} />
                       </div>
@@ -412,12 +420,12 @@ const Shorts = () => {
                         {creating ? (
                           <>
                             <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                            <span>Generando serie con IA...</span>
+                            <span>{isEs ? "Generando serie con IA..." : "Generating series with AI..."}</span>
                           </>
                         ) : (
                           <>
                             <Sparkles className="w-4 h-4 mr-2" />
-                            <span>Generar y Publicar Serie</span>
+                            <span>{isEs ? "Generar y Publicar Serie" : "Generate & Publish Series"}</span>
                           </>
                         )}
                       </Button>
@@ -473,15 +481,15 @@ const Shorts = () => {
             <div className="flex items-center gap-2 text-xs sm:text-sm text-neutral-400">
               <SlidersHorizontal className="w-3.5 h-3.5 text-[#ff2d78]" />
               <span>
-                Mostrando{" "}
+                {isEs ? "Mostrando " : "Showing "}
                 <strong className="text-white font-semibold">
                   {filteredSeries.length}
                 </strong>{" "}
-                {filteredSeries.length === 1 ? "serie real" : "series reales"}
+                {filteredSeries.length === 1 ? (isEs ? "serie" : "series") : (isEs ? "series" : "series")}
               </span>
               {selectedCategory !== "all" && (
                 <span className="text-[#ff2d78] font-medium">
-                  • Categoría:{" "}
+                  • {isEs ? "Categoría: " : "Category: "}
                   {categoriesList.find((c) => c.id === selectedCategory)?.label}
                 </span>
               )}
@@ -492,7 +500,7 @@ const Shorts = () => {
                 onClick={() => setSelectedCategory("all")}
                 className="text-xs text-neutral-400 hover:text-white underline cursor-pointer"
               >
-                Limpiar filtro
+                {isEs ? "Limpiar filtro" : "Clear filter"}
               </button>
             )}
           </div>
@@ -512,17 +520,19 @@ const Shorts = () => {
                 🎬
               </div>
               <h3 className="text-white text-lg font-bold mb-1">
-                No hay series en esta sección
+                {isEs ? "No hay series en esta sección" : "No series found in this section"}
               </h3>
               <p className="text-sm text-neutral-400 mb-6">
-                Crea tu primera serie con el botón superior para que la IA genere los guiones y capítulos.
+                {isEs
+                  ? "Crea tu primera serie con el botón superior para que la IA genere los guiones y capítulos."
+                  : "Create your first series with the button above to let AI craft scripts and episodes."}
               </p>
               <Button
                 onClick={() => setCreateOpen(true)}
                 className="rounded-full bg-gradient-to-r from-[#ff2d78] to-[#e93d82] text-white font-semibold px-6"
               >
                 <Plus className="w-4 h-4 mr-2" />
-                Crear Mi Primera Serie
+                {isEs ? "Crear Mi Primera Serie" : "Create My First Series"}
               </Button>
             </div>
           ) : (
@@ -592,7 +602,7 @@ const Shorts = () => {
                         <span>{status.label}</span>
                         <span className="text-neutral-500">•</span>
                         <span className="text-neutral-300">
-                          {item.episodes.length} {item.episodes.length === 1 ? "Capítulo" : "Capítulos"}
+                          {item.episodes.length} {item.episodes.length === 1 ? (isEs ? "Capítulo" : "Episode") : (isEs ? "Capítulos" : "Episodes")}
                         </span>
                       </div>
 
@@ -602,10 +612,10 @@ const Shorts = () => {
 
                       <div className="flex items-center justify-between text-[11px] text-neutral-400 pt-1">
                         <span className="text-emerald-400 font-semibold text-[10px]">
-                          {readyEpisodesCount} con video listo
+                          {readyEpisodesCount} {isEs ? "con video listo" : "ready with video"}
                         </span>
                         <span className="text-xs text-neutral-400 group-hover:text-white transition-colors flex items-center gap-1 font-medium">
-                          Abrir &rarr;
+                          {isEs ? "Abrir" : "Open"} &rarr;
                         </span>
                       </div>
                     </div>
@@ -643,7 +653,7 @@ const Shorts = () => {
                       className="w-full rounded-full bg-gradient-to-r from-[#ff2d78] to-[#e93d82] hover:opacity-95 text-white font-bold py-6 text-sm shadow-xl shadow-[#ff2d78]/50 flex items-center justify-center gap-2 cursor-pointer active:scale-95 transition-transform"
                     >
                       <Play className="w-5 h-5 fill-white" />
-                      <span>Reproducir Episodio 1</span>
+                      <span>{isEs ? "Reproducir Episodio 1" : "Play Episode 1"}</span>
                     </Button>
 
                     <Link
@@ -651,7 +661,7 @@ const Shorts = () => {
                       className="inline-flex items-center justify-center gap-1 text-[11px] text-neutral-400 hover:text-white transition-colors"
                     >
                       <Clapperboard className="w-3 h-3" />
-                      <span>Ver panel de rodaje / ComfyUI</span>
+                      <span>{isEs ? "Ver panel de rodaje / ComfyUI" : "View Studio & ComfyUI"}</span>
                       <ExternalLink className="w-2.5 h-2.5" />
                     </Link>
                   </div>
@@ -662,16 +672,16 @@ const Shorts = () => {
                   <DialogHeader className="text-left space-y-2">
                     <div className="flex items-center gap-2">
                       <span className="bg-[#ff2d78] text-white text-[10px] font-black tracking-wider px-2 py-0.5 rounded uppercase">
-                        {selectedSeries.category || "HISTORIA"}
+                        {selectedSeries.category || (isEs ? "HISTORIA" : "STORY")}
                       </span>
                       {selectedSeries.is_adult && (
                         <span className="text-rose-400 text-xs font-bold px-1.5 py-0.5 rounded bg-rose-500/10 border border-rose-500/20">
-                          18+ Adulto
+                          {isEs ? "18+ Adulto" : "18+ Mature"}
                         </span>
                       )}
                       <span className="text-xs text-neutral-500">•</span>
                       <span className="text-xs text-neutral-400">
-                        {selectedSeries.episodes.length} Episodios
+                        {selectedSeries.episodes.length} {isEs ? "Episodios" : "Episodes"}
                       </span>
                     </div>
 
@@ -689,8 +699,8 @@ const Shorts = () => {
                   {/* Lista de Capítulos Reales */}
                   <div className="space-y-2 flex-1">
                     <div className="flex items-center justify-between text-xs font-semibold text-neutral-400">
-                      <span>CAPÍTULOS ({selectedSeries.episodes.length})</span>
-                      <span className="text-neutral-500">Haz clic en cualquiera para reproducir</span>
+                      <span>{isEs ? `CAPÍTULOS (${selectedSeries.episodes.length})` : `EPISODES (${selectedSeries.episodes.length})`}</span>
+                      <span className="text-neutral-500">{isEs ? "Haz clic en cualquiera para reproducir" : "Click any episode to play"}</span>
                     </div>
 
                     <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
@@ -709,7 +719,7 @@ const Shorts = () => {
                               </div>
                               <div>
                                 <p className="font-semibold group-hover:text-white transition-colors">
-                                  Ep. {ep.episode_number}: {ep.title}
+                                  {isEs ? "Ep." : "Ep."} {ep.episode_number}: {ep.title}
                                 </p>
                                 <p className="text-[10px] text-neutral-400 line-clamp-1 max-w-xs">
                                   {ep.script.slice(0, 60)}...
@@ -720,11 +730,11 @@ const Shorts = () => {
                             <div className="flex items-center gap-2">
                               {hasVideo ? (
                                 <span className="text-emerald-400 font-bold text-[10px] px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20">
-                                  VER VIDEO
+                                  {isEs ? "VER VIDEO" : "WATCH VIDEO"}
                                 </span>
                               ) : (
                                 <span className="text-amber-400 font-semibold text-[10px] px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/20">
-                                  GUION
+                                  {isEs ? "GUION" : "SCRIPT"}
                                 </span>
                               )}
                             </div>
@@ -742,7 +752,7 @@ const Shorts = () => {
                       className="flex-1 rounded-full border-[#363636] bg-[#222] hover:bg-[#2c2c2c] text-white text-xs h-10"
                     >
                       <Bookmark className="w-3.5 h-3.5 mr-1.5" />
-                      {savedSeriesIds.includes(selectedSeries.id) ? "En Mi Lista" : "Guardar"}
+                      {savedSeriesIds.includes(selectedSeries.id) ? (isEs ? "En Mi Lista" : "In My List") : (isEs ? "Guardar" : "Save")}
                     </Button>
                     <Button
                       variant="outline"
@@ -798,14 +808,14 @@ const Shorts = () => {
                     "{currentEpisode.script}"
                   </p>
                   <p className="text-amber-400 text-xs font-semibold mb-4">
-                    Este capítulo aún está en estado: {currentEpisode.status}
+                    {isEs ? `Este capítulo aún está en estado: ${currentEpisode.status}` : `This episode is currently in status: ${currentEpisode.status}`}
                   </p>
                   <Link
                     to={`/shorts/${currentPlayingSeries.id}`}
                     className="inline-flex items-center gap-2 px-4 py-2 bg-[#ff2d78] text-white text-xs font-semibold rounded-full hover:opacity-90 transition-opacity"
                   >
                     <Clapperboard className="w-4 h-4" />
-                    <span>Filmar / Generar video con ComfyUI</span>
+                    <span>{isEs ? "Filmar / Generar video con ComfyUI" : "Film / Generate video with ComfyUI"}</span>
                   </Link>
                 </div>
               )}
@@ -815,7 +825,7 @@ const Shorts = () => {
                 <div className="absolute inset-0 z-30 bg-black/60 backdrop-blur-sm flex items-center justify-center">
                   <div className="text-center space-y-2">
                     <Loader2 className="w-8 h-8 text-[#ff2d78] animate-spin mx-auto" />
-                    <p className="text-xs text-white font-medium">Obteniendo video seguro...</p>
+                    <p className="text-xs text-white font-medium">{isEs ? "Obteniendo video seguro..." : "Fetching secure video stream..."}</p>
                   </div>
                 </div>
               )}
@@ -829,7 +839,7 @@ const Shorts = () => {
                 <div className="flex items-center gap-2">
                   <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
                   <span className="text-xs font-bold tracking-wider uppercase text-neutral-300">
-                    Capítulo {currentEpisode.episode_number} de {currentPlayingSeries.episodes.length}
+                    {isEs ? "Capítulo" : "Episode"} {currentEpisode.episode_number} {isEs ? "de" : "of"} {currentPlayingSeries.episodes.length}
                   </span>
                 </div>
 
@@ -837,7 +847,7 @@ const Shorts = () => {
                   <button
                     onClick={toggleMute}
                     className="w-9 h-9 rounded-full bg-black/60 backdrop-blur-md flex items-center justify-center text-white hover:bg-black/90 transition-colors border border-white/10"
-                    title={isMuted ? "Activar sonido" : "Silenciar"}
+                    title={isMuted ? (isEs ? "Activar sonido" : "Unmute") : (isEs ? "Silenciar" : "Mute")}
                   >
                     {isMuted ? (
                       <VolumeX className="w-4 h-4 text-rose-400" />
@@ -849,7 +859,7 @@ const Shorts = () => {
                   <button
                     onClick={() => setShowEpisodeListInPlayer((prev) => !prev)}
                     className="w-9 h-9 rounded-full bg-black/60 backdrop-blur-md flex items-center justify-center text-white hover:bg-black/90 transition-colors border border-white/10"
-                    title="Lista de capítulos"
+                    title={isEs ? "Lista de capítulos" : "Episode list"}
                   >
                     <ListVideo className="w-4 h-4 text-[#ff2d78]" />
                   </button>
@@ -857,7 +867,7 @@ const Shorts = () => {
                   <button
                     onClick={() => setIsPlayingVideo(false)}
                     className="w-9 h-9 rounded-full bg-black/60 backdrop-blur-md flex items-center justify-center text-white hover:bg-rose-600 transition-colors border border-white/10"
-                    title="Cerrar reproductor (Esc)"
+                    title={isEs ? "Cerrar reproductor (Esc)" : "Close player (Esc)"}
                   >
                     <X className="w-4 h-4" />
                   </button>
@@ -882,7 +892,7 @@ const Shorts = () => {
                   <div className="flex items-center justify-between pb-3 border-b border-neutral-800 mb-4">
                     <h4 className="text-sm font-bold text-white flex items-center gap-2">
                       <ListVideo className="w-4 h-4 text-[#ff2d78]" />
-                      <span>Capítulos de la Serie</span>
+                      <span>{isEs ? "Capítulos de la Serie" : "Series Episodes"}</span>
                     </h4>
                     <button
                       onClick={() => setShowEpisodeListInPlayer(false)}

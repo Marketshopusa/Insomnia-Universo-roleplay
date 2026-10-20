@@ -33,6 +33,7 @@ import {
 } from "lucide-react";
 import { STORY_VOICES, normalizeStoryVoice, setStoryVoice } from "@/lib/voices";
 import { streamSpeech, type SpeechStream } from "@/lib/ttsStream";
+import { useLanguage } from "@/contexts/LanguageContext";
 import { toast } from "@/hooks/use-toast";
 
 export interface CharacterItem {
@@ -139,6 +140,9 @@ export const ChatCharacterConfigDialog: React.FC<ChatCharacterConfigDialogProps>
   onOpenChange,
   onSave
 }) => {
+  const { language } = useLanguage();
+  const isEs = language === "es";
+
   const [activeTab, setActiveTab] = useState("info");
 
   // Form State
@@ -167,24 +171,44 @@ export const ChatCharacterConfigDialog: React.FC<ChatCharacterConfigDialogProps>
 
     if (character && !isNew) {
       setName(character.name || "");
-      setRoleTitle(character.roleTitle || "");
+      setRoleTitle(
+        isEs
+          ? (character.roleTitleEs || character.roleTitle || "")
+          : (character.roleTitleEn || character.roleTitle || "")
+      );
       setAge(character.age || 25);
       setGender(character.gender || "female");
       setStyle(character.style || "realistic");
-      setBio(character.bio || "");
-      setStarterMessage(character.starterMessage || "");
+      setBio(
+        isEs
+          ? (character.bioEs || character.bio || "")
+          : (character.bioEn || character.bio || "")
+      );
+      setStarterMessage(
+        isEs
+          ? (character.starterMessageEs || character.starterMessage || "")
+          : (character.starterMessageEn || character.starterMessage || "")
+      );
       setVoiceName(normalizeStoryVoice(character.voiceName || "Aoede"));
       setAvatar(character.avatar || "");
       setGallery(character.gallery && character.gallery.length > 0 ? [...character.gallery] : [character.avatar || ""]);
     } else {
       // New Character defaults
       setName("");
-      setRoleTitle("Compañera Íntima");
+      setRoleTitle(isEs ? "Compañera Íntima" : "Intimate Partner");
       setAge(26);
       setGender("female");
       setStyle("realistic");
-      setBio("Una mujer apasionada y cariñosa que busca una conexión auténtica e íntima.");
-      setStarterMessage("Hola mi amor... me alegra tanto tenerte aquí conmigo. ¿Qué te gustaría que hagamos hoy?");
+      setBio(
+        isEs
+          ? "Una mujer apasionada y cariñosa que busca una conexión auténtica e íntima."
+          : "A passionate and warm woman seeking an authentic and intimate connection."
+      );
+      setStarterMessage(
+        isEs
+          ? "Hola cariño... me alegra tanto tenerte aquí conmigo. ¿Qué te gustaría que hagamos hoy?"
+          : "Hey there... I'm so glad to have you here with me. What would you like to do today?"
+      );
       setVoiceName("Aoede");
       setAvatar("https://media.talkiemate.com/app/uploads/growtype-ai-uploads/models/6e8f818f9b187d2ebdf4e1d77521e051/3545853885239688145_69992903230.jpg");
       setGallery([
@@ -192,7 +216,7 @@ export const ChatCharacterConfigDialog: React.FC<ChatCharacterConfigDialogProps>
       ]);
     }
     setActiveTab("info");
-  }, [open, character, isNew]);
+  }, [open, character, isNew, isEs]);
 
   const stopVoicePreview = () => {
     if (voiceStreamRef.current) {
@@ -212,7 +236,9 @@ export const ChatCharacterConfigDialog: React.FC<ChatCharacterConfigDialogProps>
     }
 
     setIsPlayingVoice(true);
-    const samplePhrase = `Hola cariño, soy ${name || "tu compañera"}. Esta es mi voz de Insomnia... ¿te gusta cómo suena?`;
+    const samplePhrase = isEs
+      ? `Hola cariño, soy ${name || "tu compañera"}. Esta es mi voz de Insomnia... ¿te gusta cómo suena?`
+      : `Hey darling, I'm ${name || "your partner"}. This is my Insomnia voice... do you like how it sounds?`;
 
     const stream = playGuaranteedVoice(samplePhrase, voiceName, () => {
       setIsPlayingVoice(false);
@@ -229,18 +255,21 @@ export const ChatCharacterConfigDialog: React.FC<ChatCharacterConfigDialogProps>
     const trimmed = newPhotoUrl.trim();
     if (!trimmed) return;
     if (gallery.includes(trimmed)) {
-      toast({ description: "Esta foto ya está en la galería" });
+      toast({ description: isEs ? "Esta foto ya está en la galería" : "This photo is already in the gallery" });
       return;
     }
     setGallery((prev) => [...prev, trimmed]);
     setNewPhotoUrl("");
-    toast({ description: "Foto agregada a la galería" });
+    toast({ description: isEs ? "Foto agregada a la galería" : "Photo added to gallery" });
   };
 
   // Remove Photo from Gallery
   const handleRemovePhoto = (index: number) => {
     if (gallery.length <= 1) {
-      toast({ description: "El personaje debe tener al menos una foto.", variant: "destructive" });
+      toast({
+        description: isEs ? "El personaje debe tener al menos una foto." : "The character must have at least one photo.",
+        variant: "destructive"
+      });
       return;
     }
     setGallery((prev) => prev.filter((_, i) => i !== index));
@@ -249,13 +278,16 @@ export const ChatCharacterConfigDialog: React.FC<ChatCharacterConfigDialogProps>
   // Set as Main Avatar
   const handleSetMainAvatar = (url: string) => {
     setAvatar(url);
-    toast({ description: "Foto establecida como avatar principal" });
+    toast({ description: isEs ? "Foto establecida como avatar principal" : "Set as main profile photo" });
   };
 
   // Save Character
   const handleSave = () => {
     if (!name.trim()) {
-      toast({ description: "Por favor escribe un nombre para el personaje", variant: "destructive" });
+      toast({
+        description: isEs ? "Por favor escribe un nombre para el personaje" : "Please provide a character name",
+        variant: "destructive"
+      });
       return;
     }
 
@@ -265,14 +297,20 @@ export const ChatCharacterConfigDialog: React.FC<ChatCharacterConfigDialogProps>
     const updated: CharacterItem = {
       id: charId,
       name: name.trim(),
-      roleTitle: roleTitle.trim() || "Compañera",
+      roleTitle: roleTitle.trim() || (isEs ? "Compañera" : "Partner"),
+      roleTitleEn: isEs ? (character?.roleTitleEn || roleTitle.trim()) : roleTitle.trim(),
+      roleTitleEs: isEs ? roleTitle.trim() : (character?.roleTitleEs || roleTitle.trim()),
       age: Number(age) || 25,
       gender,
       style,
       avatar: mainAvatar,
       gallery: gallery.length > 0 ? gallery : [mainAvatar],
       bio: bio.trim(),
+      bioEn: isEs ? (character?.bioEn || bio.trim()) : bio.trim(),
+      bioEs: isEs ? bio.trim() : (character?.bioEs || bio.trim()),
       shortBio: bio.trim().slice(0, 100) + "...",
+      shortBioEn: isEs ? (character?.shortBioEn || (bio.trim().slice(0, 100) + "...")) : (bio.trim().slice(0, 100) + "..."),
+      shortBioEs: isEs ? (bio.trim().slice(0, 100) + "...") : (character?.shortBioEs || (bio.trim().slice(0, 100) + "...")),
       likesCount: character?.likesCount || "28.4k",
       imageCount: Math.max(gallery.length, character?.imageCount || 120),
       audioCount: character?.audioCount || 85,
@@ -280,7 +318,9 @@ export const ChatCharacterConfigDialog: React.FC<ChatCharacterConfigDialogProps>
       affinityTitle: character?.affinityTitle || "Curious Flirt",
       affinityXp: character?.affinityXp || 70,
       category: character?.category || "featured",
-      starterMessage: starterMessage.trim() || `Hola, me alegra verte. ¿En qué estás pensando?`,
+      starterMessage: starterMessage.trim() || (isEs ? "Hola, me alegra verte. ¿En qué estás pensando?" : "Hey, nice to see you. What's on your mind?"),
+      starterMessageEn: isEs ? (character?.starterMessageEn || starterMessage.trim()) : starterMessage.trim(),
+      starterMessageEs: isEs ? starterMessage.trim() : (character?.starterMessageEs || starterMessage.trim()),
       voiceName
     };
 
@@ -289,8 +329,12 @@ export const ChatCharacterConfigDialog: React.FC<ChatCharacterConfigDialogProps>
 
     onSave(updated);
     toast({
-      title: isNew ? "Personaje creado con éxito" : "Perfil actualizado",
-      description: `Configuración de ${updated.name} guardada correctamente.`
+      title: isNew
+        ? (isEs ? "Personaje creado con éxito" : "Character created successfully")
+        : (isEs ? "Perfil actualizado" : "Profile updated"),
+      description: isEs
+        ? `Configuración de ${updated.name} guardada correctamente.`
+        : `Settings for ${updated.name} saved successfully.`
     });
     onOpenChange(false);
   };
@@ -314,10 +358,14 @@ export const ChatCharacterConfigDialog: React.FC<ChatCharacterConfigDialogProps>
             </div>
             <div>
               <DialogTitle className="text-lg font-bold text-white tracking-wide">
-                {isNew ? "Crear Nuevo Personaje de Chat" : `Configurar Personaje: ${name || character?.name}`}
+                {isNew
+                  ? (isEs ? "Crear Nuevo Personaje de Chat" : "Create New Chat Character")
+                  : (isEs ? `Configurar Personaje: ${name || character?.name}` : `Configure Character: ${name || character?.name}`)}
               </DialogTitle>
               <DialogDescription className="text-xs text-zinc-400">
-                Personaliza fotos rotativas, síntesis de voz, llamadas y comportamiento de IA.
+                {isEs
+                  ? "Personaliza fotos rotativas, síntesis de voz, llamadas y comportamiento de IA."
+                  : "Customize rotating photos, speech synthesis, live calls, and AI behavior."}
               </DialogDescription>
             </div>
           </div>
@@ -330,19 +378,19 @@ export const ChatCharacterConfigDialog: React.FC<ChatCharacterConfigDialogProps>
                 value="info"
                 className="data-[state=active]:bg-transparent data-[state=active]:text-[#ff8c00] data-[state=active]:border-b-2 data-[state=active]:border-[#ff8c00] rounded-none px-1 h-full font-bold text-xs flex items-center gap-1.5"
               >
-                <User className="w-3.5 h-3.5" /> Información y Rol
+                <User className="w-3.5 h-3.5" /> {isEs ? "Información y Rol" : "Info & Role"}
               </TabsTrigger>
               <TabsTrigger
                 value="photos"
                 className="data-[state=active]:bg-transparent data-[state=active]:text-[#ff8c00] data-[state=active]:border-b-2 data-[state=active]:border-[#ff8c00] rounded-none px-1 h-full font-bold text-xs flex items-center gap-1.5"
               >
-                <ImageIcon className="w-3.5 h-3.5" /> Galería de Fotos ({gallery.length})
+                <ImageIcon className="w-3.5 h-3.5" /> {isEs ? `Galería de Fotos (${gallery.length})` : `Photo Gallery (${gallery.length})`}
               </TabsTrigger>
               <TabsTrigger
                 value="voice"
                 className="data-[state=active]:bg-transparent data-[state=active]:text-[#ff8c00] data-[state=active]:border-b-2 data-[state=active]:border-[#ff8c00] rounded-none px-1 h-full font-bold text-xs flex items-center gap-1.5"
               >
-                <Volume2 className="w-3.5 h-3.5" /> Voz y Llamadas
+                <Volume2 className="w-3.5 h-3.5" /> {isEs ? "Voz y Llamadas" : "Voice & Calls"}
               </TabsTrigger>
             </TabsList>
           </div>
@@ -352,27 +400,33 @@ export const ChatCharacterConfigDialog: React.FC<ChatCharacterConfigDialogProps>
             <TabsContent value="info" className="space-y-4 m-0">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-1.5">
-                  <Label className="text-xs text-zinc-300 font-semibold">Nombre del Personaje</Label>
+                  <Label className="text-xs text-zinc-300 font-semibold">
+                    {isEs ? "Nombre del Personaje" : "Character Name"}
+                  </Label>
                   <Input
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    placeholder="Ej. Olivia Adams"
+                    placeholder={isEs ? "Ej. Olivia Adams" : "e.g. Olivia Adams"}
                     className="bg-[#1a1a1a] border-[#2b2b2b] text-sm text-white focus:border-[#ff8c00]"
                   />
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label className="text-xs text-zinc-300 font-semibold">Profesión o Título</Label>
+                  <Label className="text-xs text-zinc-300 font-semibold">
+                    {isEs ? "Profesión o Título" : "Profession or Title"}
+                  </Label>
                   <Input
                     value={roleTitle}
                     onChange={(e) => setRoleTitle(e.target.value)}
-                    placeholder="Ej. Nutricionista Prominente"
+                    placeholder={isEs ? "Ej. Nutricionista Prominente" : "e.g. Prominent Nutritionist"}
                     className="bg-[#1a1a1a] border-[#2b2b2b] text-sm text-white focus:border-[#ff8c00]"
                   />
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label className="text-xs text-zinc-300 font-semibold">Edad</Label>
+                  <Label className="text-xs text-zinc-300 font-semibold">
+                    {isEs ? "Edad" : "Age"}
+                  </Label>
                   <Input
                     type="number"
                     value={age}
@@ -384,14 +438,16 @@ export const ChatCharacterConfigDialog: React.FC<ChatCharacterConfigDialogProps>
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label className="text-xs text-zinc-300 font-semibold">Estilo Visual</Label>
+                  <Label className="text-xs text-zinc-300 font-semibold">
+                    {isEs ? "Estilo Visual" : "Visual Style"}
+                  </Label>
                   <Select value={style} onValueChange={(val: any) => setStyle(val)}>
                     <SelectTrigger className="bg-[#1a1a1a] border-[#2b2b2b] text-sm text-white">
-                      <SelectValue placeholder="Estilo" />
+                      <SelectValue placeholder={isEs ? "Estilo" : "Style"} />
                     </SelectTrigger>
                     <SelectContent className="bg-[#141414] border-[#2b2b2b] text-white">
-                      <SelectItem value="realistic">Realista / Fotográfico</SelectItem>
-                      <SelectItem value="anime">Anime / Ilustración</SelectItem>
+                      <SelectItem value="realistic">{isEs ? "Realista / Fotográfico" : "Realistic / Photographic"}</SelectItem>
+                      <SelectItem value="anime">{isEs ? "Anime / Ilustración" : "Anime / Illustration"}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -399,24 +455,26 @@ export const ChatCharacterConfigDialog: React.FC<ChatCharacterConfigDialogProps>
 
               <div className="space-y-1.5">
                 <Label className="text-xs text-zinc-300 font-semibold">
-                  Biografía & Personalidad (Contexto para la IA de Chat y Magnum)
+                  {isEs ? "Biografía & Personalidad (Contexto para la IA de Chat)" : "Biography & Personality (Context for Chat AI)"}
                 </Label>
                 <Textarea
                   value={bio}
                   onChange={(e) => setBio(e.target.value)}
                   rows={4}
-                  placeholder="Describe cómo habla, su carácter, secretos, o qué le atrae del usuario..."
+                  placeholder={isEs ? "Describe cómo habla, su carácter, secretos o complicidad con el usuario..." : "Describe personality, conversational style, secrets, or affinity..."}
                   className="bg-[#1a1a1a] border-[#2b2b2b] text-sm text-white focus:border-[#ff8c00] leading-relaxed resize-none"
                 />
               </div>
 
               <div className="space-y-1.5">
-                <Label className="text-xs text-zinc-300 font-semibold">Mensaje de Inicio</Label>
+                <Label className="text-xs text-zinc-300 font-semibold">
+                  {isEs ? "Mensaje Inicial" : "Starter Greeting Message"}
+                </Label>
                 <Textarea
                   value={starterMessage}
                   onChange={(e) => setStarterMessage(e.target.value)}
                   rows={2}
-                  placeholder="Primer mensaje que dirá el personaje al abrir el chat..."
+                  placeholder={isEs ? "Primer mensaje que dirá el personaje al abrir el chat..." : "First message spoken by the character when chat opens..."}
                   className="bg-[#1a1a1a] border-[#2b2b2b] text-sm text-white focus:border-[#ff8c00] resize-none"
                 />
               </div>
@@ -430,14 +488,18 @@ export const ChatCharacterConfigDialog: React.FC<ChatCharacterConfigDialogProps>
                   <img src={avatar || gallery[0]} alt="Avatar" className="w-full h-full object-cover" />
                 </div>
                 <div className="flex-1 space-y-1">
-                  <span className="text-xs font-bold text-white">Avatar Principal</span>
+                  <span className="text-xs font-bold text-white">
+                    {isEs ? "Avatar Principal" : "Main Profile Avatar"}
+                  </span>
                   <p className="text-[11px] text-zinc-400">
-                    Es la foto circular que aparece en las llamadas y en la lista de conversaciones.
+                    {isEs
+                      ? "Es la foto circular que aparece en las llamadas y en la lista de conversaciones."
+                      : "The round photo displayed in calls and conversations list."}
                   </p>
                   <Input
                     value={avatar}
                     onChange={(e) => setAvatar(e.target.value)}
-                    placeholder="URL del avatar principal"
+                    placeholder={isEs ? "URL del avatar principal" : "Main avatar image URL"}
                     className="h-8 bg-[#1a1a1a] border-[#2b2b2b] text-xs text-white focus:border-[#ff8c00]"
                   />
                 </div>
@@ -446,13 +508,13 @@ export const ChatCharacterConfigDialog: React.FC<ChatCharacterConfigDialogProps>
               {/* Agregar Foto */}
               <div className="space-y-2">
                 <Label className="text-xs text-zinc-300 font-semibold">
-                  Agregar Nueva Foto a la Galería Rotativa
+                  {isEs ? "Agregar Nueva Foto a la Galería Rotativa" : "Add New Photo to Rotating Gallery"}
                 </Label>
                 <div className="flex gap-2">
                   <Input
                     value={newPhotoUrl}
                     onChange={(e) => setNewPhotoUrl(e.target.value)}
-                    placeholder="Pega la URL de una imagen (https://...)"
+                    placeholder={isEs ? "Pega la URL de una imagen (https://...)" : "Paste image URL (https://...)"}
                     className="bg-[#1a1a1a] border-[#2b2b2b] text-xs text-white focus:border-[#ff8c00]"
                   />
                   <Button
@@ -460,7 +522,7 @@ export const ChatCharacterConfigDialog: React.FC<ChatCharacterConfigDialogProps>
                     disabled={!newPhotoUrl.trim()}
                     className="bg-[#ff8c00] hover:bg-amber-500 text-black font-extrabold text-xs flex items-center gap-1.5"
                   >
-                    <Plus className="w-3.5 h-3.5 stroke-[3]" /> Agregar
+                    <Plus className="w-3.5 h-3.5 stroke-[3]" /> {isEs ? "Agregar" : "Add"}
                   </Button>
                 </div>
               </div>
@@ -468,7 +530,7 @@ export const ChatCharacterConfigDialog: React.FC<ChatCharacterConfigDialogProps>
               {/* Cuadrícula de fotos existentes */}
               <div className="space-y-2">
                 <Label className="text-xs text-zinc-300 font-semibold">
-                  Fotos de la Galería ({gallery.length})
+                  {isEs ? `Fotos de la Galería (${gallery.length})` : `Gallery Photos (${gallery.length})`}
                 </Label>
                 <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
                   {gallery.map((photo, index) => {
@@ -485,7 +547,7 @@ export const ChatCharacterConfigDialog: React.FC<ChatCharacterConfigDialogProps>
                         {/* Badge de principal */}
                         {isMain && (
                           <span className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded-md bg-[#ff8c00] text-black text-[9px] font-black uppercase">
-                            Principal
+                            {isEs ? "Principal" : "Main"}
                           </span>
                         )}
 
@@ -494,7 +556,7 @@ export const ChatCharacterConfigDialog: React.FC<ChatCharacterConfigDialogProps>
                           <button
                             onClick={() => handleRemovePhoto(index)}
                             className="self-end w-6 h-6 rounded-full bg-red-600 hover:bg-red-500 text-white flex items-center justify-center transition-transform hover:scale-110"
-                            title="Eliminar foto"
+                            title={isEs ? "Eliminar foto" : "Delete photo"}
                           >
                             <Trash2 className="w-3 h-3" />
                           </button>
@@ -504,7 +566,7 @@ export const ChatCharacterConfigDialog: React.FC<ChatCharacterConfigDialogProps>
                               onClick={() => handleSetMainAvatar(photo)}
                               className="w-full py-1 rounded bg-[#ff8c00] hover:bg-amber-500 text-black text-[10px] font-extrabold transition-colors"
                             >
-                              Hacer Principal
+                              {isEs ? "Hacer Principal" : "Set as Main"}
                             </button>
                           )}
                         </div>
@@ -520,33 +582,35 @@ export const ChatCharacterConfigDialog: React.FC<ChatCharacterConfigDialogProps>
               <div className="p-4 rounded-2xl bg-[#141414] border border-[#262626] space-y-4">
                 <div className="space-y-1">
                   <Label className="text-xs text-zinc-200 font-bold">
-                    Voz de Insomnia para el Chat y Llamadas
+                    {isEs ? "Voz de Insomnia para el Chat y Llamadas" : "Insomnia Voice for Chat and Calls"}
                   </Label>
                   <p className="text-[11px] text-zinc-400">
-                    Esta voz se utilizará al reproducir mensajes (`▶`) y cuando el personaje hable durante una llamada en vivo.
+                    {isEs
+                      ? "Esta voz se utilizará al reproducir mensajes (▶) y cuando el personaje hable durante una llamada en vivo."
+                      : "This voice will be used when playing message audio (▶) and when the character speaks during live calls."}
                   </p>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-center">
                   <Select value={voiceName} onValueChange={(val) => setVoiceName(val)}>
                     <SelectTrigger className="bg-[#1a1a1a] border-[#2b2b2b] text-sm text-white font-semibold">
-                      <SelectValue placeholder="Seleccionar voz" />
+                      <SelectValue placeholder={isEs ? "Seleccionar voz" : "Select voice"} />
                     </SelectTrigger>
                     <SelectContent className="bg-[#141414] border-[#2b2b2b] text-white max-h-60">
                       <div className="px-2 py-1 text-[10px] font-bold uppercase text-[#ff8c00] tracking-wider">
-                        Voces Femeninas
+                        {isEs ? "Voces Femeninas" : "Female Voices"}
                       </div>
                       {femaleVoices.map((v) => (
                         <SelectItem key={v.value} value={v.value} className="text-xs">
-                          {v.label} — <span className="text-zinc-400">{v.descriptionEs}</span>
+                          {v.label} — <span className="text-zinc-400">{isEs ? v.descriptionEs : v.descriptionEn}</span>
                         </SelectItem>
                       ))}
                       <div className="px-2 py-1 text-[10px] font-bold uppercase text-zinc-500 tracking-wider mt-2">
-                        Voces Masculinas
+                        {isEs ? "Voces Masculinas" : "Male Voices"}
                       </div>
                       {maleVoices.map((v) => (
                         <SelectItem key={v.value} value={v.value} className="text-xs">
-                          {v.label} — <span className="text-zinc-400">{v.descriptionEs}</span>
+                          {v.label} — <span className="text-zinc-400">{isEs ? v.descriptionEs : v.descriptionEn}</span>
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -562,11 +626,11 @@ export const ChatCharacterConfigDialog: React.FC<ChatCharacterConfigDialogProps>
                   >
                     {isPlayingVoice ? (
                       <>
-                        <Square className="w-3.5 h-3.5 fill-current" /> Detener Prueba
+                        <Square className="w-3.5 h-3.5 fill-current" /> {isEs ? "Detener Prueba" : "Stop Preview"}
                       </>
                     ) : (
                       <>
-                        <Play className="w-3.5 h-3.5 fill-current" /> Probar Voz Femenina
+                        <Play className="w-3.5 h-3.5 fill-current" /> {isEs ? "Probar Voz" : "Test Voice"}
                       </>
                     )}
                   </Button>
@@ -574,9 +638,9 @@ export const ChatCharacterConfigDialog: React.FC<ChatCharacterConfigDialogProps>
 
                 {/* Info sobre la voz */}
                 <div className="p-3 rounded-xl bg-[#0a0a0a] border border-[#202020] flex items-center justify-between text-xs">
-                  <span className="text-zinc-400">Voz seleccionada:</span>
+                  <span className="text-zinc-400">{isEs ? "Voz seleccionada:" : "Selected voice:"}</span>
                   <span className="text-[#ff8c00] font-bold">
-                    {voiceName} ({STORY_VOICES.find((v) => v.value === voiceName)?.descriptionEs || "Femenina"})
+                    {voiceName} ({isEs ? (STORY_VOICES.find((v) => v.value === voiceName)?.descriptionEs || "Femenina") : (STORY_VOICES.find((v) => v.value === voiceName)?.descriptionEn || "Female")})
                   </span>
                 </div>
               </div>
@@ -593,7 +657,7 @@ export const ChatCharacterConfigDialog: React.FC<ChatCharacterConfigDialogProps>
             }}
             className="text-zinc-400 hover:text-white hover:bg-white/5 text-xs font-semibold"
           >
-            Cancelar
+            {isEs ? "Cancelar" : "Cancel"}
           </Button>
 
           <Button
@@ -601,7 +665,7 @@ export const ChatCharacterConfigDialog: React.FC<ChatCharacterConfigDialogProps>
             className="bg-[#ff8c00] hover:bg-amber-500 text-black font-extrabold text-xs px-6 shadow-lg shadow-[#ff8c00]/30 transition-all hover:scale-105 active:scale-95"
           >
             <Check className="w-4 h-4 stroke-[2.5] mr-1" />
-            {isNew ? "Crear Personaje" : "Guardar Cambios"}
+            {isNew ? (isEs ? "Crear Personaje" : "Create Character") : (isEs ? "Guardar Cambios" : "Save Changes")}
           </Button>
         </DialogFooter>
       </DialogContent>

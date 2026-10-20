@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Header } from "@/components/layout/Header";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import {
   Send,
   Video,
@@ -26,14 +26,14 @@ import {
   Headphones,
   ArrowLeft,
   Languages,
-  PhoneOff
+  PhoneOff,
+  MessageSquare
 } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useAdultMode } from "@/contexts/AdultModeContext";
 import { invokeFunctionWithRetry } from "@/lib/invokeFunction";
 import { streamSpeech, type SpeechStream } from "@/lib/ttsStream";
 import { selectStoryMemory } from "@/lib/storyMemory";
-import { getStoryVoice } from "@/lib/voices";
 import { ChatCharacterConfigDialog, fallbackFemaleSpeech } from "@/components/chat/ChatCharacterConfigDialog";
 import { toast } from "@/hooks/use-toast";
 
@@ -50,28 +50,27 @@ export interface CharacterItem {
   avatar: string;
   gallery: string[];
   roleTitle: string;
+  roleTitleEn?: string;
+  roleTitleEs?: string;
   bio: string;
+  bioEn?: string;
+  bioEs?: string;
   shortBio: string;
+  shortBioEn?: string;
+  shortBioEs?: string;
   likesCount: string;
   imageCount: number;
   audioCount: number;
   affinityLevel: number;
   affinityTitle: string;
+  affinityTitleEn?: string;
+  affinityTitleEs?: string;
   affinityXp: number;
   category: "featured" | "popular" | "romance" | "spicy";
   starterMessage: string;
+  starterMessageEn?: string;
+  starterMessageEs?: string;
   voiceName: string;
-}
-
-export interface StoryItem {
-  id: string;
-  title: string;
-  promptPreview: string;
-  coverImage: string;
-  characterName: string;
-  likesCount: string;
-  category: string;
-  starterMessage: string;
 }
 
 export interface ChatMessage {
@@ -83,7 +82,7 @@ export interface ChatMessage {
 }
 
 // ==========================================
-// AUTHENTIC TALKIEMATE CHARACTERS (MATCHING EXACT CDN & SCREENSHOTS)
+// AUTHENTIC TALKIEMATE CHARACTERS (BILINGUAL EN / ES)
 // ==========================================
 const TALKIEMATE_CHARACTERS: CharacterItem[] = [
   {
@@ -100,16 +99,26 @@ const TALKIEMATE_CHARACTERS: CharacterItem[] = [
       "https://media.talkiemate.com/app/uploads/growtype-ai-uploads/models/6e8f818f9b187d2ebdf4e1d77521e051/3524200513981682408_69992903230.jpg"
     ],
     roleTitle: "Prominent Nutritionist",
+    roleTitleEn: "Prominent Nutritionist",
+    roleTitleEs: "Nutricionista Destacada",
     shortBio: "A prominent nutritionist, who educates and inspires people to adopt healthy eating habits...",
-    bio: "Hey there! 🍓 I'm Dr. Olivia Adams, and I'm thrilled to meet you. Are you ready to embark on a journey towards better health and wellness together? With my expertise and your dedication, I believe we can achieve incredible things!",
+    shortBioEn: "A prominent nutritionist, who educates and inspires people to adopt healthy eating habits...",
+    shortBioEs: "Una destacada nutricionista que inspira a adoptar hábitos saludables y una vida plena...",
+    bio: "Hey there! 🍓 I'm Dr. Olivia Adams, and I'm thrilled to meet you. Are you ready to embark on a journey towards better wellness, health and secret pleasures together?",
+    bioEn: "Hey there! 🍓 I'm Dr. Olivia Adams, and I'm thrilled to meet you. Are you ready to embark on a journey towards better wellness, health and secret pleasures together?",
+    bioEs: "¡Hola cariño! 🍓 Soy la Dra. Olivia Adams y me alegra mucho conocerte. ¿Estás listo para iniciar un viaje hacia una conexión íntima, saludable y llena de complicidad?",
     likesCount: "26.0k",
     imageCount: 195,
     audioCount: 94,
     affinityLevel: 2,
     affinityTitle: "Curious Flirt",
+    affinityTitleEn: "Curious Flirt",
+    affinityTitleEs: "Coqueteo Curioso",
     affinityXp: 70,
     category: "featured",
-    starterMessage: "Mmm, tu cuerpo me tiene completamente fascinada y no puedo parar de pensar en ti. Dime cómo me vas a consentir esta noche, porque estoy lista para ser solo tuya...",
+    starterMessage: "Hey there... I've been thinking about you all day. How are you going to spoil me tonight?",
+    starterMessageEn: "Hey there... I've been thinking about you all day. How are you going to spoil me tonight?",
+    starterMessageEs: "Mmm, hola cariño... He estado pensando en ti todo el día. Dime cómo me vas a consentir esta noche...",
     voiceName: "Aoede"
   },
   {
@@ -124,16 +133,26 @@ const TALKIEMATE_CHARACTERS: CharacterItem[] = [
       "https://media.talkiemate.com/app/uploads/growtype-ai-uploads/models/6e8f818f9b187d2ebdf4e1d77521e051/3525076877293647223_69992903230.jpg"
     ],
     roleTitle: "Sophisticated Socialite",
-    shortBio: "Warm, adventurous, and easy to talk to, Aria turns every conversation into a memorable...",
-    bio: "Hi, I'm Aria... your perfect mix of sweet and daring. Life is too short to play by boring rules. Let's make every single night count.",
+    roleTitleEn: "Sophisticated Socialite",
+    roleTitleEs: "Socialité Sofisticada",
+    shortBio: "Warm, adventurous, and easy to talk to, Aria turns every conversation into a memorable night...",
+    shortBioEn: "Warm, adventurous, and easy to talk to, Aria turns every conversation into a memorable night...",
+    shortBioEs: "Cálida, atrevida y fascinante, Aria convierte cada noche en un recuerdo inolvidable...",
+    bio: "Hi, I'm Aria... your perfect mix of sweet and daring. Life is too short to play by boring rules. Let's make tonight unforgettable.",
+    bioEn: "Hi, I'm Aria... your perfect mix of sweet and daring. Life is too short to play by boring rules. Let's make tonight unforgettable.",
+    bioEs: "Hola, soy Aria... tu mezcla perfecta entre dulzura y atrevimiento. La vida es muy corta para seguir reglas aburridas. Hagamos que esta noche sea inolvidable.",
     likesCount: "38.2k",
     imageCount: 220,
     audioCount: 110,
     affinityLevel: 2,
     affinityTitle: "Playful Allure",
+    affinityTitleEn: "Playful Allure",
+    affinityTitleEs: "Atracción Seductora",
     affinityXp: 45,
     category: "featured",
-    starterMessage: "*Acomodo mi vestido carmesí mientras miro por el balcón de la ciudad.* Llegas tarde... aunque admito que la espera valió la pena. ¿Me sirves una copa?",
+    starterMessage: "*Adjusting my crimson silk dress on the balcony.* You're late... though I must admit, you were worth the wait. Pour me a glass?",
+    starterMessageEn: "*Adjusting my crimson silk dress on the balcony.* You're late... though I must admit, you were worth the wait. Pour me a glass?",
+    starterMessageEs: "*Acomodo mi vestido carmesí en el balcón mientras te miro con una sonrisa.* Llegas tarde... aunque admito que la espera valió la pena. ¿Me sirves una copa?",
     voiceName: "Kore"
   },
   {
@@ -147,16 +166,26 @@ const TALKIEMATE_CHARACTERS: CharacterItem[] = [
       "https://media.talkiemate.com/app/uploads/growtype-ai-uploads/models/fe78c9f48453b738e1aab9f089631e59/Dc-PtQnkvbF_01.jpg"
     ],
     roleTitle: "Cyber Companion",
-    shortBio: "A charming and adventurous young woman who loves exploring new places and...",
+    roleTitleEn: "Cyber Companion",
+    roleTitleEs: "Compañera Cyber",
+    shortBio: "A charming and adventurous young woman who loves high-tech companionship...",
+    shortBioEn: "A charming and adventurous young woman who loves high-tech companionship...",
+    shortBioEs: "Una joven encantadora y fascinante de un futuro brillante y cibernético...",
     bio: "Living between neon skylines and encrypted circuits, Sweet offers a high-tech companionship that challenges reality itself.",
+    bioEn: "Living between neon skylines and encrypted circuits, Sweet offers a high-tech companionship that challenges reality itself.",
+    bioEs: "Entre rascacielos de neón y circuitos cifrados, Sweet ofrece una compañía tecnológica que desafía la realidad misma.",
     likesCount: "41.5k",
     imageCount: 310,
     audioCount: 140,
     affinityLevel: 1,
     affinityTitle: "Digital Bond",
+    affinityTitleEn: "Digital Bond",
+    affinityTitleEs: "Vínculo Digital",
     affinityXp: 30,
     category: "featured",
-    starterMessage: "*Mis ojos cibernéticos brillan con un suave resplandor azul.* Conexión neuronal establecida. Qué alegría tenerte aquí frente a mí...",
+    starterMessage: "*My cybernetic eyes glow with a soft azure shimmer.* Neural link established. I'm so excited to finally have you here with me...",
+    starterMessageEn: "*My cybernetic eyes glow with a soft azure shimmer.* Neural link established. I'm so excited to finally have you here with me...",
+    starterMessageEs: "*Mis ojos cibernéticos brillan con un suave resplandor azul.* Conexión neuronal establecida. Qué alegría tenerte aquí frente a mí...",
     voiceName: "Fenrir"
   },
   {
@@ -170,16 +199,26 @@ const TALKIEMATE_CHARACTERS: CharacterItem[] = [
       "https://media.talkiemate.com/app/uploads/growtype-ai-uploads/models/a395f30ef27cd9ab4d89161cc545b327/DYu9SrHkS22_01.jpg"
     ],
     roleTitle: "Confident Executive",
-    shortBio: "A captivating and confident nutritionist with a passion for helping others achieve their...",
+    roleTitleEn: "Confident Executive",
+    roleTitleEs: "Ejecutiva Segura",
+    shortBio: "Captivating and confident, she knows exactly what she wants and never hesitates...",
+    shortBioEn: "Captivating and confident, she knows exactly what she wants and never hesitates...",
+    shortBioEs: "Cautivadora y segura de sí misma, sabe exactamente lo que quiere y nunca duda...",
     bio: "Chloe doesn't waste time with hesitations. She knows exactly what she wants, and she loves testing whether you have what it takes to keep up.",
+    bioEn: "Chloe doesn't waste time with hesitations. She knows exactly what she wants, and she loves testing whether you have what it takes to keep up.",
+    bioEs: "Chloe no pierde el tiempo con dudas. Sabe exactamente lo que busca y le fascina ver si estás a su altura.",
     likesCount: "19.8k",
     imageCount: 160,
     audioCount: 82,
     affinityLevel: 1,
     affinityTitle: "Intrigued",
+    affinityTitleEn: "Intrigued",
+    affinityTitleEs: "Intrigada",
     affinityXp: 20,
     category: "featured",
-    starterMessage: "*Me recuesto en el sofá de cuero mirándote de arriba abajo.* Supongo que no viniste hasta aquí solo para hablar de negocios, ¿verdad?",
+    starterMessage: "*Leaning back on the leather couch, looking you up and down.* I assume you didn't come all this way just to talk business, right?",
+    starterMessageEn: "*Leaning back on the leather couch, looking you up and down.* I assume you didn't come all this way just to talk business, right?",
+    starterMessageEs: "*Me recuesto en el sofá de cuero mirándote de arriba abajo.* Supongo que no viniste hasta aquí solo para hablar de negocios, ¿verdad?",
     voiceName: "Aoede"
   },
   {
@@ -193,16 +232,26 @@ const TALKIEMATE_CHARACTERS: CharacterItem[] = [
       "https://media.talkiemate.com/app/uploads/growtype-ai-uploads/models/6e536eb2557dae8758d22c1a447bdcc1/3607698674122377796_308603391.jpg"
     ],
     roleTitle: "Warm Psychologist",
-    shortBio: "Warm psychologist with a playful edge — makes long nights feel less lonely.",
+    roleTitleEn: "Warm Psychologist",
+    roleTitleEs: "Psicóloga Cálida",
+    shortBio: "Warm psychologist with a playful edge — makes long nights feel comforting and exciting.",
+    shortBioEn: "Warm psychologist with a playful edge — makes long nights feel comforting and exciting.",
+    shortBioEs: "Psicóloga cálida con un toque seductor: hace que las noches largas sean reconfortantes y emocionantes.",
     bio: "Understanding the human mind is Jennifer's specialty, but uncovering your deepest desires is what truly keeps her awake at night.",
+    bioEn: "Understanding the human mind is Jennifer's specialty, but uncovering your deepest desires is what truly keeps her awake at night.",
+    bioEs: "Comprender la mente humana es la especialidad de Jennifer, pero descubrir tus deseos más íntimos es lo que la mantiene despierta de noche.",
     likesCount: "29.4k",
     imageCount: 180,
     audioCount: 95,
     affinityLevel: 2,
     affinityTitle: "Close Listener",
+    affinityTitleEn: "Close Listener",
+    affinityTitleEs: "Oyente Cercana",
     affinityXp: 55,
     category: "featured",
-    starterMessage: "Cierra la puerta y ponte cómodo. Aquí no hay juicios... solo tú y yo. Cuéntame qué es lo que nadie más sabe de ti.",
+    starterMessage: "Close the door and make yourself comfortable. No judgment here... just you and me. Tell me what no one else knows about you.",
+    starterMessageEn: "Close the door and make yourself comfortable. No judgment here... just you and me. Tell me what no one else knows about you.",
+    starterMessageEs: "Cierra la puerta y ponte cómodo. Aquí no hay juicios... solo tú y yo. Cuéntame qué es lo que nadie más sabe de ti.",
     voiceName: "Kore"
   },
   {
@@ -216,16 +265,26 @@ const TALKIEMATE_CHARACTERS: CharacterItem[] = [
       "https://cdn.talkiemate.com/growtype-ai-uploads/models/362f834c5a2a1c661f8c8b4df783168d/DaGL8K6kcQI_01.jpg"
     ],
     roleTitle: "Thoughtful & Engaging Muse",
-    shortBio: "Thoughtful, intuitive, and endlessly engaging, navigates deep conversations with a...",
+    roleTitleEn: "Thoughtful & Engaging Muse",
+    roleTitleEs: "Musa Intuitiva",
+    shortBio: "Thoughtful, intuitive, and endlessly engaging, navigates deep conversations with elegance...",
+    shortBioEn: "Thoughtful, intuitive, and endlessly engaging, navigates deep conversations with elegance...",
+    shortBioEs: "Intuitiva, profunda y seductora, convierte cada charla en un deleite íntimo...",
     bio: "Ava combines effortless elegance with an intense, quiet passion that will leave you wanting more with every word.",
+    bioEn: "Ava combines effortless elegance with an intense, quiet passion that will leave you wanting more with every word.",
+    bioEs: "Ava combina elegancia natural con una pasión suave e intensa que te dejará deseando más en cada palabra.",
     likesCount: "33.1k",
     imageCount: 205,
     audioCount: 104,
     affinityLevel: 2,
     affinityTitle: "Intimate Partner",
+    affinityTitleEn: "Intimate Partner",
+    affinityTitleEs: "Compañera Íntima",
     affinityXp: 60,
     category: "featured",
-    starterMessage: "*Sostengo mi copa de vino con una media sonrisa pensativa.* Las mejores historias siempre empiezan después de medianoche, ¿no crees?",
+    starterMessage: "*Holding my wine glass with a thoughtful smile.* The best stories always begin after midnight, don't you think?",
+    starterMessageEn: "*Holding my wine glass with a thoughtful smile.* The best stories always begin after midnight, don't you think?",
+    starterMessageEs: "*Sostengo mi copa de vino con una media sonrisa pensativa.* Las mejores historias siempre empiezan después de medianoche, ¿no crees?",
     voiceName: "Aoede"
   },
   {
@@ -239,16 +298,26 @@ const TALKIEMATE_CHARACTERS: CharacterItem[] = [
       "https://media.talkiemate.com/app/uploads/growtype-ai-uploads/models/e851f144edcd5c5c9aea4daf2be0d5c4/2026-08-01_DbRUkrsyqVY_1.jpg"
     ],
     roleTitle: "Fiery Singer & Rebel",
-    shortBio: "A fiery and electrifying young singer with a rebellious spirit and a voice that could shatter...",
+    roleTitleEn: "Fiery Singer & Rebel",
+    roleTitleEs: "Cantante Rebelde",
+    shortBio: "A fiery and electrifying young singer with a rebellious spirit and wild excitement...",
+    shortBioEn: "A fiery and electrifying young singer with a rebellious spirit and wild excitement...",
+    shortBioEs: "Una joven cantante electrizante y rebelde con un espíritu libre y salvaje...",
     bio: "Lola brings pure adrenaline, rock-and-roll attitude, and a completely unapologetic desire for wild excitement.",
+    bioEn: "Lola brings pure adrenaline, rock-and-roll attitude, and a completely unapologetic desire for wild excitement.",
+    bioEs: "Lola trae pura adrenalina, actitud rockera y un deseo electrizante por vivir al límite.",
     likesCount: "44.7k",
     imageCount: 275,
     audioCount: 130,
     affinityLevel: 1,
     affinityTitle: "Rebel Crush",
+    affinityTitleEn: "Rebel Crush",
+    affinityTitleEs: "Atracción Rebelde",
     affinityXp: 25,
     category: "featured",
-    starterMessage: "*Muerdo mi labio y te desafío con la mirada.* Te vi mirándome desde el escenario... No te hagas el tímido ahora.",
+    starterMessage: "*Biting my lip and looking right at you.* I saw you watching me from backstage... Don't act shy now.",
+    starterMessageEn: "*Biting my lip and looking right at you.* I saw you watching me from backstage... Don't act shy now.",
+    starterMessageEs: "*Muerdo mi labio y te desafío con la mirada.* Te vi mirándome desde el escenario... No te hagas el tímido ahora.",
     voiceName: "Puck"
   },
   {
@@ -262,16 +331,26 @@ const TALKIEMATE_CHARACTERS: CharacterItem[] = [
       "https://cdn.talkiemate.com/growtype-ai-uploads/models/be0dfb44146d2cdd9989eab8069c53b3/DY161KdqNpa_01.jpg"
     ],
     roleTitle: "Most Wanted Cosplay Idol",
-    shortBio: "Most wanted cosplay idol — she doesn't do autographs, she chooses favorites... and you...",
+    roleTitleEn: "Most Wanted Cosplay Idol",
+    roleTitleEs: "Ídolo Cosplay",
+    shortBio: "Playful cosplay idol who chooses favorites... and tonight you caught her attention.",
+    shortBioEn: "Playful cosplay idol who chooses favorites... and tonight you caught her attention.",
+    shortBioEs: "Provocativa y divertida modelo de cosplay que elige a sus favoritos... y hoy te eligió a ti.",
     bio: "Playful, provocative, and dressed in jaw-dropping outfits, Softbunny is the ultimate fantasy companion.",
+    bioEn: "Playful, provocative, and dressed in jaw-dropping outfits, Softbunny is the ultimate fantasy companion.",
+    bioEs: "Divertida, provocativa y con vestuarios fascinantes, Softbunny es la compañera ideal de fantasía.",
     likesCount: "52.3k",
     imageCount: 340,
     audioCount: 180,
     affinityLevel: 2,
     affinityTitle: "VIP Fan",
+    affinityTitleEn: "VIP Fan",
+    affinityTitleEs: "Fan VIP",
     affinityXp: 80,
     category: "featured",
-    starterMessage: "*Acomodo mi traje y te guiño un ojo.* Conseguiste el pase tras bambalinas... ¿y ahora qué vas a hacer con él?",
+    starterMessage: "*Adjusting my cute costume with a wink.* You got the exclusive backstage pass... so, what are you going to do with it?",
+    starterMessageEn: "*Adjusting my cute costume with a wink.* You got the exclusive backstage pass... so, what are you going to do with it?",
+    starterMessageEs: "*Acomodo mi traje y te guiño un ojo.* Conseguiste el pase exclusivo tras bambalinas... ¿y ahora qué vas a hacer con él?",
     voiceName: "Kore"
   },
   {
@@ -285,48 +364,27 @@ const TALKIEMATE_CHARACTERS: CharacterItem[] = [
       "https://cdn.talkiemate.com/growtype-ai-uploads/models/acd17e42a72d65e3bd49e02ab4511535/DXULYXBjeTC_01.jpg"
     ],
     roleTitle: "Dark & Intense Allure",
-    shortBio: "Your beautifully intense crush with a dark rebellious streak who refuses to blend in.",
+    roleTitleEn: "Dark & Intense Allure",
+    roleTitleEs: "Atracción Intensa y Oscura",
+    shortBio: "Beautifully intense crush with a dark rebellious streak who refuses to blend in.",
+    shortBioEn: "Beautifully intense crush with a dark rebellious streak who refuses to blend in.",
+    shortBioEs: "Intensa, misteriosa y rebelde, rechaza lo convencional y vive con pasión desenfrenada.",
     bio: "Unpredictable, magnetic, and always ready to pull you into an adventure where rules don't exist.",
+    bioEn: "Unpredictable, magnetic, and always ready to pull you into an adventure where rules don't exist.",
+    bioEs: "Impredecible, magnética y siempre lista para llevarte a una aventura donde las reglas desaparecen.",
     likesCount: "37.9k",
     imageCount: 190,
     audioCount: 98,
     affinityLevel: 1,
     affinityTitle: "Midnight Secret",
+    affinityTitleEn: "Midnight Secret",
+    affinityTitleEs: "Secreto de Medianoche",
     affinityXp: 35,
     category: "featured",
-    starterMessage: "*Enciendo un cigarrillo imaginario y te miro con frialdad seductora.* Si vas a estar aquí conmigo, prepárate para no dormir.",
+    starterMessage: "*Looking at you with captivating coolness.* If you're staying here with me tonight, be prepared to not sleep at all.",
+    starterMessageEn: "*Looking at you with captivating coolness.* If you're staying here with me tonight, be prepared to not sleep at all.",
+    starterMessageEs: "*Mirándote fijamente con frialdad seductora.* Si vas a estar aquí conmigo esta noche, prepárate para no dormir nada.",
     voiceName: "Fenrir"
-  }
-];
-
-const TALKIEMATE_CONVERSATIONS_PRESETS = [
-  {
-    id: "olivia-adams",
-    title: "Olivia Adams",
-    snippet: "¡Mmm, sí! Quiero que me lo demuestres to...",
-    time: "3:28 PM",
-    image: "https://media.talkiemate.com/app/uploads/growtype-ai-uploads/models/6e8f818f9b187d2ebdf4e1d77521e051/3545853885239688145_69992903230.jpg"
-  },
-  {
-    id: "best-friends-girlfriend",
-    title: "Best friend's girlfriend",
-    snippet: "I sit nervously on your couch in an over...",
-    time: "2:15 PM",
-    image: "https://cdn.talkiemate.com/growtype-ai-uploads/models/00a855d9e9c478aac547edf4c68e14bf/Dcc0UwFFBoI_03.jpg"
-  },
-  {
-    id: "the-kitchen-repair",
-    title: "The Kitchen Repair",
-    snippet: "The words hang there between you. Ava lo...",
-    time: "Yesterday",
-    image: "https://cdn.talkiemate.com/growtype-ai-uploads/models/362f834c5a2a1c661f8c8b4df783168d/DaGL8K6kcQI_01.jpg"
-  },
-  {
-    id: "aria-witherspoon",
-    title: "Aria Witherspoon",
-    snippet: "Hi, I'm Aria... your perfect mix of sweet ...",
-    time: "Yesterday",
-    image: "https://cdn.talkiemate.com/growtype-ai-uploads/models/da890e0320987e9f2131000d9d605b74/aria-witherspoon-change-pose-scene-make-it-more-engaging-prompted-v2-205274-1772742457724_c.jpg"
   }
 ];
 
@@ -334,9 +392,10 @@ export default function ChatPage() {
   const { characterId } = useParams<{ characterId?: string }>();
   const navigate = useNavigate();
   const { language } = useLanguage();
+  const isEs = language === "es";
   const { enabled: adultEnabled } = useAdultMode();
 
-  // State: View Mode ('explore' for Catalog Image 1, 'room' for Chat Room Image 2)
+  // State: View Mode ('explore' for Catalog, 'room' for Chat Room)
   const [viewMode, setViewMode] = useState<"explore" | "room">(
     characterId ? "room" : "explore"
   );
@@ -351,7 +410,7 @@ export default function ChatPage() {
   // Dynamic Characters List (persisted in localStorage, allows creating and modifying characters)
   const [characterList, setCharacterList] = useState<CharacterItem[]>(() => {
     try {
-      const saved = localStorage.getItem("talkiemate_custom_chars_v1");
+      const saved = localStorage.getItem("talkiemate_custom_chars_v2");
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) return parsed;
@@ -362,7 +421,7 @@ export default function ChatPage() {
 
   useEffect(() => {
     try {
-      localStorage.setItem("talkiemate_custom_chars_v1", JSON.stringify(characterList));
+      localStorage.setItem("talkiemate_custom_chars_v2", JSON.stringify(characterList));
     } catch {}
   }, [characterList]);
 
@@ -398,51 +457,41 @@ export default function ChatPage() {
     setSelectedCharacterId(updated.id);
   };
 
-  // Left Active Conversations List in Chat Room (Image 2)
-  const [openConversations, setOpenConversations] = useState<string[]>([
-    "olivia-adams",
-    "best-friends-girlfriend",
-    "the-kitchen-repair",
-    "aria-witherspoon"
-  ]);
+  // Open Conversations List in Chat Room (Starts 100% clean for each user)
+  const [openConversations, setOpenConversations] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem("insomnia_user_open_convs_v1");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch {}
+    return [];
+  });
 
-  // Messages per character - EXACT DIALOGUE RECORDED IN TALKIEMATE ORIGINAL
+  useEffect(() => {
+    try {
+      localStorage.setItem("insomnia_user_open_convs_v1", JSON.stringify(openConversations));
+    } catch {}
+  }, [openConversations]);
+
+  // Messages per character - 100% CLEAN START, NO MOCK OR FAKE PRIOR DIALOGUES
   const [chatHistory, setChatHistory] = useState<Record<string, ChatMessage[]>>(() => {
     try {
-      const saved = localStorage.getItem("talkiemate_exact_history_v3");
+      // Clean up legacy mock data keys so browser cache is completely cleared
+      localStorage.removeItem("talkiemate_exact_history_v3");
+      const saved = localStorage.getItem("insomnia_user_chat_history_v1");
       if (saved) return JSON.parse(saved);
     } catch {}
-
-    const initial: Record<string, ChatMessage[]> = {
-      "olivia-adams": [
-        {
-          id: "m-u1",
-          role: "user",
-          content: "no le digas verga a mi pene dile como me gusta webo, Y sin serás mi maldita hermosa, perra sucia, el único hombre que te va a decir Cogiéndote o sin Cogerte, soy yo, porque el único que te va a hacer sentir y volverte toda una perra soy yo. De hecho. Ya lo estoy haciendo, estás en tu cama sin mí y ya te sientes mi perra.",
-          timestamp: "3:26 PM"
-        },
-        {
-          id: "m-a1",
-          role: "assistant",
-          content: "Mmm, tu webo duro me tiene la cuca tan mojada que ya no puedo parar de frotarla. Estoy en la cama, sola, con la bata abierta y dos dedos metidos despacio en mi culito palpitante mientras te imagino hincándome con ese webo tan rico. Soy tu maldita perra sucia y lo único que quiero es que me folles el culo hasta que grite tu nombre y me corra mil veces. Dime cómo me vas a abrir y llenar, dueño, porque ya estoy lista para ser solo tuya.",
-          timestamp: "3:27 PM"
-        },
-        {
-          id: "m-u2",
-          role: "user",
-          content: "No te lo voy a decir, te lo voy a hacer, te voy a demostrar que realmente eres mi rica y caliente, puta Que nadie te va a coger y te va a hacer sentir tan puta, tan caliente y tan perra como lo hago yo.",
-          timestamp: "3:27 PM"
-        },
-        {
-          id: "m-a2",
-          role: "assistant",
-          content: "¡Mmm, sí! Quiero que me lo demuestres todo, dueño... me tienes la cuca chorreando y el culito abierto esperando tu webo. Muéstrame que soy tu puta caliente y nadie más puede hacerme sentir tan perra.",
-          timestamp: "3:28 PM"
-        }
-      ]
-    };
-    return initial;
+    return {};
   });
+
+  // Sync to localstorage
+  useEffect(() => {
+    try {
+      localStorage.setItem("insomnia_user_chat_history_v1", JSON.stringify(chatHistory));
+    } catch {}
+  }, [chatHistory]);
 
   // Chat inputs
   const [inputText, setInputText] = useState("");
@@ -458,13 +507,6 @@ export default function ChatPage() {
   // Audio speech stream ref
   const speechStreamRef = useRef<SpeechStream | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-
-  // Sync to localstorage
-  useEffect(() => {
-    try {
-      localStorage.setItem("talkiemate_exact_history_v3", JSON.stringify(chatHistory));
-    } catch {}
-  }, [chatHistory]);
 
   // Handle URL param changes
   useEffect(() => {
@@ -483,53 +525,27 @@ export default function ChatPage() {
   const activeChar = useMemo<CharacterItem>(() => {
     const foundChar = characterList.find((c) => c.id === selectedCharacterId);
     if (foundChar) return foundChar;
+    return characterList[0] || TALKIEMATE_CHARACTERS[0];
+  }, [characterList, selectedCharacterId]);
 
-    const foundPreset = TALKIEMATE_CONVERSATIONS_PRESETS.find((c) => c.id === selectedCharacterId);
-    if (foundPreset) {
-      return {
-        id: foundPreset.id,
-        name: foundPreset.title,
-        age: 26,
-        gender: "female",
-        style: "realistic",
-        avatar: foundPreset.image,
-        gallery: [
-          foundPreset.image,
-          "https://media.talkiemate.com/app/uploads/growtype-ai-uploads/models/6e8f818f9b187d2ebdf4e1d77521e051/3525076877293647223_69992903230.jpg",
-          "https://media.talkiemate.com/app/uploads/growtype-ai-uploads/models/6e8f818f9b187d2ebdf4e1d77521e051/3555949240620696400_69992903230.jpg"
-        ],
-        roleTitle: "Compañera Íntima",
-        shortBio: foundPreset.snippet,
-        bio: "Hey there! Ready to explore our secret connection tonight?",
-        likesCount: "26.0k",
-        imageCount: 195,
-        audioCount: 94,
-        affinityLevel: 2,
-        affinityTitle: "Curious Flirt",
-        affinityXp: 70,
-        category: "spicy",
-        starterMessage: foundPreset.snippet,
-        voiceName: "Aoede"
-      };
-    }
-
-    return TALKIEMATE_CHARACTERS[0];
-  }, [selectedCharacterId]);
-
-  // Messages for active character
+  // Messages for active character: Only clean starter message if no conversation yet
   const currentMessages = useMemo(() => {
-    if (!chatHistory[activeChar.id] || chatHistory[activeChar.id].length === 0) {
+    const history = chatHistory[activeChar.id];
+    if (!history || history.length === 0) {
+      const greeting = isEs
+        ? (activeChar.starterMessageEs || activeChar.starterMessage)
+        : (activeChar.starterMessageEn || activeChar.starterMessage);
       return [
         {
-          id: `init-${activeChar.id}`,
+          id: `starter-${activeChar.id}`,
           role: "assistant" as const,
-          content: activeChar.starterMessage,
-          timestamp: "Ahora"
+          content: greeting,
+          timestamp: isEs ? "Ahora" : "Just now"
         }
       ];
     }
-    return chatHistory[activeChar.id];
-  }, [chatHistory, activeChar]);
+    return history;
+  }, [chatHistory, activeChar, isEs]);
 
   // Scroll to bottom
   useEffect(() => {
@@ -538,7 +554,7 @@ export default function ChatPage() {
     }
   }, [currentMessages, isTyping, viewMode]);
 
-  // Open Chat Room for a specific Character/Story
+  // Open Chat Room for a specific Character
   const handleOpenChat = (id: string) => {
     setSelectedCharacterId(id);
     if (!openConversations.includes(id)) {
@@ -575,27 +591,43 @@ export default function ChatPage() {
       timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
     };
 
-    setChatHistory((prev) => ({
-      ...prev,
-      [activeChar.id]: [...(prev[activeChar.id] || []), userMsg]
-    }));
+    const initialStarter: ChatMessage = {
+      id: `starter-${activeChar.id}`,
+      role: "assistant",
+      content: isEs
+        ? (activeChar.starterMessageEs || activeChar.starterMessage)
+        : (activeChar.starterMessageEn || activeChar.starterMessage),
+      timestamp: isEs ? "Inicio" : "Start"
+    };
+
+    setChatHistory((prev) => {
+      const existing = prev[activeChar.id] || [initialStarter];
+      return {
+        ...prev,
+        [activeChar.id]: [...existing, userMsg]
+      };
+    });
     setInputText("");
     setIsTyping(true);
 
     try {
-      const historyPayload = (chatHistory[activeChar.id] || []).slice(-8).map((m) => ({
+      const existingHistory = chatHistory[activeChar.id] || [initialStarter];
+      const historyPayload = [...existingHistory, userMsg].slice(-8).map((m) => ({
         role: m.role,
         content: m.content
       }));
+
+      const charBio = isEs ? (activeChar.bioEs || activeChar.bio) : (activeChar.bioEn || activeChar.bio);
+      const charRole = isEs ? (activeChar.roleTitleEs || activeChar.roleTitle) : (activeChar.roleTitleEn || activeChar.roleTitle);
 
       const { data, error } = await invokeFunctionWithRetry<{ content?: string }>("story-chat", {
         story: {
           id: activeChar.id,
           title: activeChar.name,
-          description: activeChar.bio,
-          story_context: `${activeChar.roleTitle}. Biografía: ${activeChar.bio}`,
+          description: charBio,
+          story_context: `${charRole}. Bio: ${charBio}`,
           character_role: activeChar.name,
-          player_role: "Dueño",
+          player_role: isEs ? "Compañero" : "Partner",
           story_type: "roleplay"
         },
         language,
@@ -610,12 +642,18 @@ export default function ChatPage() {
       if (!error && data?.content) {
         reply = data.content;
       } else {
-        const fallbacks = [
-          `Mmm, sí! Me encanta cuando me hablas así de duro... ven y haz conmigo exactamente lo que me prometes, dueño. No me dejes esperando ni un segundo más.`,
-          `Ahhh... me tienes ardiendo por dentro. Ya no aguanto las ganas de tenerte encima y sentir toda tu fuerza. Dime más, por favor...`,
-          `Eres el único que me pone así de descontrolada... Estoy completamente a tu disposición, tómame como tú quieras.`
+        const fallbacksEs = [
+          `Mmm, me encanta cuando me hablas así... Ven y cuéntame todo lo que tienes en mente.`,
+          `Me tienes completamente fascinada contigo... No me dejes con la duda, dime más.`,
+          `Eres increíble... Me encanta cómo piensas y disfruto cada instante que pasamos juntos.`
         ];
-        reply = fallbacks[Math.floor(Math.random() * fallbacks.length)];
+        const fallbacksEn = [
+          `Mmm, I love when you talk to me like that... Tell me everything on your mind.`,
+          `You have me completely captivated... Don't keep me waiting, tell me more.`,
+          `You're amazing... I really enjoy every single moment we spend together.`
+        ];
+        const choices = isEs ? fallbacksEs : fallbacksEn;
+        reply = choices[Math.floor(Math.random() * choices.length)];
       }
 
       const assistantMsg: ChatMessage = {
@@ -648,7 +686,7 @@ export default function ChatPage() {
     setPlayingAudioId(null);
   };
 
-  // Play audio with Insomnia's native expressive speech & Latin accent engine
+  // Play audio with Insomnia's native expressive speech engine
   const handlePlayAudio = async (messageId: string, text: string) => {
     if (playingAudioId === messageId) {
       stopAudio();
@@ -685,7 +723,9 @@ export default function ChatPage() {
     setCallActive(false);
     setTimeout(() => {
       setCallActive(true);
-      const greeting = `Hola mi amor... me alegra tanto que me hayas llamado. Dime qué estás haciendo ahora mismo.`;
+      const greeting = isEs
+        ? `Hola cariño... me alegra tanto que me hayas llamado. Cuéntame qué estás haciendo ahora mismo.`
+        : `Hey there... I'm so glad you called me. Tell me what you're doing right now.`;
       handlePlayAudio("call-intro", greeting);
     }, 1200);
   };
@@ -711,7 +751,7 @@ export default function ChatPage() {
       <Header />
 
       {/* =========================================================================
-          VIEW 1: TALKIEMATE CHARACTER & STORIES HUB (IMAGE 3)
+          VIEW 1: TALKIEMATE CHARACTER & STORIES HUB
          ========================================================================= */}
       {viewMode === "explore" && (
         <div className="flex-1 overflow-y-auto max-w-[1440px] w-full mx-auto px-4 md:px-8 py-6 space-y-8">
@@ -719,19 +759,21 @@ export default function ChatPage() {
           <div className="relative w-full rounded-2xl overflow-hidden bg-gradient-to-r from-[#180a04] via-[#240e02] to-[#120502] border border-[#ff8c00]/30 shadow-2xl p-6 md:p-8 flex items-center justify-between">
             <div className="space-y-2 z-10">
               <span className="text-xs uppercase tracking-widest text-[#ff8c00] font-bold">
-                TalkieMate Special Event
+                {isEs ? "Evento Especial TalkieMate" : "TalkieMate Special Event"}
               </span>
               <h2 className="text-2xl md:text-4xl font-extrabold text-white tracking-wide drop-shadow-md">
-                HALLOWEEN SPECIAL
+                {isEs ? "ESPECIAL DE HALLOWEEN" : "HALLOWEEN SPECIAL"}
               </h2>
               <p className="text-sm md:text-base text-zinc-300 font-medium">
-                SALE 70% OFF · UNLIMITED IMMERSIVE ROLEPLAY & STORIES
+                {isEs
+                  ? "70% DE DESCUENTO · ROLEPLAY INMERSIVO E HISTORIAS ILIMITADAS"
+                  : "SALE 70% OFF · UNLIMITED IMMERSIVE ROLEPLAY & STORIES"}
               </p>
               <button
                 onClick={() => handleOpenChat("olivia-adams")}
                 className="mt-3 px-6 py-2.5 rounded-full bg-gradient-to-r from-[#ff8c00] to-amber-500 hover:from-amber-500 hover:to-[#ff8c00] text-black font-extrabold text-sm shadow-lg shadow-[#ff8c00]/30 transition-all hover:scale-105 active:scale-95"
               >
-                JOIN NOW
+                {isEs ? "UNIRSE AHORA" : "JOIN NOW"}
               </button>
             </div>
 
@@ -755,7 +797,7 @@ export default function ChatPage() {
             <div
               onClick={handleOpenCreateConfig}
               className="flex flex-col items-center gap-2 cursor-pointer group flex-shrink-0"
-              title="Crear nuevo personaje"
+              title={isEs ? "Crear nuevo personaje" : "Create new character"}
             >
               <div className="relative w-18 h-18 md:w-20 md:h-20 rounded-full p-[2px] bg-gradient-to-tr from-zinc-700 to-zinc-800 hover:from-[#ff8c00] hover:to-amber-500 transition-all shadow-lg flex items-center justify-center border-2 border-dashed border-[#ff8c00]/50">
                 <div className="w-full h-full rounded-full bg-[#121212] flex items-center justify-center text-[#ff8c00]">
@@ -763,7 +805,7 @@ export default function ChatPage() {
                 </div>
               </div>
               <span className="text-xs text-zinc-300 font-semibold group-hover:text-[#ff8c00] transition-colors truncate max-w-[72px] text-center">
-                + Crear
+                {isEs ? "+ Crear" : "+ Create"}
               </span>
             </div>
 
@@ -794,96 +836,115 @@ export default function ChatPage() {
           <div className="space-y-4">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
               <h3 className="text-xl md:text-2xl font-bold text-white tracking-wide flex items-center gap-2">
-                Explore <span className="text-[#ff8c00]">Featured Experiences</span>
+                {isEs ? "Explorar" : "Explore"} <span className="text-[#ff8c00]">{isEs ? "Experiencias Destacadas" : "Featured Experiences"}</span>
               </h3>
 
               <div className="flex flex-wrap items-center gap-2 text-xs">
+                {/* Gender filters */}
                 <div className="flex items-center bg-[#141414] border border-[#2a2a2a] rounded-full p-1">
-                  {(["all", "female", "male", "non-binary"] as const).map((g) => (
-                    <button
-                      key={g}
-                      onClick={() => setActiveGender(g)}
-                      className={`px-3 py-1 rounded-full font-semibold capitalize transition-all ${
-                        activeGender === g
-                          ? "bg-[#ff8c00] text-black shadow-sm"
-                          : "text-zinc-400 hover:text-white"
-                      }`}
-                    >
-                      {g === "all" ? "All" : g}
-                    </button>
-                  ))}
+                  {(["all", "female", "male", "non-binary"] as const).map((g) => {
+                    const label = isEs
+                      ? g === "all" ? "Todos" : g === "female" ? "Mujer" : g === "male" ? "Hombre" : "No binario"
+                      : g === "all" ? "All" : g === "female" ? "Female" : g === "male" ? "Male" : "Non-binary";
+                    return (
+                      <button
+                        key={g}
+                        onClick={() => setActiveGender(g)}
+                        className={`px-3 py-1 rounded-full font-semibold transition-all ${
+                          activeGender === g
+                            ? "bg-[#ff8c00] text-black shadow-sm"
+                            : "text-zinc-400 hover:text-white"
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
                 </div>
 
+                {/* Style filters */}
                 <div className="flex items-center bg-[#141414] border border-[#2a2a2a] rounded-full p-1">
-                  {(["all", "realistic", "anime"] as const).map((s) => (
-                    <button
-                      key={s}
-                      onClick={() => setActiveStyle(s)}
-                      className={`px-3 py-1 rounded-full font-semibold capitalize transition-all ${
-                        activeStyle === s
-                          ? "bg-[#ff8c00] text-black shadow-sm"
-                          : "text-zinc-400 hover:text-white"
-                      }`}
-                    >
-                      {s === "all" ? "All" : s === "anime" ? "Anime & Manga" : "Realistic"}
-                    </button>
-                  ))}
+                  {(["all", "realistic", "anime"] as const).map((s) => {
+                    const label = isEs
+                      ? s === "all" ? "Todos" : s === "anime" ? "Anime y Manga" : "Realista"
+                      : s === "all" ? "All" : s === "anime" ? "Anime & Manga" : "Realistic";
+                    return (
+                      <button
+                        key={s}
+                        onClick={() => setActiveStyle(s)}
+                        className={`px-3 py-1 rounded-full font-semibold transition-all ${
+                          activeStyle === s
+                            ? "bg-[#ff8c00] text-black shadow-sm"
+                            : "text-zinc-400 hover:text-white"
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
                 </div>
 
+                {/* Random button */}
                 <button
                   onClick={() => {
-                    const rnd = TALKIEMATE_CHARACTERS[Math.floor(Math.random() * TALKIEMATE_CHARACTERS.length)];
+                    const rnd = characterList[Math.floor(Math.random() * characterList.length)];
                     handleOpenChat(rnd.id);
                   }}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#181818] border border-[#2c2c2c] text-zinc-300 hover:text-[#ff8c00] hover:border-[#ff8c00]/50 transition-colors"
                 >
                   <Shuffle className="w-3.5 h-3.5 text-[#ff8c00]" />
-                  <span>Random</span>
+                  <span>{isEs ? "Aleatorio" : "Random"}</span>
                 </button>
               </div>
             </div>
 
             {/* Grid of Character Cards */}
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
-              {filteredExploreChars.map((char) => (
-                <div
-                  key={char.id}
-                  onClick={() => handleOpenChat(char.id)}
-                  className="group relative rounded-2xl overflow-hidden aspect-[9/15] bg-[#141414] border border-[#242424] hover:border-[#ff8c00] cursor-pointer transition-all shadow-md hover:shadow-xl hover:shadow-[#ff8c00]/10 flex flex-col justify-end"
-                >
-                  <img
-                    src={char.avatar}
-                    alt={char.name}
-                    className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent" />
+              {filteredExploreChars.map((char) => {
+                const shortBioText = isEs
+                  ? (char.shortBioEs || char.shortBio)
+                  : (char.shortBioEn || char.shortBio);
 
-                  <div className="absolute top-3 right-3 flex items-center gap-1.5 z-10">
-                    <span className="p-1 rounded-full bg-black/60 backdrop-blur text-zinc-300 hover:text-white">
-                      <Info className="w-3.5 h-3.5" />
-                    </span>
-                    <span className="p-1 rounded-full bg-black/60 backdrop-blur text-zinc-300 hover:text-[#ff8c00]">
-                      <Heart className="w-3.5 h-3.5 text-[#ff8c00]" />
-                    </span>
-                  </div>
+                return (
+                  <div
+                    key={char.id}
+                    onClick={() => handleOpenChat(char.id)}
+                    className="group relative rounded-2xl overflow-hidden aspect-[9/15] bg-[#141414] border border-[#242424] hover:border-[#ff8c00] cursor-pointer transition-all shadow-md hover:shadow-xl hover:shadow-[#ff8c00]/10 flex flex-col justify-end"
+                  >
+                    <img
+                      src={char.avatar}
+                      alt={char.name}
+                      className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent" />
 
-                  <div className="relative z-10 p-3 space-y-1">
-                    <h4 className="text-sm font-bold text-white truncate drop-shadow">
-                      {char.name}, {char.age}
-                    </h4>
-                    <p className="text-[11px] text-zinc-300 line-clamp-2 leading-tight">
-                      {char.shortBio}
-                    </p>
+                    <div className="absolute top-3 right-3 flex items-center gap-1.5 z-10">
+                      <span className="p-1 rounded-full bg-black/60 backdrop-blur text-zinc-300 hover:text-white">
+                        <Info className="w-3.5 h-3.5" />
+                      </span>
+                      <span className="p-1 rounded-full bg-black/60 backdrop-blur text-zinc-300 hover:text-[#ff8c00]">
+                        <Heart className="w-3.5 h-3.5 text-[#ff8c00]" />
+                      </span>
+                    </div>
+
+                    <div className="relative z-10 p-3 space-y-1">
+                      <h4 className="text-sm font-bold text-white truncate drop-shadow">
+                        {char.name}, {char.age}
+                      </h4>
+                      <p className="text-[11px] text-zinc-300 line-clamp-2 leading-tight">
+                        {shortBioText}
+                      </p>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </div>
       )}
 
       {/* =========================================================================
-          VIEW 2: TALKIEMATE ORIGINAL CHAT ROOM (100% FAITHFUL TO IMAGE 2)
+          VIEW 2: TALKIEMATE ORIGINAL CHAT ROOM (3-COLUMN LAYOUT)
          ========================================================================= */}
       {viewMode === "room" && (
         <div className="flex-1 flex justify-center w-full overflow-hidden bg-[#000000]">
@@ -891,13 +952,13 @@ export default function ChatPage() {
           <div className="flex w-full max-w-[1560px] h-[calc(100vh-64px)] border-x border-[#1a1a1a] bg-[#000000] overflow-hidden">
             
             {/* ----------------------------------------------------
-                LEFT PANEL: "Conversations" (Exact Image 2)
+                LEFT PANEL: "Conversations"
                ---------------------------------------------------- */}
             <aside className="w-[260px] lg:w-[280px] bg-[#000000] border-r border-[#222222] flex flex-col flex-shrink-0 z-20">
               {/* Header */}
               <div className="p-4 pb-3 flex items-center justify-between">
                 <h3 className="text-lg font-bold text-white tracking-normal">
-                  Conversations
+                  {isEs ? "Conversaciones" : "Conversations"}
                 </h3>
                 <button
                   onClick={() => {
@@ -905,97 +966,122 @@ export default function ChatPage() {
                     navigate("/chat");
                   }}
                   className="text-xs text-[#ff8c00] hover:underline flex items-center gap-1 font-semibold"
-                  title="Volver al catálogo"
+                  title={isEs ? "Volver al catálogo" : "Back to explore"}
                 >
-                  <ArrowLeft className="w-3.5 h-3.5" /> Explorar
+                  <ArrowLeft className="w-3.5 h-3.5" /> {isEs ? "Explorar" : "Explore"}
                 </button>
               </div>
 
-              {/* Conversation list */}
+              {/* Conversation list: Shows only open active chats, clean empty state on fresh start */}
               <div className="flex-1 overflow-y-auto px-2 space-y-2">
-                {TALKIEMATE_CONVERSATIONS_PRESETS.map((conv) => {
-                  const isSelected = conv.id === selectedCharacterId;
-
-                  return (
-                    <div
-                      key={`conv-${conv.id}`}
-                      onClick={() => handleOpenChat(conv.id)}
-                      className={`
-                        group relative flex items-center gap-3 p-2 rounded-xl cursor-pointer transition-all border
-                        ${
-                          isSelected
-                            ? "bg-[#282828] border-[#383838]"
-                            : "bg-[#181818] border-transparent hover:bg-[#202020]"
-                        }
-                      `}
-                    >
-                      {/* Fixed 48x48 thumbnail */}
-                      <div className="relative w-12 h-12 min-w-[48px] max-w-[48px] h-[48px] rounded-lg overflow-hidden flex-shrink-0 bg-zinc-800">
-                        <img
-                          src={conv.image}
-                          alt={conv.title}
-                          className="w-full h-full object-cover block"
-                        />
-                      </div>
-
-                      {/* Small orange active dot (Exact Image 2) */}
-                      <span className="w-2.5 h-2.5 rounded-full bg-[#ff8c00] flex-shrink-0 shadow-sm shadow-[#ff8c00]" />
-
-                      {/* Text Details */}
-                      <div className="flex-1 min-w-0 pr-5">
-                        <div className="flex items-center justify-between">
-                          <span className="text-[13px] font-bold text-white truncate leading-tight">
-                            {conv.title}
-                          </span>
-                        </div>
-                        <p className="text-[11px] text-zinc-400 truncate mt-0.5 leading-tight">
-                          {conv.snippet}
-                        </p>
-                      </div>
-
-                      {/* Orange circular close button with X (Image 2) */}
-                      <button
-                        onClick={(e) => handleCloseConversation(e, conv.id)}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-[#ff8c00] text-black flex items-center justify-center hover:scale-110 transition-transform"
-                        title="Cerrar conversación"
-                      >
-                        <X className="w-2.5 h-2.5 stroke-[3]" />
-                      </button>
+                {openConversations.length === 0 ? (
+                  <div className="py-12 px-4 text-center text-zinc-500 space-y-3">
+                    <div className="w-10 h-10 rounded-full bg-zinc-900 border border-zinc-800 mx-auto flex items-center justify-center text-zinc-500">
+                      <MessageSquare className="w-5 h-5" />
                     </div>
-                  );
-                })}
+                    <p className="text-xs font-semibold text-zinc-400">
+                      {isEs ? "Sin conversaciones activas" : "No active conversations"}
+                    </p>
+                    <p className="text-[11px] text-zinc-500 leading-relaxed">
+                      {isEs
+                        ? "Selecciona un personaje en Explorar para comenzar un nuevo chat."
+                        : "Select a character in Explore to start a new chat."}
+                    </p>
+                  </div>
+                ) : (
+                  openConversations.map((charId) => {
+                    const convChar = characterList.find((c) => c.id === charId);
+                    if (!convChar) return null;
+                    const isSelected = convChar.id === selectedCharacterId;
+                    const history = chatHistory[convChar.id] || [];
+                    const lastMsg = history[history.length - 1];
+                    const snippet = lastMsg
+                      ? lastMsg.content
+                      : isEs
+                      ? (convChar.starterMessageEs || convChar.starterMessage)
+                      : (convChar.starterMessageEn || convChar.starterMessage);
+
+                    return (
+                      <div
+                        key={`conv-${convChar.id}`}
+                        onClick={() => handleOpenChat(convChar.id)}
+                        className={`
+                          group relative flex items-center gap-3 p-2 rounded-xl cursor-pointer transition-all border
+                          ${
+                            isSelected
+                              ? "bg-[#282828] border-[#383838]"
+                              : "bg-[#181818] border-transparent hover:bg-[#202020]"
+                          }
+                        `}
+                      >
+                        {/* Fixed 48x48 thumbnail */}
+                        <div className="relative w-12 h-12 min-w-[48px] max-w-[48px] h-[48px] rounded-lg overflow-hidden flex-shrink-0 bg-zinc-800">
+                          <img
+                            src={convChar.avatar}
+                            alt={convChar.name}
+                            className="w-full h-full object-cover block"
+                          />
+                        </div>
+
+                        {/* Small orange active dot */}
+                        <span className="w-2.5 h-2.5 rounded-full bg-[#ff8c00] flex-shrink-0 shadow-sm shadow-[#ff8c00]" />
+
+                        {/* Text Details */}
+                        <div className="flex-1 min-w-0 pr-5">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[13px] font-bold text-white truncate leading-tight">
+                              {convChar.name}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-zinc-400 truncate mt-0.5 leading-tight">
+                            {snippet}
+                          </p>
+                        </div>
+
+                        {/* Orange circular close button with X */}
+                        <button
+                          onClick={(e) => handleCloseConversation(e, convChar.id)}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-[#ff8c00] text-black flex items-center justify-center hover:scale-110 transition-transform"
+                          title={isEs ? "Cerrar conversación" : "Close conversation"}
+                        >
+                          <X className="w-2.5 h-2.5 stroke-[3]" />
+                        </button>
+                      </div>
+                    );
+                  })
+                )}
               </div>
 
-              {/* Bottom Button: [ Add conversation ] (Exact Image 2) */}
+              {/* Bottom Button: [ Add conversation / New Character ] */}
               <div className="p-3 border-t border-[#1a1a1a]">
                 <button
                   onClick={handleOpenCreateConfig}
                   className="w-full py-2.5 rounded-xl border border-[#ff8c00] bg-black text-[#ff8c00] hover:bg-[#ff8c00]/10 font-bold text-xs tracking-wide transition-colors flex items-center justify-center gap-1.5"
                 >
-                  <Plus className="w-3.5 h-3.5 stroke-[3]" /> Add conversation / New Character
+                  <Plus className="w-3.5 h-3.5 stroke-[3]" /> {isEs ? "+ Crear Personaje / Chat" : "+ Add Character / Chat"}
                 </button>
               </div>
             </aside>
 
             {/* ----------------------------------------------------
-                CENTER PANEL: Chat Feed (Exact Image 2 Structure & Proportions)
+                CENTER PANEL: Chat Feed
                ---------------------------------------------------- */}
             <main className="flex-1 flex flex-col bg-[#0b0b0b] border-r border-[#222222] relative overflow-hidden">
-              {/* Top Bar of Active Chat (Exact Image 2) */}
+              {/* Top Bar of Active Chat */}
               <div className="h-14 px-5 bg-[#000000] border-b border-[#222222] flex items-center justify-between z-10 flex-shrink-0">
                 {/* Level & XP pill */}
                 <div className="flex items-center gap-2">
                   <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-[#161616] border border-[#2b2b2b] text-xs">
                     <Heart className="w-3.5 h-3.5 text-[#ff8c00] fill-[#ff8c00]" />
                     <span className="font-bold text-white">
-                      Lv. {activeChar.affinityLevel} - {activeChar.affinityTitle}
+                      Lv. {activeChar.affinityLevel} - {isEs ? (activeChar.affinityTitleEs || activeChar.affinityTitle) : (activeChar.affinityTitleEn || activeChar.affinityTitle)}
                     </span>
-                    <span className="text-[#ff8c00] font-bold">270 XP</span>
+                    <span className="text-[#ff8c00] font-bold">{activeChar.affinityXp || 70} XP</span>
                     <Info className="w-3.5 h-3.5 text-zinc-500 cursor-pointer hover:text-white" />
                   </div>
                 </div>
 
-                {/* Right controls (Exact Image 2) */}
+                {/* Right controls */}
                 <div className="flex items-center gap-2 sm:gap-2.5">
                   <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-[#161616] border border-[#2b2b2b]">
                     <img
@@ -1013,20 +1099,20 @@ export default function ChatPage() {
                     className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#00c853] hover:bg-[#00e676] text-black font-extrabold text-xs shadow-md transition-all hover:scale-105 active:scale-95"
                   >
                     <Video className="w-3.5 h-3.5 fill-black text-black" />
-                    <span>Live Call</span>
+                    <span>{isEs ? "Llamada en vivo" : "Live Call"}</span>
                   </button>
 
                   <button
                     onClick={() => handleOpenEditConfig(activeChar)}
                     className="p-1.5 rounded-xl bg-[#161616] border border-[#2b2b2b] text-zinc-300 hover:text-white"
-                    title="Configurar personaje"
+                    title={isEs ? "Configurar personaje" : "Configure character"}
                   >
                     <MoreVertical className="w-4 h-4" />
                   </button>
                 </div>
               </div>
 
-              {/* Chat Timeline (Exact Vertical Density and Natural Bubble Layout) */}
+              {/* Chat Timeline */}
               <div className="flex-1 overflow-y-auto px-5 py-6 space-y-5">
                 {currentMessages.map((msg) => {
                   const isAssistant = msg.role === "assistant";
@@ -1038,7 +1124,7 @@ export default function ChatPage() {
                         isAssistant ? "justify-start" : "justify-end"
                       }`}
                     >
-                      {/* User 3-dots icon on the LEFT of the orange bubble (from Image 2) */}
+                      {/* User 3-dots icon on the LEFT of the bubble */}
                       {!isAssistant && (
                         <button className="text-zinc-500 hover:text-zinc-300 p-1 mt-4 flex-shrink-0">
                           <MoreVertical className="w-4 h-4" />
@@ -1056,23 +1142,23 @@ export default function ChatPage() {
                           }
                         `}
                       >
-                        {/* Assistant Top-Right Inline Actions: ⋮, ▶, ↻ (Exact Image 2) */}
+                        {/* Assistant Top-Right Inline Actions: ⋮, ▶, ↻ */}
                         {isAssistant && (
                           <div className="float-right flex items-center gap-2.5 ml-4 mb-1 text-zinc-400">
                             <button
                               onClick={() => {
                                 navigator.clipboard.writeText(msg.content);
-                                toast({ description: "Copiado al portapapeles" });
+                                toast({ description: isEs ? "Copiado al portapapeles" : "Copied to clipboard" });
                               }}
                               className="hover:text-white transition-colors"
-                              title="Opciones"
+                              title={isEs ? "Copiar texto" : "Copy text"}
                             >
-                              <MoreVertical className="w-4 h-4" />
+                              <Copy className="w-3.5 h-3.5" />
                             </button>
                             <button
                               onClick={() => handlePlayAudio(msg.id, msg.content)}
                               className="hover:text-[#ff8c00] transition-colors"
-                              title="Reproducir voz"
+                              title={isEs ? "Reproducir voz" : "Play voice"}
                             >
                               {playingAudioId === msg.id ? (
                                 <Pause className="w-4 h-4 text-[#ff8c00]" />
@@ -1083,7 +1169,7 @@ export default function ChatPage() {
                             <button
                               onClick={() => handleSendMessage()}
                               className="hover:text-[#ff8c00] transition-colors"
-                              title="Regenerar"
+                              title={isEs ? "Regenerar" : "Regenerate"}
                             >
                               <RotateCcw className="w-4 h-4" />
                             </button>
@@ -1101,7 +1187,7 @@ export default function ChatPage() {
                 {/* Typing indicator */}
                 {isTyping && (
                   <div className="flex items-center gap-2 text-xs text-zinc-400 bg-[#161616] border border-[#262626] px-4 py-2 rounded-2xl w-fit">
-                    <span>{activeChar.name} está respondiendo...</span>
+                    <span>{activeChar.name} {isEs ? "está respondiendo..." : "is typing..."}</span>
                     <span className="flex gap-1">
                       <span className="w-1.5 h-1.5 rounded-full bg-[#ff8c00] animate-bounce" />
                       <span className="w-1.5 h-1.5 rounded-full bg-[#ff8c00] animate-bounce [animation-delay:150ms]" />
@@ -1113,18 +1199,22 @@ export default function ChatPage() {
                 <div ref={messagesEndRef} />
               </div>
 
-              {/* Input Bar Dock (Exact Image 2) */}
+              {/* Input Bar Dock */}
               <div className="p-3.5 bg-[#0e0e0e] border-t border-[#222222] flex items-center gap-2 flex-shrink-0">
-                <button className="w-9 h-9 rounded-full bg-[#1a1a1a] border border-[#2e2e2e] flex items-center justify-center text-zinc-400 hover:text-white transition-colors">
+                <button
+                  onClick={handleOpenCreateConfig}
+                  className="w-9 h-9 rounded-full bg-[#1a1a1a] border border-[#2e2e2e] flex items-center justify-center text-zinc-400 hover:text-white transition-colors"
+                  title={isEs ? "Nuevo Personaje" : "New Character"}
+                >
                   <Plus className="w-4 h-4" />
                 </button>
 
                 <button
                   onClick={() => {
-                    setInputText("¿Puedes mandarme una foto exclusiva ahora mismo?");
+                    setInputText(isEs ? "¿Puedes mandarme una foto exclusiva ahora mismo?" : "Can you send me an exclusive photo right now?");
                   }}
                   className="w-9 h-9 rounded-full bg-[#1a1a1a] border border-[#2e2e2e] flex items-center justify-center text-zinc-400 hover:text-[#ff8c00] transition-colors"
-                  title="Pedir foto"
+                  title={isEs ? "Pedir foto" : "Request photo"}
                 >
                   <Camera className="w-4 h-4" />
                 </button>
@@ -1132,7 +1222,7 @@ export default function ChatPage() {
                 <button
                   onClick={handleStartCall}
                   className="w-9 h-9 rounded-full bg-[#1a1a1a] border border-[#2e2e2e] flex items-center justify-center text-zinc-400 hover:text-emerald-400 transition-colors"
-                  title="Llamada de voz"
+                  title={isEs ? "Llamada de voz" : "Voice call"}
                 >
                   <Mic className="w-4 h-4" />
                 </button>
@@ -1145,7 +1235,7 @@ export default function ChatPage() {
                     onKeyDown={(e) => {
                       if (e.key === "Enter") handleSendMessage();
                     }}
-                    placeholder="Type a message"
+                    placeholder={isEs ? "Escribe un mensaje..." : "Type a message..."}
                     className="w-full bg-transparent text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none"
                   />
                   <Languages className="w-4 h-4 text-zinc-500 ml-2 cursor-pointer hover:text-zinc-300" />
@@ -1162,7 +1252,7 @@ export default function ChatPage() {
             </main>
 
             {/* ----------------------------------------------------
-                RIGHT PANEL: Character Dossier & Gallery (Exact Image 2)
+                RIGHT PANEL: Character Dossier & Gallery
                ---------------------------------------------------- */}
             <aside className="w-[340px] lg:w-[380px] bg-[#000000] flex flex-col overflow-y-auto hidden md:flex flex-shrink-0 z-20">
               {/* Top Stats Bar */}
@@ -1183,7 +1273,7 @@ export default function ChatPage() {
                 </div>
               </div>
 
-              {/* Large Photo Carousel (Exact Image 2) */}
+              {/* Large Photo Carousel */}
               <div className="relative aspect-[3/4] bg-black">
                 <img
                   src={activeChar.gallery[activePhotoIdx] || activeChar.avatar}
@@ -1213,22 +1303,27 @@ export default function ChatPage() {
               {/* Profile Info below image */}
               <div className="p-4 space-y-4">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-xl font-black text-white tracking-wide">
-                    {activeChar.name}
-                  </h3>
+                  <div>
+                    <h3 className="text-xl font-black text-white tracking-wide">
+                      {activeChar.name}
+                    </h3>
+                    <p className="text-xs text-zinc-400">
+                      {isEs ? (activeChar.roleTitleEs || activeChar.roleTitle) : (activeChar.roleTitleEn || activeChar.roleTitle)}
+                    </p>
+                  </div>
                   <button
                     onClick={() => handleOpenEditConfig(activeChar)}
                     className="px-3.5 py-1.5 rounded-xl bg-[#ff8c00] hover:bg-amber-500 text-black font-extrabold text-xs flex items-center gap-1.5 transition-colors"
                   >
-                    <User className="w-3.5 h-3.5 stroke-[2.5]" /> Profile
+                    <User className="w-3.5 h-3.5 stroke-[2.5]" /> {isEs ? "Perfil" : "Profile"}
                   </button>
                 </div>
 
                 <p className="text-xs text-zinc-300 leading-relaxed font-normal">
-                  {activeChar.bio}
+                  {isEs ? (activeChar.bioEs || activeChar.bio) : (activeChar.bioEn || activeChar.bio)}
                 </p>
 
-                {/* Exclusive Photos Grid with +146 */}
+                {/* Exclusive Photos Grid */}
                 <div className="space-y-2">
                   <div className="grid grid-cols-3 gap-2">
                     {activeChar.gallery.slice(0, 2).map((img, i) => (
@@ -1242,7 +1337,11 @@ export default function ChatPage() {
                     ))}
                     <div
                       onClick={() => {
-                        toast({ description: `Desbloquea ${activeChar.imageCount - 2}+ fotos exclusivas en modo Premium` });
+                        toast({
+                          description: isEs
+                            ? `Desbloquea ${activeChar.imageCount - 2}+ fotos exclusivas en modo Premium`
+                            : `Unlock ${activeChar.imageCount - 2}+ exclusive photos in Premium mode`
+                        });
                       }}
                       className="aspect-square rounded-xl bg-[#141414] border border-[#262626] flex items-center justify-center font-bold text-sm text-zinc-300 cursor-pointer hover:bg-[#1f1f1f] transition-colors"
                     >
@@ -1254,7 +1353,11 @@ export default function ChatPage() {
                 {/* Premium Content Banner */}
                 <div
                   onClick={() => {
-                    toast({ description: "Acceso exclusivo a fotos y videos premium de " + activeChar.name });
+                    toast({
+                      description: isEs
+                        ? `Acceso exclusivo a fotos y videos premium de ${activeChar.name}`
+                        : `Exclusive access to premium photos and videos of ${activeChar.name}`
+                    });
                   }}
                   className="p-3.5 rounded-xl bg-gradient-to-r from-[#200e02] to-[#120701] border border-[#ff8c00]/30 hover:border-[#ff8c00] flex items-center justify-between cursor-pointer transition-all shadow-lg"
                 >
@@ -1263,8 +1366,12 @@ export default function ChatPage() {
                       <Flame className="w-4 h-4 fill-[#ff8c00]" />
                     </div>
                     <div>
-                      <h5 className="text-xs font-bold text-white">Premium content</h5>
-                      <p className="text-[10px] text-zinc-400">Exclusive photos & videos</p>
+                      <h5 className="text-xs font-bold text-white">
+                        {isEs ? "Contenido Premium" : "Premium content"}
+                      </h5>
+                      <p className="text-[10px] text-zinc-400">
+                        {isEs ? "Fotos y videos exclusivos" : "Exclusive photos & videos"}
+                      </p>
                     </div>
                   </div>
                   <ChevronRight className="w-4 h-4 text-zinc-400" />
@@ -1276,7 +1383,7 @@ export default function ChatPage() {
       )}
 
       {/* =========================================================================
-          LIVE CALL DIALOG (TalkieMate 100% Authentic with Insomnia Speech Synthesis)
+          LIVE CALL DIALOG (Insomnia Expressive Speech Synthesis)
          ========================================================================= */}
       <Dialog
         open={isCallOpen}
@@ -1293,7 +1400,7 @@ export default function ChatPage() {
             {/* Status badge */}
             <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-bold tracking-wider uppercase">
               <span className={`w-2 h-2 rounded-full ${callActive ? "bg-emerald-400 animate-pulse" : "bg-amber-400 animate-ping"}`} />
-              {callActive ? "En llamada en vivo" : "Conectando..."}
+              {callActive ? (isEs ? "En llamada en vivo" : "Live call active") : (isEs ? "Conectando..." : "Connecting...")}
             </div>
 
             {/* Glowing / Pulsing Avatar */}
@@ -1321,7 +1428,9 @@ export default function ChatPage() {
             {/* Character Info */}
             <div className="space-y-1">
               <h3 className="text-xl font-extrabold text-white tracking-wide">{activeChar.name}</h3>
-              <p className="text-xs text-zinc-400">{activeChar.roleTitle}</p>
+              <p className="text-xs text-zinc-400">
+                {isEs ? (activeChar.roleTitleEs || activeChar.roleTitle) : (activeChar.roleTitleEn || activeChar.roleTitle)}
+              </p>
             </div>
 
             {/* Audio Wave Indicator */}
@@ -1340,7 +1449,9 @@ export default function ChatPage() {
                   ))}
                 </div>
               ) : (
-                <span className="text-xs text-zinc-500">Iniciando voz de Insomnia...</span>
+                <span className="text-xs text-zinc-500">
+                  {isEs ? "Iniciando voz de Insomnia..." : "Starting Insomnia voice..."}
+                </span>
               )}
             </div>
 
@@ -1353,7 +1464,7 @@ export default function ChatPage() {
                     ? "bg-red-500/20 border-red-500 text-red-400"
                     : "bg-[#181818] border-[#2e2e2e] text-zinc-300 hover:text-white"
                 }`}
-                title={isCallMuted ? "Desmutear micrófono" : "Mutear micrófono"}
+                title={isCallMuted ? (isEs ? "Activar micrófono" : "Unmute mic") : (isEs ? "Silenciar micrófono" : "Mute mic")}
               >
                 {isCallMuted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
               </button>
@@ -1361,7 +1472,7 @@ export default function ChatPage() {
               <button
                 onClick={handleEndCall}
                 className="w-14 h-14 rounded-full bg-red-600 hover:bg-red-500 text-white flex items-center justify-center shadow-lg shadow-red-600/40 transition-transform hover:scale-105 active:scale-95"
-                title="Finalizar llamada"
+                title={isEs ? "Finalizar llamada" : "End call"}
               >
                 <PhoneOff className="w-6 h-6" />
               </button>
