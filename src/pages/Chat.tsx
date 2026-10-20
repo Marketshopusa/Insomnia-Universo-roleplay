@@ -29,7 +29,9 @@ import {
   PhoneOff,
   MessageSquare,
   Crown,
-  Sparkles
+  Sparkles,
+  Phone,
+  Loader2
 } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useAuth } from "@/contexts/AuthContext";
@@ -37,6 +39,9 @@ import { useAdultMode } from "@/contexts/AdultModeContext";
 import { invokeFunctionWithRetry } from "@/lib/invokeFunction";
 import { streamSpeech, type SpeechStream } from "@/lib/ttsStream";
 import { selectStoryMemory } from "@/lib/storyMemory";
+import { startWavRecording, blobToBase64, type WavRecorder } from "@/lib/wavRecorder";
+import { browserSpeechLocale } from "@/lib/regions";
+import { normalizeAssistantReply } from "@/lib/roleReply";
 import { ChatCharacterConfigDialog, fallbackFemaleSpeech } from "@/components/chat/ChatCharacterConfigDialog";
 import { ChatAiSettingsDialog } from "@/components/story/ChatAiSettingsDialog";
 import { getStoryAiSettings, AVAILABLE_AI_MODELS } from "@/lib/storyAiSettings";
@@ -513,10 +518,47 @@ export default function ChatPage() {
   const [playingAudioId, setPlayingAudioId] = useState<string | null>(null);
   const [activePhotoIdx, setActivePhotoIdx] = useState(0);
 
-  // Live Call Dialog
+  // Live Call Dialog & Continuous Speech State
   const [isCallOpen, setIsCallOpen] = useState(false);
   const [callActive, setCallActive] = useState(false);
+  const [callState, setCallState] = useState<"idle" | "connecting" | "speaking" | "listening" | "thinking">("idle");
+  const [liveTranscript, setLiveTranscript] = useState("");
+  const [callSpeakerText, setCallSpeakerText] = useState("");
   const [isCallMuted, setIsCallMuted] = useState(false);
+
+  // Call Audio & Speech Refs
+  const callRecorderRef = useRef<WavRecorder | null>(null);
+  const callRecognitionRef = useRef<any>(null);
+  const callTranscriptRef = useRef<string>("");
+  const callTimersRef = useRef<number[]>([]);
+  const callSessionRef = useRef<number>(0);
+  const callActiveRef = useRef<boolean>(false);
+  const callMutedRef = useRef<boolean>(false);
+
+  useEffect(() => {
+    callMutedRef.current = isCallMuted;
+  }, [isCallMuted]);
+
+  useEffect(() => {
+    return () => {
+      // Clean up call on unmount
+      callActiveRef.current = false;
+      callSessionRef.current += 1;
+      callTimersRef.current.forEach((id) => {
+        window.clearInterval(id);
+        window.clearTimeout(id);
+      });
+      callTimersRef.current = [];
+      if (callRecorderRef.current) {
+        callRecorderRef.current.cancel();
+        callRecorderRef.current = null;
+      }
+      try {
+        callRecognitionRef.current?.abort();
+      } catch {}
+      callRecognitionRef.current = null;
+    };
+  }, []);
 
   // Audio speech stream ref
   const speechStreamRef = useRef<SpeechStream | null>(null);
@@ -732,24 +774,435 @@ export default function ChatPage() {
     }
   };
 
-  // Voice Call
-  const handleStartCall = () => {
-    stopAudio();
-    setIsCallOpen(true);
-    setCallActive(false);
-    setTimeout(() => {
-      setCallActive(true);
-      const greeting = isEs
-        ? `Hola cariño... me alegra tanto que me hayas llamado. Cuéntame qué estás haciendo ahora mismo.`
-        : `Hey there... I'm so glad you called me. Tell me what you're doing right now.`;
-      handlePlayAudio("call-intro", greeting);
-    }, 1200);
+  // Clear call timers
+  const clearCallTimers = () => {
+    callTimersRef.current.forEach((id) => {
+      window.clearInterval(id);
+      window.clearTimeout(id);
+    });
+    callTimersRef.current = [];
   };
 
+  // Hang up and end the call
   const handleEndCall = () => {
+    callActiveRef.current = false;
+    callSessionRef.current += 1;
+    clearCallTimers();
     stopAudio();
-    setIsCallOpen(false);
+    if (callRecorderRef.current) {
+      callRecorderRef.current.cancel();
+      callRecorderRef.current = null;
+    }
+    try {
+      callRecognitionRef.current?.abort();
+    } catch {}
+    callRecognitionRef.current = null;
+    callTranscriptRef.current = "";
+    setLiveTranscript("");
+    setCallSpeakerText("");
+    setCallState("idle");
     setCallActive(false);
+    setIsCallOpen(false);
+  };
+
+  // Speak character voice during call
+  const callSpeak = async (text: string): Promise<boolean> => {
+    if (!callActiveRef.current) return false;
+    setCallState("speaking");
+    setCallSpeakerText(text);
+    const spoken = text.replace(/\*.*?\*/g, "").trim() || text;
+    const voiceToUse = activeChar.voiceName || "Aoede";
+
+    try {
+      const stream = streamSpeech(spoken, voiceToUse, language, true, "mx");
+      speechStreamRef.current = stream;
+      await stream.done;
+      if (speechStreamRef.current === stream) {
+        speechStreamRef.current = null;
+      }
+      return callActiveRef.current;
+    } catch (err) {
+      console.warn("callSpeak fallback to speech synthesis:", err);
+      await new Promise<void>((resolve) => {
+        fallbackFemaleSpeech(spoken, () => resolve());
+      });
+      return callActiveRef.current;
+    }
+  };
+
+  // Listen to microphone
+  const callListen = async () => {
+    if (!callActiveRef.current) return;
+    if (callMutedRef.current) {
+      setCallState("listening");
+      setLiveTranscript(isEs ? "(Micrófono silenciado)" : "(Microphone muted)");
+      return;
+    }
+
+    stopAudio();
+    clearCallTimers();
+    callTranscriptRef.current = "";
+    setLiveTranscript("");
+    setCallState("listening");
+
+    try {
+      const recorder = await startWavRecording();
+      if (!callActiveRef.current) {
+        recorder.cancel();
+        return;
+      }
+      callRecorderRef.current = recorder;
+
+      let silentFor = 0;
+      let heardVoice = false;
+      let peakLevel = 0;
+      let lastSpeechChangeAt = Date.now();
+      let hasFinalResult = false;
+
+      // Browser SpeechRecognition for instant live feedback
+      const browser = window as Window & {
+        SpeechRecognition?: any;
+        webkitSpeechRecognition?: any;
+      };
+      const Recognition = browser.SpeechRecognition || browser.webkitSpeechRecognition;
+      if (Recognition) {
+        try {
+          const recognition = new Recognition();
+          recognition.lang = browserSpeechLocale(language, "mx");
+          recognition.continuous = true;
+          recognition.interimResults = true;
+          recognition.onresult = (event: any) => {
+            const resultsArr = Array.from(event.results as ArrayLike<{ 0: { transcript: string }; isFinal: boolean }>);
+            const text = resultsArr
+              .map((res) => res[0]?.transcript || "")
+              .join(" ")
+              .trim();
+            if (text) {
+              if (text !== callTranscriptRef.current) {
+                lastSpeechChangeAt = Date.now();
+              }
+              callTranscriptRef.current = text;
+              setLiveTranscript(text);
+              heardVoice = true;
+              silentFor = 0;
+              if (resultsArr[resultsArr.length - 1]?.isFinal) {
+                hasFinalResult = true;
+              }
+            }
+          };
+          recognition.onerror = () => {
+            if (callRecognitionRef.current === recognition) callRecognitionRef.current = null;
+          };
+          recognition.onend = () => {
+            if (callActiveRef.current && callRecognitionRef.current === recognition && callRecorderRef.current) {
+              try { recognition.start(); } catch { callRecognitionRef.current = null; }
+            }
+          };
+          recognition.start();
+          callRecognitionRef.current = recognition;
+        } catch {
+          callRecognitionRef.current = null;
+        }
+      }
+
+      const SILENCE_MS = 1400;
+      const MAX_TURN_MS = 25000;
+
+      const meter = window.setInterval(() => {
+        if (!callActiveRef.current) return;
+        const level = recorder.getLevel();
+        if (level > peakLevel) peakLevel = level;
+        const activeThreshold = Math.max(0.015, peakLevel * 0.35);
+
+        if (level > activeThreshold) {
+          heardVoice = true;
+          silentFor = 0;
+        } else {
+          silentFor += 150;
+        }
+
+        const hasTranscript = callTranscriptRef.current.trim().length > 0;
+        const msSinceTranscriptChange = Date.now() - lastSpeechChangeAt;
+        const transcriptDone = hasTranscript && (
+          (hasFinalResult && msSinceTranscriptChange >= 700) ||
+          msSinceTranscriptChange >= 1500
+        );
+
+        if (transcriptDone || ((heardVoice || hasTranscript) && silentFor >= SILENCE_MS)) {
+          window.clearInterval(meter);
+          void finishCallTurn();
+        }
+      }, 150);
+      callTimersRef.current.push(meter);
+
+      const maxTimer = window.setTimeout(() => {
+        window.clearInterval(meter);
+        void finishCallTurn();
+      }, MAX_TURN_MS);
+      callTimersRef.current.push(maxTimer);
+    } catch (err) {
+      console.warn("Microphone access error:", err);
+      toast({
+        title: isEs ? "Micrófono requerido" : "Microphone required",
+        description: isEs
+          ? "Por favor permite el acceso al micrófono en tu navegador para hablar durante la llamada."
+          : "Please allow microphone access in your browser to talk during the call.",
+        variant: "destructive"
+      });
+      setCallState("speaking");
+    }
+  };
+
+  // Finish user speech turn and generate character response
+  const finishCallTurn = async () => {
+    const recorder = callRecorderRef.current;
+    callRecorderRef.current = null;
+    clearCallTimers();
+    if (!recorder || !callActiveRef.current) return;
+
+    setCallState("thinking");
+    const activeRecognition = callRecognitionRef.current;
+    callRecognitionRef.current = null;
+    try { activeRecognition?.stop(); } catch {}
+
+    const spoke = recorder.heardSpeech();
+    const blob = await recorder.stop();
+    if (!callActiveRef.current) return;
+
+    if (!callTranscriptRef.current.trim() && activeRecognition) {
+      await new Promise((r) => window.setTimeout(r, 200));
+    }
+
+    let userText = callTranscriptRef.current.trim();
+    callTranscriptRef.current = "";
+    setLiveTranscript("");
+
+    const currentCallSession = callSessionRef.current;
+
+    // Fallback to server speech-to-text if speech recognition had no text
+    if (!userText) {
+      if (!spoke && blob.size < 4096) {
+        if (callActiveRef.current && callSessionRef.current === currentCallSession) {
+          void callListen();
+        }
+        return;
+      }
+
+      try {
+        const audio = await blobToBase64(blob);
+        if (!callActiveRef.current || callSessionRef.current !== currentCallSession) return;
+
+        const { data, error } = await invokeFunctionWithRetry<{ text?: string }>("speech-to-text", {
+          audio,
+          mimeType: "audio/wav",
+          language: isEs ? "es" : "en",
+          region: "mx"
+        });
+
+        if (!error && data?.text) {
+          userText = data.text.trim();
+        }
+      } catch (e) {
+        console.warn("Speech to text fallback error:", e);
+      }
+    }
+
+    if (!userText) {
+      if (callActiveRef.current && callSessionRef.current === currentCallSession) {
+        void callListen();
+      }
+      return;
+    }
+
+    // 1. Add user speech directly to chat history in real time!
+    const userMsg: ChatMessage = {
+      id: `u-call-${Date.now()}`,
+      role: "user",
+      content: userText,
+      timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+    };
+
+    let updatedHistory: ChatMessage[] = [];
+    setChatHistory((prev) => {
+      const existing = prev[activeChar.id] || [];
+      updatedHistory = [...existing, userMsg];
+      return {
+        ...prev,
+        [activeChar.id]: updatedHistory
+      };
+    });
+
+    // 2. Request AI reply continuing the unbroken conversation
+    try {
+      const historyPayload = updatedHistory.slice(-12).map((m) => ({
+        role: m.role,
+        content: m.content
+      }));
+
+      const charBio = isEs ? (activeChar.bioEs || activeChar.bio) : (activeChar.bioEn || activeChar.bio);
+      const charRole = isEs ? (activeChar.roleTitleEs || activeChar.roleTitle) : (activeChar.roleTitleEn || activeChar.roleTitle);
+      const charAiSettings = getStoryAiSettings(activeChar.id);
+
+      const { data, error } = await invokeFunctionWithRetry<{ content?: string }>("story-chat", {
+        story: {
+          id: activeChar.id,
+          title: activeChar.name,
+          description: charBio,
+          story_context: `${charRole}. Bio: ${charBio}. [EN LLAMADA TELEFÓNICA EN VIVO: responde de forma oral, conversacional, natural, directa y expresiva, sin asteriscos largos de acciones teatrales, como en una llamada real].`,
+          character_role: activeChar.name,
+          player_role: isEs ? "Compañero" : "Partner",
+          story_type: "roleplay"
+        },
+        language,
+        history: historyPayload,
+        memory: selectStoryMemory(historyPayload, userText),
+        userMessage: userText,
+        adultMode: adultEnabled,
+        region: "mx",
+        settings: charAiSettings
+      });
+
+      let reply = "";
+      if (!error && data?.content) {
+        reply = normalizeAssistantReply(data.content) || data.content;
+      } else {
+        reply = isEs
+          ? `Te escucho perfectamente cariño... me encanta escuchar tu voz. Dime más sobre eso.`
+          : `I hear you loud and clear honey... I love the sound of your voice. Tell me more.`;
+      }
+
+      if (!callActiveRef.current || callSessionRef.current !== currentCallSession) return;
+
+      // 3. Add character reply directly to chat history!
+      const assistantMsg: ChatMessage = {
+        id: `a-call-${Date.now()}`,
+        role: "assistant",
+        content: reply,
+        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+      };
+
+      setChatHistory((prev) => ({
+        ...prev,
+        [activeChar.id]: [...(prev[activeChar.id] || []), assistantMsg]
+      }));
+
+      // 4. Speak reply out loud
+      const stillActive = await callSpeak(reply);
+      if (stillActive && callSessionRef.current === currentCallSession) {
+        void callListen();
+      }
+    } catch (e) {
+      console.error("Call reply generation failed:", e);
+      if (callActiveRef.current && callSessionRef.current === currentCallSession) {
+        void callListen();
+      }
+    }
+  };
+
+  // Voice Call Entrypoint
+  const handleStartCall = async () => {
+    stopAudio();
+    setIsCallOpen(true);
+    setCallActive(true);
+    setCallState("connecting");
+    setLiveTranscript("");
+    setCallSpeakerText("");
+    callActiveRef.current = true;
+    callSessionRef.current += 1;
+    const currentSession = callSessionRef.current;
+
+    // Check existing chat history for context continuity
+    const existingHistory = chatHistory[activeChar.id] || [];
+    const hasUserChatted = existingHistory.some((m) => m.role === "user");
+
+    let greetingText = "";
+
+    if (hasUserChatted) {
+      try {
+        const historyPayload = existingHistory.slice(-8).map((m) => ({
+          role: m.role,
+          content: m.content
+        }));
+        const charBio = isEs ? (activeChar.bioEs || activeChar.bio) : (activeChar.bioEn || activeChar.bio);
+        const charRole = isEs ? (activeChar.roleTitleEs || activeChar.roleTitle) : (activeChar.roleTitleEn || activeChar.roleTitle);
+        const charAiSettings = getStoryAiSettings(activeChar.id);
+
+        const promptContext = isEs
+          ? `[El usuario te acaba de marcar por teléfono. Atiende la llamada saludándolo con cariño y continuando fluidamente lo que venían hablando recién en el chat. Sé breve, natural y conversacional como en una llamada real].`
+          : `[The user just called you. Pick up the call warmly and naturally, directly continuing what you were just talking about in the chat. Be brief, expressive and natural like in a real phone call].`;
+
+        const { data, error } = await invokeFunctionWithRetry<{ content?: string }>("story-chat", {
+          story: {
+            id: activeChar.id,
+            title: activeChar.name,
+            description: charBio,
+            story_context: `${charRole}. Bio: ${charBio}`,
+            character_role: activeChar.name,
+            player_role: isEs ? "Compañero" : "Partner",
+            story_type: "roleplay"
+          },
+          language,
+          history: historyPayload,
+          memory: selectStoryMemory(historyPayload, promptContext),
+          userMessage: promptContext,
+          adultMode: adultEnabled,
+          region: "mx",
+          settings: charAiSettings
+        });
+
+        if (!error && data?.content) {
+          greetingText = normalizeAssistantReply(data.content) || data.content;
+        }
+      } catch (e) {
+        console.warn("Failed to generate dynamic call intro:", e);
+      }
+    }
+
+    if (!greetingText) {
+      greetingText = isEs
+        ? `¡Hola cariño! Qué linda sorpresa tu llamada... justo estaba pensando en ti. Cuéntame, ¿cómo estás?`
+        : `Hey honey! What a lovely surprise to get your call... I was just thinking about you. Tell me, how are you?`;
+    }
+
+    if (!callActiveRef.current || callSessionRef.current !== currentSession) return;
+
+    // Add greeting to chat history so it is logged in the written chat!
+    const introMsg: ChatMessage = {
+      id: `call-intro-${Date.now()}`,
+      role: "assistant",
+      content: greetingText,
+      timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+    };
+
+    setChatHistory((prev) => ({
+      ...prev,
+      [activeChar.id]: [...(prev[activeChar.id] || []), introMsg]
+    }));
+
+    // Speak greeting
+    const stillActive = await callSpeak(greetingText);
+    if (stillActive && callSessionRef.current === currentSession) {
+      void callListen();
+    }
+  };
+
+  const toggleCallMute = () => {
+    const next = !isCallMuted;
+    setIsCallMuted(next);
+    callMutedRef.current = next;
+    if (next) {
+      if (callRecorderRef.current) {
+        callRecorderRef.current.cancel();
+        callRecorderRef.current = null;
+      }
+      try { callRecognitionRef.current?.abort(); } catch {}
+      clearCallTimers();
+      setLiveTranscript(isEs ? "(Micrófono silenciado)" : "(Microphone muted)");
+    } else {
+      if (callState === "listening" || callState === "idle") {
+        void callListen();
+      }
+    }
   };
 
   // Filtered Characters for Explore Hub
@@ -1433,7 +1886,7 @@ export default function ChatPage() {
       )}
 
       {/* =========================================================================
-          LIVE CALL DIALOG (Insomnia Expressive Speech Synthesis)
+          LIVE CALL DIALOG (Connected to Chat history & Real Voice Recognition)
          ========================================================================= */}
       <Dialog
         open={isCallOpen}
@@ -1446,19 +1899,45 @@ export default function ChatPage() {
         }}
       >
         <DialogContent className="max-w-md bg-[#0a0a0a] border border-[#262626] text-white p-6 rounded-3xl shadow-2xl">
-          <div className="flex flex-col items-center text-center space-y-6 py-4">
+          <div className="flex flex-col items-center text-center space-y-5 py-2">
             {/* Status badge */}
-            <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-bold tracking-wider uppercase">
-              <span className={`w-2 h-2 rounded-full ${callActive ? "bg-emerald-400 animate-pulse" : "bg-amber-400 animate-ping"}`} />
-              {callActive ? (isEs ? "En llamada en vivo" : "Live call active") : (isEs ? "Conectando..." : "Connecting...")}
+            <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold tracking-wider uppercase border ${
+              callState === "connecting"
+                ? "bg-amber-500/10 border-amber-500/30 text-amber-400"
+                : callState === "speaking"
+                ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
+                : callState === "listening"
+                ? "bg-cyan-500/10 border-cyan-500/30 text-cyan-400"
+                : "bg-purple-500/10 border-purple-500/30 text-purple-300"
+            }`}>
+              <span className={`w-2 h-2 rounded-full ${
+                callState === "connecting"
+                  ? "bg-amber-400 animate-ping"
+                  : callState === "speaking"
+                  ? "bg-emerald-400 animate-pulse"
+                  : callState === "listening"
+                  ? "bg-cyan-400 animate-ping"
+                  : "bg-purple-400 animate-pulse"
+              }`} />
+              {callState === "connecting"
+                ? (isEs ? "Conectando llamada..." : "Connecting call...")
+                : callState === "speaking"
+                ? (isEs ? `${activeChar.name} está hablando` : `${activeChar.name} is speaking`)
+                : callState === "listening"
+                ? (isEs ? "Te está escuchando... Habla ahora" : "Listening to you... Speak now")
+                : (isEs ? "Pensando respuesta..." : "Thinking response...")}
             </div>
 
             {/* Glowing / Pulsing Avatar */}
             <div className="relative">
               <div
                 className={`w-32 h-32 rounded-full overflow-hidden ring-4 transition-all duration-500 ${
-                  callActive
-                    ? "ring-emerald-500 shadow-[0_0_40px_rgba(16,185,129,0.4)] scale-105"
+                  callState === "speaking"
+                    ? "ring-emerald-500 shadow-[0_0_40px_rgba(16,185,129,0.45)] scale-105"
+                    : callState === "listening"
+                    ? "ring-cyan-500 shadow-[0_0_40px_rgba(6,182,212,0.45)] scale-105"
+                    : callState === "thinking"
+                    ? "ring-purple-500 shadow-[0_0_35px_rgba(168,85,247,0.35)]"
                     : "ring-[#ff8c00] animate-pulse"
                 }`}
               >
@@ -1468,11 +1947,25 @@ export default function ChatPage() {
                   className="w-full h-full object-cover"
                 />
               </div>
-              {callActive && (
-                <div className="absolute -bottom-1 -right-1 w-8 h-8 rounded-full bg-emerald-500 text-black flex items-center justify-center font-bold shadow-lg">
-                  <Volume2 className="w-4 h-4 animate-bounce" />
-                </div>
-              )}
+
+              {/* Status Badge Icon on Avatar */}
+              <div className={`absolute -bottom-1 -right-1 w-8 h-8 rounded-full flex items-center justify-center font-bold shadow-lg text-black transition-colors ${
+                callState === "speaking"
+                  ? "bg-emerald-500"
+                  : callState === "listening"
+                  ? "bg-cyan-400"
+                  : "bg-purple-400"
+              }`}>
+                {callState === "speaking" ? (
+                  <Volume2 className="w-4 h-4 animate-bounce text-black" />
+                ) : callState === "listening" ? (
+                  <Mic className="w-4 h-4 animate-pulse text-black" />
+                ) : callState === "thinking" ? (
+                  <Loader2 className="w-4 h-4 animate-spin text-black" />
+                ) : (
+                  <Phone className="w-4 h-4 text-black" />
+                )}
+              </div>
             </div>
 
             {/* Character Info */}
@@ -1483,32 +1976,64 @@ export default function ChatPage() {
               </p>
             </div>
 
+            {/* Live Subtitle / Transcript box */}
+            <div className="w-full min-h-[54px] max-h-[80px] overflow-y-auto px-4 py-2 rounded-2xl bg-[#141414] border border-[#2a2a2a] flex items-center justify-center text-center">
+              {liveTranscript ? (
+                <p className="text-xs text-cyan-300 font-medium italic animate-pulse">
+                  "{liveTranscript}"
+                </p>
+              ) : callSpeakerText && callState === "speaking" ? (
+                <p className="text-xs text-zinc-300 font-normal leading-relaxed line-clamp-3">
+                  "{callSpeakerText}"
+                </p>
+              ) : callState === "listening" ? (
+                <p className="text-xs text-zinc-400 font-medium">
+                  {isCallMuted
+                    ? (isEs ? "Micrófono en silencio" : "Microphone muted")
+                    : (isEs ? "Puedes hablar, te está escuchando con atención..." : "You can speak, listening to you attentively...")}
+                </p>
+              ) : callState === "thinking" ? (
+                <div className="flex items-center gap-2 text-xs text-purple-300 font-medium">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <span>{isEs ? "Preparando respuesta en personaje..." : "Formulating response in character..."}</span>
+                </div>
+              ) : (
+                <span className="text-xs text-zinc-500">
+                  {isEs ? "Conectando con la voz de Insomnia..." : "Connecting with Insomnia voice..."}
+                </span>
+              )}
+            </div>
+
             {/* Audio Wave Indicator */}
-            <div className="w-full min-h-[36px] flex items-center justify-center">
+            <div className="w-full min-h-[30px] flex items-center justify-center">
               {callActive ? (
-                <div className="flex items-center gap-1.5 h-7">
+                <div className="flex items-center gap-1.5 h-6">
                   {[35, 75, 100, 60, 85, 40, 95, 70, 30].map((h, i) => (
                     <span
                       key={i}
-                      className="w-1 bg-emerald-400 rounded-full animate-pulse"
+                      className={`w-1 rounded-full transition-all duration-200 ${
+                        callState === "speaking"
+                          ? "bg-emerald-400 animate-pulse"
+                          : callState === "listening"
+                          ? "bg-cyan-400 animate-bounce"
+                          : "bg-purple-400"
+                      }`}
                       style={{
-                        height: `${h}%`,
+                        height: callState === "listening" ? `${Math.max(25, (h * 0.8))}%` : `${h}%`,
                         animationDuration: `${0.35 + (i % 4) * 0.15}s`
                       }}
                     />
                   ))}
                 </div>
               ) : (
-                <span className="text-xs text-zinc-500">
-                  {isEs ? "Iniciando voz de Insomnia..." : "Starting Insomnia voice..."}
-                </span>
+                <span className="text-xs text-zinc-500">...</span>
               )}
             </div>
 
             {/* Call Action Controls */}
-            <div className="flex items-center gap-5 pt-2">
+            <div className="flex items-center gap-4 pt-1">
               <button
-                onClick={() => setIsCallMuted(!isCallMuted)}
+                onClick={toggleCallMute}
                 className={`w-12 h-12 rounded-full border flex items-center justify-center transition-colors ${
                   isCallMuted
                     ? "bg-red-500/20 border-red-500 text-red-400"
@@ -1518,6 +2043,17 @@ export default function ChatPage() {
               >
                 {isCallMuted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
               </button>
+
+              {callState === "listening" && (
+                <button
+                  onClick={() => void finishCallTurn()}
+                  className="px-4 py-2.5 rounded-full bg-cyan-600/30 hover:bg-cyan-600/40 border border-cyan-500/40 text-cyan-300 font-bold text-xs flex items-center gap-1.5 transition-all hover:scale-105 active:scale-95"
+                  title={isEs ? "Enviar lo que dijiste ahora" : "Send speech now"}
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  <span>{isEs ? "Enviar ya" : "Send now"}</span>
+                </button>
+              )}
 
               <button
                 onClick={handleEndCall}
