@@ -47,7 +47,7 @@ type Mode = "select" | "read" | "roleplay";
   const { user, loading: authLoading } = useAuth();
   const { enabled: adultEnabled, consentGiven, enable, grantConsent } = useAdultMode();
   const [consentOpen, setConsentOpen] = useState(false);
-   const { data: story, isLoading } = useStory(storyId || "");
+   const { data: story, isLoading, error: storyError } = useStory(storyId || "");
    const { data: customizations } = useStoryCustomizations();
    const coverImage = resolveStoryCover(story?.cover_image, storyId ? customizations?.[storyId]?.cover_media_url : null);
    const storyContext = story
@@ -660,18 +660,47 @@ type Mode = "select" | "read" | "roleplay";
      );
    }
  
-   if (!story) {
-     return (
-       <MainLayout>
-         <div className="container mx-auto px-4 py-8 text-center">
+  if (!story) {
+    const errorMsg = String((storyError as any)?.message || "");
+    const isQuotaError = /exceed_.*quota|quota|restricted|bandwidth/i.test(errorMsg);
+
+    if (isQuotaError) {
+      return (
+        <MainLayout>
+          <div className="container mx-auto px-4 py-12 max-w-lg text-center">
+            <div className="w-16 h-16 rounded-full bg-amber-500/10 border border-amber-500/20 flex items-center justify-center mx-auto mb-4 text-amber-500">
+              <ShieldAlert className="w-8 h-8" />
+            </div>
+            <h2 className="text-xl font-bold mb-2">
+              {language === "es" ? "Límite de transferencia de Supabase alcanzado" : "Supabase Bandwidth Quota Exceeded"}
+            </h2>
+            <p className="text-sm text-muted-foreground mb-4">
+              {language === "es"
+                ? "El proyecto de base de datos ha alcanzado temporalmente la cuota mensual de ancho de banda gratuito (5 GB). El administrador debe desmarcar el Spend Cap en el panel de Supabase para reactivarlo inmediatamente."
+                : "The Supabase database project has temporarily exceeded the monthly free tier egress quota (5 GB). The owner needs to toggle spend caps or upgrade in their Supabase dashboard."}
+            </p>
+            <div className="bg-muted/40 rounded-xl p-3 text-xs text-left mb-6 font-mono text-muted-foreground break-words border border-border/50">
+              {errorMsg}
+            </div>
+            <Button onClick={() => navigate("/")} className="w-full">
+              {t("story.back")}
+            </Button>
+          </div>
+        </MainLayout>
+      );
+    }
+
+    return (
+      <MainLayout>
+        <div className="container mx-auto px-4 py-8 text-center">
           <p className="text-muted-foreground">{t("story.notFound")}</p>
-           <Button onClick={() => navigate("/")} className="mt-4">
-             {t("story.back")}
-           </Button>
-         </div>
-       </MainLayout>
-     );
-   }
+          <Button onClick={() => navigate("/")} className="mt-4">
+            {t("story.back")}
+          </Button>
+        </div>
+      </MainLayout>
+    );
+  }
 
   // Auth gate
   if (!authLoading && !user) {

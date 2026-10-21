@@ -1362,7 +1362,7 @@ export default function ChatPage() {
   }, [characterList, activeGender, activeStyle]);
 
   return (
-    <div className="flex flex-col h-screen w-screen bg-[#000000] text-zinc-100 font-sans select-none overflow-hidden">
+    <div className="flex flex-col h-[100dvh] w-full max-w-full bg-[#000000] text-zinc-100 font-sans select-none overflow-x-hidden">
       {/* Insomnia Header */}
       <Header />
 
@@ -1370,7 +1370,7 @@ export default function ChatPage() {
           VIEW 1: TALKIEMATE CHARACTER & STORIES HUB
          ========================================================================= */}
       {viewMode === "explore" && (
-        <div className="flex-1 overflow-y-auto max-w-[1440px] w-full mx-auto px-4 md:px-8 py-6 space-y-8">
+        <div className="flex-1 overflow-y-auto max-w-[1440px] w-full mx-auto px-3 sm:px-6 md:px-8 py-4 sm:py-6 space-y-6 sm:space-y-8 overflow-x-hidden">
           {/* Top Banner */}
           <div className="relative w-full rounded-2xl overflow-hidden bg-gradient-to-r from-[#180a04] via-[#240e02] to-[#120502] border border-[#ff8c00]/30 shadow-2xl p-6 md:p-8 flex items-center justify-between">
             <div className="space-y-2 z-10">
@@ -1515,7 +1515,7 @@ export default function ChatPage() {
             </div>
 
             {/* Grid of Character Cards */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2.5 sm:gap-4 w-full">
               {filteredExploreChars.map((char) => {
                 const shortBioText = isEs
                   ? (char.shortBioEs || char.shortBio)
@@ -1525,7 +1525,7 @@ export default function ChatPage() {
                   <div
                     key={char.id}
                     onClick={() => handleOpenChat(char.id)}
-                    className="group relative rounded-2xl overflow-hidden aspect-[9/15] bg-[#141414] border border-[#242424] hover:border-[#ff8c00] cursor-pointer transition-all shadow-md hover:shadow-xl hover:shadow-[#ff8c00]/10 flex flex-col justify-end"
+                    className="group relative rounded-2xl overflow-hidden aspect-[3/4] sm:aspect-[9/15] bg-[#141414] border border-[#242424] hover:border-[#ff8c00] cursor-pointer transition-all shadow-md hover:shadow-xl hover:shadow-[#ff8c00]/10 flex flex-col justify-end w-full max-w-full"
                   >
                     <img
                       src={char.avatar}
@@ -1568,9 +1568,9 @@ export default function ChatPage() {
           <div className="flex w-full max-w-[1560px] h-[calc(100vh-64px)] border-x border-[#1a1a1a] bg-[#000000] overflow-hidden">
             
             {/* ----------------------------------------------------
-                LEFT PANEL: "Conversations"
+                LEFT PANEL: "Conversations" (Hidden on mobile inside chat room)
                ---------------------------------------------------- */}
-            <aside className="w-[260px] lg:w-[280px] bg-[#000000] border-r border-[#222222] flex flex-col flex-shrink-0 z-20">
+            <aside className="hidden md:flex w-[260px] lg:w-[280px] bg-[#000000] border-r border-[#222222] flex-col flex-shrink-0 z-20">
               {/* Header */}
               <div className="p-4 pb-3 flex items-center justify-between">
                 <h3 className="text-lg font-bold text-white tracking-normal">
@@ -1834,24 +1834,36 @@ export default function ChatPage() {
                   </div>
                 )}
               {/* Top Bar of Active Chat */}
-              <div className="h-14 px-5 bg-[#000000] border-b border-[#222222] flex items-center justify-between z-10 flex-shrink-0">
-                {/* Level & XP pill */}
-                <div className="flex items-center gap-2">
-                  <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-[#161616] border border-[#2b2b2b] text-xs">
-                    <Heart className="w-3.5 h-3.5 text-[#ff8c00] fill-[#ff8c00]" />
-                    <span className="font-bold text-white">
-                      Lv. {activeChar.affinityLevel} - {isEs ? (activeChar.affinityTitleEs || activeChar.affinityTitle) : (activeChar.affinityTitleEn || activeChar.affinityTitle)}
+              <div className="h-14 px-3 sm:px-5 bg-[#000000] border-b border-[#222222] flex items-center justify-between z-10 flex-shrink-0 w-full min-w-0">
+                {/* Back button & Character Name */}
+                <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+                  <button
+                    onClick={() => {
+                      setViewMode("explore");
+                      navigate("/chat");
+                    }}
+                    className="p-1.5 rounded-xl bg-[#161616] border border-[#2b2b2b] text-zinc-300 hover:text-white flex-shrink-0"
+                    title={isEs ? "Volver a explorar" : "Back to explore"}
+                  >
+                    <ArrowLeft className="w-4 h-4" />
+                  </button>
+
+                  <div className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1 rounded-full bg-[#161616] border border-[#2b2b2b] text-xs min-w-0">
+                    <Heart className="w-3.5 h-3.5 text-[#ff8c00] fill-[#ff8c00] flex-shrink-0" />
+                    <span className="font-bold text-white truncate max-w-[90px] sm:max-w-none">
+                      {activeChar.name}
                     </span>
-                    <span className="text-[#ff8c00] font-bold">{activeChar.affinityXp || 70} XP</span>
-                    <Info className="w-3.5 h-3.5 text-zinc-500 cursor-pointer hover:text-white" />
+                    <span className="text-[#ff8c00] font-bold text-[11px] hidden sm:inline">
+                      Lv. {activeChar.affinityLevel}
+                    </span>
                   </div>
                 </div>
 
                 {/* Right controls */}
-                <div className="flex items-center gap-2 sm:gap-2.5">
+                <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
                   {isAdmin && (
                     <span
-                      className="hidden sm:flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-gradient-to-r from-amber-500/20 via-yellow-500/20 to-amber-500/20 border border-amber-500/50 text-amber-300 text-[10px] font-black uppercase tracking-wider shadow-sm"
+                      className="hidden lg:flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-gradient-to-r from-amber-500/20 via-yellow-500/20 to-amber-500/20 border border-amber-500/50 text-amber-300 text-[10px] font-black uppercase tracking-wider shadow-sm"
                       title="Administrador Maestro: marketshopusafl@gmail.com"
                     >
                       <Crown className="w-3 h-3 text-amber-400 fill-amber-400" />
@@ -1861,37 +1873,48 @@ export default function ChatPage() {
 
                   <button
                     onClick={() => setIsAiSettingsOpen(true)}
-                    className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#181a24] hover:bg-[#222536] border border-[#2e3146] text-amber-300 font-bold text-xs shadow-md transition-all hover:scale-105 active:scale-95"
+                    className="hidden sm:flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#181a24] hover:bg-[#222536] border border-[#2e3146] text-amber-300 font-bold text-xs shadow-md transition-all hover:scale-105 active:scale-95"
                     title={isEs ? "Configurar Modelo de IA (Magnum v4, Euryale, Memoria 32K)" : "Configure AI Model (Magnum v4, Euryale, 32K Memory)"}
                   >
                     <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                    <span className="hidden sm:inline text-[11px] truncate max-w-[120px]">{currentAiModelName}</span>
+                    <span className="text-[11px] truncate max-w-[100px]">{currentAiModelName}</span>
                   </button>
-
-                  <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-[#161616] border border-[#2b2b2b]">
-                    <img
-                      src={activeChar.avatar}
-                      alt={activeChar.name}
-                      className="w-4 h-4 rounded-full object-cover"
-                    />
-                    <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-[#ff8c00] text-black font-extrabold">
-                      OFF
-                    </span>
-                  </div>
 
                   <button
                     onClick={handleStartCall}
-                    className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#00c853] hover:bg-[#00e676] text-black font-extrabold text-xs shadow-md transition-all hover:scale-105 active:scale-95"
+                    className="flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1 rounded-full bg-[#00c853] hover:bg-[#00e676] text-black font-extrabold text-xs shadow-md transition-all hover:scale-105 active:scale-95 flex-shrink-0"
                   >
                     <Video className="w-3.5 h-3.5 fill-black text-black" />
-                    <span>{isEs ? "Llamada en vivo" : "Live Call"}</span>
+                    <span className="hidden xs:inline sm:inline">{isEs ? "Llamada" : "Call"}</span>
                   </button>
 
-                  {/* 3-Dots Menu with Configure Character and Reset Story */}
+                  {/* Auto-Voice Corneta Toggle in Top Bar */}
+                  <button
+                    type="button"
+                    onClick={toggleChatMute}
+                    className={`w-8 h-8 rounded-full flex items-center justify-center transition-all flex-shrink-0 ${
+                      !isChatMuted
+                        ? "bg-[#1f160e] border border-[#ff8c00]/60 text-[#ff8c00] hover:scale-110 shadow-sm shadow-[#ff8c00]/20"
+                        : "bg-[#161616] border border-[#2b2b2b] text-zinc-500 hover:text-zinc-300 hover:scale-105"
+                    }`}
+                    title={
+                      !isChatMuted
+                        ? (isEs ? "Voz automática activada: se lee el chat en voz alta (Click para silenciar)" : "Auto-voice active: chat speaks automatically (Click to mute)")
+                        : (isEs ? "Voz automática desactivada: silencioso (Click para activar voz automática)" : "Auto-voice muted (Click to enable auto-voice)")
+                    }
+                  >
+                    {!isChatMuted ? (
+                      <Volume2 className="w-3.5 h-3.5 text-[#ff8c00]" />
+                    ) : (
+                      <VolumeX className="w-3.5 h-3.5 text-zinc-500" />
+                    )}
+                  </button>
+
+                  {/* 3-Dots Menu with Configure Character, AI Model (mobile) and Reset Story */}
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <button
-                        className="p-1.5 rounded-xl bg-[#161616] border border-[#2b2b2b] text-zinc-300 hover:text-white transition-colors"
+                        className="p-1.5 rounded-xl bg-[#161616] border border-[#2b2b2b] text-zinc-300 hover:text-white transition-colors flex-shrink-0"
                         title={isEs ? "Opciones del personaje" : "Character options"}
                       >
                         <MoreVertical className="w-4 h-4" />
@@ -1905,6 +1928,13 @@ export default function ChatPage() {
                         <Settings className="w-4 h-4 text-zinc-400" />
                         <span>{isEs ? "Configurar personaje" : "Configure character"}</span>
                       </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() => setIsAiSettingsOpen(true)}
+                        className="flex items-center gap-2.5 cursor-pointer hover:bg-white/10 text-xs font-semibold py-2.5 sm:hidden"
+                      >
+                        <Sparkles className="w-4 h-4 text-amber-400" />
+                        <span>{isEs ? "Modelo de IA y Memoria" : "AI Model & Memory"}</span>
+                      </DropdownMenuItem>
                       <DropdownMenuSeparator className="bg-[#242424]" />
                       <DropdownMenuItem
                         onClick={handleResetCurrentHistory}
@@ -1915,28 +1945,6 @@ export default function ChatPage() {
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
-
-                  {/* Auto-Voice Corneta Toggle in Top Bar */}
-                  <button
-                    type="button"
-                    onClick={toggleChatMute}
-                    className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${
-                      !isChatMuted
-                        ? "bg-[#1f160e] border border-[#ff8c00]/60 text-[#ff8c00] hover:scale-110 shadow-sm shadow-[#ff8c00]/20"
-                        : "bg-[#161616] border border-[#2b2b2b] text-zinc-500 hover:text-zinc-300 hover:scale-105"
-                    }`}
-                    title={
-                      !isChatMuted
-                        ? (isEs ? "Voz automática activada: se lee el chat en voz alta (Click para silenciar)" : "Auto-voice active: chat speaks automatically (Click to mute)")
-                        : (isEs ? "Voz automática desactivada: silencioso (Click para activar voz automática)" : "Auto-voice muted (Click to enable auto-voice)")
-                    }
-                  >
-                    {!isChatMuted ? (
-                      <Volume2 className="w-4 h-4 text-[#ff8c00]" />
-                    ) : (
-                      <VolumeX className="w-4 h-4 text-zinc-500" />
-                    )}
-                  </button>
                 </div>
               </div>
 
@@ -2028,10 +2036,10 @@ export default function ChatPage() {
               </div>
 
               {/* Input Bar Dock */}
-              <div className="p-3.5 bg-[#0e0e0e] border-t border-[#222222] flex items-center gap-2 flex-shrink-0">
+              <div className="p-2 sm:p-3.5 bg-[#0e0e0e] border-t border-[#222222] flex items-center gap-1.5 sm:gap-2 flex-shrink-0 w-full min-w-0">
                 <button
                   onClick={handleOpenCreateConfig}
-                  className="w-9 h-9 rounded-full bg-[#1a1a1a] border border-[#2e2e2e] flex items-center justify-center text-zinc-400 hover:text-white transition-colors"
+                  className="hidden sm:flex w-9 h-9 rounded-full bg-[#1a1a1a] border border-[#2e2e2e] items-center justify-center text-zinc-400 hover:text-white transition-colors flex-shrink-0"
                   title={isEs ? "Nuevo Personaje" : "New Character"}
                 >
                   <Plus className="w-4 h-4" />
@@ -2041,21 +2049,21 @@ export default function ChatPage() {
                   onClick={() => {
                     setInputText(isEs ? "¿Puedes mandarme una foto exclusiva ahora mismo?" : "Can you send me an exclusive photo right now?");
                   }}
-                  className="w-9 h-9 rounded-full bg-[#1a1a1a] border border-[#2e2e2e] flex items-center justify-center text-zinc-400 hover:text-[#ff8c00] transition-colors"
+                  className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-[#1a1a1a] border border-[#2e2e2e] flex items-center justify-center text-zinc-400 hover:text-[#ff8c00] transition-colors flex-shrink-0"
                   title={isEs ? "Pedir foto" : "Request photo"}
                 >
-                  <Camera className="w-4 h-4" />
+                  <Camera className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                 </button>
 
                 <button
                   onClick={handleStartCall}
-                  className="w-9 h-9 rounded-full bg-[#1a1a1a] border border-[#2e2e2e] flex items-center justify-center text-zinc-400 hover:text-emerald-400 transition-colors"
+                  className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-[#1a1a1a] border border-[#2e2e2e] flex items-center justify-center text-zinc-400 hover:text-emerald-400 transition-colors flex-shrink-0"
                   title={isEs ? "Llamada de voz" : "Voice call"}
                 >
-                  <Mic className="w-4 h-4" />
+                  <Mic className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                 </button>
 
-                <div className="flex-1 bg-[#1a1a1a] border border-[#2e2e2e] focus-within:border-[#ff8c00] rounded-2xl flex items-center px-4 py-2 transition-colors">
+                <div className="flex-1 min-w-0 bg-[#1a1a1a] border border-[#2e2e2e] focus-within:border-[#ff8c00] rounded-2xl flex items-center px-3 sm:px-4 py-1.5 sm:py-2 transition-colors">
                   <input
                     type="text"
                     value={inputText}
@@ -2064,15 +2072,15 @@ export default function ChatPage() {
                       if (e.key === "Enter") handleSendMessage();
                     }}
                     placeholder={isEs ? "Escribe un mensaje..." : "Type a message..."}
-                    className="w-full bg-transparent text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none"
+                    className="w-full min-w-0 bg-transparent text-base sm:text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none"
                   />
-                  <Languages className="w-4 h-4 text-zinc-500 ml-2 cursor-pointer hover:text-zinc-300" />
+                  <Languages className="w-4 h-4 text-zinc-500 ml-1.5 sm:ml-2 cursor-pointer hover:text-zinc-300 flex-shrink-0" />
                 </div>
 
                 <button
                   onClick={handleSendMessage}
                   disabled={!inputText.trim() || isTyping}
-                  className="w-10 h-10 rounded-2xl bg-[#ff8c00] hover:bg-amber-500 text-white font-extrabold flex items-center justify-center disabled:opacity-40 transition-all hover:scale-105 active:scale-95 shadow-lg shadow-[#ff8c00]/30"
+                  className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-[#ff8c00] hover:bg-amber-500 text-black font-extrabold flex items-center justify-center disabled:opacity-40 transition-all hover:scale-105 active:scale-95 shadow-lg shadow-[#ff8c00]/30 flex-shrink-0"
                 >
                   <Send className="w-4 h-4 stroke-[2.5]" />
                 </button>
