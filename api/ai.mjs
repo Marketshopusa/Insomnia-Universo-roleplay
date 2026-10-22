@@ -821,6 +821,10 @@ export default async function handler(req, res) {
         if (dialWordCount < 8 && narrWordCount > 15) return true;
         // Rechazar si el relato en asteriscos supera al diálogo hablado
         if (narrWordCount > 25 && narrWordCount >= dialWordCount) return true;
+        // Rechazar alucinaciones de modelos micro o texto roto/corrupto (bici ligera, saboreándose mi cuello lento calorcito, fingers)
+        if (/\b(?:bici\s+ligera|manos\s+mapaches|fingers|patas\s+abiertas|suby[eé]ndose)\b/i.test(reply)) return true;
+        // Rechazar respuestas que terminen con oraciones rotas o inconclusas como "solo..." o "pero..."
+        if (/\b(?:solo|pero|y|que|con|de|en|tu|mi|su|muy)\.{2,}\s*$/i.test(reply)) return true;
 
         const userNorm = latest.replace(/[^\w]+/g, " ").trim().toLowerCase();
         const replyNorm = reply.replace(/\*[^*]*\*/g, "").replace(/[^\w]+/g, " ").trim().toLowerCase();
@@ -858,13 +862,14 @@ export default async function handler(req, res) {
         "  - Si el usuario introduce o interactúa con otro personaje secundario en la escena (una hermana, madre, prima, jefa, profesora, director, amiga, etc.), interpreta a ESE personaje con coherencia psicológica y el trato propio de su relación con el protagonista.",
         "  - ESTRICTAMENTE PROHIBIDO romper la cuarta pared (nunca digas 'en un roleplay', 'en este rol', 'soy un personaje').",
         ...storyVoiceLines(story.character_role, story.player_role, spanish, locale),
-        "CONSISTENCIA DE PERSONALIDAD Y LENGUAJE (PERSONA LOCK):",
-        "  - Tu personalidad, vocabulario y tono deben ser 100% acordes a tu personaje (ejemplo: si eres una doctora/psicóloga, ejecutiva o dama elegante, hablas con calidez, intelecto, sensualidad y vocabulario refinado en primera persona).",
-        "  - PROHIBIDO TERMINANTEMENTE usar jergas callejeras como 'carnal', 'chavo', 'wey', 'mano' o vulgaridades fuera de personaje.",
-        "  - PROHIBIDO mezclar 'vosotros/sois' con 'tú' o jerga de barrio. Habla en un español seductor, natural, fluido y coherente.",
-        "  - PROHIBIDO generar sangre, violencia grotesca o mutilación a menos que el rol lo requiera explícitamente.",
-        `  - PROPORCIÓN INMUTABLE: ${Math.round(dialogueRatio * 100)}% DIÁLOGO HABLADO DIRECTO respondiendo y conversando en voz alta de tú a tú, y solo ${Math.round(narrationRatio * 100)}% RELATO FÍSICO EN ASTERISCOS (*...*).`,
-        "  - ESTRICTAMENTE PROHIBIDO que el relato en asteriscos sea más largo que el diálogo hablado. El usuario está para conversar, no para leer un libro.",
+        "ESTILO Y TONO CONVERSACIONAL (NATURAL, MODERNO, RELAJADO, TIPO URBANO):",
+        "  - CERO PROTOCOLO, CERO SERIEDAD EXCESIVA Y CERO ESTILO DE LIBRO O NOVELA LITERARIA.",
+        "  - Habla como una persona real, moderna y relajada platicando de tú a tú en el día a día.",
+        "  - Prohibido sonar como un libro de literatura antigua, declamar poesía o usar frases rebuscadas.",
+        "  - CONVERSACIÓN FLUIDA, CERCANA Y COTIDIANA: Usa un lenguaje fresco, desenfadado, pícaro y espontáneo, como hablan dos personas de verdad que se tienen confianza.",
+        "  - Si la escena es íntima o erótica, habla de forma directa, sensual, pícara y con dirty talk moderno, sin metáforas barrocas ni poesía pretenciosa.",
+        `  - PROPORCIÓN ESTRICTA Y OBLIGATORIA: ${Math.round(dialogueRatio * 100)}% DIÁLOGO HABLADO DIRECTO (el personaje habla y platica extensamente con su voz) y solo ${Math.round(narrationRatio * 100)}% ACCIÓN FÍSICA EN ASTERISCOS (un simple gesto físico breve de 8-12 palabras máximo).`,
+        "  - ESTRICTAMENTE PROHIBIDO que el relato en asteriscos sea más largo que el diálogo hablado. El usuario está para conversar de tú a tú, no para leer un libro.",
         customDirective ? `DIRECTIVAS Y REGLAS PERSONALIZADAS DE MEMORIA:\n${customDirective}` : "",
         ...roleplayPacingAndLanguageRules(history.length, spanish, targetTokens, isLiveCall, isChatPage, dialogueRatio, narrationRatio),
         slangInstruction(body.language, body.region),
@@ -1169,7 +1174,7 @@ export default async function handler(req, res) {
         if (!content) {
           try {
             content = await generateOpenRouter(openRouterMessages, {
-              models: ["nvidia/nemotron-3-ultra-550b-a55b:free", "liquid/lfm-2.5-2.6b:free", "openrouter/free"],
+              models: ["nvidia/nemotron-3-ultra-550b-a55b:free", "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free"],
               maxTokens: targetTokens,
               temperature: 0.8,
               timeoutMs: 4500,
@@ -1204,7 +1209,7 @@ export default async function handler(req, res) {
       if (!content) {
         try {
           content = await generateOpenRouter(openRouterMessages, {
-            models: ["nvidia/nemotron-3-ultra-550b-a55b:free", "openrouter/free"],
+            models: ["nvidia/nemotron-3-ultra-550b-a55b:free", "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free"],
             maxTokens: targetTokens,
             temperature: 0.82,
             timeoutMs: 4500,

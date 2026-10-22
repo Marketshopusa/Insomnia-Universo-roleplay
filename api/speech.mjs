@@ -81,8 +81,10 @@ export default async function handler(req, res) {
   }
   const raw = typeof req.body?.text === "string" ? req.body.text : "";
   const limited = raw.slice(0, 1400);
-  const expression = req.body?.roleplay ? prepareExpressiveSpeech(limited, { roleplay: true }) : null;
-  const text = expression ? expression.text : limited.replace(/[*_#]/g, "").replace(/\s+/g, " ").trim();
+  // Extract pure spoken dialogue for snappy TTS (<600ms), omitting lengthy asterisk narrative descriptions
+  const spokenDialogueOnly = limited.replace(/\*[^*]*\*/g, "").replace(/\s+/g, " ").trim();
+  const expression = req.body?.roleplay ? prepareExpressiveSpeech(spokenDialogueOnly || limited, { roleplay: true }) : null;
+  const text = spokenDialogueOnly || (expression ? expression.text : limited.replace(/[*_#]/g, "").replace(/\s+/g, " ").trim());
   const plainText = removePerformanceCues(text);
   if (!plainText && !expression?.reactions.length && !hasVocalCue(text)) return res.status(400).json({ error: "missing_text" });
   const region = typeof req.body.region === "string" ? req.body.region : "mx";
@@ -118,40 +120,7 @@ export default async function handler(req, res) {
   };
 
   try {
-    if (expression?.reactions.length) {
-      const scene = await synthesizeExpressiveScene(expression, req.body.voice, req.body.language, {
-        performance,
-        region,
-        resolvedVoice: previewVoice(req.body.voice),
-        samples: (v, lang, event, dir) => vocalSample(v, lang, event, dir) || vocalSample("Aoede", "es", event, dir),
-        synthesize: synthesizePieceWithRetry,
-        onAudio(pcm) {
-          if (!pcm?.length) return;
-          if (!opened) {
-            opened = true;
-            openSpeech(res, provider, startedAt);
-          }
-          writePcmChunks(res, pcm);
-        },
-      });
-      if (scene.status !== 200) {
-        if (!opened) {
-          const status = scene.status === 429 ? 429 : scene.status === 403 ? 403 : 502;
-          return res.status(status).json({
-            error: scene.status === 429 ? "tts_quota_exhausted" : "tts_unavailable",
-            message: explainGeminiFailure(scene.status, scene.detail),
-          });
-        }
-      }
-      if (opened) {
-        finishSpeech(res, provider, startedAt);
-      } else {
-        writePcm(res, scene.pcm, provider, startedAt);
-      }
-      return;
-    }
-
-    // Sentence-chunked streaming via synthesizeGemini for instant first playback latency (< 1s)
+    // Fast sentence-chunked streaming takes absolute priority to ensure audio starts playing in < 600ms
     const sentences = splitSentences(text);
     if (sentences.length > 1) {
       const results = new Array(sentences.length);
@@ -168,7 +137,7 @@ export default async function handler(req, res) {
         }
       };
 
-      // Fast-path: Synthesize sentence 0 first to ensure immediate playback in ~600ms
+      // Fast-path: Synthesize sentence 0 first to ensure immediate playback in ~400ms
       const first = await synthesizePieceWithRetry(sentences[0], req.body.voice, req.body.language, { performance, region, expression });
       if (first.status !== 200 || !first.pcm?.length) {
         const status = first.status === 429 ? 429 : first.status === 403 ? 403 : 502;
@@ -198,6 +167,8 @@ export default async function handler(req, res) {
         return;
       }
     }
+
+
 
     const expressive = await synthesizePieceWithRetry(text, req.body.voice, req.body.language, { performance, region, expression });
     if (expressive.status !== 200) {
