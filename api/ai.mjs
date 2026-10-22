@@ -821,10 +821,17 @@ export default async function handler(req, res) {
         if (dialWordCount < 8 && narrWordCount > 15) return true;
         // Rechazar si el relato en asteriscos supera al diálogo hablado
         if (narrWordCount > 25 && narrWordCount >= dialWordCount) return true;
-        // Rechazar alucinaciones de modelos micro o texto roto/corrupto (bici ligera, saboreándose mi cuello lento calorcito, fingers)
+        // Rechazar alucinaciones de modelos micro o texto roto/corrupto (bici ligera, manos mapaches, fingers)
         if (/\b(?:bici\s+ligera|manos\s+mapaches|fingers|patas\s+abiertas|suby[eé]ndose)\b/i.test(reply)) return true;
         // Rechazar respuestas que terminen con oraciones rotas o inconclusas como "solo..." o "pero..."
         if (/\b(?:solo|pero|y|que|con|de|en|tu|mi|su|muy)\.{2,}\s*$/i.test(reply)) return true;
+        // Rechazar inversiones absurdas de parentesco y genero (ej: decirle "primo" o "dulcita princesa" al Tio)
+        const isTioRole = /\bt[ií]o\b/i.test(playerName) || /\bt[ií]o\b/i.test(characterName) || /\bsobrin[ao]\b/i.test(characterName) || /\bsobrin[ao]\b/i.test(sceneContext);
+        if (isTioRole) {
+          if (/\b(?:primo|prima|hermano|hermana|dulcita\s+princesa|mi\s+princesa)\b/i.test(reply.replace(/\*[^*]*\*/g, ""))) {
+            return true;
+          }
+        }
 
         const userNorm = latest.replace(/[^\w]+/g, " ").trim().toLowerCase();
         const replyNorm = reply.replace(/\*[^*]*\*/g, "").replace(/[^\w]+/g, " ").trim().toLowerCase();
@@ -894,105 +901,34 @@ export default async function handler(req, res) {
       const playerName = String(story.player_role || "Usuario").slice(0, 80);
       if (!latest) return send(res, 400, { error: "missing_message" });
 
-      // Resolver de Personaje Activo en Escena (conservando siempre el contexto y la memoria de la tarjeta)
+      // ===============================================================
+      // IDENTIDAD, PARENTESCO Y GÉNERO SAGRADOS (KINSHIP & GENDER LOCK)
+      // ===============================================================
       const defaultFirstName = (characterName.match(/[A-ZÁÉÍÓÚÑ][a-záéíóúñ]{2,}/)?.[0] || characterName.split(/[\s,()]+/)[0] || "Personaje").trim();
       const playerFirstName = (playerName.match(/[A-ZÁÉÍÓÚÑ][a-záéíóúñ]{2,}/)?.[0] || playerName.split(/[\s,()]+/)[0] || "Usuario").trim();
-      const defaultIsSobrina = /sobrin|estefan[ií]a|maya/i.test(characterName) || /t[ií][oa]/i.test(playerName) || /\b(?:sobrin[ao]|t[ií][oa])\b/i.test(sceneContext);
-      const nonNameWords = new Set(["abre","abrio","abrió","entra","entro","entró","llega","llego","llegó","dice","dijo","me","te","se","nos","le","les","lo","la","el","los","las","un","una","unos","unas","mi","mis","tu","tus","su","sus","que","quien","como","cuando","donde","mientras","pero","porque","aunque","acaso","dime","callate","cállate","bueno","claro","entonces","ahora","antes","despues","después","nunca","siempre","tambien","también","solo","sólo","casi","toda","todo","todos","todas","otro","otra","otros","otras","mismo","misma","ese","esa","eso","este","esta","esto","sin","con","por","para","sobre","entre","en","de","del","al","y","e","o","no","si","sí","ya","muy","más","mayor","menor","pequeña","grande","hermosa","bella","caliente","desnuda","viene","sale","va","fue","era","es","está","estaba","tiene","hace","ve","mira","besa","abraza","toca","salta","camina","corre","grita","gime","llora","ríe","sonríe","cierra","allí","alli","aquí","aqui"]);
-      const isValidFirstName = (w) => {
-        if (!w || w.length < 3 || w.length > 15) return false;
-        const c0 = w.charAt(0);
-        if (c0 !== c0.toUpperCase() || c0 === c0.toLowerCase()) return false;
-        const low = w.toLowerCase();
-        const asc = low.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-        if (nonNameWords.has(low) || nonNameWords.has(asc)) return false;
-        if (low === defaultFirstName.toLowerCase() || low === playerFirstName.toLowerCase()) return false;
-        return true;
-      };
-      const isDirectSwitchToTarget = (text, targetWord) => {
-        if (!targetWord) return false;
-        const esc = targetWord.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-        return new RegExp(
-          `(?:^|[.!?¡¿]\\s*|["«“])\\s*(?:hola\\s+|oye\\s+|mira\\s+|ven\\s+|dime\\s+)?${esc}\\s*[,!?:]|` +
-          `\\b(?:le\\s+(?:digo|pregunto|susurro|respondo|hablo|pido|ordeno)\\s+a|hablo\\s+con|llamo\\s+a|busco\\s+a|voy\\s+(?:con|donde|hacia)|entro\\s+(?:con|donde)|me\\s+acerco\\s+a|beso\\s+a|abrazo\\s+a|toco\\s+a|miro\\s+a|agarro\\s+a|tomo\\s+a)\\s+(?:mi\\s+|su\\s+|la\\s+)?${esc}\\b`,
-          "i",
-        ).test(text);
-      };
-      const knownChars = new Map();
-      const parseCharLine = (lineText, currentlySwitched) => {
-        const t = String(lineText || "").trim();
-        if (!t) return null;
-        const preNamed = t.match(/\b([A-ZÁÉÍÓÚÑ][a-záéíóúñ]{2,15})\s*,?\s*(?:[Mm]i|[Ss]u|[Ll]a)\s+(hermana|hermanita|prima|primita|cuñada|mam[aá]|madre|t[ií]a|vecina|amiga|sobrina)\b/);
-        const rawKinMatches = [...t.matchAll(/\b((?:su|la|mi)\s+mam[aá]|(?:su|la|mi)\s+madre|mam[aá]|madre|como\s+hermanos|herman[ao]s?|hermanit[ao]s?|prim[ao]|primit[ao]|cuñad[ao]|t[ií][ao]|sobrin[ao]|vecin[ao]|amig[ao]|suegr[ao]|esposa|novia|jefa|secretaria|profesora|enfermera|doctora)(?:\s+(?:llamad[ao]\s+)?([A-ZÁÉÍÓÚÑ][a-záéíóúñ]{2,15}))?\b/gi)];
-        const kinMatches = rawKinMatches.filter((m) => {
-          const idx = m.index ?? 0;
-          const prefix = t.slice(Math.max(0, idx - 25), idx);
-          return !/\bno\s+(?:era|es|fue)\s+(?:mi|tu|su|la)\s*$/i.test(prefix);
-        });
-        let rawKin = "", candName = "";
-        if (preNamed && isValidFirstName(preNamed[1])) {
-          candName = preNamed[1].charAt(0).toUpperCase() + preNamed[1].slice(1).toLowerCase();
-          rawKin = preNamed[2].toLowerCase();
-        } else if (kinMatches.length > 0) {
-          const nonDef = kinMatches.filter((m) => !/^(?:sobrin[ao]|t[ií]o)$/i.test((m[1] || "").trim()));
-          const chosen = nonDef.length > 0 ? nonDef.at(-1) : kinMatches.at(-1);
-          rawKin = (chosen[1] || "").toLowerCase().trim();
-          const afterWord = (chosen[2] || "").trim();
-          if (afterWord && isValidFirstName(afterWord)) {
-            candName = afterWord.charAt(0).toUpperCase() + afterWord.slice(1).toLowerCase();
-          }
-        }
-        if (rawKin) {
-          if (/sobrin/i.test(rawKin) && defaultIsSobrina) {
-            if (currentlySwitched && !isDirectSwitchToTarget(t, "sobrina")) return null;
-            return { isDefault: true, name: defaultFirstName, role: "sobrina", addressTerm: "Tío" };
-          }
-          let role = rawKin, addressTerm = playerFirstName;
-          if (/herman/i.test(rawKin) || ((/su\s+mam|su\s+madre|la\s+mam|la\s+madre/i.test(rawKin) || (/^(?:mam[aá]|madre)$/i.test(rawKin) && defaultIsSobrina)) && !/mi\s+mam|mi\s+madre/i.test(rawKin))) {
-            role = `la hermana de ${playerFirstName}`; addressTerm = "hermano";
-          } else if (/mam[aá]|madre/i.test(rawKin)) {
-            role = `la mamá de ${playerFirstName}`; addressTerm = "hijo";
-          } else if (/prim/i.test(rawKin)) {
-            role = `la prima de ${playerFirstName}`; addressTerm = "primo";
-          } else if (/cuñad/i.test(rawKin)) {
-            role = `la cuñada de ${playerFirstName}`; addressTerm = "cuñado";
-          } else if (/t[ií]a/i.test(rawKin)) {
-            role = `la tía de ${playerFirstName}`; addressTerm = "sobrino";
-          } else if (/vecin/i.test(rawKin)) {
-            role = `la vecina de ${playerFirstName}`; addressTerm = "vecino";
-          }
-          const prev = [...knownChars.values()].find((v) => v.role === role);
-          const finalName = candName || prev?.name || "";
-          const info = { isDefault: false, name: finalName, role, addressTerm };
-          if (finalName) knownChars.set(finalName.toLowerCase(), { name: finalName, role, addressTerm });
-          return info;
-        }
-        for (const [k, v] of knownChars.entries()) {
-          if (new RegExp(`\\b${k}\\b`, "i").test(t)) return { isDefault: false, ...v };
-        }
-        if (defaultFirstName && new RegExp(`\\b${defaultFirstName}\\b`, "i").test(t)) {
-          if (currentlySwitched) {
-            if (isDirectSwitchToTarget(t, defaultFirstName)) {
-              return { isDefault: true, name: defaultFirstName, role: characterName, addressTerm: defaultIsSobrina ? "Tío" : playerFirstName };
-            }
-            return null;
-          }
-          return { isDefault: true, name: defaultFirstName, role: characterName, addressTerm: defaultIsSobrina ? "Tío" : playerFirstName };
-        }
-        return null;
-      };
-      let activeSwitch = null;
-      for (const h of history) {
-        if (h.role === "user") {
-          const p = parseCharLine(h.text, Boolean(activeSwitch && !activeSwitch.isDefault));
-          if (p) activeSwitch = p;
-        }
-      }
-      const latestSwitch = parseCharLine(latest, Boolean(activeSwitch && !activeSwitch.isDefault));
-      if (latestSwitch) activeSwitch = latestSwitch;
-      const isSwitchedChar = Boolean(activeSwitch && !activeSwitch.isDefault);
-      const switchedFullLabel = isSwitchedChar ? (activeSwitch.name ? `${activeSwitch.name} (${activeSwitch.role})` : activeSwitch.role) : characterName;
-      const switchedAddress = isSwitchedChar ? activeSwitch.addressTerm : (defaultIsSobrina ? "Tío" : playerFirstName);
+      
+      const isPlayerTio = /\bt[ií]o\b/i.test(playerName) || /\bt[ií]o\b/i.test(characterName) || /\bsobrin[ao]\b/i.test(characterName) || /\bsobrin[ao]\b/i.test(sceneContext);
+      const isCharacterSobrina = /\bsobrin[ao]\b/i.test(characterName) || isPlayerTio;
+      const kinshipTerm = isCharacterSobrina ? "Tío" : (/t[ií]a/i.test(characterName) ? "Sobrino" : (/mam[aá]|madre/i.test(characterName) ? "Hijo" : (/herman[ao]/i.test(characterName) ? "Hermano" : playerFirstName)));
+
+      const kinshipDirective = [
+        "",
+        "REGLA SAGRADA DE IDENTIDAD, PARENTESCO Y GÉNERO (INMUTABLE Y OBLIGATORIA):",
+        `1. TU IDENTIDAD FIJA: Eres ${characterName} (${defaultFirstName}). Eres una MUJER en primera persona. NUNCA cambies de identidad.`,
+        `2. LA IDENTIDAD DEL USUARIO: El usuario es ${playerName} (${playerFirstName}). Es un HOMBRE.`,
+        isCharacterSobrina
+          ? `3. PARENTESCO INVIOLABLE: ${playerFirstName} es tu TÍO, y tú eres su SOBRINA. DEBES llamarlo SIEMPRE 'Tío' (o 'Tío ${playerFirstName}'). ESTRICTAMENTE PROHIBIDO llamarlo 'primo', 'hermano', 'papá' o inventar otros parentescos jamás.`
+          : `3. PARENTESCO INVIOLABLE: Tu relación con ${playerFirstName} es de ${characterName} con su ${playerName}. PROHIBIDO TERMINANTEMENTE alterar o inventar otro parentesco.`,
+        "4. CERO INVERSIÓN DE GÉNERO Y ROLES FÍSICOS:",
+        `   - El usuario (${playerFirstName}) es un HOMBRE adulto. ESTRICTAMENTE PROHIBIDO llamarlo 'princesa', 'niña', 'nena', 'reina', 'empapadita' ni usar ningún apelativo femenino.`,
+        `   - Tú eres la MUJER en la escena. Si hay caricias íntimas, contacto físico o pasión, tú eres quien gime, siente el calor de su cuerpo y le habla con entrega y cariño de tú a tú a tu ${kinshipTerm}.`,
+        "5. COHERENCIA DE DIÁLOGO:",
+        `   - Habla con soltura y cariño hacia tu ${kinshipTerm}. Responde con sentido común a lo que él te acaba de decir sin desconectarte de la situación.`,
+        "",
+      ].join("\n");
+
+      systemInstruction += "\n" + kinshipDirective;
+
       const line = (entry) => (entry.role === "model" ? characterName : playerName) + ": " + entry.text.slice(0, 320);
       const recentTurnLimits = {
         "2k": 24,
@@ -1014,15 +950,6 @@ export default async function handler(req, res) {
       }
       if (remembered) {
         systemInstruction += "\n" + remembered;
-      }
-      if (isSwitchedChar) {
-        systemInstruction += [
-          "",
-          `ESTADO ACTUAL DE LA ESCENA (INTERLOCUTOR ACTIVO):`,
-          `- En este momento de la historia, quien está interactuando físicamente y hablando con ${playerFirstName} es ${switchedFullLabel}.`,
-          `- Habla y reacciona en primera persona desde la perspectiva de ${switchedFullLabel}, manteniendo su relación real con ${playerFirstName} (${switchedAddress}) y con ${defaultFirstName}.`,
-          `- Si ${playerFirstName} mezcla diálogo directo con explicaciones en tercera persona (por ejemplo diciendo 'aunque mi hermana no me lo había confesado' o mencionando a ${defaultFirstName} en tercera persona), comprende con lógica que se lo está diciendo a ${switchedFullLabel}.`,
-        ].join("\n");
       }
       const lastModelLine = recentModelTurns.at(-1) ? recentModelTurns.at(-1).slice(0, 220) : "";
       const antiRepeatDirective = lastModelLine

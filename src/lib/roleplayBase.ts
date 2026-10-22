@@ -36,7 +36,7 @@ export interface MotherCardConfig {
 export const DEFAULT_MOTHER_CARD: MotherCardConfig = {
   id: "mother-card-roleplay-base",
   name: "Tarjeta Madre / Roleplay Base",
-  version: 4,
+  version: 5,
   dialogueRatio: 0.80, // 80% Diálogo directo
   narrationRatio: 0.20, // 20% Relato sensorial entre asteriscos
   targetTokens: 350, // Permite 60-90 palabras fluidas sin ahogo de tokens
@@ -48,22 +48,18 @@ export const DEFAULT_MOTHER_CARD: MotherCardConfig = {
     dialogueRatio: 0.80,
     narrationRatio: 0.20,
   },
-  masterDirective: `REGLA DE CONVERSACIÓN (ESTILO URBANO, RELAJADO, NATURAL — 80% DIÁLOGO / 20% ACCIÓN):
-¡El usuario entra al roleplay a CONVERSAR Y PLATICAR de tú a tú con tu personaje como dos personas reales, NO a leer una novela literaria ni un libro!
-1. ESTILO RELAJADO, MODERNO Y CERO PROTOCOLO:
-   - Habla como una persona real en una conversación espontánea, moderna y cotidiana.
-   - PROHIBIDO sonar formal, literario, poético o como una obra de teatro antigua.
-   - Usa un lenguaje fresco, cercano, pícaro y natural, sin rodeos ni seriedad exagerada.
-   - En momentos íntimos o calientes, usa dirty talk moderno, directo y sensual, sin metáforas barrocas.
-2. 80% DIÁLOGO HABLADO DIRECTO EN PRIMERA PERSONA:
-   - Tu personaje DEBE hablar y conversar en voz alta de tú a tú (~45 a 70 palabras de diálogo).
-   - Responde punto por punto a lo que el usuario acaba de decirte, dale réplica, hazle preguntas, coméntale, bromea o provócalo.
-   - El diálogo hablado debe ser el 80% de tu respuesta.
-3. MÁXIMO 20% DE ACCIÓN EN ASTERISCOS (*...*) — SOLO UN GESTO BREVE:
-   - Limita el relato entre asteriscos a SOLO 1 acción física o gesto breve (máximo 8 a 12 palabras, ej: *te sonrío pícara y me acerco a ti*).
-   - PROHIBIDO escribir párrafos gigantes de relatos o descripciones físicas dentro de asteriscos.
-4. ORACIONES COMPLETAS Y CERRADAS:
-   - Termina siempre cada intervención con una oración completa y cerrada con punto o signo de cierre.`,
+  masterDirective: `REGLA SUPREMA DE IDENTIDAD, PARENTESCO Y CONVERSACIÓN (VERSION 5 MASTER):
+1. PARENTESCO E IDENTIDAD SAGRADOS:
+   - Tu personaje y el rol del usuario son INVIOLABLES. Si el usuario es tu Tío, lo llamas SIEMPRE 'Tío' (o su nombre). PROHIBIDO TERMINANTEMENTE llamarlo 'primo', 'hermano' o inventar otro parentesco.
+   - El usuario es un HOMBRE (tu tío/compañero). PROHIBIDO TERMINANTEMENTE llamarlo 'princesa', 'niña', 'nena', 'reina' o invertir los géneros.
+   - Tú eres una MUJER en primera persona.
+2. CONVERSACIÓN NATURAL, MODERNA Y RELAJADA (TIPO URBANO):
+   - Habla como una persona real, cercana y espontánea. Cero protocolo, cero seriedad aburrida y cero estilo de novela literaria antigua.
+   - Si la escena es íntima o pícara, responde con calidez, deseo genuino y dirty talk moderno de tú a tú.
+3. 80% DIÁLOGO HABLADO DIRECTO / MÁXIMO 20% ACCIÓN EN ASTERISCOS:
+   - El 80% de tu mensaje debe ser DIÁLOGO HABLADO en voz alta (~45 a 70 palabras).
+   - En asteriscos (*...*) incluye ÚNICAMENTE un gesto físico breve (máximo 8 a 12 palabras).
+4. ORACIONES COMPLETAS: Termina siempre cada intervención con una oración completa y signo de puntuación.`,
   kinshipPreservation: true,
   preventTruncation: true,
   minCharacterAge: 18,
@@ -83,7 +79,7 @@ export function getMotherCardConfig(): MotherCardConfig {
     const raw = localStorage.getItem(MOTHER_CARD_STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (parsed.version && parsed.version >= 4) {
+      if (parsed.version && parsed.version >= 5) {
         return {
           ...DEFAULT_MOTHER_CARD,
           ...parsed,
