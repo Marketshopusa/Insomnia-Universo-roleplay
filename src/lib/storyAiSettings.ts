@@ -23,7 +23,7 @@ export const AVAILABLE_AI_MODELS: AiModelOption[] = [
     description: "Modelo de IA de pensamiento rápido: respuestas instantáneas, conversaciones fluidas.",
     bullet1: "Creado para chats cotidianos con alta velocidad y eficiencia sin censura.",
     bullet2: "Respuesta promedio en ~1.5 segundos con excelente coherencia en español.",
-    nvidiaModel: "google/diffusiongemma-26b-a4b-it",
+    nvidiaModel: "meta/llama-3.2-11b-vision-instruct",
   },
   {
     id: "magnum-v4-local",
@@ -43,7 +43,7 @@ export const AVAILABLE_AI_MODELS: AiModelOption[] = [
     bullet1: "Fuerte en conversaciones largas y razonamiento complejo.",
     bullet2: "Mantiene la fidelidad del personaje y acata órdenes físicas al pie de la letra.",
     openRouterModel: "mistralai/mistral-nemo",
-    nvidiaModel: "google/diffusiongemma-26b-a4b-it",
+    nvidiaModel: "meta/llama-3.2-11b-vision-instruct",
   },
   {
     id: "qwen-3.8-flash",
@@ -54,7 +54,7 @@ export const AVAILABLE_AI_MODELS: AiModelOption[] = [
     bullet1: "Sumérgete en escenas casuales y mantén el diálogo fluido.",
     bullet2: "Excelente manejo de acentos y expresiones directas.",
     openRouterModel: "qwen/qwen-2.5-72b-instruct",
-    nvidiaModel: "google/diffusiongemma-26b-a4b-it",
+    nvidiaModel: "meta/llama-3.2-11b-vision-instruct",
   },
   {
     id: "glm-5.3-flash",
@@ -65,7 +65,7 @@ export const AVAILABLE_AI_MODELS: AiModelOption[] = [
     bullet1: "Explora escenas construidas en torno a trasfondos detallados de personajes.",
     bullet2: "Rápida adaptación a giros dramáticos en la trama.",
     openRouterModel: "thudm/glm-4-9b-chat",
-    nvidiaModel: "google/diffusiongemma-26b-a4b-it",
+    nvidiaModel: "meta/llama-3.2-11b-vision-instruct",
   },
 
   // Standard
@@ -78,7 +78,7 @@ export const AVAILABLE_AI_MODELS: AiModelOption[] = [
     bullet1: "Combina conversaciones de personajes con ambientación y narración.",
     bullet2: "Alta sensibilidad psicológica al estado de ánimo del protagonista.",
     openRouterModel: "qwen/qwen-2.5-72b-instruct",
-    nvidiaModel: "nvidia/nemotron-3-super-120b-a12b",
+    nvidiaModel: "meta/llama-3.2-11b-vision-instruct",
   },
   {
     id: "qwen-plus",
@@ -89,7 +89,7 @@ export const AVAILABLE_AI_MODELS: AiModelOption[] = [
     bullet1: "Sólido en conversaciones largas con una empatía más profunda.",
     bullet2: "Rica expresividad en diálogos en voz alta y detalles sensoriales.",
     openRouterModel: "qwen/qwen-2.5-72b-instruct",
-    nvidiaModel: "nvidia/nemotron-3-super-120b-a12b",
+    nvidiaModel: "meta/llama-3.2-11b-vision-instruct",
   },
 
   // Premium
@@ -102,7 +102,7 @@ export const AVAILABLE_AI_MODELS: AiModelOption[] = [
     bullet1: "Ajusta la personalidad, el tono y las reglas de cada escena.",
     bullet2: "Carácter audaz, directo y sin tabúes para tramas apasionadas.",
     openRouterModel: "anthracite-org/magnum-v4-72b",
-    nvidiaModel: "nvidia/nemotron-3-super-120b-a12b",
+    nvidiaModel: "meta/llama-3.2-11b-vision-instruct",
   },
   {
     id: "dola-seed-lite",
@@ -113,7 +113,7 @@ export const AVAILABLE_AI_MODELS: AiModelOption[] = [
     bullet1: "Combina el diálogo de los personajes con una narración que ambienta la escena.",
     bullet2: "Mantiene la proporción cinematográfica ideal sin divagar.",
     openRouterModel: "anthracite-org/magnum-v4-72b",
-    nvidiaModel: "nvidia/nemotron-3-super-120b-a12b",
+    nvidiaModel: "meta/llama-3.2-11b-vision-instruct",
   },
   {
     id: "glm-5.2",
@@ -124,7 +124,7 @@ export const AVAILABLE_AI_MODELS: AiModelOption[] = [
     bullet1: "Ofrece diálogos naturales con una gran consistencia de personajes.",
     bullet2: "Comprensión profunda de parentescos y jerarquías familiares.",
     openRouterModel: "anthracite-org/magnum-v4-72b",
-    nvidiaModel: "nvidia/nemotron-3-super-120b-a12b",
+    nvidiaModel: "meta/llama-3.2-11b-vision-instruct",
   },
   {
     id: "wizardlm-8x22b",
@@ -135,7 +135,7 @@ export const AVAILABLE_AI_MODELS: AiModelOption[] = [
     bullet1: "Sobresale en narraciones detalladas y de formato largo.",
     bullet2: "Excelente vocabulario literario y sensorial en español.",
     openRouterModel: "microsoft/wizardlm-2-8x22b",
-    nvidiaModel: "nvidia/nemotron-3-super-120b-a12b",
+    nvidiaModel: "meta/llama-3.2-11b-vision-instruct",
   },
 
   // Deluxe
@@ -148,7 +148,7 @@ export const AVAILABLE_AI_MODELS: AiModelOption[] = [
     bullet1: "Genera respuestas de personajes ricas, detalladas y profundamente inmersivas.",
     bullet2: "Especialista mundial en roleplay adulto sin censura y Dirty Talk.",
     openRouterModel: "sao10k/l3.3-euryale-70b",
-    nvidiaModel: "nvidia/nemotron-3-super-120b-a12b",
+    nvidiaModel: "meta/llama-3.2-11b-vision-instruct",
   },
   {
     id: "skylark-pro",
@@ -159,7 +159,7 @@ export const AVAILABLE_AI_MODELS: AiModelOption[] = [
     bullet1: "Sobresale en personajes consistentes, diálogos naturales y narraciones expresivas.",
     bullet2: "Sensibilidad extrema para dinámicas románticas y de complicidad.",
     openRouterModel: "sao10k/l3.3-euryale-70b",
-    nvidiaModel: "nvidia/nemotron-3-super-120b-a12b",
+    nvidiaModel: "meta/llama-3.2-11b-vision-instruct",
   },
   {
     id: "deepseek-v4-pro",
@@ -170,7 +170,7 @@ export const AVAILABLE_AI_MODELS: AiModelOption[] = [
     bullet1: "Proporciona interacciones fluidas y similares a las humanas con lógica deductiva.",
     bullet2: "Resuelve con maestría situaciones con múltiples personajes presentes en la habitación.",
     openRouterModel: "deepseek/deepseek-chat",
-    nvidiaModel: "nvidia/nemotron-3-super-120b-a12b",
+    nvidiaModel: "meta/llama-3.2-11b-vision-instruct",
   },
   {
     id: "dola-seed-pro",
@@ -181,7 +181,7 @@ export const AVAILABLE_AI_MODELS: AiModelOption[] = [
     bullet1: "Explora motivos ocultos y deja que cada decisión dé forma a lo que sigue.",
     bullet2: "Cero disociación y memoria fotográfica de eventos anteriores.",
     openRouterModel: "sao10k/l3.3-euryale-70b",
-    nvidiaModel: "nvidia/nemotron-3-super-120b-a12b",
+    nvidiaModel: "meta/llama-3.2-11b-vision-instruct",
   },
 ];
 

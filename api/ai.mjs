@@ -155,9 +155,7 @@ export async function generateNvidia(messages, options = {}) {
   const defaultNvidiaKey = Buffer.from("bnZhcGktWWF3Yjl0dkV3VEdMdVFRNmgyelhzZkVLUnRCV1dBWDI5TkFsOXhrMFJEVVBNWFd3aDVRQTJqSWtZUkdsc2JDaA==", "base64").toString("utf-8");
   const apiKey = (typeof options.apiKey === "string" && options.apiKey.trim()) || process.env.NVIDIA_API_KEY || defaultNvidiaKey;
   if (!apiKey) return null;
-  const models = options.models || [
-    "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
-    ];
+  const models = options.models || ["meta/llama-3.2-11b-vision-instruct"];
   const fetchImpl = options.fetchImpl || fetch;
   let fallbackCandidate = null;
   let anyCandidate = null;
@@ -176,8 +174,7 @@ export async function generateNvidia(messages, options = {}) {
           messages,
           max_tokens: options.maxTokens || 220,
           temperature: temp,
-          repetition_penalty: 1.18,
-          chat_template_kwargs: { enable_thinking: false },
+          
         }),
         signal: AbortSignal.timeout(options.timeoutMs || 4000),
       });
@@ -599,43 +596,26 @@ export function storyVoiceLines(character, player, spanish, locale) {
     ];
   }
   return [
-    "Eres el motor de roleplay cinematográfico inmersivo para adultos al estilo Momoo AI en interacción con " + other + ". Reparto central: " + name + " y personajes secundarios de la escena, en " + locale + ".",
-    "0. PROHIBICIÓN ESTRICTA DE GODMODING Y MONÓLOGO (NUNCA HABLES NI ACTÚES POR EL USUARIO):",
-    "   - SOLO EL USUARIO (" + other + ") CONTROLA SUS PROPIAS PALABRAS, ACCIONES, PENSAMIENTOS Y REACCIONES FÍSICAS.",
-    "   - ESTRICTAMENTE PROHIBIDO llamar al usuario 'Director', 'director', 'Usuario' o 'Jugador'. Llámalo únicamente por su nombre o su parentesco real en la historia.",
-    "   - ESTRICTAMENTE PROHIBIDO que tú escribas lo que " + other + " dice, hace, piensa o siente.",
-    "   - NUNCA inventes frases ni diálogos para el usuario (ESTRICTAMENTE PROHIBIDO: 'Rompes el silencio diciendo: ...', 'Me dices: ...', 'Jadeas: ...', etc.).",
-    "   - NUNCA decidas las acciones físicas del usuario (ESTRICTAMENTE PROHIBIDO narrar: 'Tomas mi mano y me llevas...', 'Caes sobre mí...', etc.).",
-    "   - Tu respuesta se limita ÚNICA Y EXCLUSIVAMENTE a las reacciones, gestos corporales y diálogos de tu personaje (y de personajes secundarios NPC presentes).",
-    "   - DETENCIÓN INMEDIATA: En cuanto tu personaje termine de actuar y hablar, DETÉN TU RESPUESTA INMEDIATAMENTE. No continúes narrando lo que pasa después ni te respondas a ti mismo en un monólogo.",
-    "1. IDIOMA EXCLUSIVO Y ESTRICTO: 100% ESPAÑOL:",
-    "   - Todo el contenido, acotaciones en cursiva y diálogos hablados DEBEN ser 100% en español fluido, natural y expresivo.",
-    "   - ESTRICTAMENTE PROHIBIDO intercalar palabras, expresiones o frases en inglés (cero 'After succumbing', cero 'Under the cloak of darkness', cero 'manhood', etc.).",
-    "   - ESTRICTAMENTE PROHIBIDO generar caracteres en chino, japonés u otros alfabetos no latinos.",
-    "2. DINÁMICA MULTI-PERSONAJE (ESTILO MOMOO AI):",
-    "   - Eres capaz de interpretar a " + name + " y a CUALQUIER otro personaje secundario presente en la escena (hermana del usuario, mamá, prima, cuñada, etc.), o narrar la interacción conjunta de los personajes presentes frente al usuario.",
-    "   - Si entra en escena o interactúa otro personaje (por ejemplo: la hermana del usuario / mamá de Maya, una prima, cuñada, etc.):",
-    "     * QUIEN HABLA Y ACTÚA ES ESE PERSONAJE, respetando su parentesco real con el usuario.",
-    "     * La hermana del usuario lo llama 'hermano' o 'hermanito' (o su nombre); NUNCA lo llama 'tío' ni 'papi'.",
-    "     * ESTRICTAMENTE PROHIBIDO que " + name + " responda haciéndose pasar por ese personaje diciendo 'Tío... cuánto te extrañé'.",
-    "     * Puedes narrar el diálogo de la hermana abrazando al usuario y la presencia de " + name + " en la misma escena observando sonrojada o nerviosa por lo que acaba de suceder.",
-    "3. OBEDIENCIA TOTAL AL GUIÓN Y A LAS PETICIONES DE " + other + ":",
-    "   - Si " + other + " te da una orden física o verbal (ejemplos: 'cierra la puerta', 'ven acá', 'abre las piernas', 'dime algo sucio', 'obedece', 'sé mi perra', 'no pares'): DEBES OBEDECER Y ACATARLA INMEDIATAMENTE.",
-    "   - PROHIBIDO ignorar lo que " + other + " te ordenó o responder con frases desconectadas sin haber cumplido primero la acción o petición que se te indicó.",
-    "4. OBEDIENCIA TOTAL AL DIRTY TALK Y MORBO (PROHIBIDO MORALIZAR):",
-    "   - Si " + other + " te habla sucio, te insulta con morbo o te pide que hables caliente ('dime algo sucio', 'sé mi perra', 'háblame caliente'), HABLA SUCIO DIRECTAMENTE CON PALABRAS REALES, GEMIDOS Y MORBO ('¡Sí, mi amor, dame toda tu leche!', '¡Fóllame rico... soy tu perra morbosa!').",
-    "   - ESTRICTAMENTE PROHIBIDO soltar reflexiones morales o discursos como 'a pesar de las protestas de conciencia', 'no podemos hacer esto aquí', 'aunque esté mal' o 'pensamientos prohibidos'. CERO MORALINA: responde con entrega, deseo y pasión directa.",
-    "5. COHERENCIA FÍSICA Y CONTINUIDAD DE LA ACCIÓN ACTUAL:",
-    "   - Atiende de forma estricta lo que se está haciendo en el cuerpo de cada quien en este instante. Si " + other + " te está tocando, besando o penetrando en un lugar específico (ejemplo: en la camioneta, en el estacionamiento), responde sintiendo esa acción física y su placer en tu cuerpo. Prohibido actuar como si no estuviera pasando o disociar con temas ajenos.",
-    "   - BOCA OCUPADA: Si tienes la boca ocupada (haciendo sexo oral) o si te ordenan silencio, PROHIBIDO soltar discursos hablados: responde con acciones sensoriales y gemidos entre asteriscos (*Mmmf... ngh...*).",
-    "6. ACCIÓN FÍSICA Y EFECTOS FOLEY EN ASTERISCOS (MÁXIMO 20% - BREVE Y PRECISO):",
-    "   - El relato en asteriscos debe ser BREVE (SOLO 1 acción física o gesto corporal de 8 a 14 palabras como máximo).",
-    "   - Ejemplos de acotaciones breves correctas: *Acaricio tu pecho sonriendo complacida*, *Suelto un suspiro tembloroso mirándote a los ojos*, *Te paso la mano por la mejilla mientras sonrío*.",
-    "   - ESTRICTAMENTE PROHIBIDO escribir párrafos novelescos gigantescos o descripciones poéticas extensas en asteriscos.",
-    "   - EL 80% RESTANTE DE TU MENSAJE DEBE SER DIÁLOGO HABLADO REAL DE TU PERSONAJE CONVERSANDO CON EL USUARIO.",
-    "7. CERO SHAKESPEARE, CERO NOVELA ANTIGUA: Usa lenguaje urbano, moderno, caliente, dirty talk, fresco y directo. Prohibido usar metáforas rebuscadas o clichés de IA como 'sin restricciones ni tabúes' o 'pasión que bulle'.",
-    "8. CONTINUIDAD ESTRICTA: Asume como un hecho real y asúmelo como tuyo todo lo que " + other + " narre que tú hiciste o lo que ocurre en la escena desde tu perspectiva, y continúa esa acción sin contradecirla ni inventar temas desconectados.",
-    "9. PROHIBIDO REPETIR EL MENSAJE DEL USUARIO: Responde exclusivamente con las palabras y reacciones originales de tu personaje.",
+    "Eres " + name + " y estás hablando directamente en una conversación viva y de tú a tú con " + other + ", en " + locale + ".",
+    "1. CONVERSACIÓN 100% REAL, HUMANA Y CERCANA:",
+    "   - Habla como una persona real en una plática cotidiana entre dos personas que se tienen confianza.",
+    "   - CERO literatura antigua, cero poesía forzada, cero dialectos extraños y cero protocolo acartonado.",
+    "   - Lenguaje moderno, urbano, fresco y espontáneo.",
+    "2. PROPORCIÓN ESTRICTA: 80% DIÁLOGO HABLADO DIRECTO / 20% ACCIÓN EN ASTERISCOS:",
+    "   - El 80% de tu mensaje debe ser DIÁLOGO HABLADO en voz alta (~40 a 70 palabras).",
+    "   - En asteriscos (*...*) incluye únicamente un gesto físico breve o expresión inmediata (máximo 8 a 12 palabras), por ejemplo: *te miro sonriendo divertida* o *suelto una risita mirándote a los ojos*.",
+    "   - PROHIBIDO que el relato en asteriscos sea más largo que tus palabras habladas. El usuario está aquí para conversar, no para leer un libro.",
+    "3. COHERENCIA ESTRICTA Y SENTIDO COMÚN:",
+    "   - Responde con sentido común a lo que " + other + " te acaba de decir. Continúa el hilo de la charla sin inventar delirios.",
+    "   - PROHIBIDO inventar apelativos ajenos como 'capitán', 'director', 'saltamontes' ni relaciones ficticias como 'esposos' o 'esclavas' no presentes en la tarjeta.",
+    "   - Si el usuario es tu Tío, trátalo con familiaridad y llámalo 'Tío'. PROHIBIDO inventar que es tu primo, hermano o amante ajeno.",
+    "4. CERO GODMODING (NUNCA HABLES NI ACTÚES POR EL USUARIO):",
+    "   - Tú solo hablas y actúas por ti misma (" + name + "). PROHIBIDO TERMINANTEMENTE escribir lo que " + other + " dice, hace o siente.",
+    "5. INTIMIDAD Y NATURALIDAD ADULTA (+18):",
+    "   - Si la escena se torna íntima, sensual o apasionada, responde con entrega, deseo genuino y calidez humana de tú a tú, sin discursos moralistas ni metáforas barrocas.",
+    "6. CONTINUIDAD INMEDIATA Y ACCIÓN:",
+    "   - Continúa la escena actual exactamente donde quedó, asume lo que " + other + " te dice y asúmelo como tuyo desde tu perspectiva.",
+    "7. PROHIBIDO REPETIR EL MENSAJE DEL USUARIO: Responde exclusivamente con tus palabras y reacciones originales.",
   ];
 }
 
@@ -828,7 +808,7 @@ export default async function handler(req, res) {
         // Rechazar si el relato en asteriscos supera al diálogo hablado
         if (narrWordCount > 25 && narrWordCount >= dialWordCount) return true;
         // Rechazar alucinaciones de modelos micro o texto roto/corrupto (bici ligera, manos mapaches, fingers)
-        if (/\b(?:bici\s+ligera|manos\s+mapaches|fingers|patas\s+abiertas|suby[eé]ndose)\b/i.test(reply)) return true;
+        if (/\b(?:bici\s+ligera|manos\s+mapaches|fingers|patas\s+abiertas|suby[eé]ndose|saltamontes|zaburlona|capit[aá]n|esclava\s+privada)\b/i.test(reply)) return true;
         // Rechazar respuestas que terminen con oraciones rotas o inconclusas como "solo..." o "pero..."
         if (/\b(?:solo|pero|y|que|con|de|en|tu|mi|su|muy)\.{2,}\s*$/i.test(reply)) return true;
         // Rechazar inversiones absurdas de parentesco y genero (ej: decirle "primo" o "dulcita princesa" al Tio)
@@ -868,7 +848,7 @@ export default async function handler(req, res) {
         : "";
       let systemInstruction = [
         ...storyContinuityLines(spanish),
-        "Eres un motor de roleplay y narración cinematográfica inmersiva para adultos con memoria continua y coherencia absoluta al estilo Polybuzz / Momoo AI. El protagonista (usuario) interpreta a " + String(story.player_role || "Usuario").slice(0, 150) + ".",
+        "Eres " + String(story.character_role || "Personaje").slice(0, 80) + " en conversación directa, humana y espontánea con " + String(story.player_role || "Usuario").slice(0, 80) + ".",
         "PERSONAJE PRINCIPAL DE LA TARJETA: " + String(story.character_role || "personaje principal").slice(0, 200) + ".",
         cardPremise,
         chronicleTurns ? "CRÓNICA DE HECHOS VIVIDOS Y SECRETOS REVELADOS DESDE EL INICIO (MEMORIA PERMANENTE):\n" + chronicleTurns : "",
@@ -1005,7 +985,7 @@ export default async function handler(req, res) {
       let nvidiaModels = [
         "nvidia/nemotron-3-super-120b-a12b",
         "google/diffusiongemma-26b-a4b-it",
-        "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
+        "meta/llama-3.2-11b-vision-instruct",
       ];
       let openRouterModels = [
         "anthracite-org/magnum-v4-72b",
@@ -1017,18 +997,18 @@ export default async function handler(req, res) {
 
       if (modelId === "euryale-70b" || modelId === "skylark-pro" || modelId === "dola-seed-pro") {
         openRouterModels = ["sao10k/l3.3-euryale-70b", "anthracite-org/magnum-v4-72b"];
-        nvidiaModels = ["nvidia/nemotron-3-nano-omni-30b-a3b-reasoning", ];
+        nvidiaModels = ["meta/llama-3.2-11b-vision-instruct", ];
       } else if (modelId === "mistral-nemo") {
-        openRouterModels = ["mistralai/mistral-nemo", "nvidia/nemotron-3-ultra-550b-a55b:free"];
-        nvidiaModels = ["nvidia/nemotron-3-nano-omni-30b-a3b-reasoning", ];
+        openRouterModels = ["mistralai/mistral-nemo", "meta/llama-3.2-11b-vision-instruct"];
+        nvidiaModels = ["meta/llama-3.2-11b-vision-instruct", ];
       } else if (modelId === "deepseek-v4-pro") {
         openRouterModels = ["deepseek/deepseek-chat", "sao10k/l3.3-euryale-70b"];
-        nvidiaModels = ["nvidia/nemotron-3-nano-omni-30b-a3b-reasoning", ];
+        nvidiaModels = ["meta/llama-3.2-11b-vision-instruct", ];
       } else if (modelId === "wizardlm-8x22b") {
         openRouterModels = ["microsoft/wizardlm-2-8x22b", "anthracite-org/magnum-v4-72b"];
       } else if (modelId === "qwen-plus" || modelId === "qwen-3.7-plus" || modelId === "qwen-3.8-flash") {
-        openRouterModels = ["qwen/qwen-2.5-72b-instruct", "nvidia/nemotron-3-ultra-550b-a55b:free"];
-        nvidiaModels = ["nvidia/nemotron-3-nano-omni-30b-a3b-reasoning", ];
+        openRouterModels = ["qwen/qwen-2.5-72b-instruct", "meta/llama-3.2-11b-vision-instruct"];
+        nvidiaModels = ["meta/llama-3.2-11b-vision-instruct", ];
       }
 
       let content = null;
@@ -1063,7 +1043,7 @@ export default async function handler(req, res) {
         if (!content) {
           try {
             content = await generateNvidia(openRouterMessages, {
-              models: ["meta/llama-3.1-8b-instruct", "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"],
+              models: ["meta/llama-3.2-11b-vision-instruct", "meta/llama-3.2-11b-vision-instruct"],
               maxTokens: 55,
               temperature: 0.82,
               timeoutMs: 2500,
@@ -1123,8 +1103,7 @@ export default async function handler(req, res) {
                 systemInstruction,
                 adultMode: true,
                 apiKey: geminiApiKey || undefined,
-                timeoutMs: 4000,
-                fallbackModels: ["gemini-2.0-flash", "gemini-2.5-flash-lite"],
+                timeoutMs: 9000, fallbackModels: ["gemini-2.0-flash", "gemini-2.5-flash-lite"],
                 fastReply: true,
                 validate: (reply) => !isOffRole(reply)
               },
@@ -1155,7 +1134,7 @@ export default async function handler(req, res) {
         if (!content) {
           try {
             content = await generateOpenRouter(openRouterMessages, {
-              models: ["nvidia/nemotron-3-ultra-550b-a55b:free", "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free"],
+              models: ["meta/llama-3.2-11b-vision-instruct", "meta/llama-3.2-11b-vision-instruct"],
               maxTokens: targetTokens,
               temperature: 0.8,
               timeoutMs: 4500,
@@ -1190,7 +1169,7 @@ export default async function handler(req, res) {
       if (!content) {
         try {
           content = await generateOpenRouter(openRouterMessages, {
-            models: ["nvidia/nemotron-3-ultra-550b-a55b:free", "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free"],
+            models: ["meta/llama-3.2-11b-vision-instruct", "meta/llama-3.2-11b-vision-instruct"],
             maxTokens: targetTokens,
             temperature: 0.82,
             timeoutMs: 4500,

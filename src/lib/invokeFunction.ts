@@ -137,7 +137,7 @@ En este momento de la escena, ${activeChar.playerFirstName} está interactuando 
         messages,
         max_tokens: 180,
         temperature: 0.85,
-        repeat_penalty: 1.18,
+        repeat_penalty: 1.0,
       }),
       signal: AbortSignal.timeout(22000),
     });
