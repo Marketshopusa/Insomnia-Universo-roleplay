@@ -40,7 +40,7 @@ interface CallDialogProps {
   onTurn: (userText: string, assistantText: string | null) => void;
 }
 
-const SILENCE_MS = 1350;
+const SILENCE_MS = 1600;
 const MAX_TURN_MS = 25000;
 
 export const CallDialog = ({
@@ -215,9 +215,8 @@ export const CallDialog = ({
               setLiveTranscript(text);
               heardVoice = true;
               silentFor = 0;
-              if (resultsArr[resultsArr.length - 1]?.isFinal) {
-                hasFinalResult = true;
-              }
+              const lastResult = resultsArr[resultsArr.length - 1];
+              hasFinalResult = Boolean(lastResult?.isFinal);
             }
           };
           recognition.onerror = () => {
@@ -238,7 +237,7 @@ export const CallDialog = ({
       const meter = window.setInterval(() => {
         const level = recorder.getLevel();
         if (level > peakLevel) peakLevel = level;
-        const activeThreshold = Math.max(0.015, peakLevel * 0.38);
+        const activeThreshold = Math.max(0.007, Math.min(0.02, peakLevel * 0.20));
         if (level > activeThreshold) {
           heardVoice = true;
           silentFor = 0;
@@ -248,10 +247,11 @@ export const CallDialog = ({
         const hasTranscript = transcriptRef.current.trim().length > 0;
         const msSinceTranscriptChange = Date.now() - lastSpeechChangeAt;
         const transcriptDone = hasTranscript && (
-          (hasFinalResult && msSinceTranscriptChange >= 650) ||
-          msSinceTranscriptChange >= 1450
+          (silentFor >= 1200 && ((hasFinalResult && msSinceTranscriptChange >= 1400) || msSinceTranscriptChange >= 1800)) ||
+          (silentFor >= 800 && msSinceTranscriptChange >= 2200) ||
+          (hasTranscript && silentFor >= SILENCE_MS)
         );
-        if (transcriptDone || ((heardVoice || hasTranscript) && silentFor >= SILENCE_MS)) {
+        if (transcriptDone || (heardVoice && silentFor >= SILENCE_MS)) {
           window.clearInterval(meter);
           void finishTurn().catch(recoverTurn);
         }

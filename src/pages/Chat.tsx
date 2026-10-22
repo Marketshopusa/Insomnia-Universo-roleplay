@@ -1010,9 +1010,8 @@ export default function ChatPage() {
               setLiveTranscript(text);
               heardVoice = true;
               silentFor = 0;
-              if (resultsArr[resultsArr.length - 1]?.isFinal) {
-                hasFinalResult = true;
-              }
+              const lastResult = resultsArr[resultsArr.length - 1];
+              hasFinalResult = Boolean(lastResult?.isFinal);
             }
           };
           recognition.onerror = () => {
@@ -1032,12 +1031,13 @@ export default function ChatPage() {
 
       const MAX_TURN_MS = 25000;
 
-      // Fast-reacting VAD loop: checks every 100ms
+      // Sensitive VAD loop: checks every 100ms
       const meter = window.setInterval(() => {
         if (!callActiveRef.current) return;
         const level = recorder.getLevel();
         if (level > peakLevel) peakLevel = level;
-        const activeThreshold = Math.max(0.015, peakLevel * 0.35);
+        // Optimized mic sensitivity: captures quiet/trailing speech without false cutoffs
+        const activeThreshold = Math.max(0.007, Math.min(0.02, peakLevel * 0.20));
 
         if (level > activeThreshold) {
           heardVoice = true;
@@ -1049,20 +1049,21 @@ export default function ChatPage() {
         const hasTranscript = callTranscriptRef.current.trim().length > 0;
         const msSinceTranscriptChange = Date.now() - lastSpeechChangeAt;
 
-        // If browser speech recognition is active, ONLY finish when we have recognized words!
-        // Never interrupt on ambient room noise or breathing.
+        // If browser speech recognition is active, NEVER interrupt while user is vocalizing.
+        // Requires sustained natural silence (>=1.2s audio silence AND >=1.4s transcript quiet).
         if (hasRecognition) {
-          const transcriptDone = hasTranscript && (
-            (hasFinalResult && msSinceTranscriptChange >= 350) ||
-            msSinceTranscriptChange >= 650
+          const speechSettled = hasTranscript && (
+            (silentFor >= 1200 && ((hasFinalResult && msSinceTranscriptChange >= 1400) || msSinceTranscriptChange >= 1800)) ||
+            (silentFor >= 800 && msSinceTranscriptChange >= 2200) ||
+            (hasTranscript && silentFor >= 1700)
           );
-          if (transcriptDone) {
+          if (speechSettled) {
             window.clearInterval(meter);
             void finishCallTurn();
           }
         } else {
           // Fallback if browser doesn't support Web Speech API
-          if (heardVoice && silentFor >= 900) {
+          if (heardVoice && silentFor >= 1600) {
             window.clearInterval(meter);
             void finishCallTurn();
           }
@@ -1767,28 +1768,7 @@ export default function ChatPage() {
                 </div>
 
                 {/* Bottom Floating Call Controls Dock */}
-                <div className="relative z-10 p-6 pb-10 flex flex-col items-center space-y-4">
-                  {/* Discreet indicator pill */}
-                  {isCallMuted ? (
-                    <div className="px-3.5 py-1 rounded-full bg-red-950/80 border border-red-500/50 text-red-300 text-xs font-bold backdrop-blur-md animate-pulse shadow-lg">
-                      {isEs ? "Micrófono Silenciado" : "Microphone Muted"}
-                    </div>
-                  ) : callState === "listening" ? (
-                    <div className="px-3.5 py-1 rounded-full bg-cyan-950/70 border border-cyan-500/40 text-cyan-300 text-xs font-bold backdrop-blur-md shadow-lg">
-                      {isEs ? "Te escucha... Habla ahora" : "Listening... Speak now"}
-                    </div>
-                  ) : callState === "thinking" ? (
-                    <div className="px-3.5 py-1 rounded-full bg-purple-950/70 border border-purple-500/40 text-purple-300 text-xs font-bold backdrop-blur-md flex items-center gap-1.5 shadow-lg">
-                      <Loader2 className="w-3 h-3 animate-spin" />
-                      <span>{isEs ? "Pensando..." : "Thinking..."}</span>
-                    </div>
-                  ) : (
-                    <div className="px-3.5 py-1 rounded-full bg-emerald-950/70 border border-emerald-500/40 text-emerald-300 text-xs font-bold backdrop-blur-md shadow-lg flex items-center gap-1.5">
-                      <Volume2 className="w-3.5 h-3.5 animate-bounce" />
-                      <span>{activeChar.name} {isEs ? "está hablando" : "is speaking"}</span>
-                    </div>
-                  )}
-
+                <div className="relative z-10 p-6 pb-12 flex flex-col items-center">
                   {/* Clean circular action buttons */}
                   <div className="flex items-center gap-6">
                     {/* Mute Button */}
