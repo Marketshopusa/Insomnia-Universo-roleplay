@@ -623,16 +623,23 @@ export function roleplayPacingAndLanguageRules(historyLength, spanish, targetTok
   }
 
   if (isChatPage) {
+    const totalWords = Math.max(55, Math.round(targetTokens * 0.72));
+    const narrWords = Math.max(12, Math.round(totalWords * 0.20));
+    const dialWords = Math.max(40, Math.round(totalWords * 0.80));
+
     if (!spanish) {
       return [
-        'DIRECT CHAT MODE (90% SPOKEN DIALOGUE / 10% BRIEF THOUGHT):',
-        'Deliver 90% direct spoken dialogue talking directly to the user. At most 10% brief thought or gesture in italics.',
+        'CHAT MODE WITH BALANCED PROPORTION (80% SPOKEN DIALOGUE / 20% BRIEF ACTION):',
+        `1. 20% BRIEF PHYSICAL ACTION (*...*): At most 1 or 2 short sentences (~${narrWords} words) in first-person asterisks describing your immediate gesture, touch, or sensory reaction.`,
+        `2. 80% DIRECT SPOKEN DIALOGUE (~${dialWords} words): MANDATORY real spoken words addressing the user directly in first person. NEVER output only narrative asterisks without spoken dialogue!`,
+        '3. COMPLETE SENTENCES ONLY: Always complete all thoughts and close every sentence with a period, exclamation, or question mark. NEVER cut off mid-word.',
       ];
     }
     return [
-      'MODO CHAT DIRECTO (90% DIÁLOGO HABLADO / 10% GESTO O PENSAMIENTO BREVE):',
-      '1. 90% DIÁLOGO DIRECTO: Prioridad absoluta a lo que le dices al usuario en voz alta de tú a tú.',
-      '2. 10% NARRACIÓN O PENSAMIENTO: Como máximo un detalle o gesto breve entre asteriscos (*...*). CERO párrafos largos de novela.',
+      'MODO CHAT EQUILIBRADO (80% DIÁLOGO HABLADO / 20% RELATO EN ASTERISCOS):',
+      `1. 20% RELATO O ACCIÓN FÍSICA (*...*) — BREVE Y PRECISO: Una o dos oraciones breves en primera persona entre asteriscos (~${narrWords} palabras) que narren tu gesto, roce físico o postura frente al usuario.`,
+      `2. 80% DIÁLOGO HABLADO DIRECTO (~${dialWords} palabras): OBLIGATORIO hablarle directamente al usuario en voz alta de tú a tú, expresiva y naturalmente. PROHIBIDO TERMINANTEMENTE responder solo con asteriscos sin incluir diálogo hablado.`,
+      '3. ORACIONES COMPLETAS Y CERRADAS: Cada pensamiento debe terminar completo, cerrado con punto o signo de puntuación. NUNCA cortes palabras a medias.',
     ];
   }
   const safeTokens = Math.max(100, Math.min(800, Number(targetTokens) || 350));
@@ -673,7 +680,7 @@ export default async function handler(req, res) {
       const memoryTier = settings.memoryTier || "16k";
       const isLiveCall = body.isLiveCall === true || body.story?.story_type === 'live_call';
       const isChatPage = body.chatSource === 'chat_page' || body.story?.story_type === 'chat_page' || isLiveCall;
-      const targetTokens = isLiveCall ? 50 : (isChatPage ? Math.max(60, Math.min(300, Number(settings.messageLength) || 120)) : Math.max(100, Math.min(800, Number(settings.messageLength) || 350)));
+      const targetTokens = isLiveCall ? 50 : (isChatPage ? Math.max(220, Math.min(600, Number(settings.messageLength) || 320)) : Math.max(150, Math.min(800, Number(settings.messageLength) || 350)));
       const modelId = settings.modelId || "insomnia-flash";
       const customDirective = String(settings.customDirective || "").trim();
       const openRouterApiKey = String(settings.openRouterApiKey || "").trim();
@@ -978,11 +985,12 @@ export default async function handler(req, res) {
       }
 
       let nvidiaModels = [
-        "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
         "meta/llama-3.2-11b-vision-instruct",
+        "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
+        "google/diffusiongemma-26b-a4b-it",
       ];
       let openRouterModels = [
-        "nvidia/nemotron-3-ultra-550b-a55b:free",
+        "mistralai/mistral-nemo",
         "anthracite-org/magnum-v4-72b",
         "sao10k/l3.3-euryale-70b",
       ];
@@ -1163,15 +1171,42 @@ export default async function handler(req, res) {
         if (isLiveCall) {
           content = content.replace(/\*.*?\*/g, "").replace(/\s+/g, " ").trim() || content;
         }
+
+        // Eliminar palabras truncadas o conectores rotos al final (ej: "las*", "con lent*", "de*")
+        content = content.replace(/\s+(?:con\s+)?(?:lent[a-z]*|las?|los?|el|la|un[a-z]*|de|del|al|en|por|para|y|e|o|pero|que|su|mi|tu)\*?$/iu, "").trim();
+
+        // Equilibrar asteriscos sin cerrar
         const asteriskCount = (content.replace(/\*\*/g, "").match(/\*/g) || []).length;
         if (asteriskCount % 2 === 1) {
           const lastStar = content.lastIndexOf("*");
           const beforeStar = content.slice(0, lastStar).trim();
-          content = beforeStar.length >= 15 ? beforeStar : content + "*";
+          if (beforeStar.length >= 15) {
+            content = content + "*";
+          } else {
+            content = content + "*";
+          }
         }
-        if (content.length > 80 && !/[.!?…"”»*)\]]$/.test(content)) {
+
+        // Si la respuesta termina sin puntuación terminal, recortar hasta la última oración completa o añadir punto
+        if (content.length > 30 && !/[.!?…"”»*)\]]$/.test(content)) {
           const lastPunct = Math.max(content.lastIndexOf("."), content.lastIndexOf("!"), content.lastIndexOf("?"), content.lastIndexOf("…"), content.lastIndexOf("*"));
-          if (lastPunct >= 25) content = content.slice(0, lastPunct + 1).trim();
+          if (lastPunct >= 20) {
+            content = content.slice(0, lastPunct + 1).trim();
+          } else {
+            content = content + ".";
+          }
+        }
+
+        // GARANTÍA DE DIÁLOGO: Si en modo chat la respuesta solo contiene asteriscos (cero diálogo hablado),
+        // inyectar una frase hablada inmediata para cumplir siempre el 80% diálogo
+        if (isChatPage && !isLiveCall) {
+          const spokenPart = content.replace(/\*[^*]*\*/g, "").replace(/[^\w\s]/g, "").trim();
+          if (spokenPart.length < 6) {
+            const extraDialogue = spanish
+              ? (content.endsWith("*") ? " " : "\n\n") + "Dime... ¿te gusta lo que ves? No me dejes con las ganas de escucharte."
+              : (content.endsWith("*") ? " " : "\n\n") + "Tell me... do you like what you see? Don't leave me waiting to hear your voice.";
+            content = content + extraDialogue;
+          }
         }
         const totalActionMatches = [...content.matchAll(/\*([^*\n]+)\*/g)];
         const targetWords = Math.max(65, Math.round(targetTokens * 0.72));

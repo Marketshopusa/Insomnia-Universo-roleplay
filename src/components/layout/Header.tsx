@@ -8,6 +8,7 @@ import { useState } from "react";
 import { Menu, X, ShieldAlert, ShieldCheck, Crown } from "lucide-react";
 import { useAdultMode } from "@/contexts/AdultModeContext";
 import { AdultConsentDialog } from "@/components/adult/AdultConsentDialog";
+import { MotherCardDialog } from "@/components/story/MotherCardDialog";
 
 const Logo = () => (
   <Link to="/" className="flex items-center gap-2">
@@ -25,6 +26,7 @@ export const Header = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { enabled: adultEnabled, consentGiven, enable, disable, grantConsent } = useAdultMode();
   const [consentOpen, setConsentOpen] = useState(false);
+  const [motherCardOpen, setMotherCardOpen] = useState(false);
 
   const handleAdultToggle = () => {
     if (adultEnabled) {
@@ -86,15 +88,17 @@ export const Header = () => {
               </Link>
             ))}
 
-            {/* Admin Badge */}
+            {/* Admin Badge & Mother Card Trigger */}
             {isAdmin && (
-              <span
-                className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-gradient-to-r from-amber-500/20 via-yellow-500/25 to-amber-500/20 border border-amber-500/50 text-amber-300 text-xs font-bold tracking-wide shadow-md shadow-amber-950/30"
-                title="Administrador Maestro: marketshopusafl@gmail.com"
+              <button
+                type="button"
+                onClick={() => setMotherCardOpen(true)}
+                className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-gradient-to-r from-amber-500/20 via-yellow-500/25 to-amber-500/20 border border-amber-500/50 hover:border-amber-400 text-amber-300 text-xs font-bold tracking-wide shadow-md shadow-amber-950/30 transition-all hover:scale-105 active:scale-95 cursor-pointer"
+                title="Configuración de Tarjeta Madre (Roleplay Base)"
               >
                 <Crown className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
-                <span>ADMIN</span>
-              </span>
+                <span>TARJETA MADRE</span>
+              </button>
             )}
 
             <button
@@ -145,10 +149,20 @@ export const Header = () => {
           <nav className="md:hidden py-4 border-t border-border">
             <div className="flex flex-col gap-4">
               {isAdmin && (
-                <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs font-bold">
-                  <Crown className="w-4 h-4 text-amber-400 fill-amber-400" />
-                  <span>ADMINISTRADOR: marketshopusafl@gmail.com</span>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMotherCardOpen(true);
+                    setMobileMenuOpen(false);
+                  }}
+                  className="flex items-center justify-between w-full px-3 py-2 rounded-lg bg-amber-500/15 border border-amber-500/40 text-amber-300 text-xs font-bold"
+                >
+                  <div className="flex items-center gap-2">
+                    <Crown className="w-4 h-4 text-amber-400 fill-amber-400" />
+                    <span>ADMIN: Configurar Tarjeta Madre</span>
+                  </div>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 font-mono">BASE</span>
+                </button>
               )}
               {navLinks.map((link) => (
                 <Link

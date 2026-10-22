@@ -54,6 +54,7 @@ import { normalizeAssistantReply } from "@/lib/roleReply";
 import { ChatCharacterConfigDialog, fallbackFemaleSpeech } from "@/components/chat/ChatCharacterConfigDialog";
 import { ChatAiSettingsDialog } from "@/components/story/ChatAiSettingsDialog";
 import { getStoryAiSettings, AVAILABLE_AI_MODELS } from "@/lib/storyAiSettings";
+import { getMotherCardConfig } from "@/lib/roleplayBase";
 import { toast } from "@/hooks/use-toast";
 
 // ==========================================
@@ -766,7 +767,13 @@ export default function ChatPage() {
 
       const charBio = isEs ? (activeChar.bioEs || activeChar.bio) : (activeChar.bioEn || activeChar.bio);
       const charRole = isEs ? (activeChar.roleTitleEs || activeChar.roleTitle) : (activeChar.roleTitleEn || activeChar.roleTitle);
-      const charAiSettings = getStoryAiSettings(activeChar.id);
+      const mother = getMotherCardConfig();
+      const rawAiSettings = getStoryAiSettings(activeChar.id);
+      const charAiSettings = {
+        ...mother.aiSettings,
+        ...rawAiSettings,
+        messageLength: Math.max(280, Number(rawAiSettings.messageLength || mother.targetTokens)),
+      };
 
       const { data, error } = await invokeFunctionWithRetry<{ content?: string }>("story-chat", {
         story: {
