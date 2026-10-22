@@ -20,6 +20,7 @@ import { buildPersistentChronicle, selectStoryMemory } from "@/lib/storyMemory";
 import { resolveStoryCover } from "@/lib/storyCover";
 import { ChatAiSettingsDialog } from "@/components/story/ChatAiSettingsDialog";
 import { getStoryAiSettings, type StoryAiSettings } from "@/lib/storyAiSettings";
+import { getMotherCardConfig } from "@/lib/roleplayBase";
 import { useStoryCustomizations } from "@/hooks/useStoryCustomizations";
  import { useStory } from "@/hooks/useStories";
  import { useLanguage } from "@/contexts/LanguageContext";
@@ -367,6 +368,16 @@ type Mode = "select" | "read" | "roleplay";
     const history = messagesRef.current
       .filter((m) => m.id !== "intro" && m.id !== currentMessageId)
       .map((m) => ({ role: m.role, content: m.content }));
+    const mother = getMotherCardConfig();
+    const effectiveAiSettings: StoryAiSettings = {
+      ...mother.aiSettings,
+      ...aiSettings,
+      dialogueRatio: mother.dialogueRatio || 0.80,
+      narrationRatio: mother.narrationRatio || 0.20,
+      customDirective: aiSettings.customDirective || mother.masterDirective,
+      messageLength: Math.max(280, Number(aiSettings.messageLength || mother.targetTokens)),
+    };
+
     const { data, error } = await invokeFunctionWithRetry<{ content?: string; error?: string; message?: string }>("story-chat", {
         story: {
           id: story?.id,
@@ -379,10 +390,10 @@ type Mode = "select" | "read" | "roleplay";
           story_type: story?.story_type,
         },
         language,
-        history: history.slice(aiSettings.memoryTier === "32k" ? -260 : aiSettings.memoryTier === "16k" ? -140 : aiSettings.memoryTier === "4k" ? -60 : -26),
-        memory: selectStoryMemory(history, userMessage, aiSettings.memoryTier === "32k" ? 60 : aiSettings.memoryTier === "16k" ? 40 : 20),
+        history: history.slice(effectiveAiSettings.memoryTier === "32k" ? -260 : effectiveAiSettings.memoryTier === "16k" ? -140 : effectiveAiSettings.memoryTier === "4k" ? -60 : -26),
+        memory: selectStoryMemory(history, userMessage, effectiveAiSettings.memoryTier === "32k" ? 60 : effectiveAiSettings.memoryTier === "16k" ? 40 : 20),
         chronicle: buildPersistentChronicle(history, story?.character_role || tCharacter, story?.player_role || tPlayer),
-        settings: aiSettings,
+        settings: effectiveAiSettings,
         userMessage,
         adultMode: adultEnabled && consentGiven,
         region: activeRegion(),

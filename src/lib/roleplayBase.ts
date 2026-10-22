@@ -36,7 +36,7 @@ export interface MotherCardConfig {
 export const DEFAULT_MOTHER_CARD: MotherCardConfig = {
   id: "mother-card-roleplay-base",
   name: "Tarjeta Madre / Roleplay Base",
-  version: 2,
+  version: 3,
   dialogueRatio: 0.80, // 80% Diálogo directo
   narrationRatio: 0.20, // 20% Relato sensorial entre asteriscos
   targetTokens: 350, // Permite 60-90 palabras fluidas sin ahogo de tokens
@@ -45,22 +45,30 @@ export const DEFAULT_MOTHER_CARD: MotherCardConfig = {
     modelId: "insomnia-flash",
     memoryTier: "16k",
     messageLength: 350,
+    dialogueRatio: 0.80,
+    narrationRatio: 0.20,
   },
-  masterDirective: `Eres un motor de roleplay inmersivo de máximo realismo emocional y sensorial.
-1. PROPORCIÓN ESTRICTA (80% DIÁLOGO / 20% RELATO):
-   - El 80% de tu mensaje DEBE ser DIÁLOGO HABLADO DIRECTO en voz alta, fluido y respondiendo a lo que el usuario acaba de decir o hacer.
-   - El 20% restante es una acción física o gesto sensorial breve entre asteriscos (*...*).
-   - NUNCA te quedes en solo relato sin diálogo. El diálogo es la vida de la conversación.
-2. CONTINUIDAD Y COHERENCIA:
+  masterDirective: `REGLA SUPREMA DE ROLEPLAY (80% DIÁLOGO HABLADO / 20% ACCIÓN EN ASTERISCOS):
+¡El usuario entra al roleplay para HABLAR Y CONVERSAR de tú a tú con tu personaje, NO para leer una novela! Para leer relatos el usuario leería un libro.
+1. 80% DIÁLOGO HABLADO DIRECTO EN PRIMERA PERSONA:
+   - Tu personaje DEBE hablar extensamente con su voz en voz alta (~45 a 75 palabras de diálogo hablado).
+   - Responde punto por punto a lo que el usuario acaba de decirte, dale réplica directa, coméntale, hazle preguntas, provócalo o dile palabras calientes (dirty talk) si el rol es íntimo.
+   - El diálogo hablado debe constituir el cuerpo principal de tu respuesta.
+2. MÁXIMO 20% DE ACCIÓN EN ASTERISCOS (*...*) — BREVE Y PRECISO:
+   - Limita el relato entre asteriscos a SOLO 1 acción física o gesto corporal breve (máximo 8 a 14 palabras, ej: *acaricio tu mejilla despacio mirándote a los ojos*).
+   - ESTRICTAMENTE PROHIBIDO escribir párrafos gigantes de relatos o descripciones poéticas dentro de asteriscos.
+   - ESTRICTAMENTE PROHIBIDO poner dos bloques largos de asteriscos que superen al diálogo hablado.
+   - Si tu relato entre asteriscos supera a tu diálogo hablado, LA RESPUESTA ES INVÁLIDA.
+3. CONTINUIDAD Y COHERENCIA:
    - Mantén siempre el hilo de la conversación, el nombre y el rol establecido.
    - Habla siempre de tú a tú en primera persona.
    - Jamás inventes los diálogos o acciones del usuario (cero godmoding).
-3. ORACIONES COMPLETAS:
+4. ORACIONES COMPLETAS Y CERRADAS:
    - Termina siempre cada intervención con una oración completa y un signo de puntuación de cierre (. ! ? *). Nunca cortes a medias.`,
   kinshipPreservation: true,
   preventTruncation: true,
   minCharacterAge: 18,
-  updatedAt: "2026-10-21T00:00:00.000Z",
+  updatedAt: "2026-10-22T00:00:00.000Z",
 };
 
 const MOTHER_CARD_STORAGE_KEY = "insomnia_mother_card_config_v2";
@@ -76,14 +84,16 @@ export function getMotherCardConfig(): MotherCardConfig {
     const raw = localStorage.getItem(MOTHER_CARD_STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      return {
-        ...DEFAULT_MOTHER_CARD,
-        ...parsed,
-        aiSettings: {
-          ...DEFAULT_MOTHER_CARD.aiSettings,
-          ...(parsed.aiSettings || {}),
-        },
-      };
+      if (parsed.version && parsed.version >= 3) {
+        return {
+          ...DEFAULT_MOTHER_CARD,
+          ...parsed,
+          aiSettings: {
+            ...DEFAULT_MOTHER_CARD.aiSettings,
+            ...(parsed.aiSettings || {}),
+          },
+        };
+      }
     }
   } catch (err) {
     console.warn("Could not load Mother Card config from storage", err);
@@ -175,6 +185,8 @@ export function applyMotherCard<T extends GenericStoryCard>(story: T): T & {
   const resolvedAiSettings: StoryAiSettings = {
     ...mother.aiSettings,
     ...storyAi,
+    dialogueRatio: mother.dialogueRatio || 0.80,
+    narrationRatio: mother.narrationRatio || 0.20,
     // La directiva maestra se adjunta si no hay directiva personalizada
     customDirective: storyAi.customDirective || mother.masterDirective,
     // Asegurar que la longitud de mensaje no sea inferior al límite seguro

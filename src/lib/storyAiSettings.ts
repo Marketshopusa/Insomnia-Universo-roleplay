@@ -191,6 +191,8 @@ export interface StoryAiSettings {
   modelTier: ModelTier;
   modelId: string;
   customDirective: string;
+  dialogueRatio?: number;
+  narrationRatio?: number;
   openRouterApiKey?: string;
   nvidiaApiKey?: string;
   geminiApiKey?: string;
@@ -202,6 +204,8 @@ export const DEFAULT_AI_SETTINGS: StoryAiSettings = {
   modelTier: "free",
   modelId: "insomnia-flash",
   customDirective: "",
+  dialogueRatio: 0.80,
+  narrationRatio: 0.20,
   openRouterApiKey: "",
   nvidiaApiKey: "",
   geminiApiKey: "",

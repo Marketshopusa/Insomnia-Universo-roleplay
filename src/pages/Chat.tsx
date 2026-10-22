@@ -764,6 +764,9 @@ export default function ChatPage() {
       const charAiSettings = {
         ...mother.aiSettings,
         ...rawAiSettings,
+        dialogueRatio: mother.dialogueRatio || 0.80,
+        narrationRatio: mother.narrationRatio || 0.20,
+        customDirective: rawAiSettings.customDirective || mother.masterDirective,
         messageLength: Math.max(300, Number(rawAiSettings.messageLength || mother.targetTokens)),
       };
 

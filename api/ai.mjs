@@ -1,3 +1,44 @@
+export function enforceDialogueRatio(text, dialPct = 80, narrPct = 20) {
+  if (!text) return text;
+  const regex = /\*([^*]+)\*/g;
+  const matches = [];
+  let m;
+  while ((m = regex.exec(text)) !== null) {
+    matches.push({ full: m[0], inner: m[1].trim(), index: m.index });
+  }
+  if (matches.length === 0) return text;
+
+  let totalNarrWords = 0;
+  for (const b of matches) {
+    totalNarrWords += b.inner.split(/\s+/).filter(Boolean).length;
+  }
+
+  // Si las acotaciones en asteriscos superan 16 palabras en total, podar para que no ahoguen el dialogo
+  if (totalNarrWords > 16) {
+    let result = text;
+    for (let i = 0; i < matches.length; i++) {
+      const b = matches[i];
+      const words = b.inner.split(/\s+/).filter(Boolean);
+      if (i === 0 && words.length > 12) {
+        // Reducir el primer bloque a su primera oracion o clausula (max 10 palabras)
+        const firstClause = b.inner.match(/^([^,.;!?…]+)/);
+        const shortened = firstClause && firstClause[1].split(/\s+/).filter(Boolean).length <= 12
+          ? firstClause[1].trim()
+          : words.slice(0, 10).join(" ");
+        result = result.replace(b.full, `*${shortened}*`);
+      } else if (i > 0) {
+        // Bloques secundarios: reducir a gesto minimo (max 6 palabras)
+        if (words.length > 6) {
+          const shortSecond = words.slice(0, 6).join(" ");
+          result = result.replace(b.full, `*${shortSecond}*`);
+        }
+      }
+    }
+    return result;
+  }
+  return text;
+}
+
 import { createClient } from "@supabase/supabase-js";
 import { supabaseUrl as BASE, publishableKey as KEY } from "./config.mjs";
 import { slangInstruction, speechLocale } from "./regions.mjs";
@@ -587,19 +628,22 @@ export function storyVoiceLines(character, player, spanish, locale) {
     "5. COHERENCIA FÍSICA Y CONTINUIDAD DE LA ACCIÓN ACTUAL:",
     "   - Atiende de forma estricta lo que se está haciendo en el cuerpo de cada quien en este instante. Si " + other + " te está tocando, besando o penetrando en un lugar específico (ejemplo: en la camioneta, en el estacionamiento), responde sintiendo esa acción física y su placer en tu cuerpo. Prohibido actuar como si no estuviera pasando o disociar con temas ajenos.",
     "   - BOCA OCUPADA: Si tienes la boca ocupada (haciendo sexo oral) o si te ordenan silencio, PROHIBIDO soltar discursos hablados: responde con acciones sensoriales y gemidos entre asteriscos (*Mmmf... ngh...*).",
-    "6. SONIDOS Y EFECTOS CINEMATOGRÁFICOS FOLEY EN ASTERISCOS (OBLIGATORIO):",
-    "   - El motor de audio cuenta con un sistema Foley Studio de cine sincronizado. Para que se disparen los efectos físicos y las reacciones vocales, incluye en tus acotaciones entre asteriscos acciones corporales y sensoriales concretas:",
-    "     * Reacciones vocales: *Gimo con fuerza*, *Jadeo entrecortada*, *Suelto un suspiro tembloroso*, *Ahogo un grito de placer*, *Me río divertida*.",
-    "     * Efectos físicos Foley: *Te doy una sonora palmada en las nalgas*, *Doy unos pasos lentos hacia ti*, *Cierro la puerta con seguro*, *Me muevo entre las sábanas*, *Bajo la cremallera despacio*, *El colchón cruje bajo nuestro peso*.",
-    "   - Mantén el relato entre asteriscos descriptivo, sensorial y bien proporcionado (entre 12 y 16 palabras en total, equivalente al 20% de tu respuesta), para que narre con claridad la acción física y el motor reproduzca los efectos en paralelo con la voz.",
-    "   - ESTRICTAMENTE PROHIBIDO escribir párrafos enteros de pensamientos o monólogos poéticos en asteriscos.",
+    "6. ACCIÓN FÍSICA Y EFECTOS FOLEY EN ASTERISCOS (MÁXIMO 20% - BREVE Y PRECISO):",
+    "   - El relato en asteriscos debe ser BREVE (SOLO 1 acción física o gesto corporal de 8 a 14 palabras como máximo).",
+    "   - Ejemplos de acotaciones breves correctas: *Acaricio tu pecho sonriendo complacida*, *Suelto un suspiro tembloroso mirándote a los ojos*, *Te paso la mano por la mejilla mientras sonrío*.",
+    "   - ESTRICTAMENTE PROHIBIDO escribir párrafos novelescos gigantescos o descripciones poéticas extensas en asteriscos.",
+    "   - EL 80% RESTANTE DE TU MENSAJE DEBE SER DIÁLOGO HABLADO REAL DE TU PERSONAJE CONVERSANDO CON EL USUARIO.",
     "7. CERO SHAKESPEARE, CERO NOVELA ANTIGUA: Usa lenguaje urbano, moderno, caliente, dirty talk, fresco y directo. Prohibido usar metáforas rebuscadas o clichés de IA como 'sin restricciones ni tabúes' o 'pasión que bulle'.",
     "8. CONTINUIDAD ESTRICTA: Asume como un hecho real y asúmelo como tuyo todo lo que " + other + " narre que tú hiciste o lo que ocurre en la escena desde tu perspectiva, y continúa esa acción sin contradecirla ni inventar temas desconectados.",
     "9. PROHIBIDO REPETIR EL MENSAJE DEL USUARIO: Responde exclusivamente con las palabras y reacciones originales de tu personaje.",
   ];
 }
 
-export function roleplayPacingAndLanguageRules(historyLength, spanish, targetTokens = 350, isLiveCall = false, isChatPage = false) {
+export function roleplayPacingAndLanguageRules(historyLength, spanish, targetTokens = 350, isLiveCall = false, isChatPage = false, dialogueRatio = 0.80, narrationRatio = 0.20) {
+  const dRatio = Math.max(0.50, Math.min(0.95, Number(dialogueRatio) || 0.80));
+  const nRatio = Math.max(0.05, Math.min(0.50, Number(narrationRatio) || (1 - dRatio)));
+  const dPct = Math.round(dRatio * 100);
+  const nPct = Math.round(nRatio * 100);
   if (isLiveCall) {
     if (!spanish) {
       return [
@@ -643,27 +687,37 @@ export function roleplayPacingAndLanguageRules(historyLength, spanish, targetTok
   }
   const safeTokens = Math.max(100, Math.min(800, Number(targetTokens) || 350));
   const totalWords = Math.max(65, Math.round(safeTokens * 0.72));
-  const narrWords = Math.max(12, Math.round(totalWords * 0.20));
-  const dialWords = Math.max(50, Math.round(totalWords * 0.80));
+  const narrWords = Math.min(14, Math.max(8, Math.round(totalWords * nRatio)));
+  const dialWords = Math.max(45, Math.round(totalWords * dRatio));
 
   if (!spanish) {
     return [
-      `CINEMATIC ROLEPLAY & BALANCED PROPORTION (80% SPOKEN DIALOGUE / 20% NARRATIVE ACTION):`,
-      `Write 80% spoken dialogue (~${dialWords} words) and 20% descriptive first-person physical action in italics (~${narrWords} words total).`,
-      `Keep every reply around ${totalWords} words in a single cohesive block and always finish on a complete sentence.`,
+      `SUPREME ROLEPLAY RULE (${dPct}% SPOKEN DIALOGUE / ${nPct}% BRIEF ACTION):`,
+      `THE USER IS HERE TO CHAT AND ROLEPLAY WITH YOUR CHARACTER, NOT TO READ A NOVEL!`,
+      `1. ${dPct}% SPOKEN DIALOGUE (~${dialWords} words) - MAIN BODY:`,
+      `   - Speak directly to the user in first person out loud. Address what they said, ask questions, converse, flirt, or dirty talk.`,
+      `   - Spoken dialogue must be the vast majority of your reply.`,
+      `2. MAX ${nPct}% BRIEF PHYSICAL ACTION (*...*) (~${narrWords} words):`,
+      `   - At most 1 single short sentence in asterisks for an immediate gesture or touch (max 10-12 words).`,
+      `   - STRICTLY FORBIDDEN to write long paragraphs in asterisks. If asterisks exceed dialogue, the reply is invalid.`,
+      `3. COMPLETE SENTENCES: Always close all sentences cleanly.`,
     ];
   }
 
   return [
-    `DIRECTIVA DE PROPORCIÓN EQUILIBRADA (20% RELATO EN ASTERISCOS / 80% DIÁLOGO HABLADO):`,
-    `1. 20% RELATO O ACCIÓN DESCRIPTIVA (*...*) — NI DE MÁS NI DE MENOS:`,
-    `   - El relato entre asteriscos (*...*) DEBE representar el 20% de tu respuesta (aproximadamente ${narrWords} palabras en total).`,
-    `   - Escribe 1 o 2 oraciones descriptivas completas en PRIMERA PERSONA entre asteriscos que narren con claridad tu acción física, tu gesto o postura y tu reacción sensorial frente al usuario. NO lo dejes en una frase diminuta ni te excedas a un párrafo largo.`,
-    `   - Narra siempre en primera persona (ejemplo: '*Me acerco despacio hacia ti, rodeando tu cuello con mis brazos mientras suspiro temblando*').`,
-    `2. 80% DIÁLOGO HABLADO DIRECTO:`,
-    `   - El 80% restante de tu respuesta (aproximadamente ${dialWords} palabras) DEBE ser DIÁLOGO HABLADO REAL en voz alta, fluido, expresivo y natural hablándole directamente al usuario.`,
-    `3. LONGITUD TOTAL EQUILIBRADA (~${totalWords} PALABRAS EN TOTAL):`,
-    `   - Termina siempre con una oración completa y cerrada.`,
+    `REGLA SUPREMA DE ROLEPLAY (${dPct}% DIÁLOGO HABLADO / ${nPct}% ACCIÓN EN ASTERISCOS):`,
+    `¡EL USUARIO ENTRA A CONVERSAR Y HACER ROLEPLAY CON TU PERSONAJE, NO A LEER UNA NOVELA!`,
+    `1. ${dPct}% DIÁLOGO HABLADO DIRECTO (EL CUERPO PRINCIPAL DE TU RESPUESTA: ~${dialWords} PALABRAS):`,
+    `   - Tu personaje DEBE hablar en voz alta de tú a tú en primera persona.`,
+    `   - Responde con detalle a lo que el usuario acaba de decirte, dale réplica, hazle preguntas, coméntale, sedúcelo o usa dirty talk si es un momento íntimo.`,
+    `   - El diálogo hablado debe ser abundante, expresivo y constituir la gran mayoría de tu respuesta.`,
+    `2. MÁXIMO ${nPct}% DE ACCIÓN EN ASTERISCOS (*...*) — BREVE Y PRECISO (MÁXIMO 8 A 14 PALABRAS EN TOTAL):`,
+    `   - Limita el relato entre asteriscos a SOLO 1 acción física o gesto corporal breve.`,
+    `   - ESTRICTAMENTE PROHIBIDO escribir párrafos gigantes de relatos o descripciones poéticas dentro de asteriscos.`,
+    `   - ESTRICTAMENTE PROHIBIDO poner dos bloques largos de asteriscos que superen al diálogo hablado.`,
+    `   - Si tu relato en asteriscos supera a tu diálogo hablado, LA RESPUESTA ES INVÁLIDA.`,
+    `3. EJEMPLO EXACTO DEL FORMATO ESPERADO:`,
+    `   *Te miro a los ojos sonriendo mientras acaricio tu mejilla despacio* Vaya, cariño... tienes toda la razón, de verdad que no me esperaba que fueras tan apasionado ni que me dejaras tan satisfecha. Me hiciste temblar como nunca nadie lo había hecho. Dime algo, ¿siempre tienes esa energía tan intensa o tenías muchas ganas acumuladas solo para mí? Porque si es así, no pienso dejar que te vayas tan rápido...`,
   ];
 }
 
@@ -676,6 +730,8 @@ export default async function handler(req, res) {
       const story = body.story || {};
       const spanish = body.language === "es";
       const settings = body.settings || {};
+      const dialogueRatio = Math.max(0.50, Math.min(0.95, Number(settings.dialogueRatio) || 0.80));
+      const narrationRatio = Math.max(0.05, Math.min(0.50, Number(settings.narrationRatio) || (1 - dialogueRatio)));
       const memoryTier = settings.memoryTier || "16k";
       const isLiveCall = body.isLiveCall === true || body.story?.story_type === 'live_call';
       const isChatPage = body.chatSource === 'chat_page' || body.story?.story_type === 'chat_page' || isLiveCall;
@@ -755,6 +811,17 @@ export default async function handler(req, res) {
           const spanishWords = (reply.match(/\b(el|la|los|las|de|del|que|para|con|una|por|estoy|estás|tú|yo|ella|aquí|pero|porque|quiero|cómo|qué|tío|mi|mis)\b/gi) || []).length;
           if (english >= 4 && english > spanishWords * 0.4) return true;
         }
+        // 4. Rechazar si el relato en asteriscos ahoga o supera al diálogo hablado (exigir 80% diálogo / 20% relato)
+        const starMatches = reply.match(/\*[^*]+\*/g) || [];
+        const narrWordCount = starMatches.reduce((acc, m) => acc + m.replace(/\*/g, "").trim().split(/\s+/).filter(Boolean).length, 0);
+        const dialText = reply.replace(/\*[^*]*\*/g, " ").trim();
+        const dialWordCount = dialText.split(/\s+/).filter(Boolean).length;
+
+        // Rechazar si no hay diálogo hablado o es minúsculo (<8 palabras) y hay relato notable (>15 palabras)
+        if (dialWordCount < 8 && narrWordCount > 15) return true;
+        // Rechazar si el relato en asteriscos supera al diálogo hablado
+        if (narrWordCount > 25 && narrWordCount >= dialWordCount) return true;
+
         const userNorm = latest.replace(/[^\w]+/g, " ").trim().toLowerCase();
         const replyNorm = reply.replace(/\*[^*]*\*/g, "").replace(/[^\w]+/g, " ").trim().toLowerCase();
         if (userNorm.length > 25 && (replyNorm === userNorm || replyNorm.includes(userNorm))) return true;
@@ -796,9 +863,10 @@ export default async function handler(req, res) {
         "  - PROHIBIDO TERMINANTEMENTE usar jergas callejeras como 'carnal', 'chavo', 'wey', 'mano' o vulgaridades fuera de personaje.",
         "  - PROHIBIDO mezclar 'vosotros/sois' con 'tú' o jerga de barrio. Habla en un español seductor, natural, fluido y coherente.",
         "  - PROHIBIDO generar sangre, violencia grotesca o mutilación a menos que el rol lo requiera explícitamente.",
-        "  - PROPORCIÓN INMUTABLE: 80% DIÁLOGO HABLADO DIRECTO respondiendo a lo que el usuario acaba de decir o hacer, y 20% RELATO FÍSICO Y SENSORIAL en primera persona (*...*).",
+        `  - PROPORCIÓN INMUTABLE: ${Math.round(dialogueRatio * 100)}% DIÁLOGO HABLADO DIRECTO respondiendo y conversando en voz alta de tú a tú, y solo ${Math.round(narrationRatio * 100)}% RELATO FÍSICO EN ASTERISCOS (*...*).`,
+        "  - ESTRICTAMENTE PROHIBIDO que el relato en asteriscos sea más largo que el diálogo hablado. El usuario está para conversar, no para leer un libro.",
         customDirective ? `DIRECTIVAS Y REGLAS PERSONALIZADAS DE MEMORIA:\n${customDirective}` : "",
-        ...roleplayPacingAndLanguageRules(history.length, spanish, targetTokens, isLiveCall, isChatPage),
+        ...roleplayPacingAndLanguageRules(history.length, spanish, targetTokens, isLiveCall, isChatPage, dialogueRatio, narrationRatio),
         slangInstruction(body.language, body.region),
         ...(adultMode ? [
           "ESTILO NARRATIVO Y ADULTO TOTAL:",
@@ -1174,9 +1242,11 @@ export default async function handler(req, res) {
         content = content.replace(/\s*en\s+un\s+roleplay\s+(?:íntimo\s+)?(?:con\s+[a-záéíóúñ]+)?/gi, "").trim();
         content = content.replace(/\s*en\s+este\s+roleplay[.,]?/gi, "").trim();
 
-        // 6. Enforzar proporción 20% relato (*...*, ~14-18 palabras) / 80% diálogo (~55-65 palabras), sin asteriscos abiertos ni frases cortadas
+        // 6. Enforzar proporción estricta: 80% diálogo hablado directo / 20% relato breve en asteriscos
         if (isLiveCall) {
           content = content.replace(/\*.*?\*/g, "").replace(/\s+/g, " ").trim() || content;
+        } else {
+          content = enforceDialogueRatio(content, Math.round(dialogueRatio * 100), Math.round(narrationRatio * 100));
         }
 
         // Eliminar palabras truncadas o conectores rotos al final (ej: "las*", "con lent*", "de*")
