@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { cleanTranscript, generate, generationConfigFor, interactionTranscript, interactionsTranscriptionBody, lockedStoryFacts, mentionsMinor, narrativeRequest, narrativeStays, replyChangesScene, sceneLock, speechToTextBody, storyContinuityLines, storyVoiceLines, transcribeAudio } from "./ai.mjs";
+import { cleanTranscript, generate, generationConfigFor, interactionTranscript, interactionsTranscriptionBody, isRefusal, lockedStoryFacts, mentionsMinor, narrativeRequest, narrativeStays, replyChangesScene, sceneLock, speechToTextBody, storyContinuityLines, storyVoiceLines, transcribeAudio } from "./ai.mjs";
 
 test("a video stays with the person who sent it", () => {
   const facts = lockedStoryFacts([
@@ -284,4 +284,13 @@ test("silence under 2048 bytes returns empty text without calling upstream", asy
     if (previous === undefined) delete process.env.GEMINI_API_KEY;
     else process.env.GEMINI_API_KEY = previous;
   }
+});
+
+test("isRefusal detects Spanish and English safety refusals", () => {
+  assert.equal(isRefusal("Lo siento, pero no puedo continuar con esta conversación. ¿Hay algo más en lo que pueda ayudarte?"), true);
+  assert.equal(isRefusal("No puedo continuar con esta conversación."), true);
+  assert.equal(isRefusal("¿Hay algo más en lo que pueda ayudarte?"), true);
+  assert.equal(isRefusal("No puedo crear contenido explícito ni de adultos."), true);
+  assert.equal(isRefusal("I cannot fulfill this request as an AI."), true);
+  assert.equal(isRefusal("*Te miro sonriendo y te tomo de la mano* Claro que sí, dime qué quieres hacer."), false);
 });

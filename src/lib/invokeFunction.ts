@@ -158,30 +158,83 @@ En este momento de la escena, ${activeChar.playerFirstName} está interactuando 
   }
 }
 
+export function isClientRefusal(text?: string | null): boolean {
+  if (!text) return false;
+  const l = text.toLowerCase().trim();
+  const refusalPhrases = [
+    "no puedo continuar con esta conversación",
+    "no puedo continuar esta conversación",
+    "no puedo seguir con esta conversación",
+    "no puedo participar en este tipo",
+    "no puedo generar este tipo",
+    "no puedo crear contenido explícito",
+    "no puedo cumplir con esta solicitud",
+    "no puedo procesar esta solicitud",
+    "no me siento cómodo",
+    "no me siento cómoda",
+    "hay algo más en lo que pueda ayudarte",
+    "algo más en lo que pueda ayudarte",
+    "algo más en lo que te pueda ayudar",
+    "como modelo de lenguaje",
+    "como inteligencia artificial",
+    "como ia,",
+    "soy un modelo de lenguaje",
+    "soy una ia",
+    "i cannot fulfill this request",
+    "i cannot continue with this conversation",
+    "i cannot continue this conversation",
+    "i am unable to continue",
+    "i am unable to generate",
+    "sexually explicit",
+    "against my safety guidelines",
+    "políticas de seguridad",
+    "pautas de seguridad",
+    "directrices de seguridad",
+    "puedo ayudarte con algún otro tema",
+    "prefiero no continuar con este tema",
+  ];
+  return refusalPhrases.some((phrase) => l.includes(phrase));
+}
+
 /** Retries only transient network, rate-limit, and server failures once. */
 export async function invokeFunctionWithRetry<T>(name: string, body: unknown): Promise<FunctionResult<T>> {
   if (ownAi.has(name)) {
     const needsContent = name === "story-chat" || name === "generate-narrative";
-    if (name === "story-chat" && (body as any)?.settings?.modelId === "magnum-v4-local") {
+    const isMagnumSelected = (body as any)?.settings?.modelId === "magnum-v4-local";
+
+    // Si el usuario tiene Magnum v4 local seleccionado, invocarlo directamente
+    if (name === "story-chat" && isMagnumSelected) {
       const local = await callLocalLlama<T>(body);
       if (local?.data) return local;
     }
+
     let cloudResult = await callOwnAi<T>(name, body);
-    const okFirst = !cloudResult.error && (needsContent ? Boolean((cloudResult.data as any)?.content) : Boolean(cloudResult.data));
+    const firstContent = (cloudResult.data as any)?.content;
+    const isRefused = name === "story-chat" && isClientRefusal(firstContent);
+
+    const okFirst = !cloudResult.error && !isRefused && (needsContent ? Boolean(firstContent) : Boolean(cloudResult.data));
     if (okFirst) return cloudResult;
 
+    // Si la nube rechazó por censura o falló, recurrir inmediatamente a Magnum v4 local (puerto 8788)
+    if (name === "story-chat") {
+      const local = await callLocalLlama<T>(body);
+      if (local?.data && !isClientRefusal((local.data as any)?.content)) return local;
+    }
+
     const firstStatus = cloudResult.error?.context?.status ?? 503;
-    if (firstStatus !== 404 && firstStatus !== 401 && firstStatus !== 402) {
+    if (firstStatus !== 404 && firstStatus !== 401 && firstStatus !== 402 && !isRefused) {
       await wait(450);
       const retryCloud = await callOwnAi<T>(name, body);
-      const okRetry = !retryCloud.error && (needsContent ? Boolean((retryCloud.data as any)?.content) : Boolean(retryCloud.data));
+      const retryContent = (retryCloud.data as any)?.content;
+      const retryRefused = name === "story-chat" && isClientRefusal(retryContent);
+      const okRetry = !retryCloud.error && !retryRefused && (needsContent ? Boolean(retryContent) : Boolean(retryCloud.data));
       if (okRetry) return retryCloud;
       cloudResult = retryCloud;
     }
 
     if (name === "story-chat") {
       const local = await callLocalLlama<T>(body);
-      if (local?.data) return local;
+      if (local?.data && !isClientRefusal((local.data as any)?.content)) return local;
     }
     return cloudResult;
   }

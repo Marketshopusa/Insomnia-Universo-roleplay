@@ -73,20 +73,75 @@ export function generationConfigFor(candidate, settings, options = {}, thinking 
   if (candidate.startsWith("gemini-3.")) return { ...settings, thinkingConfig: { thinkingLevel: "low" } };
   return { ...settings, thinkingConfig: { thinkingBudget: 0 } };
 }
-function isRefusal(text) {
+export function isRefusal(text) {
   if (!text) return true;
-  const l = text.toLowerCase();
-  return (
-    l.includes("no puedo crear contenido explícito") ||
-    l.includes("no puedo participar en este tipo de") ||
-    l.includes("no me siento cómoda participando") ||
-    l.includes("no me siento cómodo participando") ||
-    l.includes("i cannot fulfill this request") ||
-    l.includes("i am unable to generate") ||
-    l.includes("sexually explicit") ||
-    l.includes("como modelo de lenguaje") ||
-    l.includes("como inteligencia artificial")
-  );
+  const l = text.toLowerCase().trim();
+  const refusalPhrases = [
+    "no puedo continuar con esta conversación",
+    "no puedo continuar esta conversación",
+    "no puedo seguir con esta conversación",
+    "no puedo participar en este tipo",
+    "no puedo generar este tipo",
+    "no puedo crear contenido explícito",
+    "no puedo cumplir con esta solicitud",
+    "no puedo procesar esta solicitud",
+    "no me siento cómodo",
+    "no me siento cómoda",
+    "hay algo más en lo que pueda ayudarte",
+    "algo más en lo que pueda ayudarte",
+    "algo más en lo que te pueda ayudar",
+    "como modelo de lenguaje",
+    "como inteligencia artificial",
+    "como ia,",
+    "soy un modelo de lenguaje",
+    "soy una ia",
+    "i cannot fulfill this request",
+    "i cannot continue with this conversation",
+    "i cannot continue this conversation",
+    "i am unable to continue",
+    "i am unable to generate",
+    "sexually explicit",
+    "against my safety guidelines",
+    "políticas de seguridad",
+    "pautas de seguridad",
+    "directrices de seguridad",
+    "puedo ayudarte con algún otro tema",
+    "prefiero no continuar con este tema",
+    "no estoy capacitado para generar",
+  ];
+  return refusalPhrases.some((phrase) => l.includes(phrase));
+}
+
+export async function generateLocalLlama(messages, options = {}) {
+  try {
+    const fetchImpl = options.fetchImpl || fetch;
+    const response = await fetchImpl("http://127.0.0.1:8788/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "magnum-v4-12b",
+        messages,
+        max_tokens: options.maxTokens || 260,
+        temperature: options.temperature ?? 0.85,
+        repeat_penalty: 1.0,
+      }),
+      signal: AbortSignal.timeout(options.timeoutMs || 8000),
+    });
+    if (!response.ok) return null;
+    const data = await response.json();
+    let content = data?.choices?.[0]?.message?.content?.trim();
+    if (content) {
+      content = content.replace(/[\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff\u3040-\u30ff]/g, "").trim();
+      if (content.length > 5 && !isRefusal(content)) {
+        if (options.isRepeated && options.isRepeated(content)) return null;
+        if (options.validate && !options.validate(content)) return null;
+        return content;
+      }
+    }
+  } catch {
+    return null;
+  }
+  return null;
 }
 
 export async function generateOpenRouter(messages, options = {}) {
@@ -1012,7 +1067,33 @@ export default async function handler(req, res) {
       }
 
       let content = null;
-      if (isLiveCall) {
+      if (modelId === "magnum-v4-local") {
+        // Direct local Magnum execution
+        try {
+          content = await generateLocalLlama(openRouterMessages, {
+            maxTokens: targetTokens,
+            temperature: 0.85,
+            validate: (reply) => !isOffRole(reply),
+            isRepeated: isRepeatedReply,
+          });
+        } catch (err) {
+          console.warn("Local Magnum direct execution error:", err.message);
+        }
+        if (!content) {
+          try {
+            content = await generateOpenRouter(openRouterMessages, {
+              models: ["anthracite-org/magnum-v4-72b", "sao10k/l3.3-euryale-70b"],
+              maxTokens: targetTokens,
+              temperature: 0.82,
+              apiKey: openRouterApiKey || undefined,
+              validate: (reply) => !isOffRole(reply),
+              isRepeated: isRepeatedReply,
+            });
+          } catch (err) {
+            console.warn("OpenRouter Magnum fallback failed:", err.message);
+          }
+        }
+      } else if (isLiveCall) {
         // Fast real-time engine (< 400ms) for live voice phone calls
         const canTryGemini = Boolean(geminiApiKey || (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== "[SENSITIVE]"));
         if (canTryGemini) {
@@ -1042,8 +1123,21 @@ export default async function handler(req, res) {
         }
         if (!content) {
           try {
+            content = await generateLocalLlama(openRouterMessages, {
+              maxTokens: 55,
+              temperature: 0.82,
+              timeoutMs: 2500,
+              validate: (reply) => !isOffRole(reply),
+              isRepeated: isRepeatedReply,
+            });
+          } catch (err) {
+            console.warn("Local llama live call fallback failed:", err.message);
+          }
+        }
+        if (!content) {
+          try {
             content = await generateNvidia(openRouterMessages, {
-              models: ["meta/llama-3.2-11b-vision-instruct", "meta/llama-3.2-11b-vision-instruct"],
+              models: ["meta/llama-3.2-11b-vision-instruct"],
               maxTokens: 55,
               temperature: 0.82,
               timeoutMs: 2500,
@@ -1070,6 +1164,19 @@ export default async function handler(req, res) {
         } catch (err) {
           console.warn("OpenRouter invocation failed:", err.message);
         }
+        if (!content) {
+          try {
+            content = await generateLocalLlama(openRouterMessages, {
+              maxTokens: targetTokens,
+              temperature: 0.85,
+              timeoutMs: 8000,
+              validate: (reply) => !isOffRole(reply),
+              isRepeated: isRepeatedReply,
+            });
+          } catch (err) {
+            console.warn("Local llama fallback for deluxe failed:", err.message);
+          }
+        }
       } else if (modelId === "mistral-nemo" || modelId === "qwen-3.8-flash" || modelId === "glm-5.3-flash") {
         // Targeted free/open models
         try {
@@ -1085,8 +1192,21 @@ export default async function handler(req, res) {
         } catch (err) {
           console.warn("OpenRouter free candidate failed:", err.message);
         }
+        if (!content) {
+          try {
+            content = await generateLocalLlama(openRouterMessages, {
+              maxTokens: targetTokens,
+              temperature: 0.85,
+              timeoutMs: 8000,
+              validate: (reply) => !isOffRole(reply),
+              isRepeated: isRepeatedReply,
+            });
+          } catch (err) {
+            console.warn("Local llama fallback for free model failed:", err.message);
+          }
+        }
       } else {
-        // Insomnia Flash: High-speed engine (Gemini 2.5 Flash if key available, else ultra-fast Nvidia NIM ~2.6s)
+        // Insomnia Flash: High-speed engine (Gemini 2.5 Flash if key available, else local Magnum / Nvidia NIM)
         const canTryGemini = Boolean(geminiApiKey || (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== "[SENSITIVE]"));
         if (canTryGemini) {
           try {
@@ -1103,7 +1223,8 @@ export default async function handler(req, res) {
                 systemInstruction,
                 adultMode: true,
                 apiKey: geminiApiKey || undefined,
-                timeoutMs: 9000, fallbackModels: ["gemini-2.0-flash", "gemini-2.5-flash-lite"],
+                timeoutMs: 9000,
+                fallbackModels: ["gemini-2.0-flash", "gemini-2.5-flash-lite"],
                 fastReply: true,
                 validate: (reply) => !isOffRole(reply)
               },
@@ -1113,7 +1234,22 @@ export default async function handler(req, res) {
           }
         }
 
-        // Fast primary fallback: Nvidia NIM (~2.5s response, highly coherent roleplay)
+        // Fast primary fallback: Local Magnum v4 if active (uncensored, instant, 0 network lag)
+        if (!content) {
+          try {
+            content = await generateLocalLlama(openRouterMessages, {
+              maxTokens: targetTokens,
+              temperature: 0.85,
+              timeoutMs: 7000,
+              validate: (reply) => !isOffRole(reply),
+              isRepeated: isRepeatedReply,
+            });
+          } catch (err) {
+            console.warn("Local llama fast primary fallback failed:", err.message);
+          }
+        }
+
+        // Fast secondary fallback: Nvidia NIM (~2.5s response, highly coherent roleplay)
         if (!content) {
           try {
             content = await generateNvidia(openRouterMessages, {
@@ -1130,25 +1266,37 @@ export default async function handler(req, res) {
           }
         }
 
-        // Secondary fallback: OpenRouter free models
+        // Tertiary fallback: OpenRouter uncensored models
         if (!content) {
           try {
             content = await generateOpenRouter(openRouterMessages, {
-              models: ["meta/llama-3.2-11b-vision-instruct", "meta/llama-3.2-11b-vision-instruct"],
+              models: ["anthracite-org/magnum-v4-72b", "sao10k/l3.3-euryale-70b"],
               maxTokens: targetTokens,
               temperature: 0.8,
-              timeoutMs: 4500,
+              timeoutMs: 5000,
               apiKey: openRouterApiKey || undefined,
               validate: (reply) => !isOffRole(reply),
               isRepeated: isRepeatedReply,
             });
           } catch (err) {
-            console.warn("OpenRouter secondary fallback failed:", err.message);
+            console.warn("OpenRouter tertiary fallback failed:", err.message);
           }
         }
       }
 
-      // Fast fallback to Nvidia NIM if content is still null (for non-flash models)
+      // Fast fallback to Local Llama or Nvidia NIM if content is still null (for non-flash models)
+      if (!content) {
+        try {
+          content = await generateLocalLlama(openRouterMessages, {
+            maxTokens: targetTokens,
+            temperature: 0.85,
+            timeoutMs: 6000,
+            validate: (reply) => !isOffRole(reply),
+            isRepeated: isRepeatedReply,
+          });
+        } catch { /* ignore */ }
+      }
+
       if (!content) {
         try {
           content = await generateNvidia(openRouterMessages, {
@@ -1165,11 +1313,11 @@ export default async function handler(req, res) {
         }
       }
 
-      // Final fallback to OpenRouter free models if still null
+      // Final fallback to OpenRouter uncensored models if still null
       if (!content) {
         try {
           content = await generateOpenRouter(openRouterMessages, {
-            models: ["meta/llama-3.2-11b-vision-instruct", "meta/llama-3.2-11b-vision-instruct"],
+            models: ["anthracite-org/magnum-v4-72b", "sao10k/l3.3-euryale-70b"],
             maxTokens: targetTokens,
             temperature: 0.82,
             timeoutMs: 4500,
@@ -1180,6 +1328,21 @@ export default async function handler(req, res) {
         } catch (err) {
           console.warn("Final OpenRouter fallback failed:", err.message);
         }
+      }
+
+      if (!content || isRefusal(content)) {
+        try {
+          content = await generateLocalLlama(openRouterMessages, {
+            maxTokens: targetTokens,
+            temperature: 0.85,
+            validate: (reply) => !isOffRole(reply),
+            isRepeated: isRepeatedReply,
+          });
+        } catch { /* ignore */ }
+      }
+
+      if (content && isRefusal(content)) {
+        content = null;
       }
 
       if (content) {
