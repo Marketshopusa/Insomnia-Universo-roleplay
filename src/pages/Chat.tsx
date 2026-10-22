@@ -51,7 +51,7 @@ import { selectStoryMemory, buildPersistentChronicle } from "@/lib/storyMemory";
 import { startWavRecording, blobToBase64, type WavRecorder } from "@/lib/wavRecorder";
 import { browserSpeechLocale, getStoryRegion, getStoryAccent, spokenRegion } from "@/lib/regions";
 import { normalizeAssistantReply } from "@/lib/roleReply";
-import { ChatCharacterConfigDialog, fallbackFemaleSpeech } from "@/components/chat/ChatCharacterConfigDialog";
+import { ChatCharacterConfigDialog, fallbackFemaleSpeech, isMediaVideo } from "@/components/chat/ChatCharacterConfigDialog";
 import { ChatAiSettingsDialog } from "@/components/story/ChatAiSettingsDialog";
 import { getStoryAiSettings, AVAILABLE_AI_MODELS } from "@/lib/storyAiSettings";
 import { getMotherCardConfig } from "@/lib/roleplayBase";
@@ -673,7 +673,7 @@ export default function ChatPage() {
 
   // Active character full media (video or photo)
   const activeMediaUrl = activeChar.gallery[activePhotoIdx] || activeChar.avatar;
-  const isVideoMedia = Boolean(activeMediaUrl && (activeMediaUrl.endsWith(".mp4") || activeMediaUrl.endsWith(".webm") || activeMediaUrl.includes("video")));
+  const isVideoMedia = isMediaVideo(activeMediaUrl);
 
   // Messages for active character: Only clean starter message if no conversation yet
   const currentMessages = useMemo(() => {
@@ -1468,12 +1468,23 @@ export default function ChatPage() {
                 className="flex flex-col items-center gap-2 cursor-pointer group flex-shrink-0"
               >
                 <div className="relative w-18 h-18 md:w-20 md:h-20 rounded-full p-[2px] bg-gradient-to-tr from-[#ff8c00] via-amber-400 to-[#e67e00] group-hover:scale-105 transition-transform shadow-lg shadow-[#ff8c00]/20">
-                  <div className="w-full h-full rounded-full overflow-hidden border-2 border-black">
-                    <img
-                      src={char.avatar}
-                      alt={char.name}
-                      className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
-                    />
+                  <div className="w-full h-full rounded-full overflow-hidden border-2 border-black bg-black">
+                    {isMediaVideo(char.avatar) ? (
+                      <video
+                        src={char.avatar}
+                        autoPlay
+                        loop
+                        muted
+                        playsInline
+                        className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
+                      />
+                    ) : (
+                      <img
+                        src={char.avatar}
+                        alt={char.name}
+                        className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
+                      />
+                    )}
                   </div>
                   <span className="absolute bottom-0 right-1 w-3.5 h-3.5 rounded-full bg-emerald-500 border-2 border-black" />
                 </div>
@@ -1563,11 +1574,22 @@ export default function ChatPage() {
                     onClick={() => handleOpenChat(char.id)}
                     className="group relative rounded-2xl overflow-hidden aspect-[3/4] sm:aspect-[9/15] bg-[#141414] border border-[#242424] hover:border-[#ff8c00] cursor-pointer transition-all shadow-md hover:shadow-xl hover:shadow-[#ff8c00]/10 flex flex-col justify-end w-full max-w-full"
                   >
-                    <img
-                      src={char.avatar}
-                      alt={char.name}
-                      className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                    />
+                    {isMediaVideo(char.avatar) ? (
+                      <video
+                        src={char.avatar}
+                        autoPlay
+                        loop
+                        muted
+                        playsInline
+                        className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                      />
+                    ) : (
+                      <img
+                        src={char.avatar}
+                        alt={char.name}
+                        className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                      />
+                    )}
                     <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent" />
 
                     <div className="absolute top-3 right-3 flex items-center gap-1.5 z-10">
@@ -2142,13 +2164,24 @@ export default function ChatPage() {
                 </div>
               </div>
 
-              {/* Large Photo Carousel */}
+              {/* Large Photo / Video Carousel */}
               <div className="relative aspect-[3/4] bg-black">
-                <img
-                  src={activeChar.gallery[activePhotoIdx] || activeChar.avatar}
-                  alt={activeChar.name}
-                  className="w-full h-full object-cover"
-                />
+                {isVideoMedia ? (
+                  <video
+                    src={activeMediaUrl}
+                    autoPlay
+                    loop
+                    muted
+                    playsInline
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <img
+                    src={activeMediaUrl}
+                    alt={activeChar.name}
+                    className="w-full h-full object-cover"
+                  />
+                )}
                 <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent opacity-50" />
 
                 {activeChar.gallery.length > 1 && (
@@ -2195,15 +2228,24 @@ export default function ChatPage() {
                 {/* Exclusive Photos Grid */}
                 <div className="space-y-2">
                   <div className="grid grid-cols-3 gap-2">
-                    {activeChar.gallery.slice(0, 2).map((img, i) => (
-                      <div
-                        key={i}
-                        onClick={() => setActivePhotoIdx(i)}
-                        className="aspect-square rounded-xl overflow-hidden cursor-pointer border border-[#262626] hover:border-[#ff8c00] transition-all"
-                      >
-                        <img src={img} alt="Thumbnail" className="w-full h-full object-cover" />
-                      </div>
-                    ))}
+                    {activeChar.gallery.slice(0, 2).map((img, i) => {
+                      const isVid = isMediaVideo(img);
+                      return (
+                        <div
+                          key={i}
+                          onClick={() => setActivePhotoIdx(i)}
+                          className={`aspect-square rounded-xl overflow-hidden cursor-pointer border ${
+                            activePhotoIdx === i ? "border-[#ff8c00] ring-2 ring-[#ff8c00]/50" : "border-[#262626]"
+                          } hover:border-[#ff8c00] transition-all bg-black relative`}
+                        >
+                          {isVid ? (
+                            <video src={img} muted playsInline autoPlay loop className="w-full h-full object-cover" />
+                          ) : (
+                            <img src={img} alt="Thumbnail" className="w-full h-full object-cover" />
+                          )}
+                        </div>
+                      );
+                    })}
                     <div
                       onClick={() => {
                         toast({

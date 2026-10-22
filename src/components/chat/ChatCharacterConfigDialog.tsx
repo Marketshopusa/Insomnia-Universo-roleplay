@@ -30,11 +30,19 @@ import {
   RotateCcw,
   Upload,
   Check,
-  Sparkles
+  Sparkles,
+  Clipboard,
+  Film,
+  Loader2,
+  ImagePlus,
+  FolderUp,
+  Link as LinkIcon
 } from "lucide-react";
 import { STORY_VOICES, normalizeStoryVoice, setStoryVoice } from "@/lib/voices";
 import { streamSpeech, type SpeechStream } from "@/lib/ttsStream";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 
 export interface CharacterItem {
@@ -66,6 +74,16 @@ interface ChatCharacterConfigDialogProps {
   onOpenChange: (open: boolean) => void;
   onSave: (updated: CharacterItem) => void;
   onResetHistory?: () => void;
+}
+
+/** Determina si una URL corresponde a un video (MP4, WebM, MOV o data:video) */
+export function isMediaVideo(url: string | null | undefined): boolean {
+  if (!url) return false;
+  return Boolean(
+    url.match(/\.(mp4|webm|mov|ogg)(\?|$)/i) ||
+    url.startsWith("data:video") ||
+    (url.includes("user-story-covers") && (url.includes(".mp4") || url.includes(".webm") || url.includes(".mov")))
+  );
 }
 
 /** Reproduce de forma garantizada con voz femenina si no hay red local */
@@ -145,6 +163,7 @@ export const ChatCharacterConfigDialog: React.FC<ChatCharacterConfigDialogProps>
 }) => {
   const { language } = useLanguage();
   const isEs = language === "es";
+  const { user } = useAuth();
 
   const [activeTab, setActiveTab] = useState("info");
 
@@ -160,6 +179,12 @@ export const ChatCharacterConfigDialog: React.FC<ChatCharacterConfigDialogProps>
   const [avatar, setAvatar] = useState("");
   const [gallery, setGallery] = useState<string[]>([]);
   const [newPhotoUrl, setNewPhotoUrl] = useState("");
+
+  // Media uploading state & file input refs
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number } | null>(null);
+  const multiFileInputRef = useRef<HTMLInputElement>(null);
+  const avatarFileInputRef = useRef<HTMLInputElement>(null);
 
   // Testing voice
   const [isPlayingVoice, setIsPlayingVoice] = useState(false);
@@ -253,17 +278,153 @@ export const ChatCharacterConfigDialog: React.FC<ChatCharacterConfigDialogProps>
     }
   };
 
-  // Add Photo to Gallery
-  const handleAddPhoto = () => {
-    const trimmed = newPhotoUrl.trim();
-    if (!trimmed) return;
-    if (gallery.includes(trimmed)) {
-      toast({ description: isEs ? "Esta foto ya está en la galería" : "This photo is already in the gallery" });
-      return;
+  // Upload a single file (image, GIF, MP4 video)
+  const uploadFile = async (file: File): Promise<string | null> => {
+    if (file.size > 60 * 1024 * 1024) {
+      toast({
+        title: isEs ? "Archivo supera 60 MB" : "File exceeds 60 MB",
+        description: isEs ? "Por favor selecciona un video o imagen más comprimido." : "Please use a more compressed file.",
+        variant: "destructive"
+      });
+      return null;
     }
-    setGallery((prev) => [...prev, trimmed]);
-    setNewPhotoUrl("");
-    toast({ description: isEs ? "Foto agregada a la galería" : "Photo added to gallery" });
+
+    try {
+      const ext = file.name.split(".").pop() || (file.type.startsWith("video") ? "mp4" : "jpg");
+      const userId = user?.id || "public_chat";
+      const path = `${userId}/${crypto.randomUUID()}.${ext}`;
+
+      const { error } = await supabase.storage
+        .from("user-story-covers")
+        .upload(path, file, { upsert: false, contentType: file.type });
+
+      if (!error) {
+        const { data } = supabase.storage.from("user-story-covers").getPublicUrl(path);
+        if (data?.publicUrl) return data.publicUrl;
+      }
+    } catch (err) {
+      console.warn("Storage upload failed, falling back to data URL:", err);
+    }
+
+    // Reliable fallback: read as base64 Data URL so upload ALWAYS works
+    return new Promise<string>((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve((reader.result as string) || "");
+      reader.onerror = () => resolve("");
+      reader.readAsDataURL(file);
+    });
+  };
+
+  // Upload Multiple Files from Device directly into the Carousel
+  const handleUploadMultipleFiles = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files || []);
+    if (files.length === 0) return;
+
+    setIsUploading(true);
+    setUploadProgress({ current: 0, total: files.length });
+
+    try {
+      const newUrls: string[] = [];
+      for (let i = 0; i < files.length; i++) {
+        setUploadProgress({ current: i + 1, total: files.length });
+        const url = await uploadFile(files[i]);
+        if (url && !gallery.includes(url) && !newUrls.includes(url)) {
+          newUrls.push(url);
+        }
+      }
+
+      if (newUrls.length > 0) {
+        setGallery((prev) => [...prev, ...newUrls]);
+        if (!avatar) setAvatar(newUrls[0]);
+        toast({
+          title: isEs ? "Archivos agregados al carrusel" : "Files added to carousel",
+          description: isEs
+            ? `Se han subido y agregado ${newUrls.length} archivo(s) a la galería.`
+            : `Successfully uploaded and added ${newUrls.length} file(s).`
+        });
+      }
+    } finally {
+      setIsUploading(false);
+      setUploadProgress(null);
+      if (multiFileInputRef.current) multiFileInputRef.current.value = "";
+    }
+  };
+
+  // Upload Avatar from Device
+  const handleUploadAvatar = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setIsUploading(true);
+    try {
+      const url = await uploadFile(file);
+      if (url) {
+        setAvatar(url);
+        if (!gallery.includes(url)) {
+          setGallery((prev) => [url, ...prev]);
+        }
+        toast({
+          title: isEs ? "Avatar actualizado" : "Avatar updated",
+          description: isEs ? "La foto o video principal ha sido actualizado." : "Main photo or video updated."
+        });
+      }
+    } finally {
+      setIsUploading(false);
+      if (avatarFileInputRef.current) avatarFileInputRef.current.value = "";
+    }
+  };
+
+  // Paste text from clipboard into URL input
+  const handlePasteUrl = async (target: "newPhoto" | "avatar") => {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text && text.trim()) {
+        const cleaned = text.trim();
+        if (target === "newPhoto") {
+          setNewPhotoUrl(cleaned);
+        } else {
+          setAvatar(cleaned);
+        }
+        toast({ description: isEs ? "Enlace pegado del portapapeles" : "Link pasted from clipboard" });
+      } else {
+        toast({ description: isEs ? "El portapapeles está vacío" : "Clipboard is empty" });
+      }
+    } catch {
+      toast({ description: isEs ? "Presiona Ctrl+V para pegar" : "Press Ctrl+V to paste" });
+    }
+  };
+
+  // Add Photo/Video by URL (supports single or multiple comma/space separated URLs)
+  const handleAddPhoto = () => {
+    const raw = newPhotoUrl.trim();
+    if (!raw) return;
+
+    const tokens = raw.split(/[\s,\n]+/).map((t) => t.trim()).filter(Boolean);
+    const toAdd: string[] = [];
+
+    for (const token of tokens) {
+      let clean = token;
+      if (!clean.startsWith("http://") && !clean.startsWith("https://") && !clean.startsWith("data:")) {
+        clean = clean.startsWith("//") ? `https:${clean}` : `https://${clean}`;
+      }
+      if (!gallery.includes(clean) && !toAdd.includes(clean)) {
+        toAdd.push(clean);
+      }
+    }
+
+    if (toAdd.length > 0) {
+      setGallery((prev) => [...prev, ...toAdd]);
+      if (!avatar) setAvatar(toAdd[0]);
+      setNewPhotoUrl("");
+      toast({
+        title: isEs ? "Agregado al carrusel" : "Added to carousel",
+        description: isEs ? `Se agregaron ${toAdd.length} elemento(s).` : `Added ${toAdd.length} item(s).`
+      });
+    } else {
+      toast({
+        description: isEs ? "Esta foto o URL ya está en la galería" : "This photo or URL is already in the gallery"
+      });
+    }
   };
 
   // Remove Photo from Gallery
@@ -275,13 +436,18 @@ export const ChatCharacterConfigDialog: React.FC<ChatCharacterConfigDialogProps>
       });
       return;
     }
-    setGallery((prev) => prev.filter((_, i) => i !== index));
+    const removed = gallery[index];
+    const nextGallery = gallery.filter((_, i) => i !== index);
+    setGallery(nextGallery);
+    if (avatar === removed) {
+      setAvatar(nextGallery[0] || "");
+    }
   };
 
   // Set as Main Avatar
   const handleSetMainAvatar = (url: string) => {
     setAvatar(url);
-    toast({ description: isEs ? "Foto establecida como avatar principal" : "Set as main profile photo" });
+    toast({ description: isEs ? "Foto o video establecido como avatar principal" : "Set as main profile photo/video" });
   };
 
   // Save Character
@@ -483,61 +649,196 @@ export const ChatCharacterConfigDialog: React.FC<ChatCharacterConfigDialogProps>
               </div>
             </TabsContent>
 
-            {/* TAB 2: GALERÍA DE FOTOS */}
-            <TabsContent value="photos" className="space-y-5 m-0">
-              {/* Avatar Principal */}
-              <div className="flex items-center gap-4 p-4 rounded-2xl bg-[#141414] border border-[#262626]">
-                <div className="relative w-16 h-16 rounded-full overflow-hidden ring-2 ring-[#ff8c00] flex-shrink-0">
-                  <img src={avatar || gallery[0]} alt="Avatar" className="w-full h-full object-cover" />
+            {/* TAB 2: GALERÍA DE FOTOS Y VIDEOS (CARRUSEL) */}
+            <TabsContent value="photos" className="space-y-6 m-0">
+              {/* Inputs ocultos para selección de archivos del equipo */}
+              <input
+                ref={avatarFileInputRef}
+                type="file"
+                accept="image/*,video/*,image/gif,.mp4,.webm,.mov"
+                className="hidden"
+                onChange={handleUploadAvatar}
+              />
+              <input
+                ref={multiFileInputRef}
+                type="file"
+                multiple
+                accept="image/*,video/*,image/gif,.mp4,.webm,.mov"
+                className="hidden"
+                onChange={handleUploadMultipleFiles}
+              />
+
+              {/* Sección 1: Avatar Principal */}
+              <div className="p-4 rounded-2xl bg-[#141414] border border-[#262626] space-y-3">
+                <div className="flex items-center gap-4">
+                  <div className="relative w-16 h-16 rounded-full overflow-hidden ring-2 ring-[#ff8c00] flex-shrink-0 bg-black">
+                    {isMediaVideo(avatar || gallery[0]) ? (
+                      <video
+                        src={avatar || gallery[0]}
+                        autoPlay
+                        loop
+                        muted
+                        playsInline
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <img
+                        src={avatar || gallery[0]}
+                        alt="Avatar"
+                        className="w-full h-full object-cover"
+                      />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <span className="text-xs font-bold text-white block">
+                      {isEs ? "Avatar Principal (Foto o Video)" : "Main Profile Avatar (Photo or Video)"}
+                    </span>
+                    <p className="text-[11px] text-zinc-400">
+                      {isEs
+                        ? "Es la foto o video que aparece en las llamadas y en la lista de conversaciones."
+                        : "The photo or video displayed in calls and conversation list."}
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    onClick={() => avatarFileInputRef.current?.click()}
+                    disabled={isUploading}
+                    className="bg-[#242424] hover:bg-[#333333] border border-[#3a3a3a] text-zinc-200 hover:text-white text-xs font-bold flex items-center gap-1.5 flex-shrink-0"
+                  >
+                    <FolderUp className="w-3.5 h-3.5 text-[#ff8c00]" />
+                    <span>{isEs ? "Subir del Equipo" : "Upload File"}</span>
+                  </Button>
                 </div>
-                <div className="flex-1 space-y-1">
-                  <span className="text-xs font-bold text-white">
-                    {isEs ? "Avatar Principal" : "Main Profile Avatar"}
-                  </span>
-                  <p className="text-[11px] text-zinc-400">
-                    {isEs
-                      ? "Es la foto circular que aparece en las llamadas y en la lista de conversaciones."
-                      : "The round photo displayed in calls and conversations list."}
-                  </p>
+
+                <div className="flex items-center gap-2 pt-1">
                   <Input
                     value={avatar}
                     onChange={(e) => setAvatar(e.target.value)}
-                    placeholder={isEs ? "URL del avatar principal" : "Main avatar image URL"}
-                    className="h-8 bg-[#1a1a1a] border-[#2b2b2b] text-xs text-white focus:border-[#ff8c00]"
+                    placeholder={isEs ? "URL del avatar principal (https://...)" : "Main avatar URL (https://...)"}
+                    autoComplete="off"
+                    spellCheck={false}
+                    className="h-8 bg-[#1a1a1a] border-[#2b2b2b] text-xs text-white focus:border-[#ff8c00] flex-1"
                   />
+                  <Button
+                    type="button"
+                    onClick={() => handlePasteUrl("avatar")}
+                    variant="outline"
+                    className="h-8 px-2.5 bg-[#181818] border-[#2c2c2c] hover:bg-[#252525] text-zinc-300 text-xs flex items-center gap-1"
+                    title={isEs ? "Pegar desde el portapapeles" : "Paste from clipboard"}
+                  >
+                    <Clipboard className="w-3.5 h-3.5 text-[#ff8c00]" />
+                    <span className="hidden sm:inline">{isEs ? "Pegar" : "Paste"}</span>
+                  </Button>
                 </div>
               </div>
 
-              {/* Agregar Foto */}
+              {/* Sección 2: Subir archivos desde el equipo (Múltiples fotos o videos para el Carrusel) */}
+              <div className="space-y-2">
+                <Label className="text-xs text-zinc-300 font-bold flex items-center justify-between">
+                  <span>{isEs ? "Subir desde tu Computadora / Móvil" : "Upload from your Device"}</span>
+                  <span className="text-[11px] text-[#ff8c00] font-normal">
+                    {isEs ? "Acepta imágenes, GIFs y videos MP4" : "Accepts images, GIFs, and MP4 videos"}
+                  </span>
+                </Label>
+
+                <div
+                  onClick={() => {
+                    if (!isUploading) multiFileInputRef.current?.click();
+                  }}
+                  className={`p-5 rounded-2xl border-2 border-dashed ${
+                    isUploading
+                      ? "border-[#ff8c00] bg-[#ff8c00]/5 cursor-wait"
+                      : "border-[#ff8c00]/40 hover:border-[#ff8c00] bg-gradient-to-b from-[#181818] to-[#121212] hover:bg-[#1a1a1a] cursor-pointer"
+                  } transition-all text-center group shadow-lg`}
+                >
+                  <div className="flex flex-col items-center gap-2.5">
+                    <div className="w-12 h-12 rounded-2xl bg-[#ff8c00]/15 border border-[#ff8c00]/30 text-[#ff8c00] flex items-center justify-center group-hover:scale-110 transition-transform shadow-md">
+                      {isUploading ? (
+                        <Loader2 className="w-6 h-6 animate-spin text-[#ff8c00]" />
+                      ) : (
+                        <Upload className="w-6 h-6 stroke-[2.5]" />
+                      )}
+                    </div>
+
+                    <div>
+                      <p className="text-sm font-black text-white tracking-wide">
+                        {isUploading ? (
+                          uploadProgress ? (
+                            <span>{isEs ? "Subiendo archivo" : "Uploading file"} {uploadProgress.current}/{uploadProgress.total}...</span>
+                          ) : (
+                            <span>{isEs ? "Procesando subida..." : "Processing upload..."}</span>
+                          )
+                        ) : (
+                          <span>{isEs ? "Haz clic para buscar fotos o videos en tu equipo" : "Click to browse photos or videos on your device"}</span>
+                        )}
+                      </p>
+                      <p className="text-xs text-zinc-400 mt-0.5">
+                        {isEs
+                          ? "Puedes seleccionar varios archivos a la vez para agregarlos al carrusel rotativo."
+                          : "You can select multiple files at once to add them to the rotating carousel."}
+                      </p>
+                    </div>
+
+                    {!isUploading && (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#ff8c00]/20 text-[#ff8c00] text-[11px] font-extrabold tracking-wide mt-1">
+                        <ImagePlus className="w-3.5 h-3.5" />
+                        {isEs ? "+ Seleccionar Archivos Locales" : "+ Select Local Files"}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Sección 3: Agregar por Enlace / URL */}
               <div className="space-y-2">
                 <Label className="text-xs text-zinc-300 font-semibold">
-                  {isEs ? "Agregar Nueva Foto a la Galería Rotativa" : "Add New Photo to Rotating Gallery"}
+                  {isEs ? "O Agregar mediante Enlace URL (Imagen, GIF o Video)" : "Or Add via URL Link (Image, GIF, or Video)"}
                 </Label>
                 <div className="flex gap-2">
                   <Input
                     value={newPhotoUrl}
                     onChange={(e) => setNewPhotoUrl(e.target.value)}
-                    placeholder={isEs ? "Pega la URL de una imagen (https://...)" : "Paste image URL (https://...)"}
-                    className="bg-[#1a1a1a] border-[#2b2b2b] text-xs text-white focus:border-[#ff8c00]"
+                    placeholder={isEs ? "Pega un enlace https://... (ej. imagen.jpg o video.mp4)" : "Paste https://... link (e.g. image.jpg or video.mp4)"}
+                    autoComplete="off"
+                    spellCheck={false}
+                    className="bg-[#1a1a1a] border-[#2b2b2b] text-xs text-white focus:border-[#ff8c00] flex-1"
                   />
                   <Button
+                    type="button"
+                    onClick={() => handlePasteUrl("newPhoto")}
+                    variant="outline"
+                    className="h-10 px-3 bg-[#181818] border-[#2c2c2c] hover:bg-[#252525] text-zinc-300 text-xs flex items-center gap-1"
+                    title={isEs ? "Pegar URL del portapapeles" : "Paste URL from clipboard"}
+                  >
+                    <Clipboard className="w-3.5 h-3.5 text-[#ff8c00]" />
+                    <span className="hidden sm:inline">{isEs ? "Pegar" : "Paste"}</span>
+                  </Button>
+                  <Button
+                    type="button"
                     onClick={handleAddPhoto}
                     disabled={!newPhotoUrl.trim()}
-                    className="bg-[#ff8c00] hover:bg-amber-500 text-black font-extrabold text-xs flex items-center gap-1.5"
+                    className="bg-[#ff8c00] hover:bg-amber-500 text-black font-extrabold text-xs flex items-center gap-1.5 px-4"
                   >
                     <Plus className="w-3.5 h-3.5 stroke-[3]" /> {isEs ? "Agregar" : "Add"}
                   </Button>
                 </div>
               </div>
 
-              {/* Cuadrícula de fotos existentes */}
+              {/* Sección 4: Cuadrícula de fotos y videos de la Galería (Carrusel) */}
               <div className="space-y-2">
-                <Label className="text-xs text-zinc-300 font-semibold">
-                  {isEs ? `Fotos de la Galería (${gallery.length})` : `Gallery Photos (${gallery.length})`}
-                </Label>
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs text-zinc-300 font-semibold">
+                    {isEs ? `Fotos y Videos del Carrusel (${gallery.length})` : `Carousel Photos & Videos (${gallery.length})`}
+                  </Label>
+                  <span className="text-[11px] text-zinc-400">
+                    {isEs ? "Usa las flechas en el chat para rotarlas" : "Use arrows in chat to rotate"}
+                  </span>
+                </div>
+
                 <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
                   {gallery.map((photo, index) => {
                     const isMain = photo === avatar;
+                    const isVideo = isMediaVideo(photo);
                     return (
                       <div
                         key={index}
@@ -545,29 +846,51 @@ export const ChatCharacterConfigDialog: React.FC<ChatCharacterConfigDialogProps>
                           isMain ? "border-[#ff8c00] ring-2 ring-[#ff8c00]/50" : "border-[#282828]"
                         } bg-[#181818]`}
                       >
-                        <img src={photo} alt={`Foto ${index}`} className="w-full h-full object-cover" />
+                        {isVideo ? (
+                          <div className="relative w-full h-full bg-black flex items-center justify-center">
+                            <video
+                              src={photo}
+                              muted
+                              playsInline
+                              loop
+                              autoPlay
+                              className="w-full h-full object-cover"
+                            />
+                            <span className="absolute bottom-1.5 left-1.5 px-1.5 py-0.5 rounded-md bg-black/80 backdrop-blur-md text-amber-400 text-[9px] font-black uppercase flex items-center gap-1 border border-amber-500/30">
+                              <Film className="w-2.5 h-2.5" /> MP4
+                            </span>
+                          </div>
+                        ) : (
+                          <img
+                            src={photo}
+                            alt={`Foto ${index}`}
+                            className="w-full h-full object-cover"
+                          />
+                        )}
 
                         {/* Badge de principal */}
                         {isMain && (
-                          <span className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded-md bg-[#ff8c00] text-black text-[9px] font-black uppercase">
+                          <span className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded-md bg-[#ff8c00] text-black text-[9px] font-black uppercase shadow-md z-10">
                             {isEs ? "Principal" : "Main"}
                           </span>
                         )}
 
-                        {/* Acciones flotantes */}
-                        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-between p-2">
+                        {/* Acciones flotantes al pasar el cursor */}
+                        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-between p-2 z-10">
                           <button
+                            type="button"
                             onClick={() => handleRemovePhoto(index)}
-                            className="self-end w-6 h-6 rounded-full bg-red-600 hover:bg-red-500 text-white flex items-center justify-center transition-transform hover:scale-110"
-                            title={isEs ? "Eliminar foto" : "Delete photo"}
+                            className="self-end w-6 h-6 rounded-full bg-red-600 hover:bg-red-500 text-white flex items-center justify-center transition-transform hover:scale-110 shadow-lg"
+                            title={isEs ? "Eliminar de la galería" : "Delete from gallery"}
                           >
                             <Trash2 className="w-3 h-3" />
                           </button>
 
                           {!isMain && (
                             <button
+                              type="button"
                               onClick={() => handleSetMainAvatar(photo)}
-                              className="w-full py-1 rounded bg-[#ff8c00] hover:bg-amber-500 text-black text-[10px] font-extrabold transition-colors"
+                              className="w-full py-1 rounded bg-[#ff8c00] hover:bg-amber-500 text-black text-[10px] font-extrabold transition-colors shadow-md"
                             >
                               {isEs ? "Hacer Principal" : "Set as Main"}
                             </button>
