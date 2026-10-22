@@ -112,6 +112,20 @@ export function saveMotherCardConfig(config: Partial<MotherCardConfig>): MotherC
   if (typeof window !== "undefined") {
     try {
       localStorage.setItem(MOTHER_CARD_STORAGE_KEY, JSON.stringify(updated));
+      // Propagar inmediatamente la configuracion a storyAiSettings global y a todas las tarjetas guardadas
+      setStoryAiSettings(null, updated.aiSettings);
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith("insomnia_story_ai_settings_")) {
+          try {
+            const existing = JSON.parse(localStorage.getItem(key) || "{}");
+            localStorage.setItem(key, JSON.stringify({
+              ...existing,
+              ...updated.aiSettings,
+            }));
+          } catch {}
+        }
+      }
       window.dispatchEvent(new CustomEvent("insomnia:mother-card-updated", { detail: updated }));
     } catch (err) {
       console.warn("Could not persist Mother Card config", err);

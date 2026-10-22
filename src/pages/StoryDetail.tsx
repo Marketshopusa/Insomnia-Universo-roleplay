@@ -114,6 +114,11 @@ type Mode = "select" | "read" | "roleplay";
   const [aiSettings, setAiSettings] = useState<StoryAiSettings>(() => getStoryAiSettings(storyId));
   useEffect(() => {
     setAiSettings(getStoryAiSettings(storyId));
+    const handleMotherUpdate = () => {
+      setAiSettings(getStoryAiSettings(storyId));
+    };
+    window.addEventListener("insomnia:mother-card-updated", handleMotherUpdate);
+    return () => window.removeEventListener("insomnia:mother-card-updated", handleMotherUpdate);
   }, [storyId]);
    const audioUnlockedRef = useRef(false);
 

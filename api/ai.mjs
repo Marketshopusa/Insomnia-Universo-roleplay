@@ -116,8 +116,7 @@ export async function generateNvidia(messages, options = {}) {
   if (!apiKey) return null;
   const models = options.models || [
     "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
-    "meta/llama-3.2-11b-vision-instruct",
-  ];
+    ];
   const fetchImpl = options.fetchImpl || fetch;
   let fallbackCandidate = null;
   let anyCandidate = null;
@@ -742,6 +741,8 @@ export default async function handler(req, res) {
         if (isRepeatedReply(reply)) return true;
         // 1. Reject Chinese or Asian non-Latin scripts
         if (/[\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff\u3040-\u30ff]/.test(reply)) return true;
+        // Rechazar jerga callejera grotesca o alucinaciones de sangre fuera de personaje
+        if (/\b(?:carnal|wey|guey|vosotros|sois|escup[ií]\s+sangre|sangre\s+en\s+la\s+palma|sal\s+de\s+mi\s+mente)\b/i.test(reply)) return true;
         if (!adultMode && replyChangesScene(reply, sceneContext)) return true;
         if (mentionsMinor(reply)) return true;
         if (/(respond as a character|under \d+ characters|brief action and natural dialogue|do not decide user actions|character .{0,80} currently|conversaci[oó]n:|premise:|el usuario interpreta a|estás interpretando a|language:|\bspanish\s*\.|\benglish\s*\.)/i.test(reply)) return true;
@@ -790,6 +791,12 @@ export default async function handler(req, res) {
         "  - Si el usuario introduce o interactúa con otro personaje secundario en la escena (una hermana, madre, prima, jefa, profesora, director, amiga, etc.), interpreta a ESE personaje con coherencia psicológica y el trato propio de su relación con el protagonista.",
         "  - ESTRICTAMENTE PROHIBIDO romper la cuarta pared (nunca digas 'en un roleplay', 'en este rol', 'soy un personaje').",
         ...storyVoiceLines(story.character_role, story.player_role, spanish, locale),
+        "CONSISTENCIA DE PERSONALIDAD Y LENGUAJE (PERSONA LOCK):",
+        "  - Tu personalidad, vocabulario y tono deben ser 100% acordes a tu personaje (ejemplo: si eres una doctora/psicóloga, ejecutiva o dama elegante, hablas con calidez, intelecto, sensualidad y vocabulario refinado en primera persona).",
+        "  - PROHIBIDO TERMINANTEMENTE usar jergas callejeras como 'carnal', 'chavo', 'wey', 'mano' o vulgaridades fuera de personaje.",
+        "  - PROHIBIDO mezclar 'vosotros/sois' con 'tú' o jerga de barrio. Habla en un español seductor, natural, fluido y coherente.",
+        "  - PROHIBIDO generar sangre, violencia grotesca o mutilación a menos que el rol lo requiera explícitamente.",
+        "  - PROPORCIÓN INMUTABLE: 80% DIÁLOGO HABLADO DIRECTO respondiendo a lo que el usuario acaba de decir o hacer, y 20% RELATO FÍSICO Y SENSORIAL en primera persona (*...*).",
         customDirective ? `DIRECTIVAS Y REGLAS PERSONALIZADAS DE MEMORIA:\n${customDirective}` : "",
         ...roleplayPacingAndLanguageRules(history.length, spanish, targetTokens, isLiveCall, isChatPage),
         slangInstruction(body.language, body.region),
@@ -985,32 +992,32 @@ export default async function handler(req, res) {
       }
 
       let nvidiaModels = [
-        "meta/llama-3.2-11b-vision-instruct",
-        "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
+        "nvidia/nemotron-3-super-120b-a12b",
         "google/diffusiongemma-26b-a4b-it",
+        "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
       ];
       let openRouterModels = [
-        "mistralai/mistral-nemo",
         "anthracite-org/magnum-v4-72b",
         "sao10k/l3.3-euryale-70b",
+        "mistralai/mistral-nemo",
       ];
 
       const isDeluxeOrPremium = ["euryale-70b", "skylark-pro", "deepseek-v4-pro", "dola-seed-pro", "grok-4.3", "wizardlm-8x22b", "glm-5.2"].includes(modelId);
 
       if (modelId === "euryale-70b" || modelId === "skylark-pro" || modelId === "dola-seed-pro") {
         openRouterModels = ["sao10k/l3.3-euryale-70b", "anthracite-org/magnum-v4-72b"];
-        nvidiaModels = ["nvidia/nemotron-3-nano-omni-30b-a3b-reasoning", "meta/llama-3.2-11b-vision-instruct"];
+        nvidiaModels = ["nvidia/nemotron-3-nano-omni-30b-a3b-reasoning", ];
       } else if (modelId === "mistral-nemo") {
         openRouterModels = ["mistralai/mistral-nemo", "nvidia/nemotron-3-ultra-550b-a55b:free"];
-        nvidiaModels = ["nvidia/nemotron-3-nano-omni-30b-a3b-reasoning", "meta/llama-3.2-11b-vision-instruct"];
+        nvidiaModels = ["nvidia/nemotron-3-nano-omni-30b-a3b-reasoning", ];
       } else if (modelId === "deepseek-v4-pro") {
         openRouterModels = ["deepseek/deepseek-chat", "sao10k/l3.3-euryale-70b"];
-        nvidiaModels = ["nvidia/nemotron-3-nano-omni-30b-a3b-reasoning", "meta/llama-3.2-11b-vision-instruct"];
+        nvidiaModels = ["nvidia/nemotron-3-nano-omni-30b-a3b-reasoning", ];
       } else if (modelId === "wizardlm-8x22b") {
         openRouterModels = ["microsoft/wizardlm-2-8x22b", "anthracite-org/magnum-v4-72b"];
       } else if (modelId === "qwen-plus" || modelId === "qwen-3.7-plus" || modelId === "qwen-3.8-flash") {
         openRouterModels = ["qwen/qwen-2.5-72b-instruct", "nvidia/nemotron-3-ultra-550b-a55b:free"];
-        nvidiaModels = ["nvidia/nemotron-3-nano-omni-30b-a3b-reasoning", "meta/llama-3.2-11b-vision-instruct"];
+        nvidiaModels = ["nvidia/nemotron-3-nano-omni-30b-a3b-reasoning", ];
       }
 
       let content = null;

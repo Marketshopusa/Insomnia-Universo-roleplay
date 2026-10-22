@@ -209,23 +209,37 @@ export const DEFAULT_AI_SETTINGS: StoryAiSettings = {
 
 const STORAGE_KEY_PREFIX = "insomnia_story_ai_settings_";
 
+function getMotherCardBaseSettings(): Partial<StoryAiSettings> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = localStorage.getItem("insomnia_mother_card_config_v2");
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed?.aiSettings) return parsed.aiSettings;
+    }
+  } catch {}
+  return {};
+}
+
 export function getStoryAiSettings(storyId?: string | null): StoryAiSettings {
-  if (typeof window === "undefined") return { ...DEFAULT_AI_SETTINGS };
+  const motherAi = getMotherCardBaseSettings();
+  const base: StoryAiSettings = { ...DEFAULT_AI_SETTINGS, ...motherAi };
+  if (typeof window === "undefined") return base;
   try {
     if (storyId) {
       const stored = localStorage.getItem(`${STORAGE_KEY_PREFIX}${storyId}`);
       if (stored) {
-        return { ...DEFAULT_AI_SETTINGS, ...JSON.parse(stored) };
+        return { ...base, ...JSON.parse(stored) };
       }
     }
     const globalStored = localStorage.getItem(`${STORAGE_KEY_PREFIX}global`);
     if (globalStored) {
-      return { ...DEFAULT_AI_SETTINGS, ...JSON.parse(globalStored) };
+      return { ...base, ...JSON.parse(globalStored) };
     }
   } catch (e) {
     console.warn("Could not read story AI settings from localStorage", e);
   }
-  return { ...DEFAULT_AI_SETTINGS };
+  return base;
 }
 
 export function setStoryAiSettings(storyId: string | null | undefined, settings: StoryAiSettings): void {

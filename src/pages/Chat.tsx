@@ -47,9 +47,9 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useAdultMode } from "@/contexts/AdultModeContext";
 import { invokeFunctionWithRetry } from "@/lib/invokeFunction";
 import { streamSpeech, type SpeechStream } from "@/lib/ttsStream";
-import { selectStoryMemory } from "@/lib/storyMemory";
+import { selectStoryMemory, buildPersistentChronicle } from "@/lib/storyMemory";
 import { startWavRecording, blobToBase64, type WavRecorder } from "@/lib/wavRecorder";
-import { browserSpeechLocale } from "@/lib/regions";
+import { browserSpeechLocale, getStoryRegion, getStoryAccent, spokenRegion } from "@/lib/regions";
 import { normalizeAssistantReply } from "@/lib/roleReply";
 import { ChatCharacterConfigDialog, fallbackFemaleSpeech } from "@/components/chat/ChatCharacterConfigDialog";
 import { ChatAiSettingsDialog } from "@/components/story/ChatAiSettingsDialog";
@@ -759,40 +759,53 @@ export default function ChatPage() {
 
     try {
       const existingHistory = chatHistory[activeChar.id] || [initialStarter];
-      // Only PRIOR turns in historyPayload: latest message is passed via userMessage to prevent duplication!
-      const historyPayload = existingHistory.slice(-12).map((m) => ({
+      const mother = getMotherCardConfig();
+      const rawAiSettings = getStoryAiSettings(activeChar.id);
+      const charAiSettings = {
+        ...mother.aiSettings,
+        ...rawAiSettings,
+        messageLength: Math.max(300, Number(rawAiSettings.messageLength || mother.targetTokens)),
+      };
+
+      // Memory depth matching story cards (up to 260 turns for 32k, 140 for 16k)
+      const maxTurns = charAiSettings.memoryTier === "32k" ? 260 : charAiSettings.memoryTier === "16k" ? 140 : charAiSettings.memoryTier === "4k" ? 60 : 30;
+      const historyPayload = existingHistory.slice(-maxTurns).map((m) => ({
         role: m.role,
         content: m.content
       }));
 
       const charBio = isEs ? (activeChar.bioEs || activeChar.bio) : (activeChar.bioEn || activeChar.bio);
       const charRole = isEs ? (activeChar.roleTitleEs || activeChar.roleTitle) : (activeChar.roleTitleEn || activeChar.roleTitle);
-      const mother = getMotherCardConfig();
-      const rawAiSettings = getStoryAiSettings(activeChar.id);
-      const charAiSettings = {
-        ...mother.aiSettings,
-        ...rawAiSettings,
-        messageLength: Math.max(280, Number(rawAiSettings.messageLength || mother.targetTokens)),
-      };
+      const playerRoleName = isEs ? "Compañero" : "Partner";
+      
+      // Full unified persistent chronicle and memory recall
+      const chroniclePayload = buildPersistentChronicle(historyPayload, activeChar.name, playerRoleName);
+      const memoryPayload = selectStoryMemory(
+        historyPayload,
+        text,
+        charAiSettings.memoryTier === "32k" ? 60 : charAiSettings.memoryTier === "16k" ? 40 : 20
+      );
+      const charRegion = spokenRegion(getStoryRegion(activeChar.id), getStoryAccent(activeChar.id)) || (isEs ? "co" : "us");
 
       const { data, error } = await invokeFunctionWithRetry<{ content?: string }>("story-chat", {
         story: {
           id: activeChar.id,
           title: activeChar.name,
           description: charBio,
-          story_context: `${charRole}. Bio: ${charBio}`,
+          story_context: `${charRole}. Personalidad: ${charBio}`,
           character_role: activeChar.name,
-          player_role: isEs ? "Compañero" : "Partner",
+          player_role: playerRoleName,
           story_type: "chat_page"
         },
         chatSource: "chat_page",
         isLiveCall: false,
         language,
         history: historyPayload,
-        memory: selectStoryMemory(historyPayload, text),
+        memory: memoryPayload,
+        chronicle: chroniclePayload,
         userMessage: text,
         adultMode: adultEnabled,
-        region: "mx",
+        region: charRegion,
         settings: charAiSettings
       });
 
@@ -859,12 +872,12 @@ export default function ChatPage() {
     stopAudio();
     setPlayingAudioId(messageId);
 
-    // Speak entire message (both narration and dialogue), removing asterisks so TTS sounds natural
-    const spoken = text.replace(/\*/g, "").replace(/\s+/g, " ").trim() || text;
+    // Pass expressive text so foley, sighs and acoustic cues trigger properly
     const voiceToUse = activeChar.voiceName || "Aoede";
+    const charRegion = spokenRegion(getStoryRegion(activeChar.id), getStoryAccent(activeChar.id)) || (language === "es" ? "co" : "us");
 
     try {
-      const stream = streamSpeech(spoken, voiceToUse, language, true, "mx");
+      const stream = streamSpeech(text, voiceToUse, language, true, charRegion);
       speechStreamRef.current = stream;
       await stream.done;
       if (speechStreamRef.current === stream) {
@@ -1173,13 +1186,19 @@ export default function ChatPage() {
     try {
       const charBio = isEs ? (activeChar.bioEs || activeChar.bio) : (activeChar.bioEn || activeChar.bio);
       const charRole = isEs ? (activeChar.roleTitleEs || activeChar.roleTitle) : (activeChar.roleTitleEn || activeChar.roleTitle);
-      const charAiSettings = getStoryAiSettings(activeChar.id);
+      const mother = getMotherCardConfig();
+      const rawAiSettings = getStoryAiSettings(activeChar.id);
+      const charAiSettings = {
+        ...mother.aiSettings,
+        ...rawAiSettings,
+      };
 
       // Fast call settings: 45 tokens max for instant snappy phone response (<0.5s)
       const fastCallSettings = {
         ...charAiSettings,
         messageLength: 45
       };
+      const charRegion = spokenRegion(getStoryRegion(activeChar.id), getStoryAccent(activeChar.id)) || (isEs ? "co" : "us");
 
       const { data, error } = await invokeFunctionWithRetry<{ content?: string }>("story-chat", {
         story: {
@@ -1198,7 +1217,7 @@ export default function ChatPage() {
         memory: selectStoryMemory(priorHistory, userText),
         userMessage: userText,
         adultMode: adultEnabled,
-        region: "mx",
+        region: charRegion,
         settings: fastCallSettings
       });
 
@@ -1266,7 +1285,13 @@ export default function ChatPage() {
         }));
         const charBio = isEs ? (activeChar.bioEs || activeChar.bio) : (activeChar.bioEn || activeChar.bio);
         const charRole = isEs ? (activeChar.roleTitleEs || activeChar.roleTitle) : (activeChar.roleTitleEn || activeChar.roleTitle);
-        const charAiSettings = getStoryAiSettings(activeChar.id);
+        const mother = getMotherCardConfig();
+        const rawAiSettings = getStoryAiSettings(activeChar.id);
+        const charAiSettings = {
+          ...mother.aiSettings,
+          ...rawAiSettings,
+        };
+        const charRegion = spokenRegion(getStoryRegion(activeChar.id), getStoryAccent(activeChar.id)) || (isEs ? "co" : "us");
 
         const lastUser = [...existingHistory].reverse().find((m) => m.role === "user");
         const lastTopic = lastUser ? lastUser.content.slice(0, 100) : "";
@@ -1292,7 +1317,7 @@ export default function ChatPage() {
           memory: selectStoryMemory(historyPayload, promptContext),
           userMessage: promptContext,
           adultMode: adultEnabled,
-          region: "mx",
+          region: charRegion,
           settings: { ...charAiSettings, messageLength: 45 }
         });
 
