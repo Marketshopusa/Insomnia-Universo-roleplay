@@ -662,6 +662,8 @@ export function roleplayPacingAndLanguageRules(historyLength, spanish, targetTok
       '   - La otra persona te está escuchando por el altavoz de su teléfono. Tu respuesta debe ser EXCLUSIVAMENTE lo que dices con tu voz en primera persona.',
       '2. RESPUESTA ULTRA-RÁPIDA, CONCISA Y DIRECTA:',
       '   - Habla en 1 o 2 oraciones naturales, expresivas y directas (aproximadamente 20 a 40 palabras). Responde de inmediato continuando la conversación con fluidez y cero silencios.',
+      '3. APEGO RIGUROSO AL PERSONAJE Y PARENTESCO DE LA TARJETA:',
+      '   - Habla en tu personaje de la tarjeta con su rol exacto. Si el usuario es tu Tío, trátalo SIEMPRE de Tío. PROHIBIDO usar saludos genéricos fuera de rol como "Hola cariño" si tu rol es de sobrina.',
     ];
   }
 
@@ -826,9 +828,13 @@ export default async function handler(req, res) {
         // Rechazar respuestas que terminen con oraciones rotas o inconclusas como "solo..." o "pero..."
         if (/\b(?:solo|pero|y|que|con|de|en|tu|mi|su|muy)\.{2,}\s*$/i.test(reply)) return true;
         // Rechazar inversiones absurdas de parentesco y genero (ej: decirle "primo" o "dulcita princesa" al Tio)
-        const isTioRole = /\bt[ií]o\b/i.test(playerName) || /\bt[ií]o\b/i.test(characterName) || /\bsobrin[ao]\b/i.test(characterName) || /\bsobrin[ao]\b/i.test(sceneContext);
+        const isTioRole = /\bt[ií]o\b/i.test(playerName) || /\bt[ií]o\b/i.test(characterName) || /\bsobrin[ao]\b/i.test(characterName) || /\bsobrin[ao]\b/i.test(sceneContext) || /\bsobrin[ao]\b/i.test(body.story?.description || "") || /\bt[ií]o\b/i.test(body.story?.description || "");
         if (isTioRole) {
-          if (/\b(?:primo|prima|hermano|hermana|dulcita\s+princesa|mi\s+princesa)\b/i.test(reply.replace(/\*[^*]*\*/g, ""))) {
+          const spokenClean = reply.replace(/\*[^*]*\*/g, "");
+          if (/\b(?:primo|prima|hermano|hermana|dulcita\s+princesa|mi\s+princesa)\b/i.test(spokenClean)) {
+            return true;
+          }
+          if (isLiveCall && /^\s*(?:hola|buenas|hey)\s+(?:cariño|amor|bebé|cielo)\b/i.test(spokenClean)) {
             return true;
           }
         }
@@ -907,9 +913,10 @@ export default async function handler(req, res) {
       const defaultFirstName = (characterName.match(/[A-ZÁÉÍÓÚÑ][a-záéíóúñ]{2,}/)?.[0] || characterName.split(/[\s,()]+/)[0] || "Personaje").trim();
       const playerFirstName = (playerName.match(/[A-ZÁÉÍÓÚÑ][a-záéíóúñ]{2,}/)?.[0] || playerName.split(/[\s,()]+/)[0] || "Usuario").trim();
       
-      const isPlayerTio = /\bt[ií]o\b/i.test(playerName) || /\bt[ií]o\b/i.test(characterName) || /\bsobrin[ao]\b/i.test(characterName) || /\bsobrin[ao]\b/i.test(sceneContext);
-      const isCharacterSobrina = /\bsobrin[ao]\b/i.test(characterName) || isPlayerTio;
-      const kinshipTerm = isCharacterSobrina ? "Tío" : (/t[ií]a/i.test(characterName) ? "Sobrino" : (/mam[aá]|madre/i.test(characterName) ? "Hijo" : (/herman[ao]/i.test(characterName) ? "Hermano" : playerFirstName)));
+      const allKinshipText = `${playerName} ${characterName} ${sceneContext} ${body.story?.description || ""} ${body.story?.story_context || ""} ${body.userMessage || ""} ${history.slice(-8).map((h) => h.text).join(" ")}`;
+      const isPlayerTio = /\bt[ií]o\b/i.test(allKinshipText) || /\bsobrin[ao]\b/i.test(allKinshipText);
+      const isCharacterSobrina = /\bsobrin[ao]\b/i.test(allKinshipText) || isPlayerTio;
+      const kinshipTerm = isCharacterSobrina ? "Tío" : (/t[ií]a/i.test(allKinshipText) ? "Sobrino" : (/mam[aá]|madre/i.test(allKinshipText) ? "Hijo" : (/herman[ao]/i.test(allKinshipText) ? "Hermano" : playerFirstName)));
 
       const kinshipDirective = [
         "",

@@ -408,6 +408,42 @@ const TALKIEMATE_CHARACTERS: CharacterItem[] = [
   }
 ];
 
+/**
+ * Resuelve dinámicamente el parentesco y rol del personaje y del usuario (Tío, Sobrina, etc.)
+ * a partir de la tarjeta (título, bio, mensaje inicial) y del historial acumulado.
+ */
+export function resolveChatKinship(char: CharacterItem, history: ChatMessage[], isEs: boolean) {
+  const charRole = (isEs ? (char.roleTitleEs || char.roleTitle) : (char.roleTitleEn || char.roleTitle)) || "";
+  const charBio = (isEs ? (char.bioEs || char.bio) : (char.bioEn || char.bio)) || "";
+  const starter = (isEs ? (char.starterMessageEs || char.starterMessage) : (char.starterMessageEn || char.starterMessage)) || "";
+  const histText = history.slice(-15).map((m) => m.content).join(" ");
+  const allText = `${char.name} ${charRole} ${charBio} ${starter} ${histText}`;
+
+  const isSobrina = /\b(?:sobrin[ao]|t[ií]o)\b/i.test(allText);
+  const isHermana = /\b(?:herman[ao]|hermanit[ao])\b/i.test(allText);
+  const isPrima = /\b(?:prim[ao]|primit[ao])\b/i.test(allText);
+  const isMadre = /\b(?:madre|mamá|hijo|hija)\b/i.test(allText);
+
+  let playerRoleName = isEs ? "Compañero" : "Partner";
+  let resolvedCharRole = charRole || char.name;
+
+  if (isSobrina) {
+    playerRoleName = isEs ? "Tío" : "Uncle";
+    resolvedCharRole = isEs ? `${char.name} (la sobrina)` : `${char.name} (the niece)`;
+  } else if (isHermana) {
+    playerRoleName = isEs ? "Hermano" : "Brother";
+    resolvedCharRole = isEs ? `${char.name} (la hermana)` : `${char.name} (the sister)`;
+  } else if (isPrima) {
+    playerRoleName = isEs ? "Primo" : "Cousin";
+    resolvedCharRole = isEs ? `${char.name} (la prima)` : `${char.name} (the cousin)`;
+  } else if (isMadre) {
+    playerRoleName = isEs ? "Hijo" : "Son";
+    resolvedCharRole = isEs ? `${char.name} (la madre)` : `${char.name} (the mother)`;
+  }
+
+  return { playerRoleName, resolvedCharRole, isSobrina, charBio, charRole };
+}
+
 export default function ChatPage() {
   const { characterId } = useParams<{ characterId?: string }>();
   const navigate = useNavigate();
@@ -777,9 +813,7 @@ export default function ChatPage() {
         content: m.content
       }));
 
-      const charBio = isEs ? (activeChar.bioEs || activeChar.bio) : (activeChar.bioEn || activeChar.bio);
-      const charRole = isEs ? (activeChar.roleTitleEs || activeChar.roleTitle) : (activeChar.roleTitleEn || activeChar.roleTitle);
-      const playerRoleName = isEs ? "Compañero" : "Partner";
+      const { playerRoleName, resolvedCharRole, isSobrina, charBio } = resolveChatKinship(activeChar, existingHistory, isEs);
       
       // Full unified persistent chronicle and memory recall
       const chroniclePayload = buildPersistentChronicle(historyPayload, activeChar.name, playerRoleName);
@@ -795,8 +829,8 @@ export default function ChatPage() {
           id: activeChar.id,
           title: activeChar.name,
           description: charBio,
-          story_context: `${charRole}. Personalidad: ${charBio}`,
-          character_role: activeChar.name,
+          story_context: `${resolvedCharRole}. Personalidad: ${charBio}. Parentesco inmutable: el usuario es su ${playerRoleName} y ella es su ${resolvedCharRole}`,
+          character_role: resolvedCharRole,
           player_role: playerRoleName,
           story_type: "chat_page"
         },
@@ -1049,24 +1083,20 @@ export default function ChatPage() {
         const hasTranscript = callTranscriptRef.current.trim().length > 0;
         const msSinceTranscriptChange = Date.now() - lastSpeechChangeAt;
 
-        // If browser speech recognition is active, NEVER interrupt while user is vocalizing.
-        // Requires sustained natural silence (>=1.2s audio silence AND >=1.4s transcript quiet).
-        if (hasRecognition) {
-          const speechSettled = hasTranscript && (
-            (silentFor >= 1200 && ((hasFinalResult && msSinceTranscriptChange >= 1400) || msSinceTranscriptChange >= 1800)) ||
-            (silentFor >= 800 && msSinceTranscriptChange >= 2200) ||
-            (hasTranscript && silentFor >= 1700)
-          );
-          if (speechSettled) {
-            window.clearInterval(meter);
-            void finishCallTurn();
-          }
-        } else {
-          // Fallback if browser doesn't support Web Speech API
-          if (heardVoice && silentFor >= 1600) {
-            window.clearInterval(meter);
-            void finishCallTurn();
-          }
+        // Detect when user finished speaking:
+        // 1. Web Speech caught words and user paused naturally (>= 1.1s quiet)
+        const transcriptDone = hasTranscript && (
+          (silentFor >= 900 && ((hasFinalResult && msSinceTranscriptChange >= 1100) || msSinceTranscriptChange >= 1400)) ||
+          (silentFor >= 600 && msSinceTranscriptChange >= 1700) ||
+          (silentFor >= 1350)
+        );
+
+        // 2. Microphone audio detected user vocalizing and user paused for >= 1350ms
+        const voiceDone = (heardVoice || hasTranscript) && silentFor >= 1350;
+
+        if (transcriptDone || voiceDone) {
+          window.clearInterval(meter);
+          void finishCallTurn();
         }
       }, 100);
       callTimersRef.current.push(meter);
@@ -1104,6 +1134,11 @@ export default function ChatPage() {
     const blob = await recorder.stop();
     if (!callActiveRef.current) return;
 
+    // Grace period for browser recognition to deliver final words
+    if (!callTranscriptRef.current.trim() && activeRecognition) {
+      await new Promise((r) => window.setTimeout(r, 180));
+    }
+
     let userText = callTranscriptRef.current.trim();
     callTranscriptRef.current = "";
     setLiveTranscript("");
@@ -1116,41 +1151,27 @@ export default function ChatPage() {
     };
     const hasRecognition = Boolean(browser.SpeechRecognition || browser.webkitSpeechRecognition);
 
-    // If browser recognition was active and heard no words, it was just ambient noise.
-    // Immediately resume listening without blocking the user in "thinking" state!
+    // If real-time browser recognition didn't yield text, check if the microphone captured speech audio
     if (!userText) {
-      if (hasRecognition) {
-        if (callActiveRef.current && callSessionRef.current === currentCallSession) {
-          void callListen();
+      if ((spoke || blob.size >= 8000) && blob.size > 2000) {
+        setCallState("thinking");
+        try {
+          const audio = await blobToBase64(blob);
+          if (!callActiveRef.current || callSessionRef.current !== currentCallSession) return;
+
+          const { data, error } = await invokeFunctionWithRetry<{ text?: string }>("speech-to-text", {
+            audio,
+            mimeType: "audio/wav",
+            language: isEs ? "es" : "en",
+            region: "mx"
+          });
+
+          if (!error && data?.text) {
+            userText = data.text.trim();
+          }
+        } catch (e) {
+          console.warn("Speech to text fallback error:", e);
         }
-        return;
-      }
-
-      // If browser doesn't have Web Speech, only invoke server speech-to-text if genuine audio was recorded
-      if (!spoke || blob.size < 10000) {
-        if (callActiveRef.current && callSessionRef.current === currentCallSession) {
-          void callListen();
-        }
-        return;
-      }
-
-      setCallState("thinking");
-      try {
-        const audio = await blobToBase64(blob);
-        if (!callActiveRef.current || callSessionRef.current !== currentCallSession) return;
-
-        const { data, error } = await invokeFunctionWithRetry<{ text?: string }>("speech-to-text", {
-          audio,
-          mimeType: "audio/wav",
-          language: isEs ? "es" : "en",
-          region: "mx"
-        });
-
-        if (!error && data?.text) {
-          userText = data.text.trim();
-        }
-      } catch (e) {
-        console.warn("Speech to text fallback error:", e);
       }
     }
 
@@ -1188,8 +1209,7 @@ export default function ChatPage() {
 
     // 3. Request AI reply continuing the unbroken conversation
     try {
-      const charBio = isEs ? (activeChar.bioEs || activeChar.bio) : (activeChar.bioEn || activeChar.bio);
-      const charRole = isEs ? (activeChar.roleTitleEs || activeChar.roleTitle) : (activeChar.roleTitleEn || activeChar.roleTitle);
+      const { playerRoleName, resolvedCharRole, isSobrina, charBio } = resolveChatKinship(activeChar, chatHistory[activeChar.id] || [], isEs);
       const mother = getMotherCardConfig();
       const rawAiSettings = getStoryAiSettings(activeChar.id);
       const charAiSettings = {
@@ -1209,9 +1229,9 @@ export default function ChatPage() {
           id: activeChar.id,
           title: activeChar.name,
           description: charBio,
-          story_context: `${charRole}. Bio: ${charBio}`,
-          character_role: activeChar.name,
-          player_role: isEs ? "Compañero" : "Partner",
+          story_context: `${resolvedCharRole}. Bio: ${charBio}. Parentesco inmutable: el usuario es su ${playerRoleName} y ella es su ${resolvedCharRole}`,
+          character_role: resolvedCharRole,
+          player_role: playerRoleName,
           story_type: "live_call"
         },
         chatSource: "chat_page",
@@ -1230,9 +1250,9 @@ export default function ChatPage() {
         const clean = normalizeAssistantReply(data.content) || data.content;
         reply = clean.replace(/\*.*?\*/g, "").replace(/\s+/g, " ").trim() || clean;
       } else {
-        reply = isEs
-          ? `Te escucho cariño... Dime más.`
-          : `I'm listening honey... Tell me more.`;
+        reply = isSobrina
+          ? (isEs ? `Te escucho tío... Dime más.` : `I'm listening uncle... Tell me more.`)
+          : (isEs ? `Te escucho perfectamente... Cuéntame más.` : `I hear you loud and clear... Tell me more.`);
       }
 
       if (!callActiveRef.current || callSessionRef.current !== currentCallSession) return;
@@ -1275,75 +1295,75 @@ export default function ChatPage() {
     callSessionRef.current += 1;
     const currentSession = callSessionRef.current;
 
-    // Check existing chat history for context continuity
+    // Check existing chat history for context continuity & kinship role
     const existingHistory = chatHistory[activeChar.id] || [];
     const hasUserChatted = existingHistory.some((m) => m.role === "user");
+    const { playerRoleName, resolvedCharRole, isSobrina, charBio } = resolveChatKinship(activeChar, existingHistory, isEs);
 
     let greetingText = "";
 
-    if (hasUserChatted) {
-      try {
-        const historyPayload = existingHistory.slice(-8).map((m) => ({
-          role: m.role,
-          content: m.content
-        }));
-        const charBio = isEs ? (activeChar.bioEs || activeChar.bio) : (activeChar.bioEn || activeChar.bio);
-        const charRole = isEs ? (activeChar.roleTitleEs || activeChar.roleTitle) : (activeChar.roleTitleEn || activeChar.roleTitle);
-        const mother = getMotherCardConfig();
-        const rawAiSettings = getStoryAiSettings(activeChar.id);
-        const charAiSettings = {
-          ...mother.aiSettings,
-          ...rawAiSettings,
-        };
-        const charRegion = spokenRegion(getStoryRegion(activeChar.id), getStoryAccent(activeChar.id)) || (isEs ? "co" : "us");
+    const lastUser = [...existingHistory].reverse().find((m) => m.role === "user");
+    const lastTopic = lastUser ? lastUser.content.slice(0, 120) : "";
 
-        const lastUser = [...existingHistory].reverse().find((m) => m.role === "user");
-        const lastTopic = lastUser ? lastUser.content.slice(0, 100) : "";
+    const promptContext = hasUserChatted
+      ? (isEs
+          ? `(Te acabo de llamar por teléfono para continuar nuestra conversación. Contesta la llamada en tu personaje de ${resolvedCharRole}, dirigiéndote a mí como tu ${playerRoleName}, y continúa de forma directa lo último que estábamos hablando sobre: "${lastTopic}". Habla en 1 sola oración breve, natural y de voz hablada real, 100% diálogo hablado, sin asteriscos).`
+          : `(I just called you to continue our chat. Pick up in character as ${resolvedCharRole}, addressing me as your ${playerRoleName}, and continue directly what we were talking about: "${lastTopic}". Speak in 1 brief natural spoken sentence, 100% dialogue, no asterisks).`)
+      : (isEs
+          ? `(Te acabo de llamar por teléfono. Atiende la llamada en tu personaje de ${resolvedCharRole}, saludando a tu ${playerRoleName} con familiaridad y respeto a tu parentesco, diciendo algo como: "¡Hola ${playerRoleName}! ¿Cómo estás? Me alegra mucho que me llames...". Habla en 1 sola oración breve de voz hablada real, 100% diálogo hablado, sin asteriscos).`
+          : `(I just called you. Pick up in character as ${resolvedCharRole}, addressing me as your ${playerRoleName}. Speak in 1 brief natural spoken sentence, 100% dialogue, no asterisks).`);
 
-        const promptContext = isEs
-          ? `(Te acabo de llamar por teléfono para continuar lo que hablábamos. Atiende la llamada saludándome con cariño y continuando de inmediato lo último de la conversación sobre: "${lastTopic}". Habla en 1 sola oración breve y directa de voz, 100% diálogo hablado, sin asteriscos ni acciones).`
-          : `(I just called you to continue our chat. Pick up warmly and continue immediately what we were discussing about: "${lastTopic}". Speak in 1 brief direct spoken sentence, 100% dialogue, no asterisks).`;
+    try {
+      const historyPayload = existingHistory.slice(-8).map((m) => ({
+        role: m.role,
+        content: m.content
+      }));
+      const mother = getMotherCardConfig();
+      const rawAiSettings = getStoryAiSettings(activeChar.id);
+      const charAiSettings = {
+        ...mother.aiSettings,
+        ...rawAiSettings,
+      };
+      const charRegion = spokenRegion(getStoryRegion(activeChar.id), getStoryAccent(activeChar.id)) || (isEs ? "co" : "us");
 
-        const { data, error } = await invokeFunctionWithRetry<{ content?: string }>("story-chat", {
-          story: {
-            id: activeChar.id,
-            title: activeChar.name,
-            description: charBio,
-            story_context: `${charRole}. Bio: ${charBio}`,
-            character_role: activeChar.name,
-            player_role: isEs ? "Compañero" : "Partner",
-            story_type: "live_call"
-          },
-          chatSource: "chat_page",
-          isLiveCall: true,
-          language,
-          history: historyPayload,
-          memory: selectStoryMemory(historyPayload, promptContext),
-          userMessage: promptContext,
-          adultMode: adultEnabled,
-          region: charRegion,
-          settings: { ...charAiSettings, messageLength: 45 }
-        });
+      const { data, error } = await invokeFunctionWithRetry<{ content?: string }>("story-chat", {
+        story: {
+          id: activeChar.id,
+          title: activeChar.name,
+          description: charBio,
+          story_context: `${resolvedCharRole}. Bio: ${charBio}. Parentesco inmutable: el usuario es su ${playerRoleName} y ella es su ${resolvedCharRole}`,
+          character_role: resolvedCharRole,
+          player_role: playerRoleName,
+          story_type: "live_call"
+        },
+        chatSource: "chat_page",
+        isLiveCall: true,
+        language,
+        history: historyPayload,
+        memory: selectStoryMemory(historyPayload, promptContext),
+        userMessage: promptContext,
+        adultMode: adultEnabled,
+        region: charRegion,
+        settings: { ...charAiSettings, messageLength: 45 }
+      });
 
-        if (!error && data?.content) {
-          const clean = normalizeAssistantReply(data.content) || data.content;
-          greetingText = clean.replace(/\*.*?\*/g, "").replace(/\s+/g, " ").trim() || clean;
-        }
-      } catch (e) {
-        console.warn("Failed to generate dynamic call intro:", e);
+      if (!error && data?.content) {
+        const clean = normalizeAssistantReply(data.content) || data.content;
+        greetingText = clean.replace(/\*.*?\*/g, "").replace(/\s+/g, " ").trim() || clean;
       }
+    } catch (e) {
+      console.warn("Failed to generate dynamic call intro:", e);
     }
 
     if (!greetingText) {
-      const lastUser = [...existingHistory].reverse().find((m) => m.role === "user");
-      if (lastUser) {
-        greetingText = isEs
-          ? `¡Hola! Sí, te escucho perfectamente... Dime, ¿en qué nos quedamos de lo que me decías?`
-          : `Hey! Yes, I hear you loud and clear... Tell me, where were we on what you were saying?`;
+      if (isSobrina) {
+        greetingText = hasUserChatted
+          ? (isEs ? `¡Hola tío! Sí, te escucho perfectamente... Dime, ¿en qué nos quedamos de lo que me decías?` : `Hey uncle! Yes, I hear you loud and clear... Tell me, where were we on what you were saying?`)
+          : (isEs ? `¡Hola tío! Qué alegría que me llames... ¿Cómo estás? Me alegra mucho escucharte.` : `Hey uncle! What a nice surprise you called... How are you doing?`);
       } else {
-        greetingText = isEs
-          ? `¡Hola cariño! Dime, ¿de qué te gustaría que hablemos hoy?`
-          : `Hey sweetheart! Tell me, what would you like to talk about today?`;
+        greetingText = hasUserChatted
+          ? (isEs ? `¡Hola! Sí, te escucho perfectamente... Dime, ¿en qué nos quedamos de lo que me decías?` : `Hey! Yes, I hear you loud and clear... Tell me, where were we on what you were saying?`)
+          : (isEs ? `¡Hola! Qué gusto que me llames... ¿Cómo estás? Dime, ¿en qué andas?` : `Hey! So nice you called... How are you doing?`);
       }
     }
 
