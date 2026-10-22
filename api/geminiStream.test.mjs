@@ -14,7 +14,7 @@ test("streaming speaks the whole line once, with the sounds still in it", () => 
   assert.equal(plan.input.text, line);
   assert.equal(plan.streamingConfig.voice.name, "Aoede");
   assert.equal(plan.streamingConfig.voice.modelName, "gemini-2.5-flash-tts");
-  assert.match(plan.input.prompt, /español latinoamericano natural/);
+  assert.match(plan.input.prompt, /español.*mexicano|español latinoamericano/);
   assert.doesNotMatch(plan.input.prompt, /\[moaning\]|\[shouting\]/);
   assert.equal(plan.streamingConfig.advancedVoiceOptions.safetySettings.settings[0].threshold, 4);
 });

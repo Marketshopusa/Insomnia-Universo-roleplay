@@ -81,10 +81,9 @@ export default async function handler(req, res) {
   }
   const raw = typeof req.body?.text === "string" ? req.body.text : "";
   const limited = raw.slice(0, 1400);
-  // Extract pure spoken dialogue for snappy TTS (<600ms), omitting lengthy asterisk narrative descriptions
-  const spokenDialogueOnly = limited.replace(/\*[^*]*\*/g, "").replace(/\s+/g, " ").trim();
-  const expression = req.body?.roleplay ? prepareExpressiveSpeech(spokenDialogueOnly || limited, { roleplay: true }) : null;
-  const text = spokenDialogueOnly || (expression ? expression.text : limited.replace(/[*_#]/g, "").replace(/\s+/g, " ").trim());
+  // Prepare expressive speech parsing vocal reactions (*gime*, *se ríe*, *suspira*, *llora*) from original marked text
+  const expression = req.body?.roleplay ? prepareExpressiveSpeech(limited, { roleplay: true }) : null;
+  const text = (expression?.text && expression.text.trim()) || limited.replace(/\*[^*]*\*/g, "").replace(/\s+/g, " ").trim() || limited.replace(/[*_#]/g, "").replace(/\s+/g, " ").trim();
   const plainText = removePerformanceCues(text);
   if (!plainText && !expression?.reactions.length && !hasVocalCue(text)) return res.status(400).json({ error: "missing_text" });
   const region = typeof req.body.region === "string" ? req.body.region : "mx";

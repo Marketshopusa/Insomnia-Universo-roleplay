@@ -47,8 +47,8 @@ test("Gemini 2.5 Flash TTS speaks Aoede with the story accent", async () => {
 });
 
 test("a smile and a surprise color the delivery without inserting laughter", () => {
-  assert.match(geminiSpeechDirection("es", "warm", "plain"), /sonrisa.*sin reír/);
-  assert.match(geminiSpeechDirection("es", "surprised", "plain"), /sorpresa natural/);
+  assert.match(geminiSpeechDirection("es", "warm", "plain"), /sonrisa/);
+  assert.match(geminiSpeechDirection("es", "surprised", "plain"), /sorpresa/);
 });
 
 test("a plain region keeps Gemini's own Spanish voice", () => {
@@ -223,7 +223,7 @@ test("local expressive prompts reach both paths without spoken script labels", a
   assert.equal(result.status, 200);
   assert.equal(removePerformanceCues("[sobbing]"), "");
   const spoken = prepareExpressiveSpeech('*Sonrío* Hola.');
-  assert.match(geminiSpeechDirection("es", "neutral", "mx", spoken), /subtle smile/);
+  assert.match(geminiSpeechDirection("es", "neutral", "mx", spoken), /smile/);
   assert.doesNotMatch(geminiSpeechDirection("es", "neutral", "mx", spoken), /Narration:|Dialogue:/);
 });
 

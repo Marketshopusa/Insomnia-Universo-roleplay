@@ -138,6 +138,8 @@ export const CallDialog = ({
           story_type: story?.story_type,
         },
         language,
+        isLiveCall: true,
+        settings: { modelId: "insomnia-flash", messageLength: 45 },
         history: priorHistory.slice(-48),
         memory: selectStoryMemory(priorHistory, userText),
         userMessage: userText,

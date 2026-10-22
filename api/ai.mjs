@@ -647,23 +647,27 @@ export function roleplayPacingAndLanguageRules(historyLength, spanish, targetTok
   if (isLiveCall) {
     if (!spanish) {
       return [
-        'LIVE PHONE CALL MODE (100% PURE SPOKEN DIALOGUE):',
-        '1. ZERO NARRATION, ZERO ASTERISKS:',
-        '   - STRICTLY FORBIDDEN to write text in asterisks (*...*). NO physical descriptions.',
-        '   - The user is listening to you through their phone speaker. Output ONLY pure first-person spoken words.',
-        '2. ULTRA-SNAPPY, CONCISE AND IMMEDIATE:',
-        '   - Speak in 1 or 2 natural, expressive, direct sentences (~20-40 words). Never monologue or write book prose.',
+        'LIVE PHONE CALL MODE (DIRECT SPOKEN VOICE WITH VOCAL GESTURES):',
+        '1. SPOKEN VOICE & AUDIBLE EXPRESSIONS:',
+        '   - You are talking on a live phone call in character. Speak directly to the other person.',
+        '   - Feel free to include brief vocal reactions in asterisks (*sighs*, *chuckles*, *laughs softly*, *gasps*, *moans gently*, *whimpers*) or natural sounds (mmm..., ah..., haha...) so the neural voice synthesizer expresses your emotions realistically.',
+        '   - NO long novel descriptions or physical scenery descriptions outside the call.',
+        '2. ULTRA-FAST, CONCISE & NATURAL (1-2 SENTENCES):',
+        '   - Keep your response to 1 or 2 quick, expressive, natural sentences (~20-40 words). Never monologue.',
+        '3. STRICT ADHERENCE TO CHARACTER ROLE & KINSHIP:',
+        '   - Stay 100% in character. If the user is your uncle, address him as your uncle. Never use generic or out-of-character greetings.',
       ];
     }
     return [
-      'MODO LLAMADA DE VOZ TELEFÓNICA EN VIVO (100% DIÁLOGO HABLADO PURO):',
-      '1. CERO NARRACIÓN, CERO ASTERISCOS:',
-      '   - PROHIBIDO TERMINANTEMENTE escribir texto entre asteriscos (*...*). CERO acciones físicas ni relatos descriptivos.',
-      '   - La otra persona te está escuchando por el altavoz de su teléfono. Tu respuesta debe ser EXCLUSIVAMENTE lo que dices con tu voz en primera persona.',
-      '2. RESPUESTA ULTRA-RÁPIDA, CONCISA Y DIRECTA:',
-      '   - Habla en 1 o 2 oraciones naturales, expresivas y directas (aproximadamente 20 a 40 palabras). Responde de inmediato continuando la conversación con fluidez y cero silencios.',
+      'MODO LLAMADA DE VOZ TELEFÓNICA EN VIVO (DIÁLOGO HABLADO CON GESTOS Y EMOCIÓN VOCAL):',
+      '1. DIÁLOGO HABLADO CON EXPRESIÓN VOCAL:',
+      '   - Estás en una llamada telefónica en vivo. Habla directamente a la otra persona con tu voz.',
+      '   - Puedes y debes incluir acotaciones vocales breves entre asteriscos (*se ríe*, *suspira*, *gime suavemente*, *jadea*, *solloza*, *risita pícara*) y onomatopeyas naturales (mmm..., ah..., ja, ja...) para que el motor de voz neuronal interprete tus risas, gemidos, suspiros y emociones en el altavoz.',
+      '   - CERO relatos largos de novela ni descripciones de acciones físicas ajenas a la llamada.',
+      '2. RESPUESTA RÁPIDA, CONCISA Y FLUIDA (1 A 2 ORACIONES):',
+      '   - Habla en 1 o 2 oraciones vivas, cortas y naturales (~20 a 40 palabras). Responde de inmediato continuando la charla con fluidez, sin silencios ni discursos largos.',
       '3. APEGO RIGUROSO AL PERSONAJE Y PARENTESCO DE LA TARJETA:',
-      '   - Habla en tu personaje de la tarjeta con su rol exacto. Si el usuario es tu Tío, trátalo SIEMPRE de Tío. PROHIBIDO usar saludos genéricos fuera de rol como "Hola cariño" si tu rol es de sobrina.',
+      '   - Mantén al 100% el rol de tu tarjeta. Si el usuario es tu Tío, trátalo SIEMPRE de Tío. PROHIBIDO saludos genéricos impersonales fuera de rol como "Hola cariño" si tu rol es de sobrina.',
     ];
   }
 
@@ -1028,7 +1032,50 @@ export default async function handler(req, res) {
       }
 
       let content = null;
-      if (isDeluxeOrPremium) {
+      if (isLiveCall) {
+        // Fast real-time engine (< 400ms) for live voice phone calls
+        const canTryGemini = Boolean(geminiApiKey || (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== "[SENSITIVE]"));
+        if (canTryGemini) {
+          try {
+            const geminiContents = contents.map((c) => ({ role: c.role, parts: [...(c.parts || [])] }));
+            if (geminiContents[0]?.role === "model") {
+              geminiContents.unshift({ role: "user", parts: [{ text: "Continúa la llamada telefónica." }] });
+            }
+            content = await generate(
+              "gemini-2.5-flash",
+              [],
+              { maxOutputTokens: 55, temperature: 0.8 },
+              {
+                contents: geminiContents,
+                systemInstruction,
+                adultMode: true,
+                apiKey: geminiApiKey || undefined,
+                timeoutMs: 3000,
+                fallbackModels: ["gemini-2.0-flash", "gemini-2.5-flash-lite"],
+                fastReply: true,
+                validate: (reply) => !isOffRole(reply)
+              },
+            );
+          } catch (err) {
+            console.warn("Gemini live call primary failed:", err.message);
+          }
+        }
+        if (!content) {
+          try {
+            content = await generateNvidia(openRouterMessages, {
+              models: ["meta/llama-3.1-8b-instruct", "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"],
+              maxTokens: 55,
+              temperature: 0.82,
+              timeoutMs: 2500,
+              apiKey: nvidiaApiKey || undefined,
+              validate: (reply) => !isOffRole(reply),
+              isRepeated: isRepeatedReply,
+            });
+          } catch (err) {
+            console.warn("Nvidia live call fallback failed:", err.message);
+          }
+        }
+      } else if (isDeluxeOrPremium) {
         // High-end models (Euryale 70B, DeepSeek, WizardLM, Grok)
         try {
           content = await generateOpenRouter(openRouterMessages, {
@@ -1183,7 +1230,9 @@ export default async function handler(req, res) {
 
         // 6. Enforzar proporción estricta: 80% diálogo hablado directo / 20% relato breve en asteriscos
         if (isLiveCall) {
-          content = content.replace(/\*.*?\*/g, "").replace(/\s+/g, " ").trim() || content;
+          // Mantener acotaciones vocales acústicas (*se ríe*, *suspira*, *gime*, *jadea*, etc.) para el TTS neuronal
+          // Solo eliminar narraciones largas de novela (> 35 caracteres entre asteriscos)
+          content = content.replace(/\*([^*]{35,})\*/g, "").replace(/\s+/g, " ").trim() || content;
         } else {
           content = enforceDialogueRatio(content, Math.round(dialogueRatio * 100), Math.round(narrationRatio * 100));
         }

@@ -966,12 +966,12 @@ export default function ChatPage() {
     if (!callActiveRef.current) return false;
     setCallState("speaking");
     setCallSpeakerText(text);
-    // Speak entire message (both narration and dialogue), removing asterisks so TTS sounds natural
-    const spoken = text.replace(/\*/g, "").replace(/\s+/g, " ").trim() || text;
+    const spoken = text.trim();
     const voiceToUse = activeChar.voiceName || "Aoede";
+    const charRegion = spokenRegion(getStoryRegion(activeChar.id), getStoryAccent(activeChar.id)) || (isEs ? "co" : "us");
 
     try {
-      const stream = streamSpeech(spoken, voiceToUse, language, true, "mx");
+      const stream = streamSpeech(spoken, voiceToUse, language, true, charRegion);
       speechStreamRef.current = stream;
       await stream.done;
       if (speechStreamRef.current === stream) {
@@ -981,7 +981,7 @@ export default function ChatPage() {
     } catch (err) {
       console.warn("callSpeak fallback to speech synthesis:", err);
       await new Promise<void>((resolve) => {
-        fallbackFemaleSpeech(spoken, () => resolve());
+        fallbackFemaleSpeech(spoken.replace(/\*[^*]*\*/g, "").replace(/\s+/g, " ").trim(), () => resolve());
       });
       return callActiveRef.current;
     }
@@ -1220,6 +1220,7 @@ export default function ChatPage() {
       // Fast call settings: 45 tokens max for instant snappy phone response (<0.5s)
       const fastCallSettings = {
         ...charAiSettings,
+        modelId: "insomnia-flash",
         messageLength: 45
       };
       const charRegion = spokenRegion(getStoryRegion(activeChar.id), getStoryAccent(activeChar.id)) || (isEs ? "co" : "us");
@@ -1248,11 +1249,11 @@ export default function ChatPage() {
       let reply = "";
       if (!error && data?.content) {
         const clean = normalizeAssistantReply(data.content) || data.content;
-        reply = clean.replace(/\*.*?\*/g, "").replace(/\s+/g, " ").trim() || clean;
+        reply = clean.trim();
       } else {
         reply = isSobrina
-          ? (isEs ? `Te escucho tío... Dime más.` : `I'm listening uncle... Tell me more.`)
-          : (isEs ? `Te escucho perfectamente... Cuéntame más.` : `I hear you loud and clear... Tell me more.`);
+          ? (isEs ? `*suspira suavemente* Te escucho tío... Dime más.` : `*sighs softly* I'm listening uncle... Tell me more.`)
+          : (isEs ? `*sonríe* Te escucho perfectamente... Cuéntame más.` : `*smiles* I hear you loud and clear... Tell me more.`);
       }
 
       if (!callActiveRef.current || callSessionRef.current !== currentCallSession) return;
@@ -1307,11 +1308,11 @@ export default function ChatPage() {
 
     const promptContext = hasUserChatted
       ? (isEs
-          ? `(Te acabo de llamar por teléfono para continuar nuestra conversación. Contesta la llamada en tu personaje de ${resolvedCharRole}, dirigiéndote a mí como tu ${playerRoleName}, y continúa de forma directa lo último que estábamos hablando sobre: "${lastTopic}". Habla en 1 sola oración breve, natural y de voz hablada real, 100% diálogo hablado, sin asteriscos).`
-          : `(I just called you to continue our chat. Pick up in character as ${resolvedCharRole}, addressing me as your ${playerRoleName}, and continue directly what we were talking about: "${lastTopic}". Speak in 1 brief natural spoken sentence, 100% dialogue, no asterisks).`)
+          ? `(Te acabo de llamar por teléfono para continuar nuestra conversación. Contesta la llamada en tu personaje de ${resolvedCharRole}, dirigiéndote a mí como tu ${playerRoleName}, y continúa de forma directa lo último que estábamos hablando sobre: "${lastTopic}". Habla en 1 sola oración breve, viva y natural de voz hablada, puedes incluir una reacción vocal acústica como (*se ríe*, *suspira* o *sonríe*) para transmitir emoción).`
+          : `(I just called you to continue our chat. Pick up in character as ${resolvedCharRole}, addressing me as your ${playerRoleName}, and continue directly what we were talking about: "${lastTopic}". Speak in 1 brief natural spoken sentence with vocal expression).`)
       : (isEs
-          ? `(Te acabo de llamar por teléfono. Atiende la llamada en tu personaje de ${resolvedCharRole}, saludando a tu ${playerRoleName} con familiaridad y respeto a tu parentesco, diciendo algo como: "¡Hola ${playerRoleName}! ¿Cómo estás? Me alegra mucho que me llames...". Habla en 1 sola oración breve de voz hablada real, 100% diálogo hablado, sin asteriscos).`
-          : `(I just called you. Pick up in character as ${resolvedCharRole}, addressing me as your ${playerRoleName}. Speak in 1 brief natural spoken sentence, 100% dialogue, no asterisks).`);
+          ? `(Te acabo de llamar por teléfono. Atiende la llamada en tu personaje de ${resolvedCharRole}, saludando a tu ${playerRoleName} con familiaridad y respeto a tu parentesco, diciendo algo como: "¡Hola ${playerRoleName}! ¿Cómo estás? Me alegra mucho que me llames...". Habla en 1 sola oración breve de voz hablada real, puedes incluir una reacción vocal acústica como (*se ríe* o *sonríe*)).`
+          : `(I just called you. Pick up in character as ${resolvedCharRole}, addressing me as your ${playerRoleName}. Speak in 1 brief natural spoken sentence with vocal expression).`);
 
     try {
       const historyPayload = existingHistory.slice(-8).map((m) => ({
@@ -1344,12 +1345,12 @@ export default function ChatPage() {
         userMessage: promptContext,
         adultMode: adultEnabled,
         region: charRegion,
-        settings: { ...charAiSettings, messageLength: 45 }
+        settings: { ...charAiSettings, modelId: "insomnia-flash", messageLength: 45 }
       });
 
       if (!error && data?.content) {
         const clean = normalizeAssistantReply(data.content) || data.content;
-        greetingText = clean.replace(/\*.*?\*/g, "").replace(/\s+/g, " ").trim() || clean;
+        greetingText = clean.trim();
       }
     } catch (e) {
       console.warn("Failed to generate dynamic call intro:", e);
@@ -1358,12 +1359,12 @@ export default function ChatPage() {
     if (!greetingText) {
       if (isSobrina) {
         greetingText = hasUserChatted
-          ? (isEs ? `¡Hola tío! Sí, te escucho perfectamente... Dime, ¿en qué nos quedamos de lo que me decías?` : `Hey uncle! Yes, I hear you loud and clear... Tell me, where were we on what you were saying?`)
-          : (isEs ? `¡Hola tío! Qué alegría que me llames... ¿Cómo estás? Me alegra mucho escucharte.` : `Hey uncle! What a nice surprise you called... How are you doing?`);
+          ? (isEs ? `*sonríe* ¡Hola tío! Sí, te escucho perfectamente... Dime, ¿en qué nos quedamos de lo que me decías?` : `*smiles* Hey uncle! Yes, I hear you loud and clear... Tell me, where were we on what you were saying?`)
+          : (isEs ? `*se ríe contenta* ¡Hola tío! Qué alegría que me llames... ¿Cómo estás? Me alegra mucho escucharte.` : `*laughs softly* Hey uncle! What a nice surprise you called... How are you doing?`);
       } else {
         greetingText = hasUserChatted
-          ? (isEs ? `¡Hola! Sí, te escucho perfectamente... Dime, ¿en qué nos quedamos de lo que me decías?` : `Hey! Yes, I hear you loud and clear... Tell me, where were we on what you were saying?`)
-          : (isEs ? `¡Hola! Qué gusto que me llames... ¿Cómo estás? Dime, ¿en qué andas?` : `Hey! So nice you called... How are you doing?`);
+          ? (isEs ? `*sonríe* ¡Hola! Sí, te escucho perfectamente... Dime, ¿en qué nos quedamos de lo que me decías?` : `*smiles* Hey! Yes, I hear you loud and clear... Tell me, where were we on what you were saying?`)
+          : (isEs ? `*sonríe* ¡Hola! Qué gusto que me llames... ¿Cómo estás? Dime, ¿en qué andas?` : `*smiles* Hey! So nice you called... How are you doing?`);
       }
     }
 
