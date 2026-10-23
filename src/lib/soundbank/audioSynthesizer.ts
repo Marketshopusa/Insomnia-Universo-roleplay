@@ -17,71 +17,95 @@ export function generateSoundPcm(soundId: SoundId, sampleRate = 24000): Float32A
     // IMPACTOS FÍSICOS Y SALA
     // -------------------------------------------------------------
     case "wall_slam": {
-      // Golpe contundente contra pared: Subgraves de impacto de estructura (60-80Hz) + bofetada sorda
-      const duration = 0.38;
+      // Golpe contundente contra pared: Subgraves profundos de estructura (45-65Hz) + bofetada sorda con dispersión
+      const duration = 0.52;
       const length = Math.floor(sampleRate * duration);
       buffer = new Float32Array(length);
-      let wallFilter = 0;
+      let wallLow = 0;
+      let wallMid = 0;
       for (let i = 0; i < length; i++) {
         const t = i / sampleRate;
-        const sub = Math.sin(2 * Math.PI * (85 * Math.exp(-t * 26) + 40) * t) * Math.exp(-t * 18) * 0.95;
-        const woodThump = Math.sin(2 * Math.PI * 130 * t) * Math.exp(-t * 22) * 0.55;
-        const rawNoise = (Math.random() * 2 - 1) * Math.exp(-t * 40);
-        wallFilter = wallFilter * 0.68 + rawNoise * 0.32;
-        const initialCrack = t < 0.012 ? Math.sin(2 * Math.PI * 950 * t) * Math.exp(-t * 120) * 0.7 : 0;
-        buffer[i] = Math.max(-1, Math.min(1, sub + woodThump + wallFilter * 0.65 + initialCrack));
+        const subFreq = 58 * Math.exp(-t * 16) + 38;
+        const sub = Math.sin(2 * Math.PI * subFreq * t) * Math.exp(-t * 9) * 0.95;
+        const woodThump = Math.sin(2 * Math.PI * 92 * t) * Math.exp(-t * 14) * 0.6;
+        const rawNoise = (Math.random() * 2 - 1) * Math.exp(-t * 28);
+        wallLow = wallLow * 0.82 + rawNoise * 0.18;
+        wallMid = wallMid * 0.65 + rawNoise * 0.35;
+        const initialCrack = t < 0.02 ? Math.sin(2 * Math.PI * 480 * t) * Math.exp(-t * 80) * 0.75 : 0;
+        const mixed = sub + woodThump + wallLow * 0.7 + wallMid * 0.4 + initialCrack;
+        // Saturación no lineal suave para calidez acústica (warm acoustic saturation)
+        buffer[i] = Math.tanh(mixed * 1.35) * 0.9;
       }
       break;
     }
 
     case "flesh_impact": {
-      // Choque de piel contra piel / nalgada: resonancia corporal de 65Hz + bofetada húmeda
-      const duration = 0.28;
+      // Impacto visceral cuerpo a cuerpo / cadencia rítmica: resonancia orgánica profunda (52Hz) + golpe táctil de piel
+      // Modela dos impactos rítmicos sucesivos (ritmo natural de embestida / contacto corporal)
+      const duration = 0.72;
       const length = Math.floor(sampleRate * duration);
       buffer = new Float32Array(length);
-      let f1 = 0;
-      let f2 = 0;
+      let noiseFilt1 = 0;
+      let noiseFilt2 = 0;
       for (let i = 0; i < length; i++) {
         const t = i / sampleRate;
-        const sub = Math.sin(2 * Math.PI * (115 * Math.exp(-t * 32) + 42) * t) * Math.exp(-t * 22) * 0.95;
-        const body = Math.sin(2 * Math.PI * 185 * t) * Math.exp(-t * 28) * 0.5;
-        const rawNoise = (Math.random() * 2 - 1) * Math.exp(-t * 65);
-        f1 = f1 * 0.72 + rawNoise * 0.28;
-        f2 = f2 * 0.65 + f1 * 0.35;
-        const snap = t < 0.008 ? Math.sin(2 * Math.PI * 1250 * t) * Math.exp(-t * 180) * 0.6 : 0;
-        buffer[i] = Math.max(-1, Math.min(1, sub + body + f2 * 0.8 + snap));
+        let sample = 0;
+
+        // Primer pulso de impacto (t = 0)
+        if (t < 0.36) {
+          const t1 = t;
+          const sub = Math.sin(2 * Math.PI * (68 * Math.exp(-t1 * 22) + 48) * t1) * Math.exp(-t1 * 12) * 0.95;
+          const bodyThud = Math.sin(2 * Math.PI * 110 * t1) * Math.exp(-t1 * 16) * 0.55;
+          const noise = (Math.random() * 2 - 1) * Math.exp(-t1 * 45);
+          noiseFilt1 = noiseFilt1 * 0.7 + noise * 0.3;
+          const slapTransient = t1 < 0.012 ? Math.sin(2 * Math.PI * 650 * t1) * Math.exp(-t1 * 90) * 0.65 : 0;
+          sample += sub + bodyThud + noiseFilt1 * 0.65 + slapTransient;
+        }
+
+        // Segundo pulso de cadencia rítmica (t = 0.34s) para sensación continua de movimiento corporal
+        if (t >= 0.32) {
+          const t2 = t - 0.32;
+          const sub2 = Math.sin(2 * Math.PI * (64 * Math.exp(-t2 * 20) + 46) * t2) * Math.exp(-t2 * 11) * 0.88;
+          const bodyThud2 = Math.sin(2 * Math.PI * 105 * t2) * Math.exp(-t2 * 15) * 0.5;
+          const noise2 = (Math.random() * 2 - 1) * Math.exp(-t2 * 45);
+          noiseFilt2 = noiseFilt2 * 0.7 + noise2 * 0.3;
+          const slapTransient2 = t2 < 0.012 ? Math.sin(2 * Math.PI * 620 * t2) * Math.exp(-t2 * 90) * 0.6 : 0;
+          sample += sub2 + bodyThud2 + noiseFilt2 * 0.6 + slapTransient2;
+        }
+
+        buffer[i] = Math.tanh(sample * 1.3) * 0.88;
       }
       break;
     }
 
     case "slap": {
       // Bofetada aguda en el rostro: transitorio cortante + resonancia facial
-      const duration = 0.22;
+      const duration = 0.26;
       const length = Math.floor(sampleRate * duration);
       buffer = new Float32Array(length);
       let noiseFilter = 0;
       for (let i = 0; i < length; i++) {
         const t = i / sampleRate;
-        const transient = Math.sin(2 * Math.PI * (1800 * Math.exp(-t * 45) + 600) * t) * Math.exp(-t * 60) * 0.85;
-        const raw = (Math.random() * 2 - 1) * Math.exp(-t * 50);
-        noiseFilter = noiseFilter * 0.6 + raw * 0.4;
-        const low = Math.sin(2 * Math.PI * 140 * t) * Math.exp(-t * 25) * 0.5;
-        buffer[i] = Math.max(-1, Math.min(1, transient + noiseFilter * 0.75 + low));
+        const transient = Math.sin(2 * Math.PI * (1400 * Math.exp(-t * 38) + 450) * t) * Math.exp(-t * 45) * 0.85;
+        const raw = (Math.random() * 2 - 1) * Math.exp(-t * 40);
+        noiseFilter = noiseFilter * 0.62 + raw * 0.38;
+        const low = Math.sin(2 * Math.PI * 125 * t) * Math.exp(-t * 22) * 0.55;
+        buffer[i] = Math.tanh((transient + noiseFilter * 0.75 + low) * 1.25) * 0.9;
       }
       break;
     }
 
     case "bed_creak": {
-      // Crujido de resortes de cama y madera cediendo
-      const duration = 0.45;
+      // Crujido de resortes de cama y madera cediendo con tensión acústica real
+      const duration = 0.55;
       const length = Math.floor(sampleRate * duration);
       buffer = new Float32Array(length);
       for (let i = 0; i < length; i++) {
         const t = i / sampleRate;
-        const sweep1 = Math.sin(2 * Math.PI * (340 + 190 * Math.sin(2 * Math.PI * 18 * t)) * t) * Math.exp(-t * 8) * 0.45;
-        const sweep2 = Math.sin(2 * Math.PI * (560 + 280 * Math.cos(2 * Math.PI * 22 * t)) * t) * Math.exp(-t * 10) * 0.35;
-        const woodStress = Math.sin(2 * Math.PI * 95 * t) * Math.exp(-t * 6) * 0.3;
-        buffer[i] = Math.max(-1, Math.min(1, sweep1 + sweep2 + woodStress));
+        const woodLow = Math.sin(2 * Math.PI * (85 + 25 * Math.sin(2 * Math.PI * 12 * t)) * t) * Math.exp(-t * 5.5) * 0.45;
+        const coilHarmonic = Math.sin(2 * Math.PI * (280 + 90 * Math.sin(2 * Math.PI * 16 * t)) * t) * Math.exp(-t * 7.5) * 0.35;
+        const springStrain = Math.sin(2 * Math.PI * 420 * t) * Math.exp(-t * 12) * 0.2;
+        buffer[i] = Math.tanh((woodLow + coilHarmonic + springStrain) * 1.4) * 0.85;
       }
       break;
     }
@@ -356,49 +380,63 @@ export function generateSoundPcm(soundId: SoundId, sampleRate = 24000): Float32A
     }
 
     case "moan_pleasure": {
-      // Gemido vocal sensual y apasionado con vibrato
-      const duration = 0.85;
+      // Gemido vocal sensual y apasionado: modelo de formantes vocales humanos (F1: 520Hz, F2: 1200Hz) con aire
+      const duration = 0.95;
       const length = Math.floor(sampleRate * duration);
       buffer = new Float32Array(length);
+      let breathFilter = 0;
       for (let i = 0; i < length; i++) {
         const t = i / sampleRate;
-        const env = Math.sin(Math.PI * (t / duration));
-        const pitch = 220 + 35 * Math.sin(2 * Math.PI * 5.2 * t);
-        const f1 = Math.sin(2 * Math.PI * pitch * t) * 0.55;
-        const f2 = Math.sin(2 * Math.PI * (pitch * 2.1) * t) * 0.35;
-        const breath = (Math.random() * 2 - 1) * 0.22;
-        buffer[i] = Math.max(-1, Math.min(1, (f1 + f2 + breath) * env * 0.85));
+        // Envolvente de crescendo y desvanecimiento suave
+        const env = Math.pow(Math.sin(Math.PI * (t / duration)), 1.3);
+        const f0 = 210 + 28 * Math.sin(2 * Math.PI * 4.5 * t); // Entonación fundamental humana
+        // Pulsos glóticos con armónicos ricos
+        const glottal = Math.sin(2 * Math.PI * f0 * t) * 0.5 + Math.sin(2 * Math.PI * f0 * 2 * t) * 0.3 + Math.sin(2 * Math.PI * f0 * 3 * t) * 0.15;
+        // Resonancia de cavidad vocal (formantes)
+        const formant1 = Math.sin(2 * Math.PI * 520 * t) * 0.45;
+        const formant2 = Math.sin(2 * Math.PI * 1250 * t) * 0.25;
+        // Turbulencia de aire de respiración jadeante
+        const noise = (Math.random() * 2 - 1) * 0.35;
+        breathFilter = breathFilter * 0.75 + noise * 0.25;
+        const vocalCore = (glottal * (formant1 + formant2) + breathFilter) * env;
+        buffer[i] = Math.tanh(vocalCore * 1.5) * 0.85;
       }
       break;
     }
 
     case "moan_subtle": {
-      // Gemido leve o contenido
-      const duration = 0.45;
+      // Gemido leve o contenido: aire exhalado íntimo y suave
+      const duration = 0.55;
       const length = Math.floor(sampleRate * duration);
       buffer = new Float32Array(length);
+      let breath = 0;
       for (let i = 0; i < length; i++) {
         const t = i / sampleRate;
         const env = Math.sin(Math.PI * (t / duration));
-        const f1 = Math.sin(2 * Math.PI * 260 * t) * 0.5;
-        const breath = (Math.random() * 2 - 1) * 0.2;
-        buffer[i] = Math.max(-1, Math.min(1, (f1 + breath) * env * 0.7));
+        const f0 = 230 + 15 * Math.sin(2 * Math.PI * 5 * t);
+        const glottal = Math.sin(2 * Math.PI * f0 * t) * 0.4;
+        const formant = Math.sin(2 * Math.PI * 480 * t) * 0.35;
+        const rawNoise = (Math.random() * 2 - 1) * 0.35;
+        breath = breath * 0.78 + rawNoise * 0.22;
+        buffer[i] = Math.tanh((glottal * formant + breath * 0.6) * env * 1.4) * 0.75;
       }
       break;
     }
 
     case "scream_pleasure": {
-      // Grito de clímax extático
-      const duration = 0.95;
+      // Grito de clímax extático con resonancia vocal viva
+      const duration = 1.1;
       const length = Math.floor(sampleRate * duration);
       buffer = new Float32Array(length);
+      let air = 0;
       for (let i = 0; i < length; i++) {
         const t = i / sampleRate;
-        const env = t < 0.15 ? t / 0.15 : Math.exp(-(t - 0.15) * 2.8);
-        const pitch = 580 + 90 * Math.sin(2 * Math.PI * 6.5 * t);
-        const f1 = Math.sin(2 * Math.PI * pitch * t) * 0.65;
-        const f2 = Math.sin(2 * Math.PI * (pitch * 1.8) * t) * 0.4;
-        buffer[i] = Math.max(-1, Math.min(1, (f1 + f2) * env * 0.9));
+        const env = t < 0.18 ? t / 0.18 : Math.exp(-(t - 0.18) * 2.2);
+        const pitch = 520 + 75 * Math.sin(2 * Math.PI * 5.8 * t);
+        const vocal = Math.sin(2 * Math.PI * pitch * t) * 0.6 + Math.sin(2 * Math.PI * (pitch * 1.95) * t) * 0.35;
+        const formant = Math.sin(2 * Math.PI * 1400 * t) * 0.25;
+        air = air * 0.7 + (Math.random() * 2 - 1) * 0.3;
+        buffer[i] = Math.tanh((vocal + formant + air * 0.35) * env * 1.5) * 0.9;
       }
       break;
     }

@@ -209,7 +209,7 @@ export function geminiSpeechDirection(language, performance, region, expression)
       amused: "Lightly amused, playful voice with mischievous charm.",
       sad: "A tearful, trembling, emotionally vulnerable voice.",
       pain: "A voice strained with physical effort or visceral sensation.",
-      pleasure: "A breathy, deeply passionate, intimate voice with ragged breathing and real desire.",
+      pleasure: "A breathy, deeply passionate, intimate voice with ragged breathing, genuine soft moans and real desire.",
       scream: "Forceful, high-energy raised voice full of emotional intensity.",
       soft: "Speak in an intimate, close-to-the-ear breathy whisper.",
       angry: "A tense, passionate, intensely sharp voice.",
@@ -227,7 +227,7 @@ export function geminiSpeechDirection(language, performance, region, expression)
     amused: spanish ? "Risa viva, pícara y divertida." : "Lively, mischievous laughter.",
     sad: spanish ? "Voz quebrada y desgarrada por el llanto, sollozo real y tristeza sentida." : "Voice trembling with real crying, genuine sobs and deep sorrow.",
     pain: spanish ? "Voz y sonido con dolor físico real, quejido tenso y fuerza visceral." : "Voice and sound with real physical pain and visceral force.",
-    pleasure: spanish ? "Voz cargada de placer intenso, gemido apasionado, respiración entrecortada y deseo ardiente." : "Voice charged with intense pleasure, passionate moaning, ragged breathing and ardent desire.",
+    pleasure: spanish ? "Voz intensamente apasionada, sensual y jadeante. Debe respirar con agitación y placer real, entrecortada y con gemidos suaves entre las palabras." : "Voice charged with intense pleasure, passionate moaning, ragged breathing and ardent desire.",
     scream: spanish ? "Grito con fuerza, potencia vocal y energía desbordada." : "Loud scream with vocal power and overflowing energy.",
     soft: spanish ? "Susurro íntimo, sensual o en voz baja, muy cerca del oído." : "Intimate, sensual whisper close to the ear.",
   }[performance] || (spanish ? "Voz natural y expresiva." : "Natural, expressive voice.");
@@ -460,33 +460,22 @@ export async function synthesizeGemini(text, preset, language, { performance = "
 export function splitSentences(text) {
   const trimmed = String(text || "").replace(/\s+/g, " ").trim();
   if (!trimmed) return [];
-  // Split primary boundaries (. ! ? … or dashes)
-  const rawParts = trimmed.match(/[^.!?…]+[.!?…]+["'»”)]*(?:\s+|$)|[^.!?…]+$/gu) || [trimmed];
-  const refinedParts = [];
-  
+  // Split on primary sentence boundaries (. ! ? …) or line breaks, never on internal commas or dashes
+  // Preserving commas intact avoids unnatural multi-second network pauses between clauses.
+  const rawParts = trimmed.match(/[^.!?…\n]+[.!?…]+["'»”)]*(?:\s+|$)|[^.!?…\n]+$/gu) || [trimmed];
+  const chunks = [];
+  let current = "";
   for (const p of rawParts) {
     const t = p.trim();
     if (!t) continue;
-    const words = t.split(/\s+/);
-    // If a sentence is longer than 9 words and has commas or dashes, split it into smaller fast-streaming clauses
-    if (words.length > 9 && /[,;—–]/.test(t)) {
-      const sub = t.match(/[^,;—–]+[,;—–]+(?:\s+|$)|[^,;—–]+$/gu) || [t];
-      refinedParts.push(...sub.map(s => s.trim()).filter(Boolean));
-    } else {
-      refinedParts.push(t);
-    }
-  }
-
-  const chunks = [];
-  let current = "";
-  for (const part of refinedParts) {
     if (!current) {
-      current = part;
+      current = t;
     } else if (current.split(/\s+/).length < 5) {
-      current += " " + part;
+      // Group very short sentences (e.g. "Sí." "Claro.") with the next one to avoid micro-requests
+      current += " " + t;
     } else {
       chunks.push(current);
-      current = part;
+      current = t;
     }
   }
   if (current) chunks.push(current);

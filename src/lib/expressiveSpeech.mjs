@@ -54,7 +54,7 @@ const allForms = forms.map(([id, source]) => [id, compounds[id] ? "(?:" + compou
 const FORM = new RegExp("(?<![\\p{L}\\p{N}])(?:" + allForms.map(([, source]) => "(?:" + source + ")").join("|") + ")(?![\\p{L}\\p{N}])", "giu");
 const exactForm = allForms.map(([id, source]) => [id, new RegExp("^(?:" + source + ")$", "iu")]);
 const actionContext = /(?:dolor|duele|herid|golpe|esfuerzo|pain|hurt|injur|effort)/iu;
-const pleasureContext = /(?:placer|gozo|pleasure|excit|deseo|pasión|pasion|sensual|calor|rico\b|rica\b|delicia|lujuria|tentaci|entrecortad|escalofr|labio|ard|agitad|temblor|t[oó]came|foll|morbo|erotism|desnud|orgasm|cl[ií]max|no\s+pares|m[aá]s\s+fuerte|m[aá]s\s+r[aá]pido|tan\s+duro|qu[eé]\s+tamaño|cuerpos?\s+ardien)/iu;
+const pleasureContext = /(?:placer|gozo|pleasure|excit|deseo|pasión|pasion|sensual|calor|rico\b|rica\b|delicia|lujuria|tentaci|entrecortad|escalofr|labio|ard|agitad|temblor|t[oó]came|foll|morbo|erotism|desnud|orgasm|cl[ií]max|no\s+pares|m[aá]s\s+fuerte|m[aá]s\s+r[aá]pido|tan\s+duro|qu[eé]\s+tamaño|cuerpos?\s+ardien|ll[eé]name|abres|haces\s+tuya|entrar\s+as[ií]|m[aá]s\s+adentro|penetr|embestid|embistes|metes|adentro|sigue\s+as[ií]|cada\s+golpe|fuerza\s+y\s+profundidad)/iu;
 const nonPresent = /(?:\b(?:no|sin|not|without|nunca|never)\b|\b(?:quiero|quería|deseo|puedo|podría|debería|intento|intentar|trata(?:r|ndo|ba|n|s|r[aá])\s+(?:de\s+)?|contener|evit(?:ar|ando)|reprim(?:ir|iendo)|ahog(?:ar|ando)|aguant(?:ar|ando)|resist(?:ir|iendo)|voy\s+a|va\s+a|iba\s+a|si|when|if|want\s+to|will|would|can|could)\b|\b(?:recuerdo|recordé|ayer|yesterday|remember)\b)/iu;
 const contextualTail = /^(?:\s+(?:de\s+(?:dolor|placer|miedo|rabia|alegría|felicidad|deseo|excitación|excitacion|pasión|pasion|satisfacción|satisfaccion|anhelo|alivio)|con\s+(?:fuerza|dolor|rabia|picardía|picardia|diversión|diversion|deseo|pasión|pasion|agitación|agitacion)|a\s+carcajadas|desgarrador(?:a|es)?|fuertemente|fuerte|suavemente|suave|bajit[ao]|en\s+voz\s+baja|por\s+(?:el\s+)?(?:esfuerzo|deseo|calor|miedo)|de\s+repente|divertid[ao]|cómplice|complice|entrecortad[ao]|tembloros[ao]|agitad[ao]|aliviad[ao]))*/iu;
 const pureSoundDescription = /^(?:(?:yo|ella|él|el|mi|mis|sus|su|un|una|el|la)\s+)?(?:sonidos?\s+desgarradores?|gritos?|gemidos?|sollozos?|llantos?|risas?|carcajadas?)(?:\s|[,.!;]|$)/iu;
@@ -67,7 +67,7 @@ const styleFor = (text) => {
   if (/asustad[ao]|aterrad[ao]|tembl(?:ando|or).*miedo|afraid|fearful/iu.test(text)) return "afraid";
   if (/asco|disgust(?:ed)?/iu.test(text)) return "disgusted";
   if (/agotad[ao]|cansad[ao]|exhausted|tired/iu.test(text)) return "tired";
-  if (/(?:placer|deseo|excitaci[oó]n|excitad[ao]|gemid|jade[ao]|respiraci[oó]n\s+agitada|agitad[ao]|entrecortad[ao]|tembloros[ao]|muerdo\s+el\s+labio|sensual|lujuria|fóllame|foll|penetr|caliente|morbo|erotism|cl[ií]max|orgasm|delicia|rico\b|rica\b|t[oó]came|b[eé]same|desnud[ao]|cuerpos?\s+ardien|no\s+pares|m[aá]s\s+fuerte|m[aá]s\s+r[aá]pido)/iu.test(text)) return "pleasure";
+  if (/(?:placer|deseo|excitaci[oó]n|excitad[ao]|gemid|jade[ao]|respiraci[oó]n\s+agitada|agitad[ao]|entrecortad[ao]|tembloros[ao]|muerdo\s+el\s+labio|sensual|lujuria|fóllame|foll|penetr|caliente|morbo|erotism|cl[ií]max|orgasm|delicia|rico\b|rica\b|t[oó]came|b[eé]same|desnud[ao]|cuerpos?\s+ardien|no\s+pares|m[aá]s\s+fuerte|m[aá]s\s+r[aá]pido|ll[eé]name|abres|haces\s+tuya|entrar\s+as[ií]|m[aá]s\s+adentro|embestid|embistes|adentro|sigue\s+as[ií]|cada\s+golpe|fuerza\s+y\s+profundidad)/iu.test(text)) return "pleasure";
   if (/(?:dolor|duele|lastim|golpe|quejido)/iu.test(text)) return "pain";
   return null;
 };
@@ -192,7 +192,11 @@ export function prepareExpressiveSpeech(input, { roleplay = false } = {}) {
   const text = segments
     .map((part) => {
       if (part.kind === "reaction") return part.cue;
-      return part.kind === "narration" && !/[.!?…]$/.test(part.text) ? part.text + "." : part.text;
+      if (part.kind === "narration") {
+        if (roleplay && hasDialogue) return "";
+        return !/[.!?…]$/.test(part.text) ? part.text + "." : part.text;
+      }
+      return part.text;
     })
     .filter(Boolean)
     .join(" ")
@@ -202,7 +206,8 @@ export function prepareExpressiveSpeech(input, { roleplay = false } = {}) {
   const performances = [...new Set(segments.map((part) => part.performance).filter((value) => value !== "neutral"))];
   let dominant = "neutral";
   if (performances.length === 1) dominant = performances[0];
-  else if (performances.includes("pleasure")) dominant = "pleasure";
+  else if (performances.includes("pleasure") || pleasureContext.test(raw)) dominant = "pleasure";
+  else if (dominant === "neutral" && pleasureContext.test(raw)) dominant = "pleasure";
   return { text, segments, reactions, performance: dominant, roleplay };
 }
 

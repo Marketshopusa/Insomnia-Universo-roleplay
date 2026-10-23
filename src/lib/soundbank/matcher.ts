@@ -12,7 +12,7 @@ const SOUND_PATTERNS: Array<[SoundId, RegExp]> = [
   ],
   [
     "flesh_impact",
-    /(?:choque\s+de\s+(?:nuestros\s+)?cuerpos|piel\s+contra\s+piel|nalgada\w*|palmada\w*\s+(?:en|sobre)\s+(?:mi|tu|su)?\s*(?:trasero|culo|nalgas?|piel)|golpe\w*\s+(?:mi|tu|su)?\s*(?:trasero|culo|piel|nalgas?)|azot\w*\s+(?:mi|tu|su)?\s*(?:trasero|culo|piel)|chocan\s+nuestras\s+caderas|embestid\w*|fricci[oó]n\s+entre\s+nuestras\s+pieles|manos?\s+recorre\w*\s+(?:con\s+fuerza\s+)?(?:el\s+)?(?:cuerpo|espalda|muslos))/iu,
+    /(?:choque\s+de\s+(?:nuestros\s+)?cuerpos|piel\s+contra\s+piel|nalgada\w*|palmada\w*\s+(?:en|sobre)\s+(?:mi|tu|su)?\s*(?:trasero|culo|nalgas?|piel)|golpe\w*\s+(?:mi|tu|su)?\s*(?:trasero|culo|piel|nalgas?)|azot\w*\s+(?:mi|tu|su)?\s*(?:trasero|culo|piel)|chocan\s+nuestras\s+caderas|embestid\w*|fricci[oó]n\s+entre\s+nuestras\s+pieles|manos?\s+recorre\w*\s+(?:con\s+fuerza\s+)?(?:el\s+)?(?:cuerpo|espalda|muslos)|sintiendo\s+cada\s+golpe|cada\s+golpe|golpeteo|fuerza\s+y\s+profundidad|cuerpo\s+a\s+cuerpo|al\s+entrar|penetr\w*|empuj\w*\s+adentro)/iu,
   ],
   [
     "slap",
