@@ -1738,8 +1738,8 @@ export default async function handler(req, res) {
       const raw = await generate(
         "gemini-2.5-flash",
         [{ text: prompt }],
-        { responseMimeType: "application/json", maxOutputTokens: 12000, temperature: 0.4 },
-        { fallbackModels: ["gemini-3.1-flash-lite", "gemini-2.5-flash-lite", "gemini-3.8-flash"], timeoutMs: 60000, retryBadRequest: true }
+        { responseMimeType: "application/json", maxOutputTokens: 16000, temperature: 0.4 },
+        { fallbackModels: ["gemini-3.1-flash-lite", "gemini-2.5-flash-lite", "gemini-3.8-flash"], timeoutMs: 90000, retryBadRequest: true }
       );
       const novel = JSON.parse(raw);
       if (!novel.title || !Array.isArray(novel.chapters) || novel.chapters.length !== count) throw Object.assign(new Error("Proyecto incompleto; intenta otra vez."), { status: 502 });

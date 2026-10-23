@@ -4,7 +4,8 @@ import { clampLocalEpisodes, createLocalJob, localVideoSrc, probeLocalKineva, re
 it("builds a same-PC video url and keeps episode counts between 1 and 3", () => {
   expect(localVideoSrc("/videos/job/clip.mp4")).toBe("http://127.0.0.1:8787/videos/job/clip.mp4");
   expect(clampLocalEpisodes(0)).toBe(1);
-  expect(clampLocalEpisodes(9)).toBe(3);
+  expect(clampLocalEpisodes(9)).toBe(9);
+  expect(clampLocalEpisodes(25)).toBe(20);
 });
 
 it("reads worker health as ready, missing ComfyUI, or missing worker", async () => {

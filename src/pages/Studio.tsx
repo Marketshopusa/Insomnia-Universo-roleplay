@@ -66,7 +66,7 @@ const languages = [
   "Portuguese", "Japanese", "Korean", "Chinese"
 ];
 
-const chapterOptions = [3, 5, 7, 10, 12];
+const chapterOptions = [3, 5, 7, 10, 12, 15, 20];
 
  const Studio = () => {
    const { user } = useAuth();

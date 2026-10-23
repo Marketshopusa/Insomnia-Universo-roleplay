@@ -224,8 +224,8 @@ def chapter_ideas(body):
     raw = body.get("chapters")
     if isinstance(raw, list) and raw:
         ideas = []
-        if len(raw) > 12:
-            raise ValueError("Kineva admite hasta 12 capítulos por proyecto local.")
+        if len(raw) > 20:
+            raise ValueError("Kineva admite hasta 20 capítulos por proyecto local.")
         for item in raw:
             text = str(item or "").strip()
             if len(text) < 5 or len(text) > 4000:
@@ -265,8 +265,8 @@ def chapter_shots(body, ideas):
                 raise ValueError("Cada toma necesita una acción visible, un hablante válido y una frase breve opcional.")
             shots.append({"visual": visual, "dialogue": dialogue, "speaker": speaker})
         result.append(shots)
-    if sum(map(len, result)) > 24:
-        raise ValueError("Una serie local admite hasta 24 tomas por proyecto.")
+    if sum(map(len, result)) > 48:
+        raise ValueError("Una serie local admite hasta 48 tomas por proyecto.")
     return result
 
 

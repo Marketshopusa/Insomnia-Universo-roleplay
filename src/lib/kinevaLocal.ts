@@ -43,7 +43,7 @@ export function localVideoSrc(url: string) {
 
 export function clampLocalEpisodes(value: number) {
   if (!Number.isFinite(value)) return 1;
-  return Math.min(3, Math.max(1, Math.round(value)));
+  return Math.min(20, Math.max(1, Math.round(value)));
 }
 
 export async function probeLocalKineva(fetchImpl: FetchLike = fetch): Promise<LocalProbe> {
