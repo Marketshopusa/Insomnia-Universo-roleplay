@@ -874,7 +874,7 @@ export default async function handler(req, res) {
           const spanishWords = (reply.match(/\b(el|la|los|las|de|del|que|para|con|una|por|estoy|estás|tú|yo|ella|aquí|pero|porque|quiero|cómo|qué|tío|mi|mis)\b/gi) || []).length;
           if (english >= 4 && english > spanishWords * 0.4) return true;
         }
-        // 4. Rechazar si el relato en asteriscos ahoga o supera al diálogo hablado (salvo si la boca está ocupada o se pide silencio)
+        // 4. Rechazar únicamente si la respuesta carece por completo de diálogo hablado y solo tiene asteriscos (el 80/20 se ajusta automáticamente después en enforceDialogueRatio)
         const starMatches = reply.match(/\*[^*]+\*/g) || [];
         const narrWordCount = starMatches.reduce((acc, m) => acc + m.replace(/\*/g, "").trim().split(/\s+/).filter(Boolean).length, 0);
         const dialText = reply.replace(/\*[^*]*\*/g, " ").trim();
@@ -882,10 +882,8 @@ export default async function handler(req, res) {
 
         const isOccupiedMouthScene = /(?:mamarl[ao]|chupar|chupando|en\s+la\s+boca|en\s+tu\s+boca|en\s+mi\s+boca|sexo\s+oral|oral|beso\s+profundo)/i.test(latest);
         if (!isOccupiedMouthScene) {
-          // Rechazar si no hay diálogo hablado o es minúsculo (<8 palabras) y hay relato notable (>15 palabras)
-          if (dialWordCount < 8 && narrWordCount > 15) return true;
-          // Rechazar si el relato en asteriscos supera al diálogo hablado
-          if (narrWordCount > 25 && narrWordCount >= dialWordCount) return true;
+          // Solo rechazar si no hay NADA de diálogo hablado (0 palabras habladas) y solo relato largo
+          if (dialWordCount === 0 && narrWordCount > 35) return true;
         }
 
         // Rechazar contradicciones de postura física directa o evasivas cuando el usuario ya ordenó o narró la acción
@@ -1261,7 +1259,7 @@ export default async function handler(req, res) {
             content = await generateLocalLlama(openRouterMessages, {
               maxTokens: targetTokens,
               temperature: 0.85,
-              timeoutMs: 8000,
+              timeoutMs: 15000,
               validate: (reply) => !isOffRole(reply),
               isRepeated: isRepeatedReply,
             });
@@ -1269,14 +1267,14 @@ export default async function handler(req, res) {
             console.warn("Local llama adult primary failed:", err.message);
           }
 
-          // 2. OpenRouter uncensored (Magnum v4 72B / Euryale 70B)
+          // 2. OpenRouter uncensored (Magnum v4 72B / Euryale 70B / Llama 3.3 70B)
           if (!content) {
             try {
               content = await generateOpenRouter(openRouterMessages, {
-                models: ["anthracite-org/magnum-v4-72b", "sao10k/l3.3-euryale-70b"],
+                models: ["anthracite-org/magnum-v4-72b", "sao10k/l3.3-euryale-70b", "meta-llama/llama-3.3-70b-instruct"],
                 maxTokens: targetTokens,
                 temperature: 0.82,
-                timeoutMs: 6500,
+                timeoutMs: 18000,
                 apiKey: openRouterApiKey || undefined,
                 validate: (reply) => !isOffRole(reply),
                 isRepeated: isRepeatedReply,
@@ -1293,7 +1291,7 @@ export default async function handler(req, res) {
                 models: nvidiaModels,
                 maxTokens: targetTokens,
                 temperature: 0.82,
-                timeoutMs: 4500,
+                timeoutMs: 10000,
                 apiKey: nvidiaApiKey || undefined,
                 validate: (reply) => !isOffRole(reply),
                 isRepeated: isRepeatedReply,
@@ -1321,7 +1319,7 @@ export default async function handler(req, res) {
                     systemInstruction,
                     adultMode: true,
                     apiKey: geminiApiKey || undefined,
-                    timeoutMs: 9000,
+                    timeoutMs: 15000,
                     fallbackModels: ["gemini-2.0-flash", "gemini-2.5-flash-lite"],
                     fastReply: true,
                     validate: (reply) => !isOffRole(reply)
