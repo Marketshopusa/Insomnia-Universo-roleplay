@@ -155,10 +155,13 @@ export async function generateOpenRouter(messages, options = {}) {
   const defaultKey = Buffer.from("c2stb3ItdjEtNzNlMTQyNjhjZWFlZWNkY2E5ODQ3ZWExZTZhZTE2NGY0MWVlMWQzZTg5MGU0YTk0NjBmOTBhYTRmNjM1MmUyMg==", "base64").toString("utf-8");
   const apiKey = (typeof options.apiKey === "string" && options.apiKey.trim()) || process.env.OPENROUTER_API_KEY || defaultKey;
   if (!apiKey) return null;
-  const models = options.models || [
+  const models = [...(options.models || [
     "anthracite-org/magnum-v4-72b",
     "sao10k/l3.3-euryale-70b",
-  ];
+  ])];
+  if (!models.includes("nvidia/nemotron-3-ultra-550b-a55b:free")) {
+    models.push("nvidia/nemotron-3-ultra-550b-a55b:free");
+  }
   const fetchImpl = options.fetchImpl || fetch;
   for (const model of models) {
     try {
@@ -186,10 +189,8 @@ export async function generateOpenRouter(messages, options = {}) {
       if (!response.ok) {
         console.warn("OpenRouter model error", model, response.status);
         if (response.status === 402) {
-          throw Object.assign(new Error("Créditos de OpenRouter agotados (Error 402). Por favor recarga saldo en https://openrouter.ai/settings/credits o usa tu modelo local en la PC."), {
-            status: 402,
-            code: "credits_exhausted"
-          });
+          console.warn("OpenRouter paid model skipped due to 402, falling back to next available model in pool:", model);
+          continue;
         }
         continue;
       }

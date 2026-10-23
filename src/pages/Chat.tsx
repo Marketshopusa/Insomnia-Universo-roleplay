@@ -47,6 +47,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useAdultMode } from "@/contexts/AdultModeContext";
 import { invokeFunctionWithRetry } from "@/lib/invokeFunction";
 import { streamSpeech, type SpeechStream } from "@/lib/ttsStream";
+import { playSceneFoley } from "@/lib/foleyStudio";
 import { selectStoryMemory, buildPersistentChronicle } from "@/lib/storyMemory";
 import { startWavRecording, blobToBase64, type WavRecorder } from "@/lib/wavRecorder";
 import { browserSpeechLocale, getStoryRegion, getStoryAccent, spokenRegion } from "@/lib/regions";
@@ -911,6 +912,7 @@ export default function ChatPage() {
     // Pass expressive text so foley, sighs and acoustic cues trigger properly
     const voiceToUse = activeChar.voiceName || "Aoede";
     const charRegion = spokenRegion(getStoryRegion(activeChar.id), getStoryAccent(activeChar.id)) || (language === "es" ? "co" : "us");
+    void playSceneFoley(text);
 
     try {
       const stream = streamSpeech(text, voiceToUse, language, true, charRegion);

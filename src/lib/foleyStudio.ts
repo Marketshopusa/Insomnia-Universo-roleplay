@@ -386,3 +386,28 @@ export function scheduleFoleyForMessage(
 
   return sources;
 }
+
+let globalFoleyCtx: AudioContext | null = null;
+
+/**
+ * Reproduce inmediatamente todos los efectos de la escena (truenos, lluvia, pasos, impactos, foley, etc.)
+ * en el navegador de forma 100% autónoma, sin depender de TTS ni de latencia de red.
+ */
+export function playSceneFoley(messageText: string, volume = 0.65): AudioBufferSourceNode[] {
+  if (typeof window === "undefined" || !messageText) return [];
+  try {
+    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioCtx) return [];
+    if (!globalFoleyCtx || globalFoleyCtx.state === "closed") {
+      globalFoleyCtx = new AudioCtx();
+    }
+    if (globalFoleyCtx.state === "suspended") {
+      void globalFoleyCtx.resume();
+    }
+    return scheduleFoleyForMessage(globalFoleyCtx, messageText, globalFoleyCtx.currentTime + 0.04, volume);
+  } catch (err) {
+    console.warn("playSceneFoley error:", err);
+    return [];
+  }
+}
+

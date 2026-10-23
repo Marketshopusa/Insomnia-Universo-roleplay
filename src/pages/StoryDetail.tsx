@@ -13,6 +13,7 @@ import { RegionMenu } from "@/components/story/RegionMenu";
 import { getStoryVoice, setStoryVoice } from "@/lib/voices";
 import { getStoryAccent, getStoryRegion, setStoryAccent, setStoryRegion, spokenRegion } from "@/lib/regions";
 import { streamSpeech, type SpeechStream } from "@/lib/ttsStream";
+import { playSceneFoley } from "@/lib/foleyStudio";
 import { invokeFunctionWithRetry } from "@/lib/invokeFunction";
 import { generateSceneImage } from "@/lib/sceneImage";
 import { normalizeAssistantReply } from "@/lib/roleReply";
@@ -491,6 +492,7 @@ type Mode = "select" | "read" | "roleplay";
      setMessages(next);
      void saveSession(next, narrative || null, mode);
      setIsTyping(false);
+     void playSceneFoley(responseContent);
      if (!isMuted) void playAudio(responseContent, assistantMessage.id);
    };
 

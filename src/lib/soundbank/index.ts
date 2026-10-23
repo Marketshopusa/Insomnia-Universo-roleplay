@@ -23,28 +23,32 @@ export function playCinematicSound(
     const source = context.createBufferSource();
     source.buffer = audioBuffer;
 
-    const gainNode = context.createGain();
-    const clampedVolume = Math.max(0, Math.min(1, volume));
-    gainNode.gain.setValueAtTime(clampedVolume, context.currentTime);
+    if (typeof context.createGain === "function") {
+      const gainNode = context.createGain();
+      const clampedVolume = Math.max(0, Math.min(1, volume));
+      gainNode.gain.setValueAtTime(clampedVolume, context.currentTime);
 
-    // Filtro analógico cinemático cálido (biquad lowpass)
-    if (typeof context.createBiquadFilter === "function") {
-      const filter = context.createBiquadFilter();
-      filter.type = "lowpass";
-      const cutoff = soundId.startsWith("wall") || soundId.startsWith("flesh")
-        ? 2200
-        : soundId.startsWith("rain") || soundId.startsWith("thunder")
-          ? 3800
-          : 4500;
-      filter.frequency.setValueAtTime(cutoff, context.currentTime);
-      filter.Q.setValueAtTime(0.7, context.currentTime);
-      source.connect(filter);
-      filter.connect(gainNode);
+      // Filtro analógico cinemático cálido (biquad lowpass)
+      if (typeof context.createBiquadFilter === "function") {
+        const filter = context.createBiquadFilter();
+        filter.type = "lowpass";
+        const cutoff = soundId.startsWith("wall") || soundId.startsWith("flesh")
+          ? 2200
+          : soundId.startsWith("rain") || soundId.startsWith("thunder")
+            ? 3800
+            : 4500;
+        filter.frequency.setValueAtTime(cutoff, context.currentTime);
+        filter.Q.setValueAtTime(0.7, context.currentTime);
+        source.connect(filter);
+        filter.connect(gainNode);
+      } else {
+        source.connect(gainNode);
+      }
+
+      gainNode.connect(context.destination);
     } else {
-      source.connect(gainNode);
+      source.connect(context.destination);
     }
-
-    gainNode.connect(context.destination);
 
     const when = Math.max(context.currentTime, startTime ?? context.currentTime);
     source.start(when);

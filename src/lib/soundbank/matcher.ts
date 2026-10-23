@@ -58,47 +58,47 @@ const SOUND_PATTERNS: Array<[SoundId, RegExp]> = [
   ],
   [
     "glasses_clink",
-    /(?:chocan\s+las\s+copas|brindis|brindan|tintineo\s+de\s+(?:las\s+)?copas|chocar\s+los\s+vasos|cristal\s+tintineando)/iu,
+    /(?:copas?|brindis|brindar|brindan|tintineo\s+de\s+(?:las\s+)?copas|chocar\s+los\s+vasos|cristal\s+tintineando)/iu,
   ],
   [
     "pour_liquid",
-    /(?:sirve\s+(?:una\s+copa|vino|el\s+trago|champ[aá]n)|descorcha|líquido\s+cayendo\s+en\s+la\s+copa|descorchar\s+la\s+botella)/iu,
+    /(?:sirve\s+(?:un\s+)?(?:trago|vino|copa|bebida|champ[aá]n)|descorcha|verter\s+l[ií]quido|echa\s+en\s+la\s+copa|l[ií]quido\s+cayendo)/iu,
   ],
   [
     "applause",
-    /(?:aplausos?|aplauden|ovaci[oó]n|palmas\s+del\s+p[uú]blico|la\s+sala\s+aplaude)/iu,
+    /(?:aplausos?|aplaud\w*|ovaci[oó]n|palmas\s+del\s+p[uú]blico|palmas\b|la\s+sala\s+aplaude)/iu,
   ],
 
   // 3. PAISAJE SONORO Y MÚSICA AMBIENTAL
   [
     "thunder_storm",
-    /(?:truenos?|retumb\w*\s+un\s+trueno|rel[aá]mpago|tormenta\s+retumba|estruendo\s+en\s+el\s+cielo)/iu,
+    /(?:truenos?|rel[aá]mpagos?|tormenta|estruendo\s+en\s+el\s+cielo|retumb\w*\s+el\s+cielo)/iu,
   ],
   [
     "rain_window",
-    /(?:sonidos?\s+de\s+la\s+lluvia|lluvia\s+(?:golpea|cae|afuera|torrencial)|gotas\s+en\s+la\s+ventana|bajo\s+la\s+lluvia|escucha\s+la\s+lluvia)/iu,
+    /(?:lluvia\w*|llueve|llover|gotas\s+en\s+la\s+ventana|bajo\s+la\s+lluvia|chubasco|aguacero|torrencial)/iu,
   ],
   [
     "wind_night",
-    /(?:viento\s+nocturno|sopla\s+el\s+viento|silbido\s+del\s+viento|brisa\s+fr[ií]a)/iu,
+    /(?:viento\w*|brisa\s+nocturna|silbido\s+del\s+viento|sopla\s+el\s+viento|brisa\s+fr[ií]a)/iu,
   ],
   [
     "salon_music",
-    /(?:m[uú]sica\s+(?:del\s+sal[oó]n|de\s+fondo|suave|lenta|íntima|intima)|piano\s+(?:suave|melanc[oó]lico)|melod[ií]a\s+de\s+fondo|suena\s+una\s+m[uú]sica)/iu,
+    /(?:m[uú]sica\s+(?:del\s+sal[oó]n|de\s+fondo|suave|lenta|íntima|intima)?|piano\s+(?:suave|melanc[oó]lico)|melod[ií]a\s+de\s+fondo|suena\s+una\s+m[uú]sica)/iu,
   ],
 
   // 4. EXPRESIONES VOCALES Y PASIÓN
   [
     "gasp_breathless",
-    /(?:sac[aá]ndole\s+(?:un\s+poco\s+)?la\s+respiraci[oó]n|falta\s+de\s+aire|sin\s+aliento|respiraci[oó]n\s+(?:entrecortada|ahogada)|boquea\s+sin\s+aire|jadeo\s+ahogado|ahogando\s+el\s+aire)/iu,
+    /(?:jade\w*|respiraci[oó]n\s+entrecortada|sin\s+aliento|falta\s+de\s+aire|boque\w*|sac[aá]ndole\s+(?:un\s+poco\s+)?la\s+respiraci[oó]n)/iu,
   ],
   [
     "pant_running",
-    /(?:respiraci[oó]n\s+(?:agitada|acelerada)|jadeando\s+con\s+fuerza|pecho\s+(?:sube\s+y\s+baja|agitado)|aliento\s+pesado|agitaci[oó]n\s+intensa)/iu,
+    /(?:respiraci[oó]n\s+(?:agitada|acelerada|fuerte|pesada)|agitad[ao]|agitaci[oó]n\s+intensa|pecho\s+(?:sube\s+y\s+baja|agitado))/iu,
   ],
   [
     "moan_pleasure",
-    /(?:gemi(?:do|endo|ó|eron|es)?\s+(?:de\s+placer|sensual|ahogado|profundo|incontrolable)|gemid(?:o|os)\s+que\s+escapa|suelta\s+un\s+(?:pequeño\s+)?gemido|se\s+le\s+escapa\s+un\s+gemido|gime\s+de\s+placer|delicioso\s+gemido)/iu,
+    /(?:gemid\w*|gim\w*|gime|gimo|delicioso\s+gemido|moan)/iu,
   ],
   [
     "moan_subtle",
@@ -106,7 +106,7 @@ const SOUND_PATTERNS: Array<[SoundId, RegExp]> = [
   ],
   [
     "scream_pleasure",
-    /(?:grito\s+de\s+placer|grita\s+de\s+placer|chillido\s+de\s+placer|gemido\s+se\s+convierte\s+en\s+grito|grita\s+su\s+nombre\s+al\s+llegar\s+al\s+cl[ií]max)/iu,
+    /(?:grito\s+de\s+placer|grita\s+de\s+placer|chillido\s+de\s+placer|gemido\s+se\s+convierte\s+en\s+grito|cl[ií]max)/iu,
   ],
   [
     "scream_pain",
@@ -114,23 +114,23 @@ const SOUND_PATTERNS: Array<[SoundId, RegExp]> = [
   ],
   [
     "cry_deep",
-    /(?:llanto\s+profundo|sollozos?\s+desgarrador|rompe\s+a\s+llorar|llora\s+desconsoladamente|l[aá]grimas\s+con\s+sollozos|hipidos?\s+de\s+llanto)/iu,
+    /(?:llanto\w*|llor\w*|solloz\w*|rompe\s+a\s+llorar|l[aá]grimas\s+con\s+sollozos|hipidos?\s+de\s+llanto)/iu,
   ],
   [
     "guttural_groan",
-    /(?:sonido\s+gutural|gruñido\s+ronco|quejido\s+bajo|gruñe\s+entre\s+dientes|ronco\s+gemido\s+gutural)/iu,
+    /(?:sonido\s+gutural|gruñido\s+ronco|quejido\s+bajo|gruñe\s+entre\s+dientes|ronco\s+gemido\s+gutural|gruñ\w*)/iu,
   ],
   [
     "kiss_wet",
-    /(?:beso\s+(?:h[uú]medo|apasionado|profundo|voraz)|chasquido\s+de\s+labios|labios\s+chocando|lenguas\s+entrelaz[aá]ndose)/iu,
+    /(?:beso\w*|b[eé]same|besando\w*|chasquido\s+de\s+labios|labios\s+chocando|lenguas\s+entrelaz[aá]ndose)/iu,
   ],
   [
     "laugh_burst",
-    /(?:carcajadas?|estalla\s+en\s+risas?|risotada|riendo\s+a\s+carcajadas)/iu,
+    /(?:carcajadas?|risas?|estalla\s+en\s+risas?|riendo|se\s+r[ií]e|r[ií]o|r[ií]e|ja(?:ja)+|je(?:je)+)/iu,
   ],
   [
     "laugh_chuckle",
-    /(?:risita\s+(?:p[ií]cara|burlona|c[oó]mplice|baja)|suelta\s+una\s+risita|se\s+r[ií]e\s+por\s+lo\s+bajo)/iu,
+    /(?:risita\s+(?:p[ií]cara|burlona|c[oó]mplice|baja)?|suelta\s+una\s+risita|se\s+r[ií]e\s+por\s+lo\s+bajo)/iu,
   ],
 ];
 

@@ -193,6 +193,25 @@ export function streamSpeech(text: string, voice: string, language = "es", rolep
       let scheduledAt = context.currentTime;
       let foleyScheduled = false;
 
+      // Programar los efectos acústicos y foley de la escena INMEDIATAMENTE sin esperar por la red
+      if (roleplay) {
+        foleyScheduled = true;
+        try {
+          const foleySources = scheduleFoleyForMessage(context, text, context.currentTime + 0.04);
+          for (const s of foleySources) {
+            sources.add(s);
+            s.onended = () => {
+              sources.delete(s);
+              s.disconnect();
+              if (schedulingComplete && sources.size === 0) finishPlayback();
+            };
+          }
+          if (foleySources.length > 0) {
+            reportFirstPlayback();
+          }
+        } catch { /* Ignore optional foley errors */ }
+      }
+
       const schedule = (bytes: Uint8Array) => {
         if (stopped || !context) return;
         const samples = new Float32Array(bytes.byteLength / 2);
@@ -212,20 +231,7 @@ export function streamSpeech(text: string, voice: string, language = "es", rolep
         const startAt = Math.max(scheduledAt, context.currentTime + (scheduledAt === 0 ? 0.08 : 0.025));
         source.start(startAt);
         scheduledAt = startAt + buffer.duration;
-        if (!foleyScheduled && roleplay) {
-          foleyScheduled = true;
-          try {
-            const foleySources = scheduleFoleyForMessage(context, text, startAt);
-            for (const s of foleySources) {
-              sources.add(s);
-              s.onended = () => {
-                sources.delete(s);
-                s.disconnect();
-                if (schedulingComplete && sources.size === 0) finishPlayback();
-              };
-            }
-          } catch { /* Ignore optional foley errors */ }
-        }
+
         reportFirstPlayback();
       };
       await receivePcm(spoken, voice, language, region, performance, roleplay, controller.signal, schedule);
@@ -235,6 +241,10 @@ export function streamSpeech(text: string, voice: string, language = "es", rolep
       if (!stopped) stop();
     } catch (error) {
       if (stopped || (error instanceof DOMException && error.name === "AbortError")) return;
+      schedulingComplete = true;
+      if (sources.size > 0) {
+        try { await playbackEnded; } catch {}
+      }
       stop();
       throw error;
     }
