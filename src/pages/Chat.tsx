@@ -782,18 +782,18 @@ export default function ChatPage() {
       timestamp: isEs ? "Inicio" : "Start"
     };
 
-    setChatHistory((prev) => {
-      const existing = prev[activeChar.id] || [initialStarter];
-      return {
-        ...prev,
-        [activeChar.id]: [...existing, userMsg]
-      };
-    });
+    const currentHistory = chatHistory[activeChar.id] || [initialStarter];
+    const updatedHistory = [...currentHistory, userMsg];
+
+    setChatHistory((prev) => ({
+      ...prev,
+      [activeChar.id]: updatedHistory
+    }));
     setInputText("");
     setIsTyping(true);
 
     try {
-      const existingHistory = chatHistory[activeChar.id] || [initialStarter];
+      const existingHistory = updatedHistory;
       const mother = getMotherCardConfig();
       const rawAiSettings = getStoryAiSettings(activeChar.id);
       const charAiSettings = {

@@ -115,15 +115,22 @@ export function isRefusal(text) {
 export async function generateLocalLlama(messages, options = {}) {
   try {
     const fetchImpl = options.fetchImpl || fetch;
+    // Ensure strict alternation for Jinja templates in local llama-server
+    const sanitizedMessages = [...messages];
+    if (sanitizedMessages.length > 1 && sanitizedMessages[1]?.role === "assistant") {
+      sanitizedMessages.splice(1, 0, { role: "user", content: "[Inicio de la escena]" });
+    }
     const response = await fetchImpl("http://127.0.0.1:8788/v1/chat/completions", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         model: "magnum-v4-12b",
-        messages,
+        messages: sanitizedMessages,
         max_tokens: options.maxTokens || 260,
-        temperature: options.temperature ?? 0.85,
-        repeat_penalty: 1.0,
+        temperature: options.temperature ?? 0.82,
+        repeat_penalty: 1.15,
+        presence_penalty: 0.15,
+        frequency_penalty: 0.20,
       }),
       signal: AbortSignal.timeout(options.timeoutMs || 8000),
     });
@@ -805,21 +812,28 @@ export default async function handler(req, res) {
       const normText = (s) => String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^\w\s]/g, " ").replace(/\s+/g, " ").trim();
       const stripActions = (s) => String(s || "").replace(/\*[^*]*\*/g, " ").trim();
       const recentModelTurns = history.filter((h) => h.role === "model").map((h) => h.text).slice(-6);
-      const lastModelTurn = recentModelTurns.at(-1) || "";
       const isRepeatedReply = (text) => {
         const raw = String(text || "").trim();
         if (!raw) return true;
-        if (!lastModelTurn) return false;
-        const candFull = normText(raw);
-        const prevFull = normText(lastModelTurn);
-        if (candFull === prevFull) return true;
+        if (!recentModelTurns.length) return false;
         const candDial = normText(stripActions(raw));
-        const prevDial = normText(stripActions(lastModelTurn));
-        if (candDial && prevDial) {
+        const cw = candDial.split(" ").filter(Boolean);
+        if (cw.length < 5) return false;
+
+        for (const pastTurn of recentModelTurns) {
+          const prevDial = normText(stripActions(pastTurn));
+          if (!prevDial) continue;
           if (candDial === prevDial) return true;
-          if (candDial.length >= 25 && prevDial.length >= 25 && candDial.slice(0, 30) === prevDial.slice(0, 30) && candDial.slice(-25) === prevDial.slice(-25)) return true;
-          const cw = candDial.split(" ").filter(Boolean);
           const pw = prevDial.split(" ").filter(Boolean);
+          if (pw.length < 5) continue;
+
+          // 1. Detectar frases compartidas de 6 o más palabras consecutivas
+          for (let i = 0; i <= cw.length - 6; i++) {
+            const phrase = cw.slice(i, i + 6).join(" ");
+            if (prevDial.includes(phrase)) return true;
+          }
+
+          // 2. Detectar solapamiento de n-gramas >= 45%
           if (cw.length >= 8 && pw.length >= 8) {
             const pset = new Set();
             for (let i = 0; i <= pw.length - 4; i++) pset.add(pw.slice(i, i + 4).join(" "));
@@ -827,7 +841,7 @@ export default async function handler(req, res) {
             for (let i = 0; i <= cw.length - 4; i++) {
               if (pset.has(cw.slice(i, i + 4).join(" "))) hits++;
             }
-            if (hits / (cw.length - 3) >= 0.75) return true;
+            if (hits / (cw.length - 3) >= 0.45) return true;
           }
         }
         return false;
@@ -1005,21 +1019,17 @@ export default async function handler(req, res) {
         systemInstruction += "\n" + antiRepeatDirective;
       }
 
-      const seenModelKeys = new Set();
-      const recent = history
-        .slice(-recentLimit)
-        .filter((entry) => {
-          if (entry.role !== "model") return true;
-          const k = normText(entry.text).slice(0, 60);
-          if (seenModelKeys.has(k)) return false;
-          seenModelKeys.add(k);
-          return true;
-        });
+      const recent = history.slice(-recentLimit);
 
       const contents = [];
       for (const entry of recent) {
         if (contents.at(-1)?.role === entry.role) contents.at(-1).parts[0].text += "\n" + entry.text;
         else contents.push({ role: entry.role, parts: [{ text: entry.text }] });
+      }
+
+      // Si el primer mensaje del historial es el saludo de la IA, anteponer un turno user para cumplir estrictamente el template Jinja de LLaMA
+      if (contents.length > 0 && contents[0].role === "model") {
+        contents.unshift({ role: "user", parts: [{ text: "[Inicio de la escena]" }] });
       }
 
       if (contents.at(-1)?.role === "user") {

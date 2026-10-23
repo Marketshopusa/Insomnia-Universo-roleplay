@@ -106,16 +106,23 @@ En este momento de la escena, ${activeChar.playerFirstName} está interactuando 
       ? `[Escena actual: ${activeChar.playerFirstName} le habla directamente a ${activeChar.fullLabel}. Responde en primera persona como ${activeChar.name}]:\n${input.userMessage || ""}`
       : (input.userMessage || "");
 
-    // Merge consecutive messages of the same role so llama-server Jinja template never throws HTTP 400
+    // Merge consecutive messages and ensure strict user/assistant alternation for Jinja templates
     const alternating: { role: "user" | "assistant"; content: string }[] = [];
-    for (const m of filteredHistory) {
+    for (let i = 0; i < filteredHistory.length; i++) {
+      const m = filteredHistory[i];
       const role = m.role === "assistant" ? "assistant" : "user";
       const text = role === "assistant" ? sanitizeSwitchedReply(compactRoleplayReply(m.content), activeChar) : m.content;
       if (!text) continue;
-      if (alternating.length > 0 && alternating[alternating.length - 1].role === role) {
-        alternating[alternating.length - 1].content += "\n" + text;
+      if (alternating.length === 0 && role === "assistant") {
+        // Jinja template crashes with HTTP 400 if the turn immediately following system is assistant
+        alternating.push({ role: "user", content: `[Inicio de la escena]` });
+        alternating.push({ role: "assistant", content: text });
       } else {
-        alternating.push({ role, content: text });
+        if (alternating.length > 0 && alternating[alternating.length - 1].role === role) {
+          alternating[alternating.length - 1].content += "\n" + text;
+        } else {
+          alternating.push({ role, content: text });
+        }
       }
     }
     if (alternating.length > 0 && alternating[alternating.length - 1].role === "user") {
@@ -135,9 +142,11 @@ En este momento de la escena, ${activeChar.playerFirstName} está interactuando 
       body: JSON.stringify({
         model: "magnum-v4-12b",
         messages,
-        max_tokens: 180,
-        temperature: 0.85,
-        repeat_penalty: 1.0,
+        max_tokens: 260,
+        temperature: 0.82,
+        repeat_penalty: 1.15,
+        presence_penalty: 0.15,
+        frequency_penalty: 0.20,
       }),
       signal: AbortSignal.timeout(22000),
     });
