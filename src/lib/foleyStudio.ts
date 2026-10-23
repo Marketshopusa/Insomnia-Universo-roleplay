@@ -355,12 +355,24 @@ export function playFoley(
 /**
  * Automatically schedules all detected Foley events in a message synchronized with speech.
  */
+import { scheduleCinematicScene } from "./soundbank";
+
+/**
+ * Automatically schedules all detected Foley and Cinematic Soundbank events in a message synchronized with speech.
+ */
 export function scheduleFoleyForMessage(
   context: AudioContext,
   messageText: string,
   baseTime?: number,
   volume = 0.60
 ): AudioBufferSourceNode[] {
+  // 1. Orquestación cinemática de alta fidelidad desde la Galería de Sonidos (28 categorías)
+  const cinematicSources = scheduleCinematicScene(context, messageText, baseTime, volume);
+  if (cinematicSources.length > 0) {
+    return cinematicSources;
+  }
+
+  // 2. Fallback procedural si el texto no fue capturado por el soundbank
   const events = detectFoleyEvents(messageText);
   if (!events.length) return [];
 
