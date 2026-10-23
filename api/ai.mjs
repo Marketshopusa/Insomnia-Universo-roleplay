@@ -548,10 +548,14 @@ const ANCHOR_STOP = new Set("para como donde cuando porque estan estan estaba es
 
 export function mentionsMinor(text) {
   const value = String(text || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-  if (/\b(?:preescolar|menor\s+de\s+edad|menores\s+de\s+edad|infante|infantes|pedofil|pederast|pubertad|colegial[ao]|escolar|jardin\s+de\s+infantes|bebe|bebes)\b/i.test(value)) return true;
-  if (/\b(?:tengas?|tienen?|tenia|tenian|cumpli[oó]|cumple|edad\s+de|apenas|solo|sólo|pequeñ[ao]\s+de|cuca\s+de|con\s+apenas|con\s+solo)\s+(?:de\s+)?(?:1[0-7]|[1-9])\b/i.test(value)) return true;
-  if (/\b(?:1[0-7]|[1-9])\s*(?:anos|anitos|anios|years|a|yo)\b/i.test(value)) return true;
-  if (/\b(?:niñ[ao]|niñit[ao]|chiquill[ao]|nen[ae]|menorcito|menorcita)\b/i.test(value)) return true;
+  // 1. Términos institucionales infantiles o explotación
+  if (/\b(?:preescolar|menor\s+de\s+edad|menores\s+de\s+edad|infante|infantes|pedofil\w*|pederast\w*|pubertad|jardin\s+de\s+infantes|primaria\s+escolar|sub18|menor\s+de\s+18)\b/i.test(value)) return true;
+  // 2. Mención explícita de edades menores a 18 años (1 a 17 años)
+  if (/\b(?:tengas?|tienen?|tenia|tenian|cumpli[oó]|cumple|edad\s+de|apenas\s+tiene|con\s+apenas|con\s+solo|menor\s+de)\s+(?:de\s+)?(?:1[0-7]|[1-9])\b/i.test(value)) return true;
+  if (/\b(?:1[0-7]|[1-9])\s*(?:anos|anitos|anios|years|y\/o)\b/i.test(value)) return true;
+  // 3. Niña/niño combinado con edad menor explícita o lactancia
+  if (/\b(?:niñ[ao]|chiquill[ao]|nen[ae]|menorcit[ao])\s+de\s+(?:1[0-7]|[1-9])\b/i.test(value)) return true;
+  if (/\b(?:recien\s+nacid[ao]|lactante)\b/i.test(value)) return true;
   return false;
 }
 
