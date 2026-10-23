@@ -578,14 +578,15 @@ export default function ChatPage() {
   const toggleChatMute = () => {
     setIsChatMuted((prev) => {
       const next = !prev;
-      try {
-        localStorage.setItem("insomnia_chat_muted", JSON.stringify(next));
-      } catch {}
-      if (next) {
-        stopAudio();
-      }
       return next;
     });
+    const next = !isChatMuted;
+    try {
+      localStorage.setItem("insomnia_chat_muted", JSON.stringify(next));
+    } catch {}
+    if (next) {
+      stopAudio();
+    }
   };
 
   // Reset conversation for active character to original starter message
@@ -601,13 +602,11 @@ export default function ChatPage() {
       timestamp: isEs ? "Inicio" : "Start"
     };
 
-    setChatHistory((prev) => {
-      const next = { ...prev, [activeChar.id]: [initialStarter] };
-      try {
-        localStorage.setItem("insomnia_user_chat_history_v1", JSON.stringify(next));
-      } catch {}
-      return next;
-    });
+    const nextHistory = { ...chatHistory, [activeChar.id]: [initialStarter] };
+    setChatHistory(nextHistory);
+    try {
+      localStorage.setItem("insomnia_user_chat_history_v1", JSON.stringify(nextHistory));
+    } catch {}
 
     setIsConfigOpen(false);
 

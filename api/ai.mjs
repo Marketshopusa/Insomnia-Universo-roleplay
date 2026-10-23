@@ -1498,6 +1498,7 @@ export default async function handler(req, res) {
       const key = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
       if (!key || key === "[SENSITIVE]") return send(res, 503, { error: "no_key" });
       const response = await fetch("https://generativelanguage.googleapis.com/v1beta/models?key=" + key);
+      if (!response.ok) return send(res, response.status, { error: "upstream_error" });
       const data = await response.json();
       return send(res, 200, data);
     }

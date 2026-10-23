@@ -383,9 +383,9 @@ const chapterOptions = [3, 5, 7, 10, 12];
       return;
     }
     const title = manualTitle.trim() || description.trim().slice(0, 40) || "Miniserie Insomnia";
-    let scenes = manualScenes.map((text) => text.trim());
-    let lines = manualLines.map((text) => text.trim());
-    let missingScene = scenes.findIndex((text) => text.length < 5);
+    const scenes = manualScenes.map((text) => text.trim());
+    const lines = manualLines.map((text) => text.trim());
+    const missingScene = scenes.findIndex((text) => text.length < 5);
     if (missingScene !== -1) {
       if (description.trim().length >= 10) {
         toast({ title: "Generando guion automático con IA...", description: "Completando los 3 capítulos a partir de tu idea antes de filmar." });
