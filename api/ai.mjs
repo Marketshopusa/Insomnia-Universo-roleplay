@@ -114,6 +114,8 @@ export function isRefusal(text) {
 
 export async function generateLocalLlama(messages, options = {}) {
   try {
+    // En Vercel no existe el servidor local de PC, omitir instantáneamente para no esperar timeouts inútiles
+    if (process.env.VERCEL) return null;
     const fetchImpl = options.fetchImpl || fetch;
     // Ensure strict alternation for Jinja templates in local llama-server
     const sanitizedMessages = [...messages];
@@ -132,7 +134,7 @@ export async function generateLocalLlama(messages, options = {}) {
         presence_penalty: 0.15,
         frequency_penalty: 0.20,
       }),
-      signal: AbortSignal.timeout(options.timeoutMs || 8000),
+      signal: AbortSignal.timeout(options.timeoutMs || 4500),
     });
     if (!response.ok) return null;
     const data = await response.json();
@@ -163,7 +165,9 @@ export async function generateOpenRouter(messages, options = {}) {
     models.push("nvidia/nemotron-3-ultra-550b-a55b:free");
   }
   const fetchImpl = options.fetchImpl || fetch;
+  let paidModelsBlocked = false;
   for (const model of models) {
+    if (paidModelsBlocked && !model.endsWith(":free")) continue;
     try {
       const response = await fetchImpl("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",
@@ -189,7 +193,9 @@ export async function generateOpenRouter(messages, options = {}) {
       if (!response.ok) {
         console.warn("OpenRouter model error", model, response.status);
         if (response.status === 402) {
-          console.warn("OpenRouter paid model skipped due to 402, falling back to next available model in pool:", model);
+          console.warn("OpenRouter paid model skipped due to 402 (sin saldo prepagado), filtrando al instante modelos gratuitos:", model);
+          // Si no hay saldo en la cuenta de OpenRouter, omitir de golpe cualquier otro modelo de pago para no sumar latencia
+          paidModelsBlocked = true;
           continue;
         }
         continue;
@@ -552,10 +558,11 @@ export function mentionsMinor(text) {
   // 1. Términos institucionales infantiles o explotación
   if (/\b(?:preescolar|menor\s+de\s+edad|menores\s+de\s+edad|infante|infantes|pedofil\w*|pederast\w*|pubertad|jardin\s+de\s+infantes|primaria\s+escolar|sub18|menor\s+de\s+18)\b/i.test(value)) return true;
   // 2. Mención explícita de edades menores a 18 años (1 a 17 años)
-  if (/\b(?:tengas?|tienen?|tenia|tenian|cumpli[oó]|cumple|edad\s+de|apenas\s+tiene|con\s+apenas|con\s+solo|menor\s+de)\s+(?:de\s+)?(?:1[0-7]|[1-9])\b/i.test(value)) return true;
-  if (/\b(?:1[0-7]|[1-9])\s*(?:anos|anitos|anios|years|y\/o)\b/i.test(value)) return true;
+  // Requiere expresamente la unidad de edad (años, de edad, etc.) para no dispararse con frases como "con solo 3 movimientos" o "apenas 2 tragos"
+  if (/\b(?:tengas?|tienen?|tenia|tenian|cumplio|cumple|edad\s+de|apenas\s+tiene|con\s+apenas|con\s+solo|menor\s+de)\s+(?:de\s+)?(?:1[0-7]|[1-9])\s*(?:anos?|anitos?|anios?|meses|de\s+edad)\b/i.test(value)) return true;
+  if (/\b(?:edad\s+de\s+)?(?:1[0-7]|[1-9])\s*(?:anos|anitos|anios|years)\s*(?:de\s+edad)?\b/i.test(value) && !/\bhace\s+(?:1[0-7]|[1-9])\s*(?:anos|anios)/i.test(value)) return true;
   // 3. Niña/niño combinado con edad menor explícita o lactancia
-  if (/\b(?:niñ[ao]|chiquill[ao]|nen[ae]|menorcit[ao])\s+de\s+(?:1[0-7]|[1-9])\b/i.test(value)) return true;
+  if (/\b(?:nin[ao]|chiquill[ao]|nen[ae]|menorcit[ao])\s+(?:de\s+)?(?:1[0-7]|[1-9])\b/i.test(value)) return true;
   if (/\b(?:recien\s+nacid[ao]|lactante)\b/i.test(value)) return true;
   return false;
 }

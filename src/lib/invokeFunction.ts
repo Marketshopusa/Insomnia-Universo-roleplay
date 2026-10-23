@@ -153,7 +153,7 @@ En este momento de la escena, ${activeChar.playerFirstName} está interactuando 
         presence_penalty: 0.15,
         frequency_penalty: 0.20,
       }),
-      signal: AbortSignal.timeout(22000),
+      signal: AbortSignal.timeout(8500),
     });
 
     if (!res.ok) return null;
