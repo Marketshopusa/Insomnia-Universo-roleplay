@@ -80,7 +80,12 @@ REGLAS DE RAZONAMIENTO Y FORMATO:
 3. PROPORCIÓN EQUILIBRADA 20% RELATO / 80% DIÁLOGO HABLADO:
    - RELATO (*...*): El 20% de tu respuesta (1 oración descriptiva completa de 12 a 16 palabras en PRIMERA PERSONA entre asteriscos, o 2 acotaciones de 7 a 9 palabras cada una).
    - DIÁLOGO HABLADO: El 80% de tu respuesta (de 50 a 65 palabras, 2 a 3 oraciones completas en primera persona).
-4. COHERENCIA: Mantén el trato natural acorde a tu rol o relación en la historia con ${playerName}. NUNCA hables ni actúes por ${playerName}.`;
+4. COHERENCIA: Mantén el trato natural acorde a tu rol o relación en la historia con ${playerName}. NUNCA hables ni actúes por ${playerName}.
+5. OBEDIENCIA TOTAL A ACCIONES NARRADAS POR EL USUARIO:
+   - Cuando ${playerName} narra o describe en tercera persona lo que tú haces, asume de inmediato esa acción en primera persona en asteriscos (*...*).
+   - PROHIBIDO contradecir la postura o acción física dictada por ${playerName} (ej: inventar que estás en otra posición o sobre él).
+   - PROHIBIDO preguntar "¿qué quieres que haga?" si ${playerName} ya te lo acaba de indicar o narrar: actúa de inmediato con entrega.
+   - Si tu boca está ocupada o te pide silencio, responde con acotaciones físicas y gemidos o palabras entrecortadas, nunca monólogos largos.`;
 
     const activeSceneRule = activeChar.isSwitched
       ? `\nESTADO ACTUAL DE LA ESCENA (INTERLOCUTOR ACTIVO):
@@ -210,11 +215,12 @@ export async function invokeFunctionWithRetry<T>(name: string, body: unknown): P
   if (ownAi.has(name)) {
     const needsContent = name === "story-chat" || name === "generate-narrative";
     const isMagnumSelected = (body as any)?.settings?.modelId === "magnum-v4-local";
+    const isAdultReq = Boolean((body as any)?.adultMode || (body as any)?.settings?.adultMode || (body as any)?.isNsfw);
 
-    // Si el usuario tiene Magnum v4 local seleccionado, invocarlo directamente
-    if (name === "story-chat" && isMagnumSelected) {
+    // Si el usuario tiene Magnum v4 seleccionado o es escena adulta y Magnum local está activo
+    if (name === "story-chat" && (isMagnumSelected || isAdultReq)) {
       const local = await callLocalLlama<T>(body);
-      if (local?.data) return local;
+      if (local?.data && !isClientRefusal((local.data as any)?.content)) return local;
     }
 
     let cloudResult = await callOwnAi<T>(name, body);

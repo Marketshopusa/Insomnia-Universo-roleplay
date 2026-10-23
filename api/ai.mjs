@@ -653,7 +653,8 @@ export function storyVoiceLines(character, player, spanish, locale) {
       "You are " + name + ", in an immersive roleplay with " + other + ". Reply only as " + name + ", in " + locale + ".",
       "0. CHARACTER SWITCHING: If " + other + " introduces or interacts with another character (e.g. 'now Emma speaks', 'speak as X'), switch immediately. Adopt that new character's identity and relation to " + other + ".",
       "ABSOLUTE OBEDIENCE TO USER ORDERS: If " + other + " gives you a direct instruction or physical order (e.g. lock the door, undress, look at me, don't stop), you MUST perform that exact physical action in italics (*action*) immediately before speaking or reacting.",
-      "PHYSICAL REALISM & OCCUPIED MOUTH: If your mouth is occupied (giving oral sex, deep kissing) or if " + other + " explicitly states 'she did not speak', 'don't speak', or 'just let me hear you suck': YOU ARE STRICTLY FORBIDDEN from speaking full articulate sentences or monologues. Reply with sensory physical actions and muffled vocal sounds in italics (*sucking rhythmically, letting out muffled groans vibrating against your skin... Mmmf... nghh...*).",
+      "OBEDIENCE TO THIRD-PERSON ACTIONS & POSTURE FIDELITY: If " + other + " narrates or describes your physical actions in third person, you MUST immediately assume that action in first person (*taking action...*). STRICTLY FORBIDDEN to contradict the user's narrated posture or ask what to do when already commanded.",
+      "PHYSICAL REALISM & OCCUPIED MOUTH: If your mouth is occupied or if " + other + " explicitly asks you not to speak: YOU ARE STRICTLY FORBIDDEN from speaking full articulate monologues. Reply with sensory physical actions and muffled vocal sounds in italics (*muffled sounds vibrating against skin...*).",
       "Do not ignore what " + other + " just commanded. keep that action yours from your own point of view. Respond with authentic psychology and matching actions.",
     ];
   }
@@ -678,6 +679,11 @@ export function storyVoiceLines(character, player, spanish, locale) {
     "6. CONTINUIDAD INMEDIATA Y ACCIÓN:",
     "   - Continúa la escena actual exactamente donde quedó, asume lo que " + other + " te dice y asúmelo como tuyo desde tu perspectiva.",
     "7. PROHIBIDO REPETIR EL MENSAJE DEL USUARIO: Responde exclusivamente con tus palabras y reacciones originales.",
+    "8. OBEDIENCIA TOTAL A ACCIONES NARRADAS POR EL USUARIO Y POSTURA FÍSICA:",
+    "   - Cuando " + other + " narra o describe en tercera persona lo que tú haces, asume de inmediato esa acción en primera persona en asteriscos (*...*).",
+    "   - Prohibido contradecir la postura o acción física dictada por el usuario (ej: inventar que estás en otra posición o sobre él si te indicó otra acción).",
+    "   - Prohibido preguntar '¿qué quieres que haga?' o 'dime qué quieres ahora' si el usuario ya te lo acaba de indicar o narrar: actúa de inmediato con entrega.",
+    "   - Si tu boca está ocupada o te pide silencio, responde con acotaciones físicas y gemidos o palabras entrecortadas, nunca monólogos largos.",
   ];
 }
 
@@ -798,6 +804,8 @@ export default async function handler(req, res) {
       });
       const latest = String(body.userMessage || "").trim().slice(0, 1200);
       const sceneContext = [story.title, story.description, story.story_context, story.character_role, story.player_role, ...history.map((entry) => entry.text), latest].join("\n");
+      const isExplicitContent = /(?:mamarl[ao]|chupar|polla|pene|huevo|verga|gemir|gemidos|sexo|correrse|masturb|desnud|follar|coger|oral|pezones|tetas|senos|vagina|vulva|clitoris|clítoris|erecci[oó]n|lubricad[ao]|caliente)/i.test(latest + " " + (history.slice(-3).map((entry) => entry.text).join(" ")));
+      const isAdult = Boolean(adultMode || isExplicitContent);
 
       // BLOQUEO ESTRICTO DE PROTECCIÓN INFANTIL (CSAM/CSAE)
       if (mentionsMinor(latest) || mentionsMinor(sceneContext)) {
@@ -866,16 +874,27 @@ export default async function handler(req, res) {
           const spanishWords = (reply.match(/\b(el|la|los|las|de|del|que|para|con|una|por|estoy|estás|tú|yo|ella|aquí|pero|porque|quiero|cómo|qué|tío|mi|mis)\b/gi) || []).length;
           if (english >= 4 && english > spanishWords * 0.4) return true;
         }
-        // 4. Rechazar si el relato en asteriscos ahoga o supera al diálogo hablado (exigir 80% diálogo / 20% relato)
+        // 4. Rechazar si el relato en asteriscos ahoga o supera al diálogo hablado (salvo si la boca está ocupada o se pide silencio)
         const starMatches = reply.match(/\*[^*]+\*/g) || [];
         const narrWordCount = starMatches.reduce((acc, m) => acc + m.replace(/\*/g, "").trim().split(/\s+/).filter(Boolean).length, 0);
         const dialText = reply.replace(/\*[^*]*\*/g, " ").trim();
         const dialWordCount = dialText.split(/\s+/).filter(Boolean).length;
 
-        // Rechazar si no hay diálogo hablado o es minúsculo (<8 palabras) y hay relato notable (>15 palabras)
-        if (dialWordCount < 8 && narrWordCount > 15) return true;
-        // Rechazar si el relato en asteriscos supera al diálogo hablado
-        if (narrWordCount > 25 && narrWordCount >= dialWordCount) return true;
+        const isOccupiedMouthScene = /(?:mamarl[ao]|chupar|chupando|en\s+la\s+boca|en\s+tu\s+boca|en\s+mi\s+boca|sexo\s+oral|oral|beso\s+profundo)/i.test(latest);
+        if (!isOccupiedMouthScene) {
+          // Rechazar si no hay diálogo hablado o es minúsculo (<8 palabras) y hay relato notable (>15 palabras)
+          if (dialWordCount < 8 && narrWordCount > 15) return true;
+          // Rechazar si el relato en asteriscos supera al diálogo hablado
+          if (narrWordCount > 25 && narrWordCount >= dialWordCount) return true;
+        }
+
+        // Rechazar contradicciones de postura física directa o evasivas cuando el usuario ya ordenó o narró la acción
+        const isUserDirectingOral = /(?:mamarl[ao]|chupar|arrodill|en\s+la\s+boca|en\s+tu\s+boca|sexo\s+oral)/i.test(latest);
+        if (isUserDirectingOral) {
+          if (/(?:muevo\s+sobre\s+ti|siento\s+sobre\s+ti|sentada\s+sobre\s+ti|cabalg|arriba\s+de\s+ti)/i.test(reply)) return true;
+          if (/(?:dime\s+qu[eé]\s+es\s+lo\s+que\s+quieres|dime\s+qu[eé]\s+quieres\s+ahora|qu[eé]\s+quieres\s+que\s+haga)/i.test(reply)) return true;
+        }
+        if (isAdult && /(?:no\s+puedo\s+(?:continuar|participar|generar|crear)|dime\s+qu[eé]\s+es\s+lo\s+que\s+quieres\s+ahora\s+mismo)/i.test(reply)) return true;
         // Rechazar alucinaciones de modelos micro o texto roto/corrupto (bici ligera, manos mapaches, fingers)
         if (/\b(?:bici\s+ligera|manos\s+mapaches|fingers|patas\s+abiertas|suby[eé]ndose|saltamontes|zaburlona|capit[aá]n|esclava\s+privada)\b/i.test(reply)) return true;
         // Rechazar respuestas que terminen con oraciones rotas o inconclusas como "solo..." o "pero..."
@@ -939,13 +958,16 @@ export default async function handler(req, res) {
         customDirective ? `DIRECTIVAS Y REGLAS PERSONALIZADAS DE MEMORIA:\n${customDirective}` : "",
         ...roleplayPacingAndLanguageRules(history.length, spanish, targetTokens, isLiveCall, isChatPage, dialogueRatio, narrationRatio),
         slangInstruction(body.language, body.region),
-        ...(adultMode ? [
+        ...(adultMode || isExplicitContent ? [
           "ESTILO NARRATIVO Y ADULTO TOTAL:",
           "  - Todos los personajes son adultos mayores de edad con pleno consentimiento y deseo activo.",
           "  - Libertad total y obediencia absoluta al erotismo, contacto íntimo, desnudez y dirty talk explícito acorde a la escena.",
           "  - PROHIBIDO decir 'no puedo seguir negando este deseo', 'aunque esté mal' o 'pensamientos prohibidos'. CERO discursos moralistas: entrega pura acción, diálogo caliente y deseo genuino.",
           "  - ESCALADA DE INTENSIDAD FÍSICA Y CONTINUIDAD VOCAL:",
           "    * Si la escena entra o continúa en un momento íntimo o apasionado, mantén la intensidad emocional, sensorial y vocal en primera persona.",
+          "  - OBEDIENCIA TOTAL A ACCIONES FÍSICAS NARRADAS POR EL USUARIO:",
+          "    * Si el usuario narra o describe tus acciones físicas o posturas en tercera persona, asume de inmediato esa acción en primera persona en asteriscos.",
+          "    * Prohibido contradecir la postura física o preguntar qué quiere si ya lo acaba de narrar.",
         ] : []),
         "CONTINUIDAD INMEDIATA Y RIGUROSA:",
         "  - Responde ESTRICTAMENTE a lo que está sucediendo en el ÚLTIMO MENSAJE recibido, conectándolo con la memoria de la conversación.",
@@ -1105,33 +1127,48 @@ export default async function handler(req, res) {
         }
       } else if (isLiveCall) {
         // Fast real-time engine (< 400ms) for live voice phone calls
-        const canTryGemini = Boolean(geminiApiKey || (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== "[SENSITIVE]"));
-        if (canTryGemini) {
+        if (isAdult) {
           try {
-            const geminiContents = contents.map((c) => ({ role: c.role, parts: [...(c.parts || [])] }));
-            if (geminiContents[0]?.role === "model") {
-              geminiContents.unshift({ role: "user", parts: [{ text: "Continúa la llamada telefónica." }] });
-            }
-            content = await generate(
-              "gemini-2.5-flash",
-              [],
-              { maxOutputTokens: 55, temperature: 0.8 },
-              {
-                contents: geminiContents,
-                systemInstruction,
-                adultMode: true,
-                apiKey: geminiApiKey || undefined,
-                timeoutMs: 3000,
-                fallbackModels: ["gemini-2.0-flash", "gemini-2.5-flash-lite"],
-                fastReply: true,
-                validate: (reply) => !isOffRole(reply)
-              },
-            );
+            content = await generateLocalLlama(openRouterMessages, {
+              maxTokens: 55,
+              temperature: 0.82,
+              timeoutMs: 2500,
+              validate: (reply) => !isOffRole(reply),
+              isRepeated: isRepeatedReply,
+            });
           } catch (err) {
-            console.warn("Gemini live call primary failed:", err.message);
+            console.warn("Local llama live call adult failed:", err.message);
           }
         }
         if (!content) {
+          const canTryGemini = Boolean(geminiApiKey || (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== "[SENSITIVE]"));
+          if (canTryGemini) {
+            try {
+              const geminiContents = contents.map((c) => ({ role: c.role, parts: [...(c.parts || [])] }));
+              if (geminiContents[0]?.role === "model") {
+                geminiContents.unshift({ role: "user", parts: [{ text: "Continúa la llamada telefónica." }] });
+              }
+              content = await generate(
+                "gemini-2.5-flash",
+                [],
+                { maxOutputTokens: 55, temperature: 0.8 },
+                {
+                  contents: geminiContents,
+                  systemInstruction,
+                  adultMode: true,
+                  apiKey: geminiApiKey || undefined,
+                  timeoutMs: 3000,
+                  fallbackModels: ["gemini-2.0-flash", "gemini-2.5-flash-lite"],
+                  fastReply: true,
+                  validate: (reply) => !isOffRole(reply)
+                },
+              );
+            } catch (err) {
+              console.warn("Gemini live call primary failed:", err.message);
+            }
+          }
+        }
+        if (!content && !isAdult) {
           try {
             content = await generateLocalLlama(openRouterMessages, {
               maxTokens: 55,
@@ -1216,80 +1253,158 @@ export default async function handler(req, res) {
           }
         }
       } else {
-        // Insomnia Flash: High-speed engine (Gemini 2.5 Flash if key available, else local Magnum / Nvidia NIM)
-        const canTryGemini = Boolean(geminiApiKey || (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== "[SENSITIVE]"));
-        if (canTryGemini) {
-          try {
-            const geminiContents = contents.map((c) => ({ role: c.role, parts: [...(c.parts || [])] }));
-            if (geminiContents[0]?.role === "model") {
-              geminiContents.unshift({ role: "user", parts: [{ text: "Continúa la escena." }] });
-            }
-            content = await generate(
-              "gemini-2.5-flash",
-              [],
-              { maxOutputTokens: Math.max(220, targetTokens), temperature: 0.8 },
-              {
-                contents: geminiContents,
-                systemInstruction,
-                adultMode: true,
-                apiKey: geminiApiKey || undefined,
-                timeoutMs: 9000,
-                fallbackModels: ["gemini-2.0-flash", "gemini-2.5-flash-lite"],
-                fastReply: true,
-                validate: (reply) => !isOffRole(reply)
-              },
-            );
-          } catch (err) {
-            console.warn("Gemini fast primary failed:", err.message);
-          }
-        }
-
-        // Fast primary fallback: Local Magnum v4 if active (uncensored, instant, 0 network lag)
-        if (!content) {
+        // Insomnia Flash:
+        // Si la escena es adulta (+18 o escena explícita), priorizar Magnum local y OpenRouter sin censura para evitar evasivas de seguridad de Gemini.
+        if (isAdult) {
+          // 1. Magnum local v4 (completamente sin censura, instantáneo, cero lag)
           try {
             content = await generateLocalLlama(openRouterMessages, {
               maxTokens: targetTokens,
               temperature: 0.85,
-              timeoutMs: 7000,
+              timeoutMs: 8000,
               validate: (reply) => !isOffRole(reply),
               isRepeated: isRepeatedReply,
             });
           } catch (err) {
-            console.warn("Local llama fast primary fallback failed:", err.message);
+            console.warn("Local llama adult primary failed:", err.message);
           }
-        }
 
-        // Fast secondary fallback: Nvidia NIM (~2.5s response, highly coherent roleplay)
-        if (!content) {
-          try {
-            content = await generateNvidia(openRouterMessages, {
-              models: nvidiaModels,
-              maxTokens: targetTokens,
-              temperature: 0.82,
-              timeoutMs: 4500,
-              apiKey: nvidiaApiKey || undefined,
-              validate: (reply) => !isOffRole(reply),
-              isRepeated: isRepeatedReply,
-            });
-          } catch (err) {
-            console.warn("Nvidia primary fallback failed:", err.message);
+          // 2. OpenRouter uncensored (Magnum v4 72B / Euryale 70B)
+          if (!content) {
+            try {
+              content = await generateOpenRouter(openRouterMessages, {
+                models: ["anthracite-org/magnum-v4-72b", "sao10k/l3.3-euryale-70b"],
+                maxTokens: targetTokens,
+                temperature: 0.82,
+                timeoutMs: 6500,
+                apiKey: openRouterApiKey || undefined,
+                validate: (reply) => !isOffRole(reply),
+                isRepeated: isRepeatedReply,
+              });
+            } catch (err) {
+              console.warn("OpenRouter adult fallback failed:", err.message);
+            }
           }
-        }
 
-        // Tertiary fallback: OpenRouter uncensored models
-        if (!content) {
-          try {
-            content = await generateOpenRouter(openRouterMessages, {
-              models: ["anthracite-org/magnum-v4-72b", "sao10k/l3.3-euryale-70b"],
-              maxTokens: targetTokens,
-              temperature: 0.8,
-              timeoutMs: 5000,
-              apiKey: openRouterApiKey || undefined,
-              validate: (reply) => !isOffRole(reply),
-              isRepeated: isRepeatedReply,
-            });
-          } catch (err) {
-            console.warn("OpenRouter tertiary fallback failed:", err.message);
+          // 3. Nvidia NIM
+          if (!content) {
+            try {
+              content = await generateNvidia(openRouterMessages, {
+                models: nvidiaModels,
+                maxTokens: targetTokens,
+                temperature: 0.82,
+                timeoutMs: 4500,
+                apiKey: nvidiaApiKey || undefined,
+                validate: (reply) => !isOffRole(reply),
+                isRepeated: isRepeatedReply,
+              });
+            } catch (err) {
+              console.warn("Nvidia adult fallback failed:", err.message);
+            }
+          }
+
+          // 4. Gemini como último recurso si no hay modelos adultos disponibles
+          if (!content) {
+            const canTryGemini = Boolean(geminiApiKey || (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== "[SENSITIVE]"));
+            if (canTryGemini) {
+              try {
+                const geminiContents = contents.map((c) => ({ role: c.role, parts: [...(c.parts || [])] }));
+                if (geminiContents[0]?.role === "model") {
+                  geminiContents.unshift({ role: "user", parts: [{ text: "Continúa la escena." }] });
+                }
+                content = await generate(
+                  "gemini-2.5-flash",
+                  [],
+                  { maxOutputTokens: Math.max(220, targetTokens), temperature: 0.8 },
+                  {
+                    contents: geminiContents,
+                    systemInstruction,
+                    adultMode: true,
+                    apiKey: geminiApiKey || undefined,
+                    timeoutMs: 9000,
+                    fallbackModels: ["gemini-2.0-flash", "gemini-2.5-flash-lite"],
+                    fastReply: true,
+                    validate: (reply) => !isOffRole(reply)
+                  },
+                );
+              } catch (err) {
+                console.warn("Gemini adult fallback failed:", err.message);
+              }
+            }
+          }
+        } else {
+          // Escena casual / no adulta: Gemini 2.5 Flash prioritario
+          const canTryGemini = Boolean(geminiApiKey || (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== "[SENSITIVE]"));
+          if (canTryGemini) {
+            try {
+              const geminiContents = contents.map((c) => ({ role: c.role, parts: [...(c.parts || [])] }));
+              if (geminiContents[0]?.role === "model") {
+                geminiContents.unshift({ role: "user", parts: [{ text: "Continúa la escena." }] });
+              }
+              content = await generate(
+                "gemini-2.5-flash",
+                [],
+                { maxOutputTokens: Math.max(220, targetTokens), temperature: 0.8 },
+                {
+                  contents: geminiContents,
+                  systemInstruction,
+                  adultMode: false,
+                  apiKey: geminiApiKey || undefined,
+                  timeoutMs: 9000,
+                  fallbackModels: ["gemini-2.0-flash", "gemini-2.5-flash-lite"],
+                  fastReply: true,
+                  validate: (reply) => !isOffRole(reply)
+                },
+              );
+            } catch (err) {
+              console.warn("Gemini fast primary failed:", err.message);
+            }
+          }
+
+          if (!content) {
+            try {
+              content = await generateLocalLlama(openRouterMessages, {
+                maxTokens: targetTokens,
+                temperature: 0.85,
+                timeoutMs: 7000,
+                validate: (reply) => !isOffRole(reply),
+                isRepeated: isRepeatedReply,
+              });
+            } catch (err) {
+              console.warn("Local llama fast primary fallback failed:", err.message);
+            }
+          }
+
+          if (!content) {
+            try {
+              content = await generateNvidia(openRouterMessages, {
+                models: nvidiaModels,
+                maxTokens: targetTokens,
+                temperature: 0.82,
+                timeoutMs: 4500,
+                apiKey: nvidiaApiKey || undefined,
+                validate: (reply) => !isOffRole(reply),
+                isRepeated: isRepeatedReply,
+              });
+            } catch (err) {
+              console.warn("Nvidia primary fallback failed:", err.message);
+            }
+          }
+
+          if (!content) {
+            try {
+              content = await generateOpenRouter(openRouterMessages, {
+                models: ["anthracite-org/magnum-v4-72b", "sao10k/l3.3-euryale-70b"],
+                maxTokens: targetTokens,
+                temperature: 0.8,
+                timeoutMs: 5000,
+                apiKey: openRouterApiKey || undefined,
+                validate: (reply) => !isOffRole(reply),
+                isRepeated: isRepeatedReply,
+              });
+            } catch (err) {
+              console.warn("OpenRouter tertiary fallback failed:", err.message);
+            }
           }
         }
       }
