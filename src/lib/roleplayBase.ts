@@ -9,7 +9,7 @@
  * automáticamente a todas las tarjetas del sistema.
  */
 
-import { StoryAiSettings, DEFAULT_AI_SETTINGS, getStoryAiSettings } from "./storyAiSettings";
+import { StoryAiSettings, DEFAULT_AI_SETTINGS, getStoryAiSettings, setStoryAiSettings } from "./storyAiSettings";
 
 export interface MotherCardConfig {
   id: string;

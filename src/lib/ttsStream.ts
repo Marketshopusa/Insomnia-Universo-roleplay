@@ -182,11 +182,12 @@ export function streamSpeech(text: string, voice: string, language = "es", rolep
   };
 
   const done = (async () => {
+    let playbackEnded: Promise<void> | null = null;
     try {
       context = new AudioContext({ sampleRate: PCM_SAMPLE_RATE });
       if (context.state === "suspended") await context.resume();
       if (stopped || !context) return;
-      const playbackEnded = new Promise<void>((resolve) => { finishPlayback = resolve; });
+      playbackEnded = new Promise<void>((resolve) => { finishPlayback = resolve; });
       const spoken = text.trim();
       const performance: Performance = roleplay ? roleplayPerformance(spoken) : "neutral";
       if (!spoken) { stop(); return; }

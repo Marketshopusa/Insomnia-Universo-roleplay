@@ -923,7 +923,7 @@ export default function ChatPage() {
       }
     } catch (err) {
       console.warn("streamSpeech fallback to guaranteed female speech:", err);
-      fallbackFemaleSpeech(spoken, () => {
+      fallbackFemaleSpeech(text, () => {
         speechStreamRef.current = null;
         setPlayingAudioId(null);
       });

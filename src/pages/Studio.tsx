@@ -16,6 +16,7 @@ import {
   loopbackInit,
   probeLocalKineva,
   reviewLocalJob,
+  LOCAL_KINEVA_URL,
   type LocalJob,
   type LocalProbe,
   type LocalStudioStatus,
@@ -47,6 +48,7 @@ export interface CustomCastItem {
    SelectValue,
  } from "@/components/ui/select";
  import { Card } from "@/components/ui/card";
+ import { Badge } from "@/components/ui/badge";
  import { useAuth } from "@/contexts/AuthContext";
  import { useNovelProjects, useCreateNovelProject, useUpdateNovelProject, useDeleteNovelProject } from "@/hooks/useNovelProjects";
  import { novelFromProject } from "@/lib/novelProject";
