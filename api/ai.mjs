@@ -1716,27 +1716,33 @@ export default async function handler(req, res) {
       const language = body.language === "English" ? "English" : "español";
       const castNames = Array.isArray(body.cast_names) ? body.cast_names.slice(0, 20)
         .map((name) => String(name || "").trim().slice(0, 80)).filter(Boolean) : [];
-      const prompt = "Crea un guion breve y coherente de exactamente tres capítulos a partir de una idea sencilla. "
+      const count = Math.min(20, Math.max(1, Number(body.chapters || body.chapterCount || 3)));
+      const prompt = `Crea un guion cinematográfico breve y coherente de exactamente ${count} capítulos a partir de una idea sencilla. `
         + "Entrega solo JSON con esta estructura: "
-        + JSON.stringify({ title: "", cast_roles: [{ name: "Nombre del elenco", role: "Papel en esta historia" }], chapters: [
-          { visual: "Una acción visual concreta en un lugar", dialogue: "Frase breve", speaker: "Nombre exacto del actor que pronuncia la frase" },
-          { visual: "", dialogue: "" }, { visual: "", dialogue: "" },
-        ] })
-        + ". Cada visual muestra una acción distinta y conserva el reparto y los hechos entre capítulos. "
+        + JSON.stringify({
+          title: "",
+          cast_roles: [{ name: "Nombre del elenco", role: "Papel en esta historia" }],
+          chapters: Array.from({ length: Math.min(count, 3) }, () => ({
+            visual: "Una acción visual concreta y encuadre en un lugar",
+            dialogue: "Frase breve",
+            speaker: "Nombre exacto del actor que pronuncia la frase"
+          }))
+        })
+        + `. Cada capítulo debe tener exactamente una entrada en el array chapters (total obligatorio: ${count} capítulos). Cada visual muestra una acción distinta y conserva el reparto y los hechos entre capítulos. `
         + "Cada diálogo tiene hasta 20 palabras, puede quedar vacío y no contiene instrucciones técnicas. "
         + "Si hay diálogo, speaker debe ser el nombre exacto de un actor del elenco que aparece en esa toma; "
         + "distribuye las frases entre los personajes según su papel, sin atribuir la voz del hombre a la mujer. "
         + "Usa los nombres literales de actores presentes en cada visual, con máximo dos personas por toma; "
-        + "asigna a cada actor elegido un papel coherente en cast_roles, sin forzar a los 20 en los tres capítulos. "
+        + `asigna a cada actor elegido un papel coherente en cast_roles, sin forzar a los 20 en los ${count} capítulos. `
         + "No inventes personajes adicionales ni sustituyas la idea. Idioma: " + language
         + ". Elenco disponible: " + JSON.stringify(castNames) + ". Idea: " + idea;
       const raw = await generate("gemini-3.5-flash-lite", [{ text: prompt }],
-        { responseMimeType: "application/json", maxOutputTokens: 1800, temperature: 0.5 },
+        { responseMimeType: "application/json", maxOutputTokens: Math.max(1800, count * 350), temperature: 0.5 },
         { fallbackModels: ["gemini-3.1-flash-lite", "gemini-3.8-flash"], retryBadRequest: true });
       const draft = JSON.parse(raw);
-      if (!draft.title || !Array.isArray(draft.chapters) || draft.chapters.length !== 3
+      if (!draft.title || !Array.isArray(draft.chapters) || draft.chapters.length < 1
           || draft.chapters.some((chapter) => String(chapter.visual || "").trim().length < 5)) {
-        throw Object.assign(new Error("El guion no trajo tres escenas completas."), { status: 502 });
+        throw Object.assign(new Error(`El guion no trajo escenas completas.`), { status: 502 });
       }
       return send(res, 200, { draft });
     }

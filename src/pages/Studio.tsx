@@ -21,7 +21,18 @@ import {
   type LocalStudioStatus,
 } from "@/lib/kinevaLocal";
 import { useEffect, useRef, useState } from "react";
-import { Clapperboard, Loader2, Sparkles } from "lucide-react";
+import { Clapperboard, Loader2, Sparkles, Plus, Trash2, Camera, UserPlus, Users, Film, ShieldAlert, Sparkle } from "lucide-react";
+import { type StudioGenre } from "@/lib/studioPresets";
+
+export type CastSlotRole = "protagonist" | "secondary" | "antagonist" | "key_object" | "location";
+
+export interface CustomCastItem {
+  id: string;
+  name: string;
+  role: CastSlotRole;
+  file?: File | null;
+  description?: string;
+}
 
  import { MainLayout } from "@/components/layout/MainLayout";
  import { Button } from "@/components/ui/button";
@@ -94,14 +105,91 @@ const chapterOptions = [3, 5, 7, 10, 12, 15, 20];
   const [creativity, setCreativity] = useState("balanced");
   const [description, setDescription] = useState("");
   const [manualTitle, setManualTitle] = useState("");
-  const [manualScenes, setManualScenes] = useState(["", "", ""]);
-  const [manualLines, setManualLines] = useState(["", "", ""]);
-  const [manualSpeakers, setManualSpeakers] = useState(["", "", ""]);
+  const [chapterCount, setChapterCount] = useState(7);
+  const [studioGenre, setStudioGenre] = useState<StudioGenre>("adult");
+  const [manualScenes, setManualScenes] = useState<string[]>(Array(7).fill(""));
+  const [manualLines, setManualLines] = useState<string[]>(Array(7).fill(""));
+  const [manualSpeakers, setManualSpeakers] = useState<string[]>(Array(7).fill(""));
+  const [chapterSubShots, setChapterSubShots] = useState<Record<number, { id: string; visual: string; dialogue: string; speaker: string }[]>>({});
+  const [customCast, setCustomCast] = useState<CustomCastItem[]>([]);
   const [castRoles, setCastRoles] = useState<{ name: string; role: string }[]>([]);
   const [draftingThree, setDraftingThree] = useState(false);
   const [showManualEditor, setShowManualEditor] = useState(false);
-  const [chapterCount, setChapterCount] = useState(7);
   const [isSafeForWork, setIsSafeForWork] = useState(false);
+
+  const handleChapterCountChange = (newCount: number) => {
+    setChapterCount(newCount);
+    setManualScenes((curr) => {
+      const next = [...curr];
+      while (next.length < newCount) next.push("");
+      return next.slice(0, newCount);
+    });
+    setManualLines((curr) => {
+      const next = [...curr];
+      while (next.length < newCount) next.push("");
+      return next.slice(0, newCount);
+    });
+    setManualSpeakers((curr) => {
+      const next = [...curr];
+      while (next.length < newCount) next.push("");
+      return next.slice(0, newCount);
+    });
+  };
+
+  const addSubShot = (chapterIndex: number) => {
+    setChapterSubShots((prev) => {
+      const current = prev[chapterIndex] || [];
+      return {
+        ...prev,
+        [chapterIndex]: [
+          ...current,
+          {
+            id: `shot-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            visual: "",
+            dialogue: "",
+            speaker: manualSpeakers[chapterIndex] || primaryName,
+          },
+        ],
+      };
+    });
+  };
+
+  const updateSubShot = (chapterIndex: number, shotIndex: number, field: "visual" | "dialogue" | "speaker", value: string) => {
+    setChapterSubShots((prev) => {
+      const current = [...(prev[chapterIndex] || [])];
+      if (!current[shotIndex]) return prev;
+      current[shotIndex] = { ...current[shotIndex], [field]: value };
+      return { ...prev, [chapterIndex]: current };
+    });
+  };
+
+  const removeSubShot = (chapterIndex: number, shotIndex: number) => {
+    setChapterSubShots((prev) => {
+      const current = [...(prev[chapterIndex] || [])];
+      current.splice(shotIndex, 1);
+      return { ...prev, [chapterIndex]: current };
+    });
+  };
+
+  const addCustomCastMember = (role: CastSlotRole = "secondary") => {
+    setCustomCast((prev) => [
+      ...prev,
+      {
+        id: `cast-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        name: "",
+        role,
+        description: "",
+      },
+    ]);
+  };
+
+  const updateCustomCastMember = (id: string, updates: Partial<CustomCastItem>) => {
+    setCustomCast((prev) => prev.map((item) => (item.id === id ? { ...item, ...updates } : item)));
+  };
+
+  const removeCustomCastMember = (id: string) => {
+    setCustomCast((prev) => prev.filter((item) => item.id !== id));
+  };
   const [language, setLanguage] = useState("Spanish");
   const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
@@ -259,22 +347,31 @@ const chapterOptions = [3, 5, 7, 10, 12, 15, 20];
     const first = storyCharacters[0] || {};
     const second = storyCharacters[1] || {};
     const setting = storyPlan?.setting || {};
+    const customSupporting = await Promise.all(
+      customCast
+        .filter((actor) => actor.name.trim() && actor.file)
+        .map(async (actor) => ({ name: actor.name.trim(), image: await encodeLocalImage(actor.file!) }))
+    );
+    const supporting = [
+      ...(await Promise.all(supportingCast.filter((actor) => actor.name !== primaryName && actor.name !== secondaryName).map(async (actor) => ({ name: actor.name, image: await encodeLocalImage(actor.file) })))),
+      ...customSupporting,
+    ];
     const cast = {
       primary_name: primaryName.trim() || String(first.name || "").slice(0, 80),
       primary_description: image ? "" : String(first.visual_prompt || [first.appearance, first.wardrobe].filter(Boolean).join(". ")).slice(0, 500),
       secondary_name: secondaryName.trim() || (secondaryImage ? "" : String(second.name || "").slice(0, 80)),
       secondary_description: secondaryImage ? "" : String(second.visual_prompt || [second.appearance, second.wardrobe].filter(Boolean).join(". ")).slice(0, 500),
       secondary_image: secondaryImage ? await encodeLocalImage(secondaryImage) : null,
-      supporting: await Promise.all(supportingCast.filter((actor) => actor.name !== primaryName && actor.name !== secondaryName).map(async (actor) => ({ name: actor.name, image: await encodeLocalImage(actor.file) }))),
+      supporting,
       location_name: locationName.trim() || String(setting.place || "").slice(0, 80),
       location_description: locationDescription.trim() || String([setting.place, setting.time, setting.visual_style].filter(Boolean).join(". ")).slice(0, 500),
       location_image: locationImage ? await encodeLocalImage(locationImage) : null,
     };
     const shotPlans = (storyPlan?.chapters || []).map((chapter: any, index: number) => {
-      const plans = Array.isArray(chapter.shots) ? chapter.shots.slice(0, 3).map((shot: any) => ({
+      const plans = Array.isArray(chapter.shots) ? chapter.shots.map((shot: any) => ({
         visual: String(shot.visual || "").trim(), dialogue: String(shot.dialogue || "").trim(),
         speaker: String(shot.speaker || manualSpeakers[index] || "").trim(),
-      })).filter((shot: { visual: string }) => shot.visual.length >= 5) : [];
+      })).filter((shot: { visual: string }) => shot.visual.length >= 3) : [];
       return plans.length ? plans : [{ visual: chapters[index], dialogue: dialogues[index] || "" }];
     });
     if (episodeIds.length) window.sessionStorage.setItem("insomnia.studio.episodeIds", JSON.stringify(episodeIds));
@@ -339,11 +436,11 @@ const chapterOptions = [3, 5, 7, 10, 12, 15, 20];
         const localRes = await fetch(`${LOCAL_KINEVA_URL}/draft`, loopbackInit({
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ description: idea, language }),
+          body: JSON.stringify({ description: idea, language, chapters: chapterCount }),
         }));
         if (localRes.ok) {
           const json = await localRes.json();
-          if (json?.draft?.chapters?.length === 3) draft = json.draft;
+          if (Array.isArray(json?.draft?.chapters) && json.draft.chapters.length > 0) draft = json.draft;
         }
       } catch {
         // Fallback to cloud API
@@ -351,23 +448,37 @@ const chapterOptions = [3, 5, 7, 10, 12, 15, 20];
 
       // 2. If not from local, try cloud API
       if (!draft) {
+        const allCast = [
+          primaryName,
+          secondaryName,
+          ...supportingCast.map((actor) => actor.name),
+          ...customCast.filter((c) => c.role !== "location" && c.role !== "key_object").map((c) => c.name),
+        ].filter(Boolean);
+
         const { data, error } = await invokeFunctionWithRetry<{ draft?: { title: string; cast_roles?: { name: string; role: string }[]; chapters: { visual: string; dialogue: string; speaker?: string }[] } }>("generate-studio-draft", {
-          description: idea, language,
-          cast_names: [primaryName, secondaryName, ...supportingCast.map((actor) => actor.name)].filter(Boolean),
+          description: idea,
+          language,
+          chapters: chapterCount,
+          chapterCount,
+          cast_names: allCast,
         });
-        if (error || !data?.draft?.chapters || data.draft.chapters.length !== 3) {
-          throw new Error(error?.message || "La IA no entregó los tres capítulos.");
+        if (error || !data?.draft?.chapters || data.draft.chapters.length === 0) {
+          throw new Error(error?.message || "La IA no entregó los capítulos.");
         }
         draft = data.draft;
       }
 
       setManualTitle(String(draft.title || manualTitle || "Mi miniserie").slice(0, 120));
       setCastRoles(Array.isArray(draft.cast_roles) ? draft.cast_roles.filter((entry: any) => entry?.name && entry?.role).slice(0, 20) : []);
-      setManualScenes(draft.chapters.map((chapter: any) => String(chapter.visual || "").slice(0, 1200)));
-      setManualLines(draft.chapters.map((chapter: any) => String(chapter.dialogue || "").slice(0, 400)));
-      setManualSpeakers(draft.chapters.map((chapter: any) => String(chapter.speaker || "").slice(0, 80)));
+      const returnedChapters = draft.chapters || [];
+      if (returnedChapters.length !== chapterCount && returnedChapters.length > 0) {
+        setChapterCount(returnedChapters.length);
+      }
+      setManualScenes(returnedChapters.map((chapter: any) => String(chapter.visual || "").slice(0, 1200)));
+      setManualLines(returnedChapters.map((chapter: any) => String(chapter.dialogue || "").slice(0, 400)));
+      setManualSpeakers(returnedChapters.map((chapter: any) => String(chapter.speaker || "").slice(0, 80)));
       setShowManualEditor(true);
-      toast({ title: "¡Guion preparado con IA!", description: "Los 3 capítulos fueron generados a partir de tu idea. Puedes revisarlos o filmarlos." });
+      toast({ title: "¡Guion preparado con IA!", description: `Los ${returnedChapters.length} capítulos fueron generados a partir de tu idea. Puedes revisarlos o filmarlos.` });
       return true;
     } catch (error) {
       toast({ title: "No pude preparar el guion", description: error instanceof Error ? error.message : undefined, variant: "destructive" });
@@ -383,12 +494,12 @@ const chapterOptions = [3, 5, 7, 10, 12, 15, 20];
       return;
     }
     const title = manualTitle.trim() || description.trim().slice(0, 40) || "Miniserie Insomnia";
-    const scenes = manualScenes.map((text) => text.trim());
-    const lines = manualLines.map((text) => text.trim());
+    const scenes = manualScenes.slice(0, chapterCount).map((text) => text.trim());
+    const lines = manualLines.slice(0, chapterCount).map((text) => text.trim());
     const missingScene = scenes.findIndex((text) => text.length < 5);
     if (missingScene !== -1) {
       if (description.trim().length >= 10) {
-        toast({ title: "Generando guion automático con IA...", description: "Completando los 3 capítulos a partir de tu idea antes de filmar." });
+        toast({ title: "Generando guion automático con IA...", description: `Completando los ${chapterCount} capítulos a partir de tu idea antes de filmar.` });
         const ok = await draftThreeChapters();
         if (ok) return;
       }
@@ -409,14 +520,30 @@ const chapterOptions = [3, 5, 7, 10, 12, 15, 20];
     }
     setGeneratingVideos(true);
     const spokenShots = lines.map((line) => splitKinevaDialogue(line));
-    const chapters = scenes.map((visual, index) => ({
-      number: index + 1,
-      title: "Capítulo " + (index + 1),
-      content: visual + (lines[index] ? "\n" + lines[index] : ""),
-      video_prompt: visual,
-      spoken_line: spokenShots[index][0],
-      shots: spokenShots[index].map((dialogue) => ({ visual, dialogue, speaker: manualSpeakers[index] || primaryName })),
-    }));
+    const chapters = scenes.map((visual, index) => {
+      const extraSubs = (chapterSubShots[index] || []).filter((s) => s.visual.trim().length >= 3);
+      const mainShot = {
+        visual,
+        dialogue: spokenShots[index][0] || "",
+        speaker: manualSpeakers[index] || primaryName,
+      };
+      const allShots = [
+        mainShot,
+        ...extraSubs.map((sub) => ({
+          visual: sub.visual.trim(),
+          dialogue: sub.dialogue.trim(),
+          speaker: sub.speaker.trim() || manualSpeakers[index] || primaryName,
+        })),
+      ];
+      return {
+        number: index + 1,
+        title: "Capítulo " + (index + 1),
+        content: visual + (lines[index] ? "\n" + lines[index] : ""),
+        video_prompt: visual,
+        spoken_line: spokenShots[index][0],
+        shots: allShots,
+      };
+    });
     const draft = { title, logline: description.trim() || scenes[0], chapters };
     try {
       const probe = await probeLocalKineva();
@@ -439,7 +566,7 @@ const chapterOptions = [3, 5, 7, 10, 12, 15, 20];
         description: draft.logline,
         isAdult: !isSafeForWork,
         referencePath,
-        speakers: manualSpeakers,
+        speakers: manualSpeakers.slice(0, chapterCount),
         lines,
       });
       setNovel(draft);
@@ -471,9 +598,18 @@ const chapterOptions = [3, 5, 7, 10, 12, 15, 20];
       toast({ title: "Divide ese diálogo en hasta tres tomas.", variant: "destructive" });
       return;
     }
+    const extraSubs = (chapterSubShots[index] || []).filter((s) => s.visual.trim().length >= 3);
+    const allShots = [
+      { visual, dialogue: spoken[0] || "", speaker: manualSpeakers[index] || primaryName },
+      ...extraSubs.map((sub) => ({
+        visual: sub.visual.trim(),
+        dialogue: sub.dialogue.trim(),
+        speaker: sub.speaker.trim() || manualSpeakers[index] || primaryName,
+      })),
+    ];
     try {
       await filmChapters([visual], [seriesEpisodeIds[index]], undefined, [spoken[0] || ""], {
-        chapters: [{ shots: spoken.map((dialogue) => ({ visual, dialogue, speaker: manualSpeakers[index] || primaryName })) }],
+        chapters: [{ shots: allShots }],
       });
       const { error: episodeError } = await supabase.from("shorts_episodes")
         .update({ video_prompt: visual }).eq("id", seriesEpisodeIds[index]);
@@ -745,10 +881,18 @@ const chapterOptions = [3, 5, 7, 10, 12, 15, 20];
      setCreativity("balanced");
      setChapterCount(7);
      setIsSafeForWork(false);
+     setStudioGenre("adult");
      setLanguage("English");
      setCurrentProjectId(null);
     toast({ title: t("studio.toast.reset") });
    };
+
+   const allAvailableSpeakers = [
+     primaryName,
+     secondaryName,
+     ...supportingCast.map((actor) => actor.name),
+     ...customCast.filter((c) => c.role !== "location" && c.role !== "key_object").map((c) => c.name),
+   ].filter(Boolean);
 
    if (!user) {
      return (
@@ -829,43 +973,129 @@ const chapterOptions = [3, 5, 7, 10, 12, 15, 20];
            </div>
          </Card>
 
-          <Card className="p-6 mb-6 space-y-3">
+          <Card className="p-6 mb-6 space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-medium flex items-center gap-2">
+                  <Users className="w-5 h-5 text-primary" /> Elenco y Elementos Consistentes
+                </h2>
+                <p className="text-xs text-muted-foreground">
+                  Asigna actores principales, secundarios, antagonistas o lugares clave para mantener consistencia visual vía LoRA / IP-Adapter en Wan 2.1.
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => addCustomCastMember("secondary")}
+                className="gap-1.5 text-xs"
+              >
+                <UserPlus className="w-4 h-4" /> + Asignar Personaje / Elemento
+              </Button>
+            </div>
+
             <CastGallery userId={user.id}
               onPrimary={(file, name) => { setReferenceImage(file); setPrimaryName(name); }}
               onSecondary={(file, name) => { setSecondaryImage(file); setSecondaryName(name); }}
               onSupporting={(file, name) => setSupportingCast((current) => current.some((actor) => actor.name === name) ? current : [...current, { file, name }])} />
             {!!supportingCast.length && <div aria-label="Reparto de esta serie" className="flex flex-wrap gap-2 text-sm">
-              {supportingCast.map((actor) => <span key={actor.name} className="rounded border px-2 py-1">{actor.name}
-                <button type="button" className="ml-2" aria-label={`Quitar ${actor.name} del reparto de esta serie`} onClick={() => setSupportingCast((current) => current.filter((item) => item.name !== actor.name))}>×</button>
+              {supportingCast.map((actor) => <span key={actor.name} className="rounded border px-2 py-1 text-xs flex items-center gap-1.5 bg-muted/40">{actor.name}
+                <button type="button" className="text-muted-foreground hover:text-foreground" aria-label={`Quitar ${actor.name} del reparto de esta serie`} onClick={() => setSupportingCast((current) => current.filter((item) => item.name !== actor.name))}>×</button>
               </span>)}
             </div>}
-            <div className="border-t border-border pt-3">
-              <Label htmlFor="kineva-reference">Protagonista para esta serie: elige de la galería o sube una foto temporal</Label>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2 border-t border-border">
+              {/* Protagonista */}
+              <div className="space-y-2 p-3 rounded-lg border border-border bg-card/40">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="kineva-reference" className="text-xs font-semibold text-primary">Protagonista (Principal)</Label>
+                  <span className="text-[10px] text-muted-foreground">Requerido</span>
+                </div>
+                <input id="kineva-reference" type="file" accept="image/png,image/jpeg,image/webp"
+                  onChange={(event) => setReferenceImage(event.target.files?.[0] ?? null)}
+                  className="block w-full text-xs" />
+                <input aria-label="Nombre del personaje principal" placeholder="Nombre del protagonista" value={primaryName}
+                  onChange={(event) => setPrimaryName(event.target.value)} maxLength={80}
+                  className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-xs" />
+              </div>
+
+              {/* Segundo protagonista */}
+              <div className="space-y-2 p-3 rounded-lg border border-border bg-card/40">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="kineva-second" className="text-xs font-semibold">Segundo Protagonista</Label>
+                  <span className="text-[10px] text-muted-foreground">Opcional</span>
+                </div>
+                <input id="kineva-second" type="file" accept="image/png,image/jpeg,image/webp"
+                  onChange={(event) => setSecondaryImage(event.target.files?.[0] ?? null)} className="block w-full text-xs" />
+                <input aria-label="Nombre del segundo personaje" placeholder="Nombre (co-protagonista)" value={secondaryName}
+                  onChange={(event) => setSecondaryName(event.target.value)} maxLength={80}
+                  className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-xs" />
+              </div>
+
+              {/* Lugar / Entorno */}
+              <div className="space-y-2 p-3 rounded-lg border border-border bg-card/40">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="kineva-location" className="text-xs font-semibold">Lugar o Entorno</Label>
+                  <span className="text-[10px] text-muted-foreground">Opcional</span>
+                </div>
+                <input id="kineva-location" type="file" accept="image/png,image/jpeg,image/webp"
+                  onChange={(event) => setLocationImage(event.target.files?.[0] ?? null)} className="block w-full text-xs" />
+                <input aria-label="Nombre del lugar" placeholder="Nombre del lugar o set" value={locationName}
+                  onChange={(event) => setLocationName(event.target.value)} maxLength={80}
+                  className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-xs" />
+                <input aria-label="Descripción del lugar" placeholder="Iluminación, época o estilo" value={locationDescription}
+                  onChange={(event) => setLocationDescription(event.target.value)} maxLength={400}
+                  className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-xs" />
+              </div>
             </div>
-            <input id="kineva-reference" type="file" accept="image/png,image/jpeg,image/webp"
-              onChange={(event) => setReferenceImage(event.target.files?.[0] ?? null)}
-              className="block w-full text-sm" />
-            <input aria-label="Nombre del personaje principal" placeholder="Nombre del personaje principal" value={primaryName}
-              onChange={(event) => setPrimaryName(event.target.value)} maxLength={80}
-              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm" />
-            <Label htmlFor="kineva-second">Segundo protagonista para esta serie (opcional)</Label>
-            <input id="kineva-second" type="file" accept="image/png,image/jpeg,image/webp"
-              onChange={(event) => setSecondaryImage(event.target.files?.[0] ?? null)} className="block w-full text-sm" />
-            <input aria-label="Nombre del segundo personaje" placeholder="Nombre del segundo personaje" value={secondaryName}
-              onChange={(event) => setSecondaryName(event.target.value)} maxLength={80}
-              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm" />
-            <Label htmlFor="kineva-location">Lugar: foto separada (opcional)</Label>
-            <input id="kineva-location" type="file" accept="image/png,image/jpeg,image/webp"
-              onChange={(event) => setLocationImage(event.target.files?.[0] ?? null)} className="block w-full text-sm" />
-            <input aria-label="Nombre del lugar" placeholder="Nombre del lugar" value={locationName}
-              onChange={(event) => setLocationName(event.target.value)} maxLength={80}
-              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm" />
-            <input aria-label="Descripción del lugar" placeholder="Descripción del lugar y su iluminación" value={locationDescription}
-              onChange={(event) => setLocationDescription(event.target.value)} maxLength={400}
-              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm" />
-            <p className="text-xs text-muted-foreground">
-              Elige protagonistas y añade actores de reparto. Kineva usa en cada toma los rostros cuyos nombres aparecen en la escena; una toma admite hasta dos personas. Los demás permanecen disponibles para los otros capítulos.
-            </p>
+
+            {/* Custom Cast coral slots */}
+            {customCast.length > 0 && (
+              <div className="space-y-3 pt-3 border-t border-border">
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                  Reparto Adicional ({customCast.length}):
+                </span>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {customCast.map((member) => (
+                    <div key={member.id} className="p-3 rounded-lg border border-border bg-card/60 space-y-2 relative">
+                      <div className="flex items-center justify-between gap-2">
+                        <select
+                          value={member.role}
+                          onChange={(e) => updateCustomCastMember(member.id, { role: e.target.value as CastSlotRole })}
+                          className="text-xs rounded border border-border bg-background px-2 py-1 font-medium"
+                        >
+                          <option value="secondary">Personaje Secundario</option>
+                          <option value="antagonist">Antagonista / Rival / Monstruo</option>
+                          <option value="key_object">Objeto Clave / Vehículo</option>
+                          <option value="location">Locación Adicional</option>
+                        </select>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                          onClick={() => removeCustomCastMember(member.id)}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
+                      <input
+                        placeholder="Nombre del personaje o elemento"
+                        value={member.name}
+                        onChange={(e) => updateCustomCastMember(member.id, { name: e.target.value })}
+                        className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-xs"
+                      />
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp"
+                        onChange={(e) => updateCustomCastMember(member.id, { file: e.target.files?.[0] || null })}
+                        className="block w-full text-xs"
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </Card>
 
         {/* Description */}
@@ -879,10 +1109,32 @@ const chapterOptions = [3, 5, 7, 10, 12, 15, 20];
            />
 
            <div className="flex flex-wrap items-center justify-between gap-4 mt-4">
-             <div className="flex items-center gap-4">
+             <div className="flex flex-wrap items-center gap-4">
+               <div className="flex items-center gap-2">
+                 <Label>Género:</Label>
+                 <Select
+                   value={studioGenre}
+                   onValueChange={(g: StudioGenre) => {
+                     setStudioGenre(g);
+                     setIsSafeForWork(g !== "adult");
+                   }}
+                 >
+                   <SelectTrigger className="w-36">
+                     <SelectValue />
+                   </SelectTrigger>
+                   <SelectContent>
+                     <SelectItem value="adult">Adulto / NSFW</SelectItem>
+                     <SelectItem value="romance">Romance / Drama</SelectItem>
+                     <SelectItem value="horror">Terror / Suspenso</SelectItem>
+                     <SelectItem value="sports">Deportivo</SelectItem>
+                     <SelectItem value="action">Acción</SelectItem>
+                   </SelectContent>
+                 </Select>
+               </div>
+
                <div className="flex items-center gap-2">
                 <Label>{t("studio.numChapters")}:</Label>
-                 <Select value={chapterCount.toString()} onValueChange={(v) => setChapterCount(parseInt(v))}>
+                 <Select value={chapterCount.toString()} onValueChange={(v) => handleChapterCountChange(parseInt(v))}>
                    <SelectTrigger className="w-20">
                      <SelectValue />
                    </SelectTrigger>
@@ -897,7 +1149,14 @@ const chapterOptions = [3, 5, 7, 10, 12, 15, 20];
                </div>
 
                <div className="flex items-center gap-2">
-                 <Switch checked={isSafeForWork} onCheckedChange={setIsSafeForWork} />
+                 <Switch
+                   checked={isSafeForWork}
+                   onCheckedChange={(checked) => {
+                     setIsSafeForWork(checked);
+                     if (!checked && studioGenre !== "adult") setStudioGenre("adult");
+                     if (checked && studioGenre === "adult") setStudioGenre("romance");
+                   }}
+                 />
                 <Label>{t("studio.safeForWork")}</Label>
                </div>
              </div>
@@ -921,10 +1180,26 @@ const chapterOptions = [3, 5, 7, 10, 12, 15, 20];
          </Card>
 
         <Card id="studio-editor" className="p-6 mb-6 space-y-4">
-          <h2 className="text-lg font-medium">Mi miniserie de tres capítulos</h2>
-          <p className="text-sm text-muted-foreground">Escribe una idea sencilla. La IA prepara las tres escenas y el diálogo; puedes revisarlos antes de filmar.</p>
-          <Textarea aria-label="Idea de la miniserie" placeholder="Ejemplo: una emprendedora presenta su negocio en tres lugares distintos" value={description}
-            onChange={(event) => setDescription(event.target.value)} className="min-h-[80px]" />
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h2 className="text-lg font-medium">Producción de miniserie ({chapterCount} capítulos)</h2>
+              <p className="text-sm text-muted-foreground">
+                Escribe una idea. La IA prepara los {chapterCount} capítulos con tomas cinematográficas y diálogos listos para Wan 2.1.
+              </p>
+            </div>
+            <Badge variant="secondary" className="text-xs uppercase">
+              {studioGenre === "adult" ? "Adulto / NSFW" : `Género: ${studioGenre}`}
+            </Badge>
+          </div>
+
+          <Textarea
+            aria-label="Idea de la miniserie"
+            placeholder="Ejemplo: una pareja investiga una mansión abandonada cuando las sombras cobran vida"
+            value={description}
+            onChange={(event) => setDescription(event.target.value)}
+            className="min-h-[80px]"
+          />
+
           <div className="flex flex-wrap gap-2">
             <Button
               type="button"
@@ -934,11 +1209,11 @@ const chapterOptions = [3, 5, 7, 10, 12, 15, 20];
             >
               {draftingThree ? (
                 <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Preparando guion con IA…
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Preparando {chapterCount} capítulos con IA…
                 </>
               ) : (
                 <>
-                  <Sparkles className="w-4 h-4 mr-2" /> Generar guion de los 3 capítulos con IA
+                  <Sparkles className="w-4 h-4 mr-2" /> Generar guion de los {chapterCount} capítulos con IA
                 </>
               )}
             </Button>
@@ -947,8 +1222,14 @@ const chapterOptions = [3, 5, 7, 10, 12, 15, 20];
             </Button>
           </div>
 
-          {/* Director Visual de Poses y Escenas SFW / NSFW */}
+          {/* Director Visual de Poses y Escenas Multi-Género */}
           <StudioPresetDirector
+            chapterCount={chapterCount}
+            activeGenre={studioGenre}
+            onGenreSelect={(g) => {
+              setStudioGenre(g);
+              setIsSafeForWork(g !== "adult");
+            }}
             initialCategory={isSafeForWork ? "sfw" : "nsfw"}
             onApplyScene={(chapterIndex, visualPrompt, suggestedLine) => {
               setManualScenes((current) =>
@@ -967,12 +1248,15 @@ const chapterOptions = [3, 5, 7, 10, 12, 15, 20];
             }}
             onApplyArc={(arcTitle, chapters) => {
               setManualTitle(arcTitle);
-              setManualScenes(chapters.map((c) => c.visual));
-              setManualLines(chapters.map((c) => c.line));
+              if (chapters.length > 0) {
+                setChapterCount(chapters.length);
+                setManualScenes(chapters.map((c) => c.visual));
+                setManualLines(chapters.map((c) => c.line));
+              }
               setShowManualEditor(true);
               toast({
-                title: `Trilogía cargada: ${arcTitle}`,
-                description: "Los 3 capítulos fueron configurados con tomas y diálogos coordinados.",
+                title: `Arco cinematográfico cargado: ${arcTitle}`,
+                description: `Se configuraron ${chapters.length} capítulos con tomas y diálogos coordinados.`,
               });
             }}
           />
@@ -982,27 +1266,99 @@ const chapterOptions = [3, 5, 7, 10, 12, 15, 20];
           <input aria-label="Título de la miniserie" placeholder="Título de la miniserie" value={manualTitle}
             onChange={(event) => setManualTitle(event.target.value)} maxLength={120}
             className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm" />
-          {manualScenes.map((scene, index) => (
-            <div key={index} className="space-y-2 border-t border-border pt-3">
-              <Label htmlFor={"manual-scene-" + index}>Capítulo {index + 1}: ¿qué sucede?</Label>
-              <Textarea id={"manual-scene-" + index} value={scene} placeholder="Describe la acción en una frase"
-                onChange={(event) => setManualScenes((current) => current.map((value, i) => i === index ? event.target.value : value))}
-                className="min-h-[70px]" maxLength={1200} />
-              <select aria-label={"Quién habla en el capítulo " + (index + 1)} value={manualSpeakers[index] || ""}
-                onChange={(event) => setManualSpeakers((current) => current.map((name, i) => i === index ? event.target.value : name))}
-                className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm">
-                <option value="">Habla el personaje principal</option>
-                {[primaryName, secondaryName, ...supportingCast.map((actor) => actor.name)].filter(Boolean).map((name) =>
-                  <option key={name} value={name}>{name}</option>)}
-              </select>
-              <input aria-label={"Frase del capítulo " + (index + 1)} value={manualLines[index] || ""}
-                placeholder="Lo que dirá el personaje (opcional; la app lo dividirá en tomas)"
-                onChange={(event) => setManualLines((current) => current.map((value, i) => i === index ? event.target.value : value))}
-                className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm" maxLength={400} />
-              {seriesEpisodeIds[index] && savedSeriesId && <Button type="button" size="sm" variant="secondary" disabled={generatingVideos}
-                onClick={() => void regenerateChapter(index)}>Regenerar solo capítulo {index + 1}</Button>}
-            </div>
-          ))}
+
+          {manualScenes.slice(0, chapterCount).map((scene, index) => {
+            const subShots = chapterSubShots[index] || [];
+            return (
+              <div key={index} className="space-y-3 border-t border-border pt-4 bg-muted/10 p-3 rounded-lg">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor={"manual-scene-" + index} className="font-semibold text-sm">
+                    Capítulo {index + 1}: Toma Principal (Master Shot)
+                  </Label>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="text-xs text-primary hover:bg-primary/10 gap-1 h-7"
+                    onClick={() => addSubShot(index)}
+                  >
+                    <Plus className="w-3.5 h-3.5" /> Añadir Subtoma / Ángulo
+                  </Button>
+                </div>
+                <Textarea id={"manual-scene-" + index} value={scene} placeholder="Describe la acción cinematográfica o pose de la toma principal"
+                  onChange={(event) => setManualScenes((current) => current.map((value, i) => i === index ? event.target.value : value))}
+                  className="min-h-[70px]" maxLength={1200} />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <select aria-label={"Quién habla en el capítulo " + (index + 1)} value={manualSpeakers[index] || ""}
+                    onChange={(event) => setManualSpeakers((current) => current.map((name, i) => i === index ? event.target.value : name))}
+                    className="w-full rounded-md border border-border bg-background px-3 py-2 text-xs">
+                    <option value="">Habla el personaje principal</option>
+                    {allAvailableSpeakers.map((name) =>
+                      <option key={name} value={name}>{name}</option>)}
+                  </select>
+                  <input aria-label={"Frase del capítulo " + (index + 1)} value={manualLines[index] || ""}
+                    placeholder="Diálogo hablado en la toma principal (opcional)"
+                    onChange={(event) => setManualLines((current) => current.map((value, i) => i === index ? event.target.value : value))}
+                    className="w-full rounded-md border border-border bg-background px-3 py-2 text-xs" maxLength={400} />
+                </div>
+
+                {/* Sub-shots list */}
+                {subShots.length > 0 && (
+                  <div className="space-y-2.5 pl-3 border-l-2 border-primary/40 pt-2">
+                    <span className="text-[11px] font-semibold text-primary uppercase tracking-wider flex items-center gap-1">
+                      <Camera className="w-3 h-3" /> Subtomas adicionales ({subShots.length})
+                    </span>
+                    {subShots.map((sub, sIdx) => (
+                      <div key={sub.id} className="p-2.5 rounded border border-border/80 bg-background space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-medium">Toma {index + 1}.{sIdx + 2} (Ángulo secundario / Reacción)</span>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-5 w-5 text-muted-foreground hover:text-destructive"
+                            onClick={() => removeSubShot(index, sIdx)}
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </Button>
+                        </div>
+                        <Textarea
+                          placeholder="Describe el ángulo secundario (ej. Primer plano reacción, detalle manos, contraplano)"
+                          value={sub.visual}
+                          onChange={(e) => updateSubShot(index, sIdx, "visual", e.target.value)}
+                          className="min-h-[50px] text-xs"
+                          maxLength={1200}
+                        />
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          <select
+                            value={sub.speaker}
+                            onChange={(e) => updateSubShot(index, sIdx, "speaker", e.target.value)}
+                            className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-xs"
+                          >
+                            <option value="">Quién habla en esta toma</option>
+                            {allAvailableSpeakers.map((name) => (
+                              <option key={name} value={name}>{name}</option>
+                            ))}
+                          </select>
+                          <input
+                            placeholder="Línea de diálogo o sonido específico"
+                            value={sub.dialogue}
+                            onChange={(e) => updateSubShot(index, sIdx, "dialogue", e.target.value)}
+                            className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-xs"
+                            maxLength={400}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {seriesEpisodeIds[index] && savedSeriesId && <Button type="button" size="sm" variant="secondary" disabled={generatingVideos}
+                  onClick={() => void regenerateChapter(index)}>Regenerar solo capítulo {index + 1}</Button>}
+              </div>
+            );
+          })}
+
           <Button
             type="button"
             size="lg"
@@ -1016,7 +1372,7 @@ const chapterOptions = [3, 5, 7, 10, 12, 15, 20];
               </>
             ) : (
               <>
-                <Clapperboard className="w-5 h-5 mr-2" /> Filmar los 3 capítulos en ComfyUI (GPU local)
+                <Clapperboard className="w-5 h-5 mr-2" /> Filmar los {chapterCount} capítulos en ComfyUI (GPU local)
               </>
             )}
           </Button>

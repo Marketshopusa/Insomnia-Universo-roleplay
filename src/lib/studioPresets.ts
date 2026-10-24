@@ -1,6 +1,9 @@
+export type StudioGenre = "adult" | "romance" | "horror" | "sports" | "action";
+
 export interface StudioPreset {
   id: string;
   category: "sfw" | "nsfw";
+  genre?: StudioGenre;
   title: string;
   badge: string;
   icon: string;
@@ -14,6 +17,7 @@ export const STUDIO_PRESETS: StudioPreset[] = [
   {
     id: "sfw_close_up",
     category: "sfw",
+    genre: "romance",
     title: "Primer Plano Dramático",
     badge: "Mirada",
     icon: "🎬",
@@ -24,6 +28,7 @@ export const STUDIO_PRESETS: StudioPreset[] = [
   {
     id: "sfw_passionate_kiss",
     category: "sfw",
+    genre: "romance",
     title: "Beso Apasionado",
     badge: "Pasión",
     icon: "💋",
@@ -34,6 +39,7 @@ export const STUDIO_PRESETS: StudioPreset[] = [
   {
     id: "sfw_rainy_car",
     category: "sfw",
+    genre: "romance",
     title: "Conversación en el Auto",
     badge: "Noche",
     icon: "🚗",
@@ -44,6 +50,7 @@ export const STUDIO_PRESETS: StudioPreset[] = [
   {
     id: "sfw_bedroom_whisper",
     category: "sfw",
+    genre: "romance",
     title: "Vulnerabilidad en la Cama",
     badge: "Íntimo",
     icon: "🛏️",
@@ -54,6 +61,7 @@ export const STUDIO_PRESETS: StudioPreset[] = [
   {
     id: "sfw_doorway_tension",
     category: "sfw",
+    genre: "romance",
     title: "Tensión en la Puerta",
     badge: "Suspenso",
     icon: "🚪",
@@ -64,6 +72,7 @@ export const STUDIO_PRESETS: StudioPreset[] = [
   {
     id: "sfw_lounge_flirt",
     category: "sfw",
+    genre: "romance",
     title: "Coqueteo en el Bar",
     badge: "Seducción",
     icon: "🍸",
@@ -72,10 +81,149 @@ export const STUDIO_PRESETS: StudioPreset[] = [
     suggestedLine: "¿Siempre eres tan peligroso cuando estás solo?",
   },
 
+  // --- TERROR Y SUSPENSO ---
+  {
+    id: "horror_dutch_angle",
+    category: "sfw",
+    genre: "horror",
+    title: "Plano Holandés Inquietante",
+    badge: "Tensión",
+    icon: "📐",
+    camera: "Dutch tilt low angle, 24mm wide lens",
+    visualPrompt: "cinematic psychological horror still, pronounced dutch angle tilt. Unsettling composition, cold desaturated shadows, character freezing in sudden fear as an ominous presence approaches from behind.",
+    suggestedLine: "¿Escuchaste eso…? Dime que tú también lo escuchaste…",
+  },
+  {
+    id: "horror_dark_hallway",
+    category: "sfw",
+    genre: "horror",
+    title: "Pasillo Oscuro y Acecho",
+    badge: "Sombras",
+    icon: "🕯️",
+    camera: "Deep focus corridor tracking shot",
+    visualPrompt: "dark eerie corridor with flickering overhead light bulb, heavy fog and elongated shadows. Solitary figure walking slowly, glancing back at an ominous silhouette looming at the far end of the hallway.",
+    suggestedLine: "No deberíamos estar aquí… tenemos que salir de inmediato.",
+  },
+  {
+    id: "horror_handheld_panic",
+    category: "sfw",
+    genre: "horror",
+    title: "Pánico Cámara en Mano",
+    badge: "Terror",
+    icon: "📹",
+    camera: "Dynamic handheld shakincam, close POV",
+    visualPrompt: "visceral found-footage horror aesthetic, shaky handheld close-up. Character hyperventilating with wide terrified eyes, flashlight beam trembling wildly across blood-stained walls.",
+    suggestedLine: "¡Está justo detrás de la puerta! ¡No hagas ningún ruido!",
+  },
+  {
+    id: "horror_creature_encounter",
+    category: "sfw",
+    genre: "horror",
+    title: "Encuentro con la Criatura",
+    badge: "Monstruo",
+    icon: "👁️",
+    camera: "Low angle reveal, chiaroscuro lighting",
+    visualPrompt: "dark atmospheric cinematic monster reveal, heavy atmospheric haze, grotesque creature emerging from deep shadow with glowing reflective eyes. Protagonist paralyzed in primal shock.",
+    suggestedLine: "Eso… eso no es una persona… ¡Corre!",
+  },
+
+  // --- DEPORTIVO Y SUPERACIÓN ---
+  {
+    id: "sports_slowmo_sprint",
+    category: "sfw",
+    genre: "sports",
+    title: "Arranque Explosivo Slow-Mo",
+    badge: "Velocidad",
+    icon: "⚡",
+    camera: "Ultra slow motion 120fps tracking low angle",
+    visualPrompt: "high-budget sports commercial cinematography, 120fps slow motion tracking. Athlete exploding into sprint from starting blocks, muscles flexing with intense kinetic power, sweat droplets flying through stadium floodlights.",
+    suggestedLine: "Este es el momento para el que entrenamos toda la vida. ¡Ahora o nunca!",
+  },
+  {
+    id: "sports_focused_eyes",
+    category: "sfw",
+    genre: "sports",
+    title: "Foco y Mirada Decisiva",
+    badge: "Precisión",
+    icon: "🎯",
+    camera: "Macro extreme close-up on athlete eyes",
+    visualPrompt: "dramatic macro shot of athlete's determined eyes, intense concentration before the final shot, reflection of stadium lights in pupils, heavy breathing in silence before the buzzer.",
+    suggestedLine: "Un solo tiro. Solo tengo que meter este tiro.",
+  },
+  {
+    id: "sports_physical_clash",
+    category: "sfw",
+    genre: "sports",
+    title: "Choque Físico de Titanes",
+    badge: "Impacto",
+    icon: "🥊",
+    camera: "Side-view dynamic medium punch shot",
+    visualPrompt: "intense athletic collision, mud and turf flying, powerful body contact between rival athletes, high shutter speed capturing brutal physical effort and raw competitive drive.",
+    suggestedLine: "¡No vas a pasar por aquí! ¡Hoy no!",
+  },
+  {
+    id: "sports_euphoric_celebration",
+    category: "sfw",
+    genre: "sports",
+    title: "Festejo Eufórico Campeón",
+    badge: "Victoria",
+    icon: "🏆",
+    camera: "Dynamic 360 circling shot, confetti in air",
+    visualPrompt: "golden confetti raining down in packed stadium, athlete screaming in pure euphoria with arms wide open, tears of triumph mixing with sweat, teammates rushing in to celebrate the championship.",
+    suggestedLine: "¡Lo logramos! ¡Somos los campeones del mundo!",
+  },
+
+  // --- ACCIÓN Y COMBATE ---
+  {
+    id: "action_tactical_entry",
+    category: "sfw",
+    genre: "action",
+    title: "Entrada Táctica Breaching",
+    badge: "Táctico",
+    icon: "💥",
+    camera: "Over-the-shoulder dynamic push-in",
+    visualPrompt: "blockbuster action movie aesthetic, high-speed door breach, splintering wood and smoke grenades billowing across dark industrial hideout. Tactical operative sweeping with rifle flashlight beam.",
+    suggestedLine: "¡Despejado! Sector este bajo control, avancen con cuidado.",
+  },
+  {
+    id: "action_handheld_chase",
+    category: "sfw",
+    genre: "action",
+    title: "Persecución Cámara al Hombro",
+    badge: "Frenesí",
+    icon: "🏃",
+    camera: "Energetic shoulder rig tracking at speed",
+    visualPrompt: "dynamic chase through crowded neon-lit night market, kinetic camera dodging stalls and fleeing suspects. Rain splashing under boots, cinematic motion blur and high adrenaline pacing.",
+    suggestedLine: "¡No dejes que suba a ese techo! ¡Corta por el callejón!",
+  },
+  {
+    id: "action_visceral_melee",
+    category: "sfw",
+    genre: "action",
+    title: "Combate Cuerpo a Cuerpo",
+    badge: "Pelea",
+    icon: "🥋",
+    camera: "Medium wide choreographed combat angle",
+    visualPrompt: "gritty John Wick style close-quarters combat, swift blocking and brutal counter-strike against concrete pillar. Rain pouring over bruised faces, sharp kinetic choreography and impact shockwave.",
+    suggestedLine: "Te advertí que no te metieras con mi gente.",
+  },
+  {
+    id: "action_hero_shot_explosion",
+    category: "sfw",
+    genre: "action",
+    title: "Salida Heroica con Fuego",
+    badge: "Hero Shot",
+    icon: "🔥",
+    camera: "Low angle slow motion dolly back",
+    visualPrompt: "epic Hollywood action hero shot, walking forward in slow motion without looking back as massive fiery explosion tears through warehouse behind. Smoke plumes, ember particles drifting in wind.",
+    suggestedLine: "El trabajo está hecho. Vámonos de aquí.",
+  },
+
   // --- ADULTOS & EXPLICIT (NSFW) ---
   {
     id: "nsfw_cowgirl",
     category: "nsfw",
+    genre: "adult",
     title: "Cowgirl Dominante",
     badge: "Montando",
     icon: "👑",
@@ -86,6 +234,7 @@ export const STUDIO_PRESETS: StudioPreset[] = [
   {
     id: "nsfw_doggystyle",
     category: "nsfw",
+    genre: "adult",
     title: "Doggystyle Pasional",
     badge: "Desde Atrás",
     icon: "🍑",
@@ -96,6 +245,7 @@ export const STUDIO_PRESETS: StudioPreset[] = [
   {
     id: "nsfw_missionary",
     category: "nsfw",
+    genre: "adult",
     title: "Misionero Íntimo",
     badge: "Mirada Fija",
     icon: "🛏️",
@@ -106,6 +256,7 @@ export const STUDIO_PRESETS: StudioPreset[] = [
   {
     id: "nsfw_blowjob",
     category: "nsfw",
+    genre: "adult",
     title: "Oral Devoto",
     badge: "Oral",
     icon: "👄",
@@ -116,6 +267,7 @@ export const STUDIO_PRESETS: StudioPreset[] = [
   {
     id: "nsfw_piledriver",
     category: "nsfw",
+    genre: "adult",
     title: "Piledriver Intenso",
     badge: "Profundo",
     icon: "💥",
@@ -126,6 +278,7 @@ export const STUDIO_PRESETS: StudioPreset[] = [
   {
     id: "nsfw_mating_press",
     category: "nsfw",
+    genre: "adult",
     title: "Mating Press Pasional",
     badge: "Aplastante",
     icon: "🔞",
@@ -136,6 +289,7 @@ export const STUDIO_PRESETS: StudioPreset[] = [
   {
     id: "nsfw_sixtynine",
     category: "nsfw",
+    genre: "adult",
     title: "69 Mutuo",
     badge: "69",
     icon: "🌀",
@@ -146,6 +300,7 @@ export const STUDIO_PRESETS: StudioPreset[] = [
   {
     id: "nsfw_climax_finish",
     category: "nsfw",
+    genre: "adult",
     title: "Clímax / Acabada",
     badge: "Final",
     icon: "💦",
@@ -156,6 +311,7 @@ export const STUDIO_PRESETS: StudioPreset[] = [
   {
     id: "nsfw_shower_passion",
     category: "nsfw",
+    genre: "adult",
     title: "Pasión bajo la Ducha",
     badge: "Agua",
     icon: "🚿",
@@ -170,6 +326,21 @@ export const PRESET_ARCS = {
     { title: "El Encuentro Inesperado", presetId: "sfw_doorway_tension" },
     { title: "La Confesión a Solas", presetId: "sfw_rainy_car" },
     { title: "El Beso Inevitable", presetId: "sfw_passionate_kiss" },
+  ],
+  sfw_horror: [
+    { title: "La Señal Inquietante", presetId: "horror_dutch_angle" },
+    { title: "La Huida por el Pasillo", presetId: "horror_dark_hallway" },
+    { title: "El Encuentro Fatal", presetId: "horror_creature_encounter" },
+  ],
+  sfw_sports: [
+    { title: "La Concentración Previa", presetId: "sports_focused_eyes" },
+    { title: "La Carrera Explosiva", presetId: "sports_slowmo_sprint" },
+    { title: "La Gloria del Triunfo", presetId: "sports_euphoric_celebration" },
+  ],
+  sfw_action: [
+    { title: "La Infiltración Táctica", presetId: "action_tactical_entry" },
+    { title: "El Enfrentamiento Directo", presetId: "action_visceral_melee" },
+    { title: "La Escapada Triunfal", presetId: "action_hero_shot_explosion" },
   ],
   nsfw_heat: [
     { title: "La Provocación", presetId: "nsfw_blowjob" },
