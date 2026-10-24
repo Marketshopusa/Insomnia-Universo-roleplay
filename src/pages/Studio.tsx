@@ -932,6 +932,18 @@ const chapterOptions = [3, 5, 7, 10, 12, 15, 20];
              setLocalJob(null);
              setShowManualEditor(true);
              window.sessionStorage.setItem("insomnia.studio.episodeIds", JSON.stringify(series.episodes.map((episode) => episode.id)));
+           }}
+           onDelete={(deletedId) => {
+             if (savedSeriesId === deletedId) {
+               setSavedSeriesId(null);
+               setSeriesEpisodeIds([]);
+               setNovel(null);
+               setManualTitle("");
+               setManualScenes(Array(chapterCount).fill(""));
+               setManualLines(Array(chapterCount).fill(""));
+               setManualSpeakers(Array(chapterCount).fill(""));
+               setChapterSubShots({});
+             }
            }} />
          <Card className="p-6 mb-6 space-y-2">
            <Label>Motor de video</Label>
