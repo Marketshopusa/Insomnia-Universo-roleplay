@@ -492,7 +492,6 @@ type Mode = "select" | "read" | "roleplay";
      setMessages(next);
      void saveSession(next, narrative || null, mode);
      setIsTyping(false);
-     void playSceneFoley(responseContent);
      if (!isMuted) void playAudio(responseContent, assistantMessage.id);
    };
 

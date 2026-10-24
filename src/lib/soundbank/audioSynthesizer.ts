@@ -17,32 +17,26 @@ export function generateSoundPcm(soundId: SoundId, sampleRate = 24000): Float32A
     // IMPACTOS FÍSICOS Y SALA
     // -------------------------------------------------------------
     case "wall_slam": {
-      // Golpe contundente contra pared: Subgraves profundos de estructura (45-65Hz) + bofetada sorda con dispersión
-      const duration = 0.52;
+      // Golpe contundente y sordo contra estructura: subgrave profundo 52Hz + resonancia de madera sin chirridos
+      const duration = 0.48;
       const length = Math.floor(sampleRate * duration);
       buffer = new Float32Array(length);
       let wallLow = 0;
-      let wallMid = 0;
       for (let i = 0; i < length; i++) {
         const t = i / sampleRate;
-        const subFreq = 58 * Math.exp(-t * 16) + 38;
-        const sub = Math.sin(2 * Math.PI * subFreq * t) * Math.exp(-t * 9) * 0.95;
-        const woodThump = Math.sin(2 * Math.PI * 92 * t) * Math.exp(-t * 14) * 0.6;
-        const rawNoise = (Math.random() * 2 - 1) * Math.exp(-t * 28);
-        wallLow = wallLow * 0.82 + rawNoise * 0.18;
-        wallMid = wallMid * 0.65 + rawNoise * 0.35;
-        const initialCrack = t < 0.02 ? Math.sin(2 * Math.PI * 480 * t) * Math.exp(-t * 80) * 0.75 : 0;
-        const mixed = sub + woodThump + wallLow * 0.7 + wallMid * 0.4 + initialCrack;
-        // Saturación no lineal suave para calidez acústica (warm acoustic saturation)
-        buffer[i] = Math.tanh(mixed * 1.35) * 0.9;
+        const sub = Math.sin(2 * Math.PI * 48 * t) * Math.exp(-t * 14) * 0.95;
+        const woodThump = Math.sin(2 * Math.PI * 88 * t) * Math.exp(-t * 18) * 0.55;
+        const rawNoise = (Math.random() * 2 - 1) * Math.exp(-t * 35);
+        wallLow = wallLow * 0.88 + rawNoise * 0.12;
+        const mixed = sub + woodThump + wallLow * 0.4;
+        buffer[i] = Math.tanh(mixed * 1.25) * 0.88;
       }
       break;
     }
 
     case "flesh_impact": {
-      // Impacto visceral cuerpo a cuerpo / cadencia rítmica: resonancia orgánica profunda (52Hz) + golpe táctil de piel
-      // Modela dos impactos rítmicos sucesivos (ritmo natural de embestida / contacto corporal)
-      const duration = 0.72;
+      // Impacto visceral cuerpo a cuerpo / piel contra piel: cuerpo sordo orgánico (55Hz) sin barrido de frecuencia
+      const duration = 0.55;
       const length = Math.floor(sampleRate * duration);
       buffer = new Float32Array(length);
       let noiseFilt1 = 0;
@@ -51,29 +45,27 @@ export function generateSoundPcm(soundId: SoundId, sampleRate = 24000): Float32A
         const t = i / sampleRate;
         let sample = 0;
 
-        // Primer pulso de impacto (t = 0)
-        if (t < 0.36) {
+        // Primer pulso de impacto (t = 0): grave limpio 55Hz + toque sordo
+        if (t < 0.28) {
           const t1 = t;
-          const sub = Math.sin(2 * Math.PI * (68 * Math.exp(-t1 * 22) + 48) * t1) * Math.exp(-t1 * 12) * 0.95;
-          const bodyThud = Math.sin(2 * Math.PI * 110 * t1) * Math.exp(-t1 * 16) * 0.55;
-          const noise = (Math.random() * 2 - 1) * Math.exp(-t1 * 45);
-          noiseFilt1 = noiseFilt1 * 0.7 + noise * 0.3;
-          const slapTransient = t1 < 0.012 ? Math.sin(2 * Math.PI * 650 * t1) * Math.exp(-t1 * 90) * 0.65 : 0;
-          sample += sub + bodyThud + noiseFilt1 * 0.65 + slapTransient;
+          const sub = Math.sin(2 * Math.PI * 55 * t1) * Math.exp(-t1 * 18) * 0.9;
+          const bodyThud = Math.sin(2 * Math.PI * 105 * t1) * Math.exp(-t1 * 22) * 0.45;
+          const noise = (Math.random() * 2 - 1) * Math.exp(-t1 * 50);
+          noiseFilt1 = noiseFilt1 * 0.82 + noise * 0.18;
+          sample += sub + bodyThud + noiseFilt1 * 0.35;
         }
 
-        // Segundo pulso de cadencia rítmica (t = 0.34s) para sensación continua de movimiento corporal
-        if (t >= 0.32) {
-          const t2 = t - 0.32;
-          const sub2 = Math.sin(2 * Math.PI * (64 * Math.exp(-t2 * 20) + 46) * t2) * Math.exp(-t2 * 11) * 0.88;
-          const bodyThud2 = Math.sin(2 * Math.PI * 105 * t2) * Math.exp(-t2 * 15) * 0.5;
-          const noise2 = (Math.random() * 2 - 1) * Math.exp(-t2 * 45);
-          noiseFilt2 = noiseFilt2 * 0.7 + noise2 * 0.3;
-          const slapTransient2 = t2 < 0.012 ? Math.sin(2 * Math.PI * 620 * t2) * Math.exp(-t2 * 90) * 0.6 : 0;
-          sample += sub2 + bodyThud2 + noiseFilt2 * 0.6 + slapTransient2;
+        // Segundo pulso de cadencia rítmica (t = 0.26s)
+        if (t >= 0.25) {
+          const t2 = t - 0.25;
+          const sub2 = Math.sin(2 * Math.PI * 52 * t2) * Math.exp(-t2 * 17) * 0.82;
+          const bodyThud2 = Math.sin(2 * Math.PI * 100 * t2) * Math.exp(-t2 * 20) * 0.4;
+          const noise2 = (Math.random() * 2 - 1) * Math.exp(-t2 * 50);
+          noiseFilt2 = noiseFilt2 * 0.82 + noise2 * 0.18;
+          sample += sub2 + bodyThud2 + noiseFilt2 * 0.3;
         }
 
-        buffer[i] = Math.tanh(sample * 1.3) * 0.88;
+        buffer[i] = Math.tanh(sample * 1.2) * 0.85;
       }
       break;
     }

@@ -42,12 +42,12 @@ const forms = [
   ["kiss", "chasquido\\s+de\\s+(?:beso|labios)|sonido\\s+de\\s+(?:un\\s+)?beso|kiss\\s+sound"],
 ];
 const compounds = {
-  scream: String.raw`(?:(?:solt(?:é|ó|amos|aron)|suelto|suelta|peg(?:o|ó|ué)|dej(?:o|é|ó)\s+escapar|doy|da|di|dio)\s+(?:un\s+)?grito|ahog(?:o|a|ué|ó)\s+un\s+grito)`,
-  cry: String.raw`(?:(?:me|se)\s+ech(?:o|a|ó)\s+a\s+llorar|romp(?:o|e|í|ió)\s+(?:a\s+llorar|en\s+llanto))`,
-  laugh: String.raw`(?:(?:me|se)\s+ech(?:o|a|ó)\s+a\s+reír|(?:solt(?:é|ó|amos|aron)|suelto|suelta|dej(?:o|é|ó)\s+escapar)\s+(?:una\s+)?(?:carcajada|risita|risa)|estall(?:o|a|é|ó)\s+en\s+risas?)`,
-  sigh: String.raw`(?:solt(?:é|ó|amos|aron)|suelto|suelta|dej(?:o|é|ó)\s+escapar)\s+un\s+suspiro`,
-  pant: String.raw`(?:solt(?:é|ó|amos|aron)|suelto|suelta|dej(?:o|é|ó)\s+escapar)\s+un\s+jadeo`,
-  groan: String.raw`(?:solt(?:é|ó|amos|aron)|suelto|suelta|dej(?:o|é|ó)\s+escapar)\s+un\s+gemido`,
+  scream: String.raw`(?:(?:solt(?:é|ó|amos|aron)|suelto|suelta|peg(?:o|ó|ué)|dej(?:a|o|é|ó)\s+escapar|doy|da|di|dio)\s+(?:(?:un|el|su)\s+(?:[a-záéíóúñ]+\s+)?|un\s+)?grito|ahog(?:o|a|ué|ó)\s+(?:un\s+)?grito)`,
+  cry: String.raw`(?:(?:me|se)\s+ech(?:a|o|ó)\s+a\s+llorar|romp(?:e|o|í|ió)\s+(?:a\s+llorar|en\s+llanto))`,
+  laugh: String.raw`(?:(?:me|se)\s+ech(?:a|o|ó)\s+a\s+reír|(?:solt(?:é|ó|amos|aron)|suelto|suelta|dej(?:a|o|é|ó)\s+escapar)\s+(?:(?:una?|la|su)\s+(?:[a-záéíóúñ]+\s+)?|una?\s+)?(?:carcajada|risita|risa)|estall(?:a|o|é|ó)\s+en\s+risas?)`,
+  sigh: String.raw`(?:solt(?:é|ó|amos|aron)|suelto|suelta|dej(?:a|o|é|ó)\s+escapar)\s+(?:(?:un|el|su)\s+(?:[a-záéíóúñ]+\s+)?|un\s+)?suspiro`,
+  pant: String.raw`(?:solt(?:é|ó|amos|aron)|suelto|suelta|dej(?:a|o|é|ó)\s+escapar)\s+(?:(?:un|el|su)\s+(?:[a-záéíóúñ]+\s+)?|un\s+)?jadeo`,
+  groan: String.raw`(?:solt(?:é|ó|amos|aron)|suelto|suelta|dej(?:a|o|é|ó)\s+escapar)\s+(?:(?:un|el|su)\s+(?:[a-záéíóúñ]+\s+)?|un\s+)?gemido`,
   grunt: String.raw`(?:solt(?:é|ó|amos|aron)|suelto|suelta)\s+un\s+gruñido`,
 };
 const allForms = forms.map(([id, source]) => [id, compounds[id] ? "(?:" + compounds[id] + "|" + source + ")" : source]);
@@ -193,7 +193,7 @@ export function prepareExpressiveSpeech(input, { roleplay = false } = {}) {
     .map((part) => {
       if (part.kind === "reaction") return part.cue;
       if (part.kind === "narration") {
-        if (roleplay && hasDialogue) return "";
+        // Radionovela narrative storytelling: narration is preserved and spoken
         return !/[.!?…]$/.test(part.text) ? part.text + "." : part.text;
       }
       return part.text;

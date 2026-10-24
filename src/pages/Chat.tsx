@@ -912,7 +912,6 @@ export default function ChatPage() {
     // Pass expressive text so foley, sighs and acoustic cues trigger properly
     const voiceToUse = activeChar.voiceName || "Aoede";
     const charRegion = spokenRegion(getStoryRegion(activeChar.id), getStoryAccent(activeChar.id)) || (language === "es" ? "co" : "us");
-    void playSceneFoley(text);
 
     try {
       const stream = streamSpeech(text, voiceToUse, language, true, charRegion);

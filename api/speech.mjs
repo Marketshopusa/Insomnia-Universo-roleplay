@@ -83,7 +83,7 @@ export default async function handler(req, res) {
   const limited = raw.slice(0, 1400);
   // Prepare expressive speech parsing vocal reactions (*gime*, *se ríe*, *suspira*, *llora*) from original marked text
   const expression = req.body?.roleplay ? prepareExpressiveSpeech(limited, { roleplay: true }) : null;
-  const text = (expression?.text && expression.text.trim()) || limited.replace(/\*[^*]*\*/g, "").replace(/\s+/g, " ").trim() || limited.replace(/[*_#]/g, "").replace(/\s+/g, " ").trim();
+  const text = (expression?.text && expression.text.trim()) || limited.replace(/[*_#]/g, "").replace(/\s+/g, " ").trim();
   const plainText = removePerformanceCues(text);
   if (!plainText && !expression?.reactions.length && !hasVocalCue(text)) return res.status(400).json({ error: "missing_text" });
   const region = typeof req.body.region === "string" ? req.body.region : "mx";

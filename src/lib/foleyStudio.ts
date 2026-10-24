@@ -94,7 +94,7 @@ export function generateFoleyPcm(type: FoleyType, sampleRate = 24000): Float32Ar
 
   switch (type) {
     case "flesh_impact": {
-      // Physical flesh/body slap: Heavy body resonance (65Hz sub thump) + meaty slap transient (mid-range skin slap)
+      // Impacto visceral y sordo de cuerpo/flesh: subgrave estable (54Hz) + cuerpo sordo orgánico sin chirridos
       const duration = 0.28;
       const length = Math.floor(sampleRate * duration);
       buffer = new Float32Array(length);
@@ -102,34 +102,28 @@ export function generateFoleyPcm(type: FoleyType, sampleRate = 24000): Float32Ar
       let filter2 = 0;
       for (let i = 0; i < length; i++) {
         const t = i / sampleRate;
-        // Deep sub thud of flesh contact
-        const sub = Math.sin(2 * Math.PI * (115 * Math.exp(-t * 32) + 42) * t) * Math.exp(-t * 22) * 0.95;
-        // Acoustic resonance in body cavity
-        const body = Math.sin(2 * Math.PI * 185 * t) * Math.exp(-t * 28) * 0.5;
-        // Meat transient: filtered noise pulse
-        const rawNoise = (Math.random() * 2 - 1) * Math.exp(-t * 65);
-        filter1 = filter1 * 0.72 + rawNoise * 0.28;
-        filter2 = filter2 * 0.65 + filter1 * 0.35;
-        // Initial skin contact snap (first 6ms)
-        const snap = t < 0.008 ? Math.sin(2 * Math.PI * 1250 * t) * Math.exp(-t * 180) * 0.6 : 0;
-        buffer[i] = Math.max(-1, Math.min(1, sub + body + filter2 * 0.8 + snap));
+        const sub = Math.sin(2 * Math.PI * 54 * t) * Math.exp(-t * 20) * 0.9;
+        const body = Math.sin(2 * Math.PI * 110 * t) * Math.exp(-t * 24) * 0.45;
+        const rawNoise = (Math.random() * 2 - 1) * Math.exp(-t * 55);
+        filter1 = filter1 * 0.8 + rawNoise * 0.2;
+        filter2 = filter2 * 0.75 + filter1 * 0.25;
+        buffer[i] = Math.tanh((sub + body + filter2 * 0.35) * 1.2) * 0.85;
       }
       break;
     }
 
     case "slap": {
-      // Sharp stinging skin slap: High skin crack + warm facial flesh resonance
+      // Bofetada sorda y seca: golpe físico de piel con calidez acústica
       const duration = 0.22;
       const length = Math.floor(sampleRate * duration);
       buffer = new Float32Array(length);
       let noiseFilter = 0;
       for (let i = 0; i < length; i++) {
         const t = i / sampleRate;
-        const transient = Math.sin(2 * Math.PI * (1800 * Math.exp(-t * 45) + 600) * t) * Math.exp(-t * 60) * 0.85;
-        const raw = (Math.random() * 2 - 1) * Math.exp(-t * 50);
-        noiseFilter = noiseFilter * 0.6 + raw * 0.4;
-        const low = Math.sin(2 * Math.PI * 140 * t) * Math.exp(-t * 25) * 0.5;
-        buffer[i] = Math.max(-1, Math.min(1, transient + noiseFilter * 0.75 + low));
+        const sub = Math.sin(2 * Math.PI * 80 * t) * Math.exp(-t * 26) * 0.75;
+        const raw = (Math.random() * 2 - 1) * Math.exp(-t * 45);
+        noiseFilter = noiseFilter * 0.75 + raw * 0.25;
+        buffer[i] = Math.tanh((sub + noiseFilter * 0.4) * 1.2) * 0.85;
       }
       break;
     }
@@ -187,21 +181,16 @@ export function generateFoleyPcm(type: FoleyType, sampleRate = 24000): Float32Ar
     }
 
     case "zipper": {
-      // Metal/nylon zipper sliding: Quick succession of 16 interlocking tooth clicks
-      const duration = 0.42;
+      // Roce suave y deslizamiento textil sordo sin chirridos ni pitidos
+      const duration = 0.35;
       const length = Math.floor(sampleRate * duration);
       buffer = new Float32Array(length);
-      const clickInterval = 0.018;
+      let lp = 0;
       for (let i = 0; i < length; i++) {
         const t = i / sampleRate;
-        const clickIndex = Math.floor(t / clickInterval);
-        const tInClick = t - clickIndex * clickInterval;
-        if (clickIndex < 20 && tInClick < 0.008) {
-          const freq = 1800 + clickIndex * 40;
-          buffer[i] = Math.sin(2 * Math.PI * freq * tInClick) * Math.exp(-tInClick * 350) * 0.6;
-        } else {
-          buffer[i] = (Math.random() * 2 - 1) * 0.03 * (1 - t / duration);
-        }
+        const rawNoise = (Math.random() * 2 - 1) * Math.sin(Math.PI * (t / duration));
+        lp = lp * 0.85 + rawNoise * 0.15;
+        buffer[i] = lp * 0.45;
       }
       break;
     }
