@@ -53,6 +53,7 @@ import { startWavRecording, blobToBase64, type WavRecorder } from "@/lib/wavReco
 import { browserSpeechLocale, getStoryRegion, getStoryAccent, spokenRegion } from "@/lib/regions";
 import { normalizeAssistantReply } from "@/lib/roleReply";
 import { ChatCharacterConfigDialog, fallbackFemaleSpeech, isMediaVideo } from "@/components/chat/ChatCharacterConfigDialog";
+import { PremiumGalleryDialog } from "@/components/chat/PremiumGalleryDialog";
 import { ChatAiSettingsDialog } from "@/components/story/ChatAiSettingsDialog";
 import { getStoryAiSettings, AVAILABLE_AI_MODELS } from "@/lib/storyAiSettings";
 import { getMotherCardConfig } from "@/lib/roleplayBase";
@@ -217,7 +218,12 @@ const TALKIEMATE_CHARACTERS: CharacterItem[] = [
     style: "realistic",
     avatar: "https://media.talkiemate.com/app/uploads/growtype-ai-uploads/models/a395f30ef27cd9ab4d89161cc545b327/DYu9SrHkS22_01.jpg",
     gallery: [
-      "https://media.talkiemate.com/app/uploads/growtype-ai-uploads/models/a395f30ef27cd9ab4d89161cc545b327/DYu9SrHkS22_01.jpg"
+      "https://media.talkiemate.com/app/uploads/growtype-ai-uploads/models/a395f30ef27cd9ab4d89161cc545b327/DYu9SrHkS22_01.jpg",
+      "https://media.talkiemate.com/app/uploads/growtype-ai-uploads/models/6e8f818f9b187d2ebdf4e1d77521e051/3545853885239688145_69992903230.jpg",
+      "https://media.talkiemate.com/app/uploads/growtype-ai-uploads/models/6e8f818f9b187d2ebdf4e1d77521e051/3525076877293647223_69992903230.jpg",
+      "https://media.talkiemate.com/app/uploads/growtype-ai-uploads/models/6e8f818f9b187d2ebdf4e1d77521e051/3555949240620696400_69992903230.jpg",
+      "https://media.talkiemate.com/app/uploads/growtype-ai-uploads/models/6e8f818f9b187d2ebdf4e1d77521e051/3524200513981682408_69992903230.jpg",
+      "https://cdn.talkiemate.com/growtype-ai-uploads/models/da890e0320987e9f2131000d9d605b74/aria-witherspoon-change-pose-scene-make-it-more-engaging-prompted-v2-205274-1772742457724_c.jpg"
     ],
     roleTitle: "Confident Executive",
     roleTitleEn: "Confident Executive",
@@ -250,7 +256,10 @@ const TALKIEMATE_CHARACTERS: CharacterItem[] = [
     style: "realistic",
     avatar: "https://media.talkiemate.com/app/uploads/growtype-ai-uploads/models/6e536eb2557dae8758d22c1a447bdcc1/3607698674122377796_308603391.jpg",
     gallery: [
-      "https://media.talkiemate.com/app/uploads/growtype-ai-uploads/models/6e536eb2557dae8758d22c1a447bdcc1/3607698674122377796_308603391.jpg"
+      "https://media.talkiemate.com/app/uploads/growtype-ai-uploads/models/6e536eb2557dae8758d22c1a447bdcc1/3607698674122377796_308603391.jpg",
+      "https://media.talkiemate.com/app/uploads/growtype-ai-uploads/models/6e8f818f9b187d2ebdf4e1d77521e051/3525076877293647223_69992903230.jpg",
+      "https://media.talkiemate.com/app/uploads/growtype-ai-uploads/models/6e8f818f9b187d2ebdf4e1d77521e051/3555949240620696400_69992903230.jpg",
+      "https://media.talkiemate.com/app/uploads/growtype-ai-uploads/models/6e8f818f9b187d2ebdf4e1d77521e051/3524200513981682408_69992903230.jpg"
     ],
     roleTitle: "Warm Psychologist",
     roleTitleEn: "Warm Psychologist",
@@ -479,7 +488,16 @@ export default function ChatPage() {
       const saved = localStorage.getItem("talkiemate_custom_chars_v2");
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          // Merge newly enriched default gallery photos if saved character had only 1 photo
+          return parsed.map((char: CharacterItem) => {
+            const def = TALKIEMATE_CHARACTERS.find((c) => c.id === char.id);
+            if (def && (!char.gallery || char.gallery.length <= 1) && def.gallery.length > 1) {
+              return { ...char, gallery: def.gallery, imageCount: Math.max(char.imageCount, def.gallery.length) };
+            }
+            return char;
+          });
+        }
       }
     } catch {}
     return TALKIEMATE_CHARACTERS;
@@ -495,9 +513,14 @@ export default function ChatPage() {
   const [isConfigOpen, setIsConfigOpen] = useState(false);
   const [editingCharacter, setEditingCharacter] = useState<CharacterItem | null>(null);
   const [isCreatingNew, setIsCreatingNew] = useState(false);
+  const [configInitialTab, setConfigInitialTab] = useState<"info" | "photos" | "voice">("info");
 
-  const handleOpenEditConfig = (char: CharacterItem) => {
+  // Premium Gallery Dialog State
+  const [isPremiumGalleryOpen, setIsPremiumGalleryOpen] = useState(false);
+
+  const handleOpenEditConfig = (char: CharacterItem, tab: "info" | "photos" | "voice" = "info") => {
     setEditingCharacter(char);
+    setConfigInitialTab(tab);
     setIsCreatingNew(false);
     setIsConfigOpen(true);
   };
@@ -2268,18 +2291,9 @@ export default function ChatPage() {
                       );
                     })}
                     <div
-                      onClick={() => {
-                        toast({
-                          description: isAdmin
-                            ? (isEs
-                                ? `Acceso Administrador: Todas las fotos exclusivas de ${activeChar.name} están 100% desbloqueadas.`
-                                : `Administrator Access: All exclusive photos of ${activeChar.name} are 100% unlocked.`)
-                            : isEs
-                            ? `Desbloquea ${activeChar.imageCount - 2}+ fotos exclusivas en modo Premium`
-                            : `Unlock ${activeChar.imageCount - 2}+ exclusive photos in Premium mode`
-                        });
-                      }}
-                      className="aspect-square rounded-xl bg-[#141414] border border-[#262626] flex items-center justify-center font-bold text-sm text-zinc-300 cursor-pointer hover:bg-[#1f1f1f] transition-colors"
+                      onClick={() => setIsPremiumGalleryOpen(true)}
+                      title={isEs ? "Abrir galería completa de fotos" : "Open full photo gallery"}
+                      className="aspect-square rounded-xl bg-[#141414] border border-[#262626] flex items-center justify-center font-bold text-sm text-zinc-300 cursor-pointer hover:bg-[#1f1f1f] hover:border-[#ff8c00] transition-all"
                     >
                       +{activeChar.imageCount - 2}
                     </div>
@@ -2288,18 +2302,8 @@ export default function ChatPage() {
 
                 {/* Premium Content Banner */}
                 <div
-                  onClick={() => {
-                    toast({
-                      description: isAdmin
-                        ? (isEs
-                            ? `Modo Administrador: Tienes acceso ilimitado a todas las fotos y videos premium de ${activeChar.name}.`
-                            : `Administrator Mode: You have unlimited access to all premium photos and videos of ${activeChar.name}.`)
-                        : isEs
-                        ? `Acceso exclusivo a fotos y videos premium de ${activeChar.name}`
-                        : `Exclusive access to premium photos and videos of ${activeChar.name}`
-                    });
-                  }}
-                  className="p-3.5 rounded-xl bg-gradient-to-r from-[#200e02] to-[#120701] border border-[#ff8c00]/30 hover:border-[#ff8c00] flex items-center justify-between cursor-pointer transition-all shadow-lg"
+                  onClick={() => setIsPremiumGalleryOpen(true)}
+                  className="p-3.5 rounded-xl bg-gradient-to-r from-[#200e02] to-[#120701] border border-[#ff8c00]/40 hover:border-[#ff8c00] flex items-center justify-between cursor-pointer transition-all shadow-lg hover:shadow-[#ff8c00]/10"
                 >
                   <div className="flex items-center gap-2.5">
                     <div className="w-8 h-8 rounded-xl bg-[#ff8c00]/20 flex items-center justify-center text-[#ff8c00]">
@@ -2309,25 +2313,37 @@ export default function ChatPage() {
                       <h5 className="text-xs font-bold text-white flex items-center gap-1.5">
                         <span>{isEs ? "Contenido Premium" : "Premium content"}</span>
                         {isAdmin && (
-                          <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 font-bold uppercase">
+                          <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 font-bold uppercase border border-amber-500/30">
                             Admin
                           </span>
                         )}
                       </h5>
                       <p className="text-[10px] text-zinc-400">
                         {isAdmin
-                          ? (isEs ? "Desbloqueado para tu cuenta de Administrador" : "Unlocked for your Administrator account")
+                          ? (isEs ? "Desbloqueado para tu cuenta de Administrador (Ver Galería)" : "Unlocked for your Administrator account (View Gallery)")
                           : (isEs ? "Fotos y videos exclusivos" : "Exclusive photos & videos")}
                       </p>
                     </div>
                   </div>
-                  <ChevronRight className="w-4 h-4 text-zinc-400" />
+                  <ChevronRight className="w-4 h-4 text-[#ff8c00]" />
                 </div>
               </div>
             </aside>
           </div>
         </div>
       )}
+
+      {/* =========================================================================
+          PREMIUM GALLERY & EXCLUSIVE MEDIA VIEWER (With Admin Upload & Controls)
+         ========================================================================= */}
+      <PremiumGalleryDialog
+        open={isPremiumGalleryOpen}
+        onOpenChange={setIsPremiumGalleryOpen}
+        character={activeChar}
+        isAdmin={isAdmin}
+        onSaveCharacter={handleSaveCharacter}
+        onOpenConfig={(tab) => handleOpenEditConfig(activeChar, tab)}
+      />
 
       {/* =========================================================================
           CHARACTER CONFIG DIALOG (Photos, Carousel, Voice, and Bio)
@@ -2339,6 +2355,7 @@ export default function ChatPage() {
         onOpenChange={setIsConfigOpen}
         onSave={handleSaveCharacter}
         onResetHistory={handleResetCurrentHistory}
+        initialTab={configInitialTab}
       />
 
       {/* =========================================================================

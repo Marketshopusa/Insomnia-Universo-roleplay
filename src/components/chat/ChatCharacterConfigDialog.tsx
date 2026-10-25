@@ -84,6 +84,7 @@ interface ChatCharacterConfigDialogProps {
   onOpenChange: (open: boolean) => void;
   onSave: (updated: CharacterItem) => void;
   onResetHistory?: () => void;
+  initialTab?: "info" | "photos" | "voice";
 }
 
 /** Determina si una URL corresponde a un video (MP4, WebM, MOV o data:video) */
@@ -169,13 +170,14 @@ export const ChatCharacterConfigDialog: React.FC<ChatCharacterConfigDialogProps>
   open,
   onOpenChange,
   onSave,
-  onResetHistory
+  onResetHistory,
+  initialTab = "info",
 }) => {
   const { language } = useLanguage();
   const isEs = language === "es";
   const { user } = useAuth();
 
-  const [activeTab, setActiveTab] = useState("info");
+  const [activeTab, setActiveTab] = useState<string>(initialTab || "info");
 
   // Form State
   const [name, setName] = useState("");
@@ -253,8 +255,8 @@ export const ChatCharacterConfigDialog: React.FC<ChatCharacterConfigDialogProps>
         "https://media.talkiemate.com/app/uploads/growtype-ai-uploads/models/6e8f818f9b187d2ebdf4e1d77521e051/3545853885239688145_69992903230.jpg"
       ]);
     }
-    setActiveTab("info");
-  }, [open, character, isNew, isEs]);
+    setActiveTab(initialTab || "info");
+  }, [open, character, isNew, isEs, initialTab]);
 
   const stopVoicePreview = () => {
     if (voiceStreamRef.current) {
