@@ -121,9 +121,8 @@ export default async function handler(req, res) {
   try {
     const sentences = splitSentences(text);
 
-    // For passages up to 480 characters or single paragraphs, synthesize as one unified,
-    // unbroken track so the radionovela narration, breath, and dialogue flow without stuttering or stops.
-    if (text.length <= 480 || sentences.length <= 1) {
+    // For short single-sentence lines, synthesize directly as a single piece
+    if (sentences.length <= 1) {
       const expressive = await synthesizePieceWithRetry(text, req.body.voice, req.body.language, { performance, region, expression });
       if (expressive.status !== 200) {
         console.warn("Insomnia speech gemini-2.5-flash-tts", expressive.status, expressive.detail || "", "after_ms", Date.now() - startedAt);

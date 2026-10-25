@@ -147,7 +147,7 @@ En este momento de la escena, ${activeChar.playerFirstName} está interactuando 
       body: JSON.stringify({
         model: "magnum-v4-12b",
         messages,
-        max_tokens: 260,
+        max_tokens: 450,
         temperature: 0.82,
         repeat_penalty: 1.15,
         presence_penalty: 0.15,

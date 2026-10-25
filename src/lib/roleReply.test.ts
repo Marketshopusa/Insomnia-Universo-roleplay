@@ -103,5 +103,18 @@ describe("role reply presentation", () => {
       ),
     ).toBe(false);
   });
+  it("preserves complete action cues and cleans trailing cut-off phrases like 'a las...'", () => {
+    const input = [
+      "*alza una ceja y cruza de brazos apoyada en el marco de la puerta*",
+      "Vaya, vaya... bienvenido a casa, roommate. No esperaba el show de bienvenida tan pronto, la verdad.",
+      "*se ríe bajo y sacude la cabeza divertida*",
+      "Tranquilo, no te vas a morir. Solo eres tú y yo en boxers en la sala a las...",
+    ].join("\n");
+    const cleaned = normalizeAssistantReply(input)!;
+    expect(cleaned).toContain("*alza una ceja y cruza de brazos apoyada en el marco de la puerta*");
+    expect(cleaned).toContain("*se ríe bajo y sacude la cabeza divertida*");
+    expect(cleaned).not.toContain("a las...");
+    expect(cleaned).toContain("en boxers en la sala.");
+  });
 });
 

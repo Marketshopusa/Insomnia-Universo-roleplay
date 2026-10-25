@@ -1,3 +1,33 @@
+const DANGLING_TAIL_REGEX = /\b(?:de|del|al|a|en|con|por|para|sin|sobre|entre|hacia|hasta|como|mientras|cuando|que|y|e|o|u|ni|pero|un|una|unos|unas|el|la|los|las|su|sus|mi|mis|tu|tus|me|te|se|nos|le|les|lo)\s*$/iu;
+
+function cleanCueText(rawInner, maxWords = 22) {
+  const firstSentence = rawInner
+    .replace(/\s+/g, " ")
+    .trim()
+    .split(/(?<=[.!?…])\s+/)[0]
+    .replace(/[.!?…]+$/, "")
+    .trim();
+  const words = firstSentence.split(/\s+/).filter(Boolean);
+  if (words.length <= maxWords) return firstSentence;
+  const clauses = firstSentence.split(/[,;]/);
+  let clauseAcc = "";
+  for (const c of clauses) {
+    const candidate = clauseAcc ? `${clauseAcc}, ${c.trim()}` : c.trim();
+    if (candidate.split(/\s+/).filter(Boolean).length <= maxWords) {
+      clauseAcc = candidate;
+    } else {
+      break;
+    }
+  }
+  let sliced = clauseAcc && clauseAcc.split(/\s+/).filter(Boolean).length >= 8
+    ? clauseAcc
+    : words.slice(0, maxWords).join(" ");
+  while (DANGLING_TAIL_REGEX.test(sliced) && sliced.includes(" ")) {
+    sliced = sliced.replace(/\s+\S+$/, "").trim();
+  }
+  return sliced.replace(/[,;:\s]+$/, "").trim();
+}
+
 export function enforceDialogueRatio(text, dialPct = 80, narrPct = 20) {
   if (!text) return text;
   const regex = /\*([^*]+)\*/g;
@@ -13,28 +43,20 @@ export function enforceDialogueRatio(text, dialPct = 80, narrPct = 20) {
     totalNarrWords += b.inner.split(/\s+/).filter(Boolean).length;
   }
 
-  // Si las acotaciones en asteriscos superan 16 palabras en total, podar para que no ahoguen el dialogo
-  if (totalNarrWords > 16) {
+  // Si las acotaciones superan 28 palabras en total o hay más de 2 acotaciones, equilibrar sin mutilar frases
+  if (totalNarrWords > 28 || matches.length > 2) {
     let result = text;
     for (let i = 0; i < matches.length; i++) {
       const b = matches[i];
-      const words = b.inner.split(/\s+/).filter(Boolean);
-      if (i === 0 && words.length > 12) {
-        // Reducir el primer bloque a su primera oracion o clausula (max 10 palabras)
-        const firstClause = b.inner.match(/^([^,.;!?…]+)/);
-        const shortened = firstClause && firstClause[1].split(/\s+/).filter(Boolean).length <= 12
-          ? firstClause[1].trim()
-          : words.slice(0, 10).join(" ");
-        result = result.replace(b.full, `*${shortened}*`);
-      } else if (i > 0) {
-        // Bloques secundarios: reducir a gesto minimo (max 6 palabras)
-        if (words.length > 6) {
-          const shortSecond = words.slice(0, 6).join(" ");
-          result = result.replace(b.full, `*${shortSecond}*`);
-        }
+      if (i >= 2) {
+        // Máximo 2 acotaciones para no saturar el diálogo
+        result = result.replace(b.full, "");
+      } else {
+        const cleaned = cleanCueText(b.inner, 20);
+        result = result.replace(b.full, cleaned ? `*${cleaned}*` : "");
       }
     }
-    return result;
+    return result.replace(/[ \t]{2,}/g, " ").replace(/\n{2,}/g, "\n").trim();
   }
   return text;
 }
@@ -128,7 +150,7 @@ export async function generateLocalLlama(messages, options = {}) {
       body: JSON.stringify({
         model: "magnum-v4-12b",
         messages: sanitizedMessages,
-        max_tokens: options.maxTokens || 260,
+        max_tokens: options.maxTokens || 450,
         temperature: options.temperature ?? 0.82,
         repeat_penalty: 1.15,
         presence_penalty: 0.15,
@@ -180,7 +202,7 @@ export async function generateOpenRouter(messages, options = {}) {
         body: JSON.stringify({
           model,
           messages,
-          max_tokens: options.maxTokens || 300,
+          max_tokens: options.maxTokens || 450,
           temperature: options.temperature ?? 0.8,
           // CRITICAL: NEVER set presence_penalty or frequency_penalty > 0 on LLaMA 3.x / Magnum in Spanish!
           // Frequency penalty penalizes common Spanish articles/connectors ("de", "la", "el", "que"),
@@ -241,7 +263,7 @@ export async function generateNvidia(messages, options = {}) {
         body: JSON.stringify({
           model,
           messages,
-          max_tokens: options.maxTokens || 220,
+          max_tokens: options.maxTokens || 450,
           temperature: temp,
           
         }),
@@ -801,7 +823,7 @@ export default async function handler(req, res) {
       const memoryTier = settings.memoryTier || "16k";
       const isLiveCall = body.isLiveCall === true || body.story?.story_type === 'live_call';
       const isChatPage = body.chatSource === 'chat_page' || body.story?.story_type === 'chat_page' || isLiveCall;
-      const targetTokens = isLiveCall ? 50 : (isChatPage ? Math.max(220, Math.min(600, Number(settings.messageLength) || 320)) : Math.max(150, Math.min(800, Number(settings.messageLength) || 350)));
+      const targetTokens = isLiveCall ? 55 : (isChatPage ? Math.max(300, Math.min(700, Number(settings.messageLength) || 450)) : Math.max(200, Math.min(800, Number(settings.messageLength) || 450)));
       const modelId = settings.modelId || "insomnia-flash";
       const customDirective = String(settings.customDirective || "").trim();
       const openRouterApiKey = String(settings.openRouterApiKey || "").trim();
@@ -1514,8 +1536,8 @@ export default async function handler(req, res) {
           content = enforceDialogueRatio(content, Math.round(dialogueRatio * 100), Math.round(narrationRatio * 100));
         }
 
-        // Eliminar palabras truncadas o conectores rotos al final (ej: "las*", "con lent*", "de*")
-        content = content.replace(/\s+(?:con\s+)?(?:lent[a-z]*|las?|los?|el|la|un[a-z]*|de|del|al|en|por|para|y|e|o|pero|que|su|mi|tu)\*?$/iu, "").trim();
+        // Eliminar palabras truncadas o conectores rotos al final (ej: "a las...", "las*", "con lent*", "de*", "en...")
+        content = content.replace(/\s+(?:a\s+las?|a\s+los?|en\s+el|en\s+la|con\s+el|con\s+la|de\s+la|de\s+los|de\s+las|de\s+un|de\s+una|con\s+lent[a-z]*|lent[a-z]*|las?|los?|el|la|un[a-z]*|de|del|al|a|en|con|por|para|y|e|o|pero|que|su|mi|tu|tan|muy)\s*(?:\.{2,3}|…)?\*?$/iu, "").trim();
 
         // Equilibrar asteriscos sin cerrar
         const asteriskCount = (content.replace(/\*\*/g, "").match(/\*/g) || []).length;
@@ -1552,15 +1574,15 @@ export default async function handler(req, res) {
         }
         const totalActionMatches = [...content.matchAll(/\*([^*\n]+)\*/g)];
         const targetWords = Math.max(65, Math.round(targetTokens * 0.72));
-        const maxWordsPerCue = Math.max(16, Math.round(targetWords * 0.22));
+        const maxWordsPerCue = Math.max(22, Math.round(targetWords * 0.28));
         let actionCount = 0;
         content = content.replace(/\*([^*\n]+)\*/g, (_m, inner) => {
           actionCount += 1;
-          if (actionCount > 3) return "";
+          if (actionCount > 2) return "";
           const firstSentence = inner.replace(/\s+/g, " ").trim().split(/(?<=[.!?…])\s+/)[0].replace(/[.!?…]+$/, "").trim();
           const words = firstSentence.split(/\s+/).filter(Boolean);
           if (words.length <= maxWordsPerCue) return `*${firstSentence}*`;
-          const clauses = firstSentence.split(",");
+          const clauses = firstSentence.split(/[,;]/);
           let clauseAcc = "";
           for (const c of clauses) {
             const cand = clauseAcc ? `${clauseAcc}, ${c.trim()}` : c.trim();
@@ -1569,7 +1591,7 @@ export default async function handler(req, res) {
           }
           const clauseWords = clauseAcc ? clauseAcc.split(/\s+/).filter(Boolean).length : 0;
           let sliced = clauseWords >= 8 && clauseWords <= maxWordsPerCue ? clauseAcc : words.slice(0, maxWordsPerCue).join(" ");
-          while (/\b(?:de|del|al|a|en|con|por|para|sin|sobre|entre|mientras|cuando|que|y|e|o|pero|un|una|el|la|los|las|su|sus|mi|mis|tu|tus|me|te|se)\s*$/iu.test(sliced) && sliced.includes(" ")) {
+          while (DANGLING_TAIL_REGEX.test(sliced) && sliced.includes(" ")) {
             sliced = sliced.replace(/\s+\S+$/, "").trim();
           }
           return `*${sliced.replace(/[,;:\s]+$/, "").trim()}*`;

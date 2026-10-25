@@ -191,9 +191,14 @@ async function enableAgentPlatform(token, fetchImpl) {
 
 export function geminiSpeechDirection(language, performance, region, expression) {
   const spanish = language !== "en";
+  const effectivePerf = expression?.segments?.filter((part) => part.kind !== "reaction" && part.performance !== "neutral").at(-1)?.performance
+    || expression?.performance
+    || performance
+    || "neutral";
+
   const mood = {
     neutral: spanish ? "Voz cinematográfica natural, expresiva, cálida y envolvente acorde a la escena." : "Natural, lively and expressive cinematic voice suited to the scene.",
-    warm: spanish ? "Tono cálido, seductor y afectuoso con una sonrisa viva, picardía y complicidad en la voz." : "Warm, affectionate and seductive tone with a living smile in the voice.",
+    warm: spanish ? "Tono cálido, seductor y afectuoso con una sonrisa viva (warm tone with a living smile), picardía y complicidad en la voz." : "Warm, affectionate and seductive tone with a living smile in the voice.",
     surprised: spanish ? "Tono de sorpresa real, alerta e intensa en la interpretación." : "Real, intense surprise in the dialogue.",
     amused: spanish ? "Risa viva, risitas juguetonas, picardía y encanto travieso." : "Lively, mischievous laughter.",
     sad: spanish ? "Voz quebrada y desgarrada por el llanto, sollozos reales y tristeza profunda sentida." : "Voice trembling with real crying, genuine sobs and deep sorrow.",
@@ -205,7 +210,7 @@ export function geminiSpeechDirection(language, performance, region, expression)
     afraid: spanish ? "Voz asustada, entrecortada y temblorosa." : "Frightened, trembling voice.",
     disgusted: spanish ? "Voz con desprecio y disgusto visceral." : "Visceral disgusted voice.",
     tired: spanish ? "Voz suave, relajada e íntima." : "Soft relaxed voice.",
-  }[performance] || (spanish ? "Voz natural y expresiva de radionovela." : "Natural expressive voice.");
+  }[effectivePerf] || (spanish ? "Voz natural y expresiva de radionovela." : "Natural expressive voice.");
 
   if (expression?.segments?.length) {
     const accent = spanish ? accentHint(language, region) + " " : "Use the selected natural English voice. ";
@@ -218,7 +223,6 @@ export function geminiSpeechDirection(language, performance, region, expression)
       if (!hasSpeech) return accent + "Generate ONLY this short nonverbal vocal sound: " + event.direction +
         " The written vowels are a phonetic guide to this vocal reaction, not a sentence. Do not speak labels, directions, explanations or any invented dialogue. Stop after the sound.";
     }
-    const delivery = expression.segments.filter((part) => part.kind !== "reaction" && part.performance !== "neutral").at(-1)?.performance || expression.performance || "neutral";
     const radionovelaDirection = spanish
       ? `Eres la voz estelar de una radionovela cinematográfica hiperrealista. Narra tanto el relato y las acciones como los diálogos con pasión, cadencia fluida, respiración viva y presencia humana real. ${mood} Lee las palabras de forma continua y envolvente, sin pausas robóticas ni cortes mecánicos.`
       : `You are the lead voice in a hyper-realistic cinematic audio drama. Deliver the narrative actions, scenes, and dialogues with passion, fluid cadence, and lifelike human presence. ${mood} Deliver the text smoothly without robotic pauses.`;
@@ -464,8 +468,8 @@ export function splitSentences(text) {
     if (!t) continue;
     if (!current) {
       current = t;
-    } else if (current.split(/\s+/).length < 22) {
-      // Group sentences into natural paragraph chunks (at least 22 words) to preserve dramatic flow and avoid staccato halts
+    } else if (current.split(/\s+/).length < 6) {
+      // Group very short fragments (< 6 words) while allowing natural sentences to stream quickly (~400ms)
       current += " " + t;
     } else {
       chunks.push(current);

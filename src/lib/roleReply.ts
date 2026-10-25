@@ -55,7 +55,7 @@ export function normalizeAssistantReply(value: unknown): string | null {
 
 const DANGLING_TAIL = /\b(?:de|del|al|a|en|con|por|para|sin|sobre|entre|hacia|hasta|como|mientras|cuando|que|y|e|o|u|ni|pero|un|una|unos|unas|el|la|los|las|su|sus|mi|mis|tu|tus|me|te|se|nos|le|les|lo)\s*$/iu;
 
-function trimActionCue(rawAction: string, maxWords = 16): string {
+function trimActionCue(rawAction: string, maxWords = 22): string {
   const firstSentence = rawAction
     .replace(/\s+/g, " ")
     .trim()
@@ -65,7 +65,7 @@ function trimActionCue(rawAction: string, maxWords = 16): string {
   const words = firstSentence.split(/\s+/).filter(Boolean);
   if (words.length <= maxWords) return firstSentence;
   // Prefer cutting at a comma clause if it has a natural 8..maxWords length
-  const clauses = firstSentence.split(",");
+  const clauses = firstSentence.split(/[,;]/);
   let clauseAcc = "";
   for (const c of clauses) {
     const candidate = clauseAcc ? `${clauseAcc}, ${c.trim()}` : c.trim();
@@ -108,7 +108,14 @@ export function compactRoleplayReply(input: string): string {
     }
   }
 
-  // 2. If text was cut off mid-sentence at max_tokens, trim back to the last complete sentence
+  // 2. Clean incomplete trailing connectors with ellipsis (e.g. "a las...", "en...", "y...")
+  const INCOMPLETE_TRAILING = /\b(?:a\s+las?|a\s+los?|en\s+el|en\s+la|con\s+el|con\s+la|de\s+la|de\s+los|de\s+las|de\s+un|de\s+una|y|e|o|u|ni|pero|que|como|mientras|cuando|porque|aunque|para|por|sin|sobre|hacia|hasta|en|con|de|del|al|a|el|la|los|las|un|una|unos|unas|mi|mis|tu|tus|su|sus|nuestro|nuestra|nuestros|nuestras|tan|muy|más|menos)\s*(?:\.{2,3}|…)?\s*$/iu;
+  if (INCOMPLETE_TRAILING.test(text)) {
+    text = text.replace(INCOMPLETE_TRAILING, "").trim();
+    if (text && !/[.!?…"”»*)\]]$/.test(text)) text += ".";
+  }
+
+  // If text was cut off mid-sentence at max_tokens, trim back to the last complete sentence
   if (text.length > 80 && !/[.!?…"”»*)\]]$/.test(text)) {
     const lastPunct = Math.max(
       text.lastIndexOf("."),
@@ -122,9 +129,9 @@ export function compactRoleplayReply(input: string): string {
     }
   }
 
-  // 3. Keep ~20% narration (*...*): up to 16 words if 1 cue, or up to 10 words each if 2 cues (~14-18 words total)
+  // 3. Keep ~20% narration (*...*): preserve complete scenic cues (up to 22 words) without mutilating sentences
   const totalMatches = [...text.matchAll(/\*([^*\n]+)\*/g)];
-  const maxWordsPerCue = totalMatches.length === 1 ? 16 : 10;
+  const maxWordsPerCue = totalMatches.length === 1 ? 24 : 20;
   let actionCount = 0;
   text = text.replace(/\*([^*\n]+)\*/g, (_match, inner: string) => {
     actionCount += 1;
@@ -133,14 +140,14 @@ export function compactRoleplayReply(input: string): string {
     return shortCue ? `*${shortCue}*` : "";
   });
 
-  // 4. Collapse whitespace and cap total length to ~440 chars at a clean sentence boundary
+  // 4. Collapse whitespace and cap total length to 800 chars at a clean sentence boundary
   text = text.replace(/[ \t]{2,}/g, " ").replace(/\n{2,}/g, "\n").trim();
-  if (text.length > 440) {
+  if (text.length > 800) {
     const sentences = text.match(/[^.!?…]+[.!?…]+["'»”*)]*(?:\s+|$)/gu);
     if (sentences && sentences.length > 1) {
       let acc = "";
       for (const s of sentences) {
-        if ((acc + s).length > 440 && acc.length >= 100) break;
+        if ((acc + s).length > 800 && acc.length >= 200) break;
         acc += s;
       }
       if (acc.trim()) text = acc.trim();
