@@ -111,7 +111,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const isAdmin = useMemo(() => isUserAdmin(user), [user]);
   const isPremium = useMemo(() => isAdmin || Boolean((user?.user_metadata as any)?.is_premium), [isAdmin, user]);
   const credits = useMemo(() => (isAdmin ? 999999 : 100), [isAdmin]);
-  const userRole = isAdmin ? "admin" : "user";
+  const userRole: "admin" | "user" = isAdmin ? "admin" : "user";
 
   const value = useMemo(
     () => ({

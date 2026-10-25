@@ -173,16 +173,25 @@ const chapterOptions = [3, 5, 7, 10, 12, 15, 20];
     });
   };
 
-  const addCustomCastMember = (role: CastSlotRole = "secondary") => {
+  const addCustomCastMember = (role: CastSlotRole = "secondary", initialName = "", initialFile: File | null = null) => {
+    const newId = `cast-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     setCustomCast((prev) => [
       ...prev,
       {
-        id: `cast-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-        name: "",
+        id: newId,
+        name: initialName,
         role,
+        file: initialFile,
         description: "",
       },
     ]);
+    toast({
+      title: "Nuevo rol añadido al elenco",
+      description: initialName ? `Se asignó a "${initialName}".` : "Configura el rol (Antagonista, Secundario, etc.) y su foto.",
+    });
+    setTimeout(() => {
+      document.getElementById(`custom-cast-${newId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 100);
   };
 
   const updateCustomCastMember = (id: string, updates: Partial<CustomCastItem>) => {
@@ -1008,22 +1017,13 @@ const chapterOptions = [3, 5, 7, 10, 12, 15, 20];
               </Button>
             </div>
 
-            <CastGallery userId={user.id}
-              onPrimary={(file, name) => { setReferenceImage(file); setPrimaryName(name); }}
-              onSecondary={(file, name) => { setSecondaryImage(file); setSecondaryName(name); }}
-              onSupporting={(file, name) => setSupportingCast((current) => current.some((actor) => actor.name === name) ? current : [...current, { file, name }])} />
-            {!!supportingCast.length && <div aria-label="Reparto de esta serie" className="flex flex-wrap gap-2 text-sm">
-              {supportingCast.map((actor) => <span key={actor.name} className="rounded border px-2 py-1 text-xs flex items-center gap-1.5 bg-muted/40">{actor.name}
-                <button type="button" className="text-muted-foreground hover:text-foreground" aria-label={`Quitar ${actor.name} del reparto de esta serie`} onClick={() => setSupportingCast((current) => current.filter((item) => item.name !== actor.name))}>×</button>
-              </span>)}
-            </div>}
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2 border-t border-border">
+            {/* Slots Activos de Asignación Inmediata (Wan 2.1) */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-1">
               {/* Protagonista */}
-              <div className="space-y-2 p-3 rounded-lg border border-border bg-card/40">
+              <div className="space-y-2 p-3 rounded-lg border border-primary/30 bg-primary/5">
                 <div className="flex items-center justify-between">
                   <Label htmlFor="kineva-reference" className="text-xs font-semibold text-primary">Protagonista (Principal)</Label>
-                  <span className="text-[10px] text-muted-foreground">Requerido</span>
+                  <span className="text-[10px] text-primary/80 font-medium">Requerido</span>
                 </div>
                 <input id="kineva-reference" type="file" accept="image/png,image/jpeg,image/webp"
                   onChange={(event) => setReferenceImage(event.target.files?.[0] ?? null)}
@@ -1034,7 +1034,7 @@ const chapterOptions = [3, 5, 7, 10, 12, 15, 20];
               </div>
 
               {/* Segundo protagonista */}
-              <div className="space-y-2 p-3 rounded-lg border border-border bg-card/40">
+              <div className="space-y-2 p-3 rounded-lg border border-border bg-card/60">
                 <div className="flex items-center justify-between">
                   <Label htmlFor="kineva-second" className="text-xs font-semibold">Segundo Protagonista</Label>
                   <span className="text-[10px] text-muted-foreground">Opcional</span>
@@ -1047,7 +1047,7 @@ const chapterOptions = [3, 5, 7, 10, 12, 15, 20];
               </div>
 
               {/* Lugar / Entorno */}
-              <div className="space-y-2 p-3 rounded-lg border border-border bg-card/40">
+              <div className="space-y-2 p-3 rounded-lg border border-border bg-card/60">
                 <div className="flex items-center justify-between">
                   <Label htmlFor="kineva-location" className="text-xs font-semibold">Lugar o Entorno</Label>
                   <span className="text-[10px] text-muted-foreground">Opcional</span>
@@ -1066,12 +1066,23 @@ const chapterOptions = [3, 5, 7, 10, 12, 15, 20];
             {/* Custom Cast coral slots */}
             {customCast.length > 0 && (
               <div className="space-y-3 pt-3 border-t border-border">
-                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                  Reparto Adicional ({customCast.length}):
-                </span>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-primary uppercase tracking-wider flex items-center gap-1.5">
+                    <UserPlus className="w-3.5 h-3.5" /> Reparto Adicional y Roles Extra ({customCast.length}):
+                  </span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => addCustomCastMember("secondary")}
+                    className="text-xs h-7 text-muted-foreground hover:text-foreground"
+                  >
+                    + Otro rol
+                  </Button>
+                </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {customCast.map((member) => (
-                    <div key={member.id} className="p-3 rounded-lg border border-border bg-card/60 space-y-2 relative">
+                    <div id={`custom-cast-${member.id}`} key={member.id} className="p-3 rounded-lg border border-primary/40 bg-card/80 space-y-2 relative shadow-sm">
                       <div className="flex items-center justify-between gap-2">
                         <select
                           value={member.role}
@@ -1097,7 +1108,7 @@ const chapterOptions = [3, 5, 7, 10, 12, 15, 20];
                         placeholder="Nombre del personaje o elemento"
                         value={member.name}
                         onChange={(e) => updateCustomCastMember(member.id, { name: e.target.value })}
-                        className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-xs"
+                        className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-xs font-medium"
                       />
                       <input
                         type="file"
@@ -1110,6 +1121,26 @@ const chapterOptions = [3, 5, 7, 10, 12, 15, 20];
                 </div>
               </div>
             )}
+
+            {!!supportingCast.length && <div aria-label="Reparto de esta serie" className="flex flex-wrap gap-2 text-sm pt-2">
+              {supportingCast.map((actor) => <span key={actor.name} className="rounded border px-2 py-1 text-xs flex items-center gap-1.5 bg-muted/40">{actor.name}
+                <button type="button" className="text-muted-foreground hover:text-foreground" aria-label={`Quitar ${actor.name} del reparto de esta serie`} onClick={() => setSupportingCast((current) => current.filter((item) => item.name !== actor.name))}>×</button>
+              </span>)}
+            </div>}
+
+            {/* Galería de Rostros (20 slots) */}
+            <div className="pt-4 border-t border-border space-y-2">
+              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block">
+                Galería de Rostros Guardados (Asigna con un clic):
+              </span>
+              <CastGallery
+                userId={user.id}
+                onPrimary={(file, name) => { setReferenceImage(file); setPrimaryName(name); }}
+                onSecondary={(file, name) => { setSecondaryImage(file); setSecondaryName(name); }}
+                onSupporting={(file, name) => setSupportingCast((current) => current.some((actor) => actor.name === name) ? current : [...current, { file, name }])}
+                onAssignCustom={(file, name) => addCustomCastMember("secondary", name, file)}
+              />
+            </div>
           </Card>
 
         {/* Description */}

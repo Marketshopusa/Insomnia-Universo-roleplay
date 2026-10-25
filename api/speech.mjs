@@ -109,7 +109,7 @@ export default async function handler(req, res) {
     }
     const plainPiece = removePerformanceCues(cleaned).trim();
     if (plainPiece) {
-      resPiece = await synthesizeGemini(plainPiece, v, lang, { ...opts, performance: "neutral", expression: undefined });
+      resPiece = await synthesizeGemini(plainPiece, v, lang, { ...opts, performance: opts?.performance || performance, expression: undefined });
       if (resPiece.status === 200 && resPiece.pcm?.length) return resPiece;
     }
     if (opened) {
@@ -119,8 +119,24 @@ export default async function handler(req, res) {
   };
 
   try {
-    // Fast sentence-chunked streaming takes absolute priority to ensure audio starts playing in < 600ms
     const sentences = splitSentences(text);
+
+    // For passages up to 480 characters or single paragraphs, synthesize as one unified,
+    // unbroken track so the radionovela narration, breath, and dialogue flow without stuttering or stops.
+    if (text.length <= 480 || sentences.length <= 1) {
+      const expressive = await synthesizePieceWithRetry(text, req.body.voice, req.body.language, { performance, region, expression });
+      if (expressive.status !== 200) {
+        console.warn("Insomnia speech gemini-2.5-flash-tts", expressive.status, expressive.detail || "", "after_ms", Date.now() - startedAt);
+        const status = expressive.status === 429 ? 429 : expressive.status === 403 ? 403 : 502;
+        return res.status(status).json({
+          error: expressive.status === 429 ? "tts_quota_exhausted" : "tts_unavailable",
+          message: explainGeminiFailure(expressive.status, expressive.detail),
+        });
+      }
+      writePcm(res, expressive.pcm, provider, startedAt);
+      return;
+    }
+
     if (sentences.length > 1) {
       const results = new Array(sentences.length);
       let nextEmit = 0;

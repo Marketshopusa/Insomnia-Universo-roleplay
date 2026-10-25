@@ -190,8 +190,25 @@ async function enableAgentPlatform(token, fetchImpl) {
 }
 
 export function geminiSpeechDirection(language, performance, region, expression) {
+  const spanish = language !== "en";
+  const mood = {
+    neutral: spanish ? "Voz cinematográfica natural, expresiva, cálida y envolvente acorde a la escena." : "Natural, lively and expressive cinematic voice suited to the scene.",
+    warm: spanish ? "Tono cálido, seductor y afectuoso con una sonrisa viva, picardía y complicidad en la voz." : "Warm, affectionate and seductive tone with a living smile in the voice.",
+    surprised: spanish ? "Tono de sorpresa real, alerta e intensa en la interpretación." : "Real, intense surprise in the dialogue.",
+    amused: spanish ? "Risa viva, risitas juguetonas, picardía y encanto travieso." : "Lively, mischievous laughter.",
+    sad: spanish ? "Voz quebrada y desgarrada por el llanto, sollozos reales y tristeza profunda sentida." : "Voice trembling with real crying, genuine sobs and deep sorrow.",
+    pain: spanish ? "Voz y sonido con dolor físico real, quejido tenso y fuerza visceral." : "Voice and sound with real physical pain and visceral force.",
+    pleasure: spanish ? "Voz intensamente apasionada, sensual y jadeante. Debe respirar con agitación y placer real, entrecortada y con gemidos suaves y ardientes entre las palabras transmitiendo deseo visceral." : "Voice charged with intense pleasure, passionate moaning, ragged breathing and ardent desire.",
+    scream: spanish ? "Grito con fuerza, potencia vocal y energía desbordada." : "Loud scream with vocal power and overflowing energy.",
+    soft: spanish ? "Susurro íntimo, sensual y en voz baja, muy cerca del oído." : "Intimate, sensual whisper close to the ear.",
+    angry: spanish ? "Voz tensa, apasionada y cortante." : "Tense, sharp passionate voice.",
+    afraid: spanish ? "Voz asustada, entrecortada y temblorosa." : "Frightened, trembling voice.",
+    disgusted: spanish ? "Voz con desprecio y disgusto visceral." : "Visceral disgusted voice.",
+    tired: spanish ? "Voz suave, relajada e íntima." : "Soft relaxed voice.",
+  }[performance] || (spanish ? "Voz natural y expresiva de radionovela." : "Natural expressive voice.");
+
   if (expression?.segments?.length) {
-    const accent = language === "en" ? "Use the selected natural English voice. " : accentHint(language, region) + " ";
+    const accent = spanish ? accentHint(language, region) + " " : "Use the selected natural English voice. ";
     const hasSpeech = expression.segments.some((part) => part.kind !== "reaction");
     if (expression.reactions?.length === 1) {
       const event = expression.reactions[0];
@@ -201,39 +218,16 @@ export function geminiSpeechDirection(language, performance, region, expression)
       if (!hasSpeech) return accent + "Generate ONLY this short nonverbal vocal sound: " + event.direction +
         " The written vowels are a phonetic guide to this vocal reaction, not a sentence. Do not speak labels, directions, explanations or any invented dialogue. Stop after the sound.";
     }
-    const delivery = expression.segments.filter((part) => part.kind !== "reaction" && part.performance !== "neutral").at(-1)?.performance || "neutral";
-    const direction = {
-      neutral: "Natural conversational delivery, warm, engaged and alive with human emotion.",
-      warm: "A seductive, affectionate tone with a gentle smile in the voice.",
-      surprised: "Natural surprise, alert and emotionally present in the moment.",
-      amused: "Lightly amused, playful voice with mischievous charm.",
-      sad: "A tearful, trembling, emotionally vulnerable voice.",
-      pain: "A voice strained with physical effort or visceral sensation.",
-      pleasure: "A breathy, deeply passionate, intimate voice with ragged breathing, genuine soft moans and real desire.",
-      scream: "Forceful, high-energy raised voice full of emotional intensity.",
-      soft: "Speak in an intimate, close-to-the-ear breathy whisper.",
-      angry: "A tense, passionate, intensely sharp voice.",
-      afraid: "A frightened, breathless, trembling voice.",
-      disgusted: "A sharp voice expressing visceral disgust.",
-      tired: "A soft, sleepy, relaxed voice close to the ear.",
-    }[delivery] || "Natural conversational delivery, warm and alive with human emotion.";
-    return accent + direction + " Read only the supplied text, exactly once. Do not read these instructions, repeat phrases or invent words or sounds.";
+    const delivery = expression.segments.filter((part) => part.kind !== "reaction" && part.performance !== "neutral").at(-1)?.performance || expression.performance || "neutral";
+    const radionovelaDirection = spanish
+      ? `Eres la voz estelar de una radionovela cinematográfica hiperrealista. Narra tanto el relato y las acciones como los diálogos con pasión, cadencia fluida, respiración viva y presencia humana real. ${mood} Lee las palabras de forma continua y envolvente, sin pausas robóticas ni cortes mecánicos.`
+      : `You are the lead voice in a hyper-realistic cinematic audio drama. Deliver the narrative actions, scenes, and dialogues with passion, fluid cadence, and lifelike human presence. ${mood} Deliver the text smoothly without robotic pauses.`;
+    return accent + radionovelaDirection;
   }
-  const spanish = language !== "en";
-  const mood = {
-    neutral: spanish ? "Voz natural, expresiva y viva acorde con la escena." : "Natural, lively and expressive voice suited to the scene.",
-    warm: spanish ? "Tono cálido, seductor y afectuoso con una sonrisa viva en la voz." : "Warm, affectionate and seductive tone with a living smile in the voice.",
-    surprised: spanish ? "Tono de sorpresa real, alerta e intensa en el diálogo." : "Real, intense surprise in the dialogue.",
-    amused: spanish ? "Risa viva, pícara y divertida." : "Lively, mischievous laughter.",
-    sad: spanish ? "Voz quebrada y desgarrada por el llanto, sollozo real y tristeza sentida." : "Voice trembling with real crying, genuine sobs and deep sorrow.",
-    pain: spanish ? "Voz y sonido con dolor físico real, quejido tenso y fuerza visceral." : "Voice and sound with real physical pain and visceral force.",
-    pleasure: spanish ? "Voz intensamente apasionada, sensual y jadeante. Debe respirar con agitación y placer real, entrecortada y con gemidos suaves entre las palabras." : "Voice charged with intense pleasure, passionate moaning, ragged breathing and ardent desire.",
-    scream: spanish ? "Grito con fuerza, potencia vocal y energía desbordada." : "Loud scream with vocal power and overflowing energy.",
-    soft: spanish ? "Susurro íntimo, sensual o en voz baja, muy cerca del oído." : "Intimate, sensual whisper close to the ear.",
-  }[performance] || (spanish ? "Voz natural y expresiva." : "Natural, expressive voice.");
-  return (spanish ? accentHint(language, region) + " Di exclusivamente las palabras del diálogo con voz humana, viva, emotiva y natural acorde a la escena. " :
-    "Speak exclusively the dialogue with a natural, emotive, human voice suited to the scene. ") + mood +
-    (spanish ? " No leas acotaciones de acción entre asteriscos ni nombres de sonidos. Entrega solo la voz hablada viva." : " Do not read stage directions or sound labels. Deliver only the living spoken voice.");
+
+  return spanish
+    ? `${accentHint(language, region)} Eres la voz protagonista y narradora de una radionovela cinematográfica inmersiva y apasionada. Narra con total fluidez tanto el relato descriptivo como los diálogos con emoción humana real. ${mood} Mantén una narración continua y cadenciosa, sin frenazos mecánicos ni pausas artificiales. Lee el texto con pasión y naturalidad.`
+    : `You are the voice and narrator of an immersive, cinematic audio drama. Deliver both narrative story descriptions and dialogues with lifelike human emotion and unbroken flow. ${mood} Maintain a continuous, captivating cadence without robotic halts or unnatural pauses.`;
 }
 
 const BLOCK_NONE = 4;
@@ -470,8 +464,8 @@ export function splitSentences(text) {
     if (!t) continue;
     if (!current) {
       current = t;
-    } else if (current.split(/\s+/).length < 5) {
-      // Group very short sentences (e.g. "Sí." "Claro.") with the next one to avoid micro-requests
+    } else if (current.split(/\s+/).length < 22) {
+      // Group sentences into natural paragraph chunks (at least 22 words) to preserve dramatic flow and avoid staccato halts
       current += " " + t;
     } else {
       chunks.push(current);

@@ -57,11 +57,12 @@ async function portraitFrom(file: File): Promise<File> {
   } finally { bitmap.close(); }
 }
 
-export function CastGallery({ userId, onPrimary, onSecondary, onSupporting }: {
+export function CastGallery({ userId, onPrimary, onSecondary, onSupporting, onAssignCustom }: {
   userId: string;
   onPrimary: (file: File, name: string) => void;
   onSecondary: (file: File, name: string) => void;
   onSupporting: (file: File, name: string) => void;
+  onAssignCustom?: (file: File, name: string) => void;
 }) {
   const { toast } = useToast();
   const [members, setMembers] = useState<Member[]>([]);
@@ -144,7 +145,7 @@ export function CastGallery({ userId, onPrimary, onSecondary, onSupporting }: {
       toast({ title: "No se pudo guardar todo el elenco.", description: error instanceof Error ? error.message : undefined, variant: "destructive" });
     } finally { setBusy(false); }
   };
-  const applyMember = async (entry: Member, position: "primary" | "secondary" | "supporting") => {
+  const applyMember = async (entry: Member, position: "primary" | "secondary" | "supporting" | "custom") => {
     setBusy(true);
     try {
       const { data, error } = await supabase.storage.from(BUCKET).download(entry.path);
@@ -152,7 +153,8 @@ export function CastGallery({ userId, onPrimary, onSecondary, onSupporting }: {
       const file = new File([data], entry.path.split("/").at(-1) || "actor.jpg", { type: data.type });
       if (position === "primary") onPrimary(file, entry.name);
       else if (position === "secondary") onSecondary(file, entry.name);
-      else onSupporting(file, entry.name);
+      else if (position === "supporting") onSupporting(file, entry.name);
+      else if (position === "custom" && onAssignCustom) onAssignCustom(file, entry.name);
       toast({ title: entry.name + " seleccionado para esta serie." });
     } catch (error) {
       toast({ title: "No se pudo cargar esa foto.", description: error instanceof Error ? error.message : undefined, variant: "destructive" });
@@ -202,10 +204,15 @@ export function CastGallery({ userId, onPrimary, onSecondary, onSupporting }: {
         <div className="truncate font-medium">{entry.name}</div>
         <div className="text-xs text-muted-foreground">{entry.role === "m" ? "Mujer" : entry.role === "h" ? "Hombre" : "Reparto"}</div>
         <div className="mt-2 flex flex-wrap gap-1">
-          <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void applyMember(entry, "primary")}>Principal</Button>
-          <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void applyMember(entry, "secondary")}>Segundo</Button>
-          <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void applyMember(entry, "supporting")}>Reparto</Button>
-          <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={() => void remove(entry)}>Quitar</Button>
+          <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void applyMember(entry, "primary")} className="text-[11px] h-7 px-2">Principal</Button>
+          <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void applyMember(entry, "secondary")} className="text-[11px] h-7 px-2">Segundo</Button>
+          <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void applyMember(entry, "supporting")} className="text-[11px] h-7 px-2">Reparto</Button>
+          {onAssignCustom && (
+            <Button type="button" size="sm" variant="secondary" disabled={busy} onClick={() => void applyMember(entry, "custom")} className="text-[11px] h-7 px-2 font-medium">
+              + Rol Extra
+            </Button>
+          )}
+          <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={() => void remove(entry)} className="text-[11px] h-7 px-2 text-muted-foreground hover:text-destructive">Quitar</Button>
         </div>
       </div>)}
     </div>

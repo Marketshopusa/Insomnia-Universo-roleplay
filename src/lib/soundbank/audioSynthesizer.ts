@@ -71,18 +71,17 @@ export function generateSoundPcm(soundId: SoundId, sampleRate = 24000): Float32A
     }
 
     case "slap": {
-      // Bofetada aguda en el rostro: transitorio cortante + resonancia facial
-      const duration = 0.26;
+      // Impacto sordo orgánico de piel: subgrave 68Hz + chasquido amortiguado sin chirridos
+      const duration = 0.22;
       const length = Math.floor(sampleRate * duration);
       buffer = new Float32Array(length);
       let noiseFilter = 0;
       for (let i = 0; i < length; i++) {
         const t = i / sampleRate;
-        const transient = Math.sin(2 * Math.PI * (1400 * Math.exp(-t * 38) + 450) * t) * Math.exp(-t * 45) * 0.85;
+        const sub = Math.sin(2 * Math.PI * 68 * t) * Math.exp(-t * 28) * 0.8;
         const raw = (Math.random() * 2 - 1) * Math.exp(-t * 40);
-        noiseFilter = noiseFilter * 0.62 + raw * 0.38;
-        const low = Math.sin(2 * Math.PI * 125 * t) * Math.exp(-t * 22) * 0.55;
-        buffer[i] = Math.tanh((transient + noiseFilter * 0.75 + low) * 1.25) * 0.9;
+        noiseFilter = noiseFilter * 0.8 + raw * 0.2;
+        buffer[i] = Math.tanh((sub + noiseFilter * 0.35) * 1.2) * 0.85;
       }
       break;
     }
@@ -120,17 +119,16 @@ export function generateSoundPcm(soundId: SoundId, sampleRate = 24000): Float32A
     }
 
     case "zipper": {
-      // Cremallera metálica subiendo o bajando
+      // Deslizamiento textil sordo y suave sin frecuencias agudas estridentes
       const duration = 0.35;
       const length = Math.floor(sampleRate * duration);
       buffer = new Float32Array(length);
+      let lp = 0;
       for (let i = 0; i < length; i++) {
         const t = i / sampleRate;
-        const toothRate = 65;
-        const toothPhase = (t * toothRate) % 1;
-        const click = toothPhase < 0.25 ? Math.sin(2 * Math.PI * 3200 * t) * 0.65 : 0;
-        const metal = Math.sin(2 * Math.PI * 4400 * t) * (Math.random() * 0.25);
-        buffer[i] = Math.max(-1, Math.min(1, click + metal));
+        const rawNoise = (Math.random() * 2 - 1) * Math.sin(Math.PI * (t / duration));
+        lp = lp * 0.85 + rawNoise * 0.15;
+        buffer[i] = lp * 0.45;
       }
       break;
     }
@@ -479,15 +477,17 @@ export function generateSoundPcm(soundId: SoundId, sampleRate = 24000): Float32A
     }
 
     case "kiss_wet": {
-      // Beso húmedo y chasquido de labios
-      const duration = 0.25;
+      // Chasquido suave y cálido de labios sin barridos estridentes
+      const duration = 0.22;
       const length = Math.floor(sampleRate * duration);
       buffer = new Float32Array(length);
+      let filteredNoise = 0;
       for (let i = 0; i < length; i++) {
         const t = i / sampleRate;
-        const pop = Math.sin(2 * Math.PI * (1650 * Math.exp(-t * 70) + 400) * t) * Math.exp(-t * 55) * 0.75;
-        const wetFriction = (Math.random() * 2 - 1) * Math.exp(-t * 45) * 0.3;
-        buffer[i] = Math.max(-1, Math.min(1, pop + wetFriction));
+        const pop = Math.sin(2 * Math.PI * 340 * t) * Math.exp(-t * 35) * 0.65;
+        const raw = (Math.random() * 2 - 1) * Math.exp(-t * 40);
+        filteredNoise = filteredNoise * 0.82 + raw * 0.18;
+        buffer[i] = Math.tanh((pop + filteredNoise * 0.3) * 1.1) * 0.75;
       }
       break;
     }

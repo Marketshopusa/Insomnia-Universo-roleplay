@@ -152,7 +152,10 @@ export function prepareExpressiveSpeech(input, { roleplay = false } = {}) {
         const prefixText = sentence.slice(cursor, match.index);
         const leavesDanglingGrammar = /\b(?:un|una|el|la|los|las|su|sus|mi|mis|tu|tus|de|del|al|entre|con|por|en|sin)\s*$/iu.test(prefixText);
         if (leavesDanglingGrammar || (marked && sentence.length > 50)) {
-          addText(sentence.slice(cursor, end + tail.length), "narration");
+          // If it's a long descriptive sentence or leaves dangling grammar, preserve the whole narration without chopping it
+          addText(sentence.slice(cursor), "narration");
+          cursor = sentence.length;
+          break;
         } else {
           addText(prefixText, "narration");
           addReaction(classify(id, context), context);
@@ -193,7 +196,6 @@ export function prepareExpressiveSpeech(input, { roleplay = false } = {}) {
     .map((part) => {
       if (part.kind === "reaction") return part.cue;
       if (part.kind === "narration") {
-        // Radionovela narrative storytelling: narration is preserved and spoken
         return !/[.!?…]$/.test(part.text) ? part.text + "." : part.text;
       }
       return part.text;

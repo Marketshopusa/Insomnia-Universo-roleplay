@@ -113,7 +113,7 @@ export const StoryConfigDialog = ({ story, open, onOpenChange, onSaved }: StoryC
         const resolvedContext = (dbStory.story_context || "").trim() || (dbStory.description || "").trim();
         setStoryContext(resolvedContext);
         setCharacter(dbStory.character_role ?? "");
-        setCharacterAge(dbStory.character_age ? Math.max(18, Number(dbStory.character_age)) : 21);
+        setCharacterAge((dbStory as any).character_age ? Math.max(18, Number((dbStory as any).character_age)) : 21);
         setPlayer(dbStory.player_role ?? "");
         setType((dbStory.story_type as any) ?? "roleplay");
         setExplicit(!!dbStory.has_explicit_images);

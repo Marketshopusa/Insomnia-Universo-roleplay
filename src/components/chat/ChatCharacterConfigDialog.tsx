@@ -54,16 +54,26 @@ export interface CharacterItem {
   avatar: string;
   gallery: string[];
   roleTitle: string;
+  roleTitleEs?: string;
+  roleTitleEn?: string;
   bio: string;
+  bioEs?: string;
+  bioEn?: string;
   shortBio: string;
+  shortBioEs?: string;
+  shortBioEn?: string;
   likesCount: string;
   imageCount: number;
   audioCount: number;
   affinityLevel: number;
   affinityTitle: string;
+  affinityTitleEs?: string;
+  affinityTitleEn?: string;
   affinityXp: number;
   category: "featured" | "popular" | "romance" | "spicy";
   starterMessage: string;
+  starterMessageEs?: string;
+  starterMessageEn?: string;
   voiceName: string;
 }
 
