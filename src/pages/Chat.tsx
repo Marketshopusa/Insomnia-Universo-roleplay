@@ -834,11 +834,12 @@ export default function ChatPage() {
       const existingHistory = updatedHistory;
       const mother = getMotherCardConfig();
       const rawAiSettings = getStoryAiSettings(activeChar.id);
-      const isCharNsfw = Boolean(activeChar.isNsfw || rawAiSettings.adultMode || rawAiSettings.modelId === "magnum-v4-local");
+      const isCharNsfw = Boolean(activeChar.isNsfw || rawAiSettings.adultMode);
+      const selectedModelId = rawAiSettings.modelId || activeChar.modelId || mother.aiSettings.modelId || "insomnia-flash";
       const charAiSettings = {
         ...mother.aiSettings,
         ...rawAiSettings,
-        modelId: isCharNsfw ? "magnum-v4-local" : (activeChar.modelId || rawAiSettings.modelId || mother.aiSettings.modelId),
+        modelId: selectedModelId,
         adultMode: Boolean(adultEnabled || isCharNsfw),
         dialogueRatio: mother.dialogueRatio || 0.80,
         narrationRatio: mother.narrationRatio || 0.20,

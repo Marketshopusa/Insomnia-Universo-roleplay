@@ -149,11 +149,11 @@ En este momento de la escena, ${activeChar.playerFirstName} está interactuando 
         messages,
         max_tokens: 450,
         temperature: 0.82,
-        repeat_penalty: 1.15,
-        presence_penalty: 0.15,
-        frequency_penalty: 0.20,
+        repeat_penalty: 1.12,
+        presence_penalty: 0,
+        frequency_penalty: 0,
       }),
-      signal: AbortSignal.timeout(8500),
+      signal: AbortSignal.timeout(3000),
     });
 
     if (!res.ok) return null;
@@ -239,14 +239,15 @@ export async function invokeFunctionWithRetry<T>(name: string, body: unknown): P
   if (ownAi.has(name)) {
     const needsContent = name === "story-chat" || name === "generate-narrative";
     const isMagnumSelected = (body as any)?.settings?.modelId === "magnum-v4-local";
-    const isAdultReq = Boolean((body as any)?.adultMode || (body as any)?.settings?.adultMode || (body as any)?.isNsfw);
-    const bodyStr = JSON.stringify(body || "").toLowerCase();
-    const isKinshipReq = /\b(?:t[ií]o|sobrin[ao]|padrino|ahijad[ao]|herman[ao]|madre|padre|hij[ao]|prim[ao])\b/i.test(bodyStr);
 
-    // Si el usuario tiene Magnum v4 seleccionado o es escena adulta/parentesco y Magnum local está activo
-    if (name === "story-chat" && (isMagnumSelected || isAdultReq || isKinshipReq)) {
-      const local = await callLocalLlama<T>(body);
-      if (local?.data && !isClientRefusal((local.data as any)?.content)) return local;
+    // Si el usuario configuró explícitamente Magnum v4 local, intentar primero servidor local
+    if (name === "story-chat" && isMagnumSelected) {
+      try {
+        const local = await callLocalLlama<T>(body);
+        if (local?.data && !isClientRefusal((local.data as any)?.content)) return local;
+      } catch {
+        // Fallback a servidor
+      }
     }
 
     let cloudResult = await callOwnAi<T>(name, body);
@@ -256,15 +257,9 @@ export async function invokeFunctionWithRetry<T>(name: string, body: unknown): P
     const okFirst = !cloudResult.error && !isRefused && (needsContent ? Boolean(firstContent) : Boolean(cloudResult.data));
     if (okFirst) return cloudResult;
 
-    // Si la nube rechazó por censura o falló, recurrir inmediatamente a Magnum v4 local (puerto 8788)
-    if (name === "story-chat") {
-      const local = await callLocalLlama<T>(body);
-      if (local?.data && !isClientRefusal((local.data as any)?.content)) return local;
-    }
-
     const firstStatus = cloudResult.error?.context?.status ?? 503;
     if (firstStatus !== 404 && firstStatus !== 401 && firstStatus !== 402 && !isRefused) {
-      await wait(450);
+      await wait(300);
       const retryCloud = await callOwnAi<T>(name, body);
       const retryContent = (retryCloud.data as any)?.content;
       const retryRefused = name === "story-chat" && isClientRefusal(retryContent);
@@ -273,10 +268,16 @@ export async function invokeFunctionWithRetry<T>(name: string, body: unknown): P
       cloudResult = retryCloud;
     }
 
-    if (name === "story-chat") {
-      const local = await callLocalLlama<T>(body);
-      if (local?.data && !isClientRefusal((local.data as any)?.content)) return local;
+    // Como último recurso si falló y no se había intentado Magnum local
+    if (name === "story-chat" && !isMagnumSelected) {
+      try {
+        const local = await callLocalLlama<T>(body);
+        if (local?.data && !isClientRefusal((local.data as any)?.content)) return local;
+      } catch {
+        // N/A
+      }
     }
+
     return cloudResult;
   }
   let result = await supabase.functions.invoke<T>(name, { body });

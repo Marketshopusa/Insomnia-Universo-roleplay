@@ -286,7 +286,7 @@ export const ChatCharacterConfigDialog: React.FC<ChatCharacterConfigDialogProps>
   const [gallery, setGallery] = useState<string[]>([]);
   const [newPhotoUrl, setNewPhotoUrl] = useState("");
   const [isNsfw, setIsNsfw] = useState(false);
-  const [modelId, setModelId] = useState("magnum-v4-local");
+  const [modelId, setModelId] = useState("insomnia-flash");
 
   // Media uploading state & file input refs
   const [isUploading, setIsUploading] = useState(false);
@@ -330,9 +330,9 @@ export const ChatCharacterConfigDialog: React.FC<ChatCharacterConfigDialogProps>
       setGallery(character.gallery && character.gallery.length > 0 ? [...character.gallery] : [character.avatar || ""]);
       
       const currentAi = getStoryAiSettings(character.id);
-      const isCharNsfw = Boolean(character.isNsfw || currentAi.adultMode || currentAi.modelId === "magnum-v4-local");
+      const isCharNsfw = Boolean(character.isNsfw || currentAi.adultMode);
       setIsNsfw(isCharNsfw);
-      setModelId(character.modelId || currentAi.modelId || (isCharNsfw ? "magnum-v4-local" : "insomnia-flash"));
+      setModelId(character.modelId || currentAi.modelId || "insomnia-flash");
     } else {
       // New Character defaults
       setName("");
@@ -356,7 +356,7 @@ export const ChatCharacterConfigDialog: React.FC<ChatCharacterConfigDialogProps>
         "https://media.talkiemate.com/app/uploads/growtype-ai-uploads/models/6e8f818f9b187d2ebdf4e1d77521e051/3545853885239688145_69992903230.jpg"
       ]);
       setIsNsfw(true); // Default to +18 NSFW enabled for custom creations
-      setModelId("magnum-v4-local");
+      setModelId("insomnia-flash");
     }
     setActiveTab(initialTab || "info");
   }, [open, character, isNew, isEs, initialTab]);
@@ -578,7 +578,7 @@ export const ChatCharacterConfigDialog: React.FC<ChatCharacterConfigDialogProps>
     const charId = character?.id && !isNew ? character.id : `char-${Date.now()}`;
     const mainAvatar = avatar.trim() || gallery[0] || "https://media.talkiemate.com/app/uploads/growtype-ai-uploads/models/6e8f818f9b187d2ebdf4e1d77521e051/3545853885239688145_69992903230.jpg";
 
-    const effectiveModelId = isNsfw ? "magnum-v4-local" : (modelId || "insomnia-flash");
+    const effectiveModelId = modelId || "insomnia-flash";
 
     const updated: CharacterItem = {
       id: charId,
@@ -783,8 +783,8 @@ export const ChatCharacterConfigDialog: React.FC<ChatCharacterConfigDialogProps>
                       </div>
                       <p className="text-[11px] text-zinc-400 mt-0.5">
                         {isEs
-                          ? "Activa automáticamente el motor Magnum v4 (rol adulto inmersivo, sin censura comercial)."
-                          : "Automatically activates the Magnum v4 engine (immersive adult roleplay, zero commercial censorship)."}
+                          ? "Activa el modo adulto sin censura (+18) manteniendo máxima velocidad, coherencia y memoria."
+                          : "Enables uncensored adult roleplay (+18) with maximum speed, coherence and memory."}
                       </p>
                     </div>
                   </div>
@@ -793,9 +793,6 @@ export const ChatCharacterConfigDialog: React.FC<ChatCharacterConfigDialogProps>
                       checked={isNsfw}
                       onCheckedChange={(checked) => {
                         setIsNsfw(checked);
-                        if (checked) {
-                          setModelId("magnum-v4-local");
-                        }
                       }}
                       className="data-[state=checked]:bg-red-500"
                     />

@@ -180,7 +180,7 @@ export async function generateLocalLlama(messages, options = {}) {
         presence_penalty: 0,
         frequency_penalty: 0,
       }),
-      signal: AbortSignal.timeout(options.timeoutMs || 25000),
+      signal: AbortSignal.timeout(options.timeoutMs || 3500),
     });
     if (!response.ok) return null;
     const data = await response.json();
@@ -201,17 +201,31 @@ export async function generateLocalLlama(messages, options = {}) {
 
 export async function generateOpenRouter(messages, options = {}) {
   const defaultKey = Buffer.from("c2stb3ItdjEtNzNlMTQyNjhjZWFlZWNkY2E5ODQ3ZWExZTZhZTE2NGY0MWVlMWQzZTg5MGU0YTk0NjBmOTBhYTRmNjM1MmUyMg==", "base64").toString("utf-8");
-  const apiKey = (typeof options.apiKey === "string" && options.apiKey.trim()) || process.env.OPENROUTER_API_KEY || defaultKey;
+  const isCustomKey = Boolean(typeof options.apiKey === "string" && options.apiKey.trim());
+  const apiKey = (isCustomKey ? options.apiKey.trim() : null) || process.env.OPENROUTER_API_KEY || defaultKey;
   if (!apiKey) return null;
-  const models = [...(options.models || [
+
+  // Priorizar modelos gratuitos de ultra-baja latencia (<1.8s) que no censuran rol adulto
+  const defaultModels = isCustomKey ? [
     "anthracite-org/magnum-v4-72b",
     "sao10k/l3.3-euryale-70b",
-  ])];
-  if (!models.includes("nvidia/nemotron-3-ultra-550b-a55b:free")) {
-    models.push("nvidia/nemotron-3-ultra-550b-a55b:free");
+    "nvidia/nemotron-3.5-lightning:free",
+    "nvidia/nemotron-3.5-super-vl:free",
+  ] : [
+    "nvidia/nemotron-3.5-lightning:free",
+    "nvidia/nemotron-3.5-super-vl:free",
+    "nvidia/nemotron-3-ultra-550b-a55b:free",
+  ];
+  const models = [...(options.models || defaultModels)];
+  if (!models.includes("nvidia/nemotron-3.5-lightning:free")) {
+    models.push("nvidia/nemotron-3.5-lightning:free");
   }
+  if (!models.includes("nvidia/nemotron-3.5-super-vl:free")) {
+    models.push("nvidia/nemotron-3.5-super-vl:free");
+  }
+
   const fetchImpl = options.fetchImpl || fetch;
-  let paidModelsBlocked = false;
+  let paidModelsBlocked = !isCustomKey;
   for (const model of models) {
     if (paidModelsBlocked && !model.endsWith(":free")) continue;
     try {
@@ -229,25 +243,26 @@ export async function generateOpenRouter(messages, options = {}) {
           max_tokens: options.maxTokens || 450,
           temperature: options.temperature ?? 0.8,
           // CRITICAL: NEVER set presence_penalty or frequency_penalty > 0 on LLaMA 3.x / Magnum in Spanish!
-          // Frequency penalty penalizes common Spanish articles/connectors ("de", "la", "el", "que"),
-          // which directly causes the model to degrade into Chinese tokens and English sentences.
           presence_penalty: 0,
           frequency_penalty: 0,
+          reasoning: { max_tokens: 0 },
         }),
-        signal: AbortSignal.timeout(options.timeoutMs || 25000),
+        signal: AbortSignal.timeout(options.timeoutMs || 6000),
       });
       if (!response.ok) {
         console.warn("OpenRouter model error", model, response.status);
         if (response.status === 402) {
           console.warn("OpenRouter paid model skipped due to 402 (sin saldo prepagado), filtrando al instante modelos gratuitos:", model);
-          // Si no hay saldo en la cuenta de OpenRouter, omitir de golpe cualquier otro modelo de pago para no sumar latencia
           paidModelsBlocked = true;
           continue;
         }
         continue;
       }
       const data = await response.json();
-      const content = data?.choices?.[0]?.message?.content?.trim();
+      let content = data?.choices?.[0]?.message?.content?.trim();
+      if (!content && typeof data?.choices?.[0]?.message?.reasoning === "string") {
+        content = data.choices[0].message.reasoning.trim();
+      }
       if (content && content.length > 5 && !isRefusal(content)) {
         if (options.isRepeated && options.isRepeated(content)) {
           console.warn("OpenRouter candidate rejected because it repeated previous dialogue, trying next model:", model);
@@ -1185,12 +1200,12 @@ export default async function handler(req, res) {
 
       let content = null;
       if (modelId === "magnum-v4-local") {
-        // Direct local Magnum execution
+        // Direct local Magnum execution (quick check if local PC llama-server is online)
         try {
           content = await generateLocalLlama(openRouterMessages, {
             maxTokens: Math.max(300, targetTokens),
             temperature: 0.85,
-            timeoutMs: 25000,
+            timeoutMs: 3500,
             validate: (reply) => !isOffRole(reply),
             isRepeated: isRepeatedReply,
           });
@@ -1200,10 +1215,10 @@ export default async function handler(req, res) {
         if (!content) {
           try {
             content = await generateOpenRouter(openRouterMessages, {
-              models: ["anthracite-org/magnum-v4-72b", "sao10k/l3.3-euryale-70b"],
+              models: ["nvidia/nemotron-3.5-lightning:free", "nvidia/nemotron-3.5-super-vl:free", "anthracite-org/magnum-v4-72b"],
               maxTokens: targetTokens,
               temperature: 0.82,
-              timeoutMs: 18000,
+              timeoutMs: 6000,
               apiKey: openRouterApiKey || undefined,
               validate: (reply) => !isOffRole(reply),
               isRepeated: isRepeatedReply,
@@ -1215,10 +1230,10 @@ export default async function handler(req, res) {
         if (!content) {
           try {
             content = await generateNvidia(openRouterMessages, {
-              models: nvidiaModels,
+              models: ["minimaxai/minimax-m3.1-flash"],
               maxTokens: targetTokens,
               temperature: 0.82,
-              timeoutMs: 12000,
+              timeoutMs: 5000,
               apiKey: nvidiaApiKey || undefined,
               validate: (reply) => !isOffRole(reply),
               isRepeated: isRepeatedReply,
@@ -1305,7 +1320,7 @@ export default async function handler(req, res) {
             models: openRouterModels,
             maxTokens: targetTokens,
             temperature: 0.78,
-            timeoutMs: 12000,
+            timeoutMs: 6000,
             apiKey: openRouterApiKey || undefined,
             validate: (reply) => !isOffRole(reply),
             isRepeated: isRepeatedReply,
@@ -1318,7 +1333,7 @@ export default async function handler(req, res) {
             content = await generateLocalLlama(openRouterMessages, {
               maxTokens: targetTokens,
               temperature: 0.85,
-              timeoutMs: 8000,
+              timeoutMs: 3500,
               validate: (reply) => !isOffRole(reply),
               isRepeated: isRepeatedReply,
             });
@@ -1333,7 +1348,7 @@ export default async function handler(req, res) {
             models: openRouterModels,
             maxTokens: targetTokens,
             temperature: 0.78,
-            timeoutMs: 8000,
+            timeoutMs: 6000,
             apiKey: openRouterApiKey || undefined,
             validate: (reply) => !isOffRole(reply),
             isRepeated: isRepeatedReply,
@@ -1346,7 +1361,7 @@ export default async function handler(req, res) {
             content = await generateLocalLlama(openRouterMessages, {
               maxTokens: targetTokens,
               temperature: 0.85,
-              timeoutMs: 8000,
+              timeoutMs: 3500,
               validate: (reply) => !isOffRole(reply),
               isRepeated: isRepeatedReply,
             });
@@ -1355,158 +1370,86 @@ export default async function handler(req, res) {
           }
         }
       } else {
-        // Insomnia Flash:
-        // Si la escena es adulta (+18 o escena explícita), priorizar Magnum local y OpenRouter sin censura para evitar evasivas de seguridad de Gemini.
-        if (isAdult) {
-          // 1. Magnum local v4 (completamente sin censura, instantáneo, cero lag)
+        // Insomnia Flash (Motor principal de máxima velocidad e inteligencia narrativa)
+        // 1. Gemini (Ultra-rápido ~1.2s, excelente coherencia de rol y obediencia a órdenes del usuario)
+        const canTryGemini = Boolean(geminiApiKey || (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== "[SENSITIVE]"));
+        if (canTryGemini) {
           try {
-            content = await generateLocalLlama(openRouterMessages, {
+            const geminiContents = contents.map((c) => ({ role: c.role, parts: [...(c.parts || [])] }));
+            if (geminiContents[0]?.role === "model") {
+              geminiContents.unshift({ role: "user", parts: [{ text: "Continúa la escena." }] });
+            }
+            content = await generate(
+              "gemini-2.5-flash",
+              [],
+              { maxOutputTokens: Math.max(220, targetTokens), temperature: 0.8 },
+              {
+                contents: geminiContents,
+                systemInstruction,
+                adultMode: Boolean(isAdult),
+                apiKey: geminiApiKey || undefined,
+                timeoutMs: 6000,
+                fallbackModels: ["gemini-2.0-flash", "gemini-2.5-flash-lite"],
+                fastReply: true,
+                validate: (reply) => !isOffRole(reply)
+              },
+            );
+          } catch (err) {
+            console.warn("Gemini Flash primary failed:", err.message);
+          }
+        }
+
+        // 2. OpenRouter sin censura (~1.5s, modelos gratuitos ultra-rápidos para rol adulto)
+        if (!content) {
+          try {
+            content = await generateOpenRouter(openRouterMessages, {
+              models: [
+                "nvidia/nemotron-3.5-lightning:free",
+                "nvidia/nemotron-3.5-super-vl:free",
+                "anthracite-org/magnum-v4-72b",
+                "sao10k/l3.3-euryale-70b"
+              ],
               maxTokens: targetTokens,
-              temperature: 0.85,
-              timeoutMs: 15000,
+              temperature: 0.82,
+              timeoutMs: 6000,
+              apiKey: openRouterApiKey || undefined,
               validate: (reply) => !isOffRole(reply),
               isRepeated: isRepeatedReply,
             });
           } catch (err) {
-            console.warn("Local llama adult primary failed:", err.message);
+            console.warn("OpenRouter fallback failed:", err.message);
           }
+        }
 
-          // 2. OpenRouter uncensored (Magnum v4 72B / Euryale 70B / Llama 3.3 70B)
-          if (!content) {
-            try {
-              content = await generateOpenRouter(openRouterMessages, {
-                models: ["anthracite-org/magnum-v4-72b", "sao10k/l3.3-euryale-70b", "meta-llama/llama-3.3-70b-instruct"],
-                maxTokens: targetTokens,
-                temperature: 0.82,
-                timeoutMs: 18000,
-                apiKey: openRouterApiKey || undefined,
-                validate: (reply) => !isOffRole(reply),
-                isRepeated: isRepeatedReply,
-              });
-            } catch (err) {
-              console.warn("OpenRouter adult fallback failed:", err.message);
-            }
+        // 3. Magnum local v4 (si está activo el servidor llama-server en PC)
+        if (!content) {
+          try {
+            content = await generateLocalLlama(openRouterMessages, {
+              maxTokens: targetTokens,
+              temperature: 0.85,
+              timeoutMs: 3000,
+              validate: (reply) => !isOffRole(reply),
+              isRepeated: isRepeatedReply,
+            });
+          } catch (err) {
+            console.warn("Local llama fallback failed:", err.message);
           }
+        }
 
-          // 3. Nvidia NIM
-          if (!content) {
-            try {
-              content = await generateNvidia(openRouterMessages, {
-                models: nvidiaModels,
-                maxTokens: targetTokens,
-                temperature: 0.82,
-                timeoutMs: 10000,
-                apiKey: nvidiaApiKey || undefined,
-                validate: (reply) => !isOffRole(reply),
-                isRepeated: isRepeatedReply,
-              });
-            } catch (err) {
-              console.warn("Nvidia adult fallback failed:", err.message);
-            }
-          }
-
-          // 4. Gemini como último recurso si no hay modelos adultos disponibles (Omitir estrictamente si es relación de parentesco para evitar rechazos preenlatados de Google)
-          if (!content) {
-            const canTryGemini = !isKinship && Boolean(geminiApiKey || (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== "[SENSITIVE]"));
-            if (canTryGemini) {
-              try {
-                const geminiContents = contents.map((c) => ({ role: c.role, parts: [...(c.parts || [])] }));
-                if (geminiContents[0]?.role === "model") {
-                  geminiContents.unshift({ role: "user", parts: [{ text: "Continúa la escena." }] });
-                }
-                content = await generate(
-                  "gemini-2.5-flash",
-                  [],
-                  { maxOutputTokens: Math.max(220, targetTokens), temperature: 0.8 },
-                  {
-                    contents: geminiContents,
-                    systemInstruction,
-                    adultMode: true,
-                    apiKey: geminiApiKey || undefined,
-                    timeoutMs: 15000,
-                    fallbackModels: ["gemini-2.0-flash", "gemini-2.5-flash-lite"],
-                    fastReply: true,
-                    validate: (reply) => !isOffRole(reply)
-                  },
-                );
-              } catch (err) {
-                console.warn("Gemini adult fallback failed:", err.message);
-              }
-            }
-          }
-        } else {
-          // Escena casual / no adulta: Gemini 2.5 Flash prioritario (omitir si hay parentesco para evitar rechazos de Google)
-          const canTryGemini = !isKinship && Boolean(geminiApiKey || (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== "[SENSITIVE]"));
-          if (canTryGemini) {
-            try {
-              const geminiContents = contents.map((c) => ({ role: c.role, parts: [...(c.parts || [])] }));
-              if (geminiContents[0]?.role === "model") {
-                geminiContents.unshift({ role: "user", parts: [{ text: "Continúa la escena." }] });
-              }
-              content = await generate(
-                "gemini-2.5-flash",
-                [],
-                { maxOutputTokens: Math.max(220, targetTokens), temperature: 0.8 },
-                {
-                  contents: geminiContents,
-                  systemInstruction,
-                  adultMode: false,
-                  apiKey: geminiApiKey || undefined,
-                  timeoutMs: 9000,
-                  fallbackModels: ["gemini-2.0-flash", "gemini-2.5-flash-lite"],
-                  fastReply: true,
-                  validate: (reply) => !isOffRole(reply)
-                },
-              );
-            } catch (err) {
-              console.warn("Gemini fast primary failed:", err.message);
-            }
-          }
-
-          if (!content) {
-            try {
-              content = await generateLocalLlama(openRouterMessages, {
-                maxTokens: targetTokens,
-                temperature: 0.85,
-                timeoutMs: 7000,
-                validate: (reply) => !isOffRole(reply),
-                isRepeated: isRepeatedReply,
-              });
-            } catch (err) {
-              console.warn("Local llama fast primary fallback failed:", err.message);
-            }
-          }
-
-          if (!content) {
-            try {
-              content = await generateNvidia(openRouterMessages, {
-                models: nvidiaModels,
-                maxTokens: targetTokens,
-                temperature: 0.82,
-                timeoutMs: 4500,
-                apiKey: nvidiaApiKey || undefined,
-                validate: (reply) => !isOffRole(reply),
-                isRepeated: isRepeatedReply,
-              });
-            } catch (err) {
-              console.warn("Nvidia primary fallback failed:", err.message);
-            }
-          }
-
-          if (!content) {
-            try {
-              content = await generateOpenRouter(openRouterMessages, {
-                models: ["anthracite-org/magnum-v4-72b", "sao10k/l3.3-euryale-70b"],
-                maxTokens: targetTokens,
-                temperature: 0.8,
-                timeoutMs: 5000,
-                apiKey: openRouterApiKey || undefined,
-                validate: (reply) => !isOffRole(reply),
-                isRepeated: isRepeatedReply,
-              });
-            } catch (err) {
-              console.warn("OpenRouter tertiary fallback failed:", err.message);
-            }
+        // 4. Nvidia NIM (Minimax 3.1 Flash)
+        if (!content) {
+          try {
+            content = await generateNvidia(openRouterMessages, {
+              models: ["minimaxai/minimax-m3.1-flash"],
+              maxTokens: targetTokens,
+              temperature: 0.82,
+              timeoutMs: 5000,
+              apiKey: nvidiaApiKey || undefined,
+              validate: (reply) => !isOffRole(reply),
+              isRepeated: isRepeatedReply,
+            });
+          } catch (err) {
+            console.warn("Nvidia fallback failed:", err.message);
           }
         }
       }
