@@ -713,7 +713,14 @@ const chapterOptions = [3, 5, 7, 10, 12, 15, 20];
       episodeIds = savedSeries.episodeIds;
       setSeriesEpisodeIds(savedSeries.episodeIds);
       setSavedSeriesId(savedSeries.seriesId);
-      toast({ title: "Novela guardada en Producción", description: "Se publicará en Shorts solo cuando apruebes los videos terminados." });
+      setProductionRefresh((v) => v + 1);
+      toast({
+        title: `Novela "${savedSeries.title}" guardada con éxito`,
+        description: "El guion y los capítulos están listos en la sección Producción de esta pantalla.",
+      });
+      setTimeout(() => {
+        document.getElementById("studio-production")?.scrollIntoView({ behavior: "smooth" });
+      }, 300);
     } catch (e) {
       toast({
         title: "La novela no se generó",
