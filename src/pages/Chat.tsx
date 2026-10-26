@@ -546,6 +546,54 @@ export default function ChatPage() {
       return [updated, ...prev];
     });
 
+    const newGreeting = isEs
+      ? (updated.starterMessageEs || updated.starterMessage)
+      : (updated.starterMessageEn || updated.starterMessage);
+
+    // Sincronizar inmediatamente el historial para que el saludo inicial muestre el cambio sin demora
+    setChatHistory((prev) => {
+      const existing = prev[updated.id];
+      // Si no hay historial o el historial solo tiene el saludo inicial
+      if (!existing || existing.length === 0 || (existing.length === 1 && existing[0].role === "assistant")) {
+        const next = {
+          ...prev,
+          [updated.id]: [
+            {
+              id: `starter-${updated.id}`,
+              role: "assistant" as const,
+              content: newGreeting,
+              timestamp: isEs ? "Inicio" : "Start"
+            }
+          ]
+        };
+        try {
+          localStorage.setItem("insomnia_user_chat_history_v1", JSON.stringify(next));
+        } catch {}
+        return next;
+      }
+
+      // Si hay mensajes posteriores, actualizar el primer mensaje de bienvenida
+      if (existing.length > 0 && existing[0].role === "assistant" && (existing[0].id.startsWith("starter-") || existing[0].id === `starter-${updated.id}`)) {
+        const updatedFirst = [
+          {
+            ...existing[0],
+            content: newGreeting
+          },
+          ...existing.slice(1)
+        ];
+        const next = {
+          ...prev,
+          [updated.id]: updatedFirst
+        };
+        try {
+          localStorage.setItem("insomnia_user_chat_history_v1", JSON.stringify(next));
+        } catch {}
+        return next;
+      }
+
+      return prev;
+    });
+
     if (!openConversations.includes(updated.id)) {
       setOpenConversations((prev) => [updated.id, ...prev]);
     }
@@ -624,15 +672,17 @@ export default function ChatPage() {
   };
 
   // Reset conversation for active character to original starter message
-  const handleResetCurrentHistory = () => {
+  const handleResetCurrentHistory = (customStarter?: string) => {
     if (!activeChar) return;
     stopAudio();
+    const greeting = (typeof customStarter === "string" && customStarter.trim()) || (isEs
+      ? (activeChar.starterMessageEs || activeChar.starterMessage)
+      : (activeChar.starterMessageEn || activeChar.starterMessage));
+
     const initialStarter: ChatMessage = {
       id: `starter-${activeChar.id}`,
       role: "assistant",
-      content: isEs
-        ? (activeChar.starterMessageEs || activeChar.starterMessage)
-        : (activeChar.starterMessageEn || activeChar.starterMessage),
+      content: greeting,
       timestamp: isEs ? "Inicio" : "Start"
     };
 
@@ -747,10 +797,11 @@ export default function ChatPage() {
   // Messages for active character: Only clean starter message if no conversation yet
   const currentMessages = useMemo(() => {
     const history = chatHistory[activeChar.id];
+    const greeting = isEs
+      ? (activeChar.starterMessageEs || activeChar.starterMessage)
+      : (activeChar.starterMessageEn || activeChar.starterMessage);
+
     if (!history || history.length === 0) {
-      const greeting = isEs
-        ? (activeChar.starterMessageEs || activeChar.starterMessage)
-        : (activeChar.starterMessageEn || activeChar.starterMessage);
       return [
         {
           id: `starter-${activeChar.id}`,
@@ -760,8 +811,68 @@ export default function ChatPage() {
         }
       ];
     }
+
+    // Si la historia solo tiene el mensaje inicial, garantizar que siempre muestre el starterMessage actual del personaje
+    if (history.length === 1 && history[0].role === "assistant" && history[0].content !== greeting) {
+      return [
+        {
+          ...history[0],
+          content: greeting
+        }
+      ];
+    }
+
+    // Si el primer mensaje fue el starter inicial, asegurar que refleje el starterMessage configurado
+    if (history.length > 1 && history[0].id === `starter-${activeChar.id}` && history[0].role === "assistant" && history[0].content !== greeting) {
+      return [
+        {
+          ...history[0],
+          content: greeting
+        },
+        ...history.slice(1)
+      ];
+    }
+
     return history;
   }, [chatHistory, activeChar, isEs]);
+
+  // Sincronizar automáticamente chatHistory en localStorage cuando el starterMessage del personaje cambie
+  useEffect(() => {
+    if (!activeChar) return;
+    const greeting = isEs
+      ? (activeChar.starterMessageEs || activeChar.starterMessage)
+      : (activeChar.starterMessageEn || activeChar.starterMessage);
+    if (!greeting) return;
+
+    setChatHistory((prev) => {
+      const history = prev[activeChar.id];
+      if (!history || history.length === 0) return prev;
+
+      if (history.length === 1 && history[0].role === "assistant" && history[0].content !== greeting) {
+        const next = {
+          ...prev,
+          [activeChar.id]: [{ ...history[0], content: greeting }]
+        };
+        try {
+          localStorage.setItem("insomnia_user_chat_history_v1", JSON.stringify(next));
+        } catch {}
+        return next;
+      }
+
+      if (history.length > 1 && history[0].id === `starter-${activeChar.id}` && history[0].role === "assistant" && history[0].content !== greeting) {
+        const next = {
+          ...prev,
+          [activeChar.id]: [{ ...history[0], content: greeting }, ...history.slice(1)]
+        };
+        try {
+          localStorage.setItem("insomnia_user_chat_history_v1", JSON.stringify(next));
+        } catch {}
+        return next;
+      }
+
+      return prev;
+    });
+  }, [activeChar?.id, activeChar?.starterMessage, activeChar?.starterMessageEs, isEs]);
 
   // Scroll to bottom
   useEffect(() => {
@@ -2107,7 +2218,7 @@ export default function ChatPage() {
                       </DropdownMenuItem>
                       <DropdownMenuSeparator className="bg-[#242424]" />
                       <DropdownMenuItem
-                        onClick={handleResetCurrentHistory}
+                        onClick={() => handleResetCurrentHistory()}
                         className="flex items-center gap-2.5 cursor-pointer text-red-400 hover:text-red-300 hover:bg-red-950/40 text-xs font-bold py-2.5"
                       >
                         <RotateCcw className="w-4 h-4 text-red-400" />

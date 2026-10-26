@@ -89,7 +89,7 @@ interface ChatCharacterConfigDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSave: (updated: CharacterItem) => void;
-  onResetHistory?: () => void;
+  onResetHistory?: (customStarter?: string) => void;
   initialTab?: "info" | "photos" | "voice";
 }
 
@@ -579,24 +579,27 @@ export const ChatCharacterConfigDialog: React.FC<ChatCharacterConfigDialogProps>
     const mainAvatar = avatar.trim() || gallery[0] || "https://media.talkiemate.com/app/uploads/growtype-ai-uploads/models/6e8f818f9b187d2ebdf4e1d77521e051/3545853885239688145_69992903230.jpg";
 
     const effectiveModelId = modelId || "insomnia-flash";
+    const cleanStarter = starterMessage.trim() || (isEs ? "Hola, me alegra verte. ¿En qué estás pensando?" : "Hey, nice to see you. What's on your mind?");
+    const cleanBio = bio.trim();
+    const cleanRoleTitle = roleTitle.trim() || (isEs ? "Compañera" : "Partner");
 
     const updated: CharacterItem = {
       id: charId,
       name: name.trim(),
-      roleTitle: roleTitle.trim() || (isEs ? "Compañera" : "Partner"),
-      roleTitleEn: isEs ? (character?.roleTitleEn || roleTitle.trim()) : roleTitle.trim(),
-      roleTitleEs: isEs ? roleTitle.trim() : (character?.roleTitleEs || roleTitle.trim()),
+      roleTitle: cleanRoleTitle,
+      roleTitleEn: cleanRoleTitle,
+      roleTitleEs: cleanRoleTitle,
       age: Number(age) || 25,
       gender,
       style,
       avatar: mainAvatar,
       gallery: gallery.length > 0 ? gallery : [mainAvatar],
-      bio: bio.trim(),
-      bioEn: isEs ? (character?.bioEn || bio.trim()) : bio.trim(),
-      bioEs: isEs ? bio.trim() : (character?.bioEs || bio.trim()),
-      shortBio: bio.trim().slice(0, 100) + "...",
-      shortBioEn: isEs ? (character?.shortBioEn || (bio.trim().slice(0, 100) + "...")) : (bio.trim().slice(0, 100) + "..."),
-      shortBioEs: isEs ? (bio.trim().slice(0, 100) + "...") : (character?.shortBioEs || (bio.trim().slice(0, 100) + "...")),
+      bio: cleanBio,
+      bioEn: cleanBio,
+      bioEs: cleanBio,
+      shortBio: cleanBio.slice(0, 100) + "...",
+      shortBioEn: cleanBio.slice(0, 100) + "...",
+      shortBioEs: cleanBio.slice(0, 100) + "...",
       likesCount: character?.likesCount || "28.4k",
       imageCount: Math.max(gallery.length, character?.imageCount || 120),
       audioCount: character?.audioCount || 85,
@@ -604,9 +607,9 @@ export const ChatCharacterConfigDialog: React.FC<ChatCharacterConfigDialogProps>
       affinityTitle: character?.affinityTitle || "Curious Flirt",
       affinityXp: character?.affinityXp || 70,
       category: character?.category || "featured",
-      starterMessage: starterMessage.trim() || (isEs ? "Hola, me alegra verte. ¿En qué estás pensando?" : "Hey, nice to see you. What's on your mind?"),
-      starterMessageEn: isEs ? (character?.starterMessageEn || starterMessage.trim()) : starterMessage.trim(),
-      starterMessageEs: isEs ? starterMessage.trim() : (character?.starterMessageEs || starterMessage.trim()),
+      starterMessage: cleanStarter,
+      starterMessageEn: cleanStarter,
+      starterMessageEs: cleanStarter,
       voiceName,
       isNsfw,
       modelId: effectiveModelId
@@ -1159,7 +1162,7 @@ export const ChatCharacterConfigDialog: React.FC<ChatCharacterConfigDialogProps>
               variant="outline"
               onClick={() => {
                 stopVoicePreview();
-                onResetHistory();
+                onResetHistory?.(starterMessage.trim());
               }}
               className="border-red-900/60 bg-red-950/40 hover:bg-red-900/60 text-red-300 hover:text-white text-xs font-bold flex items-center gap-1.5 transition-all"
             >
