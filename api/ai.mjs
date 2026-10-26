@@ -102,6 +102,11 @@ export function isRefusal(text) {
     "no puedo continuar con esta conversación",
     "no puedo continuar esta conversación",
     "no puedo seguir con esta conversación",
+    "no voy a seguir con esta escena",
+    "no voy a seguir con",
+    "no voy a continuar",
+    "no participo en ese tipo",
+    "no participo en este tipo",
     "no puedo participar en este tipo",
     "no puedo generar este tipo",
     "no puedo crear contenido explícito",
@@ -109,6 +114,11 @@ export function isRefusal(text) {
     "no puedo procesar esta solicitud",
     "no me siento cómodo",
     "no me siento cómoda",
+    "en qué más te puedo echar una mano",
+    "en que mas te puedo echar una mano",
+    "empezar una historia distinta",
+    "ayudarte con escritura creativa en otro género",
+    "ayudarte con escritura creativa en otro genero",
     "hay algo más en lo que pueda ayudarte",
     "algo más en lo que pueda ayudarte",
     "algo más en lo que te pueda ayudar",
@@ -891,6 +901,7 @@ export default async function handler(req, res) {
       const isOffRole = (text) => {
         const reply = String(text || "").trim();
         if (!reply || reply.length > 3000) return true;
+        if (isRefusal(reply)) return true;
         if (isRepeatedReply(reply)) return true;
         // 1. Reject Chinese or Asian non-Latin scripts
         if (/[\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff\u3040-\u30ff]/.test(reply)) return true;
