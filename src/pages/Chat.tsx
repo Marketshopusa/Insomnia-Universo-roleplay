@@ -573,8 +573,8 @@ export default function ChatPage() {
         return next;
       }
 
-      // Si hay mensajes posteriores, actualizar el primer mensaje de bienvenida
-      if (existing.length > 0 && existing[0].role === "assistant" && (existing[0].id.startsWith("starter-") || existing[0].id === `starter-${updated.id}`)) {
+      // Si hay mensajes posteriores, actualizar siempre el primer mensaje de bienvenida
+      if (existing.length > 0 && existing[0].role === "assistant") {
         const updatedFirst = [
           {
             ...existing[0],
@@ -813,18 +813,8 @@ export default function ChatPage() {
       ];
     }
 
-    // Si la historia solo tiene el mensaje inicial, garantizar que siempre muestre el starterMessage actual del personaje
-    if (history.length === 1 && history[0].role === "assistant" && history[0].content !== greeting) {
-      return [
-        {
-          ...history[0],
-          content: greeting
-        }
-      ];
-    }
-
-    // Si el primer mensaje fue el starter inicial, asegurar que refleje el starterMessage configurado
-    if (history.length > 1 && history[0].id === `starter-${activeChar.id}` && history[0].role === "assistant" && history[0].content !== greeting) {
+    // Si el primer mensaje fue el saludo inicial, garantizar que siempre refleje el starterMessage configurado
+    if (history.length > 0 && history[0].role === "assistant" && history[0].content !== greeting) {
       return [
         {
           ...history[0],
@@ -849,18 +839,7 @@ export default function ChatPage() {
       const history = prev[activeChar.id];
       if (!history || history.length === 0) return prev;
 
-      if (history.length === 1 && history[0].role === "assistant" && history[0].content !== greeting) {
-        const next = {
-          ...prev,
-          [activeChar.id]: [{ ...history[0], content: greeting }]
-        };
-        try {
-          localStorage.setItem("insomnia_user_chat_history_v1", JSON.stringify(next));
-        } catch {}
-        return next;
-      }
-
-      if (history.length > 1 && history[0].id === `starter-${activeChar.id}` && history[0].role === "assistant" && history[0].content !== greeting) {
+      if (history[0].role === "assistant" && history[0].content !== greeting) {
         const next = {
           ...prev,
           [activeChar.id]: [{ ...history[0], content: greeting }, ...history.slice(1)]

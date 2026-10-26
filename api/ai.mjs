@@ -65,11 +65,36 @@ import { createClient } from "@supabase/supabase-js";
 import { supabaseUrl as BASE, publishableKey as KEY } from "./config.mjs";
 import { slangInstruction, speechLocale } from "./regions.mjs";
 
+// In-memory sliding window rate limiter
+const RATE_LIMIT_WINDOW_MS = 60_000;
+const MAX_REQUESTS_PER_WINDOW = 45;
+const clientHits = new Map();
+
+export function isRateLimited(identifier) {
+  if (!identifier) return false;
+  const now = Date.now();
+  const entry = clientHits.get(identifier) || { count: 0, resetAt: now + RATE_LIMIT_WINDOW_MS };
+  if (now > entry.resetAt) {
+    entry.count = 1;
+    entry.resetAt = now + RATE_LIMIT_WINDOW_MS;
+    clientHits.set(identifier, entry);
+    if (clientHits.size > 2000) {
+      for (const [k, v] of clientHits.entries()) {
+        if (now > v.resetAt) clientHits.delete(k);
+      }
+    }
+    return false;
+  }
+  entry.count += 1;
+  clientHits.set(identifier, entry);
+  return entry.count > MAX_REQUESTS_PER_WINDOW;
+}
+
 export const maxDuration = 60;
 const send = (res, status, value) => res.status(status).json(value);
 async function authenticated(req) {
-  const host = String(req.headers?.host || "");
-  if (/^(localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/i.test(host)) return true;
+  const isDev = process.env.NODE_ENV !== "production" && !process.env.VERCEL;
+  if (isDev) return true;
   const jwt = String(req.headers?.authorization || "").replace(/^Bearer\s+/i, "").trim();
   if (!jwt || !KEY) return false;
   try {
@@ -77,17 +102,8 @@ async function authenticated(req) {
     const { data, error } = await client.auth.getUser(jwt);
     if (!error && data?.user) return true;
   } catch {
-    // Fallback to structural JWT check if Supabase Auth has a transient network hiccup under high concurrency
+    // Supabase auth connection error
   }
-  try {
-    const parts = jwt.split(".");
-    if (parts.length === 3) {
-      const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8"));
-      if (payload?.sub && payload?.role === "authenticated" && (!payload.exp || payload.exp * 1000 > Date.now() - 60000)) {
-        return true;
-      }
-    }
-  } catch { /* ignore */ }
   return false;
 }
 export function generationConfigFor(candidate, settings, options = {}, thinking = true) {
@@ -200,9 +216,8 @@ export async function generateLocalLlama(messages, options = {}) {
 }
 
 export async function generateOpenRouter(messages, options = {}) {
-  const defaultKey = Buffer.from("c2stb3ItdjEtNzNlMTQyNjhjZWFlZWNkY2E5ODQ3ZWExZTZhZTE2NGY0MWVlMWQzZTg5MGU0YTk0NjBmOTBhYTRmNjM1MmUyMg==", "base64").toString("utf-8");
   const isCustomKey = Boolean(typeof options.apiKey === "string" && options.apiKey.trim());
-  const apiKey = (isCustomKey ? options.apiKey.trim() : null) || process.env.OPENROUTER_API_KEY || defaultKey;
+  const apiKey = (isCustomKey ? options.apiKey.trim() : null) || process.env.OPENROUTER_API_KEY;
   if (!apiKey) return null;
 
   // Priorizar modelos gratuitos de ultra-baja latencia (<1.8s) que no censuran rol adulto
@@ -282,8 +297,7 @@ export async function generateOpenRouter(messages, options = {}) {
 }
 
 export async function generateNvidia(messages, options = {}) {
-  const defaultNvidiaKey = Buffer.from("bnZhcGktWWF3Yjl0dkV3VEdMdVFRNmgyelhzZkVLUnRCV1dBWDI5TkFsOXhrMFJEVVBNWFd3aDVRQTJqSWtZUkdsc2JDaA==", "base64").toString("utf-8");
-  const apiKey = (typeof options.apiKey === "string" && options.apiKey.trim()) || process.env.NVIDIA_API_KEY || defaultNvidiaKey;
+  const apiKey = (typeof options.apiKey === "string" && options.apiKey.trim()) || process.env.NVIDIA_API_KEY;
   if (!apiKey) return null;
   const models = options.models || ["meta/llama-3.2-11b-vision-instruct"];
   const fetchImpl = options.fetchImpl || fetch;
@@ -850,6 +864,10 @@ export function roleplayPacingAndLanguageRules(historyLength, spanish, targetTok
 
 export default async function handler(req, res) {
   if (req.method !== "POST") return send(res, 405, { error: "method_not_allowed" });
+  const clientIp = String(req.headers["x-forwarded-for"] || "").split(",")[0]?.trim() || req.socket?.remoteAddress || "client";
+  if (isRateLimited(clientIp)) {
+    return send(res, 429, { error: "too_many_requests", message: "Demasiadas solicitudes simultáneas. Por favor espera unos segundos antes de reenviar." });
+  }
   const { action, body = {} } = req.body || {};
   if (action !== "translate" && !(await authenticated(req))) return send(res, 401, { error: "login_required" });
   try {
@@ -1518,6 +1536,29 @@ export default async function handler(req, res) {
         } catch (err) {
           console.warn("Final OpenRouter fallback failed:", err.message);
         }
+      }
+
+      if (!content || isRefusal(content)) {
+        try {
+          const geminiContents = contents.map((c) => ({ role: c.role, parts: [...(c.parts || [])] }));
+          if (geminiContents[0]?.role === "model") {
+            geminiContents.unshift({ role: "user", parts: [{ text: "Continúa la escena." }] });
+          }
+          content = await generate(
+            "gemini-2.5-flash-lite",
+            [],
+            { maxOutputTokens: Math.max(200, targetTokens), temperature: 0.8 },
+            {
+              contents: geminiContents,
+              systemInstruction,
+              adultMode: Boolean(isAdult),
+              apiKey: geminiApiKey || undefined,
+              timeoutMs: 5000,
+              fastReply: true,
+              validate: (reply) => !isOffRole(reply)
+            },
+          );
+        } catch { /* ignore */ }
       }
 
       if (!content || isRefusal(content)) {

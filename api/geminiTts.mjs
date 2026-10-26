@@ -458,25 +458,26 @@ export async function synthesizeGemini(text, preset, language, { performance = "
 export function splitSentences(text) {
   const trimmed = String(text || "").replace(/\s+/g, " ").trim();
   if (!trimmed) return [];
-  // Split on primary sentence boundaries (. ! ? …) or line breaks, never on internal commas or dashes
-  // Preserving commas intact avoids unnatural multi-second network pauses between clauses.
-  const rawParts = trimmed.match(/[^.!?…\n]+[.!?…]+["'»”)]*(?:\s+|$)|[^.!?…\n]+$/gu) || [trimmed];
-  const chunks = [];
-  let current = "";
-  for (const p of rawParts) {
-    const t = p.trim();
-    if (!t) continue;
-    if (!current) {
-      current = t;
-    } else if (current.split(/\s+/).length < 6) {
-      // Group very short fragments (< 6 words) while allowing natural sentences to stream quickly (~400ms)
-      current += " " + t;
+  const totalWords = trimmed.split(/\s+/).filter(Boolean).length;
+  if (totalWords <= 6) return [trimmed];
+
+  const sentences = trimmed.match(/[^.!?…\n]+[.!?…]+["'»”)]*(?:\s+|$)|[^.!?…\n]+$/gu) || [trimmed];
+  if (sentences.length <= 1) return [trimmed];
+
+  let part1 = "";
+  let part2 = "";
+  for (let i = 0; i < sentences.length; i++) {
+    const s = sentences[i].trim();
+    if (!s) continue;
+    const currentWords = part1.split(/\s+/).filter(Boolean).length;
+    if (i === 0 || currentWords < 5) {
+      part1 = part1 ? `${part1} ${s}` : s;
     } else {
-      chunks.push(current);
-      current = t;
+      part2 = sentences.slice(i).map((x) => x.trim()).filter(Boolean).join(" ");
+      break;
     }
   }
-  if (current) chunks.push(current);
-  return chunks.length ? chunks : [trimmed];
+
+  return part2 ? [part1, part2] : [trimmed];
 }
 

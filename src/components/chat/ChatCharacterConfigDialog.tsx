@@ -356,7 +356,7 @@ export const ChatCharacterConfigDialog: React.FC<ChatCharacterConfigDialogProps>
         "https://media.talkiemate.com/app/uploads/growtype-ai-uploads/models/6e8f818f9b187d2ebdf4e1d77521e051/3545853885239688145_69992903230.jpg"
       ]);
       setIsNsfw(true); // Default to +18 NSFW enabled for custom creations
-      setModelId("insomnia-flash");
+      setModelId("magnum-v4-local");
     }
     setActiveTab(initialTab || "info");
   }, [open, character, isNew, isEs, initialTab]);
@@ -796,6 +796,14 @@ export const ChatCharacterConfigDialog: React.FC<ChatCharacterConfigDialogProps>
                       checked={isNsfw}
                       onCheckedChange={(checked) => {
                         setIsNsfw(checked);
+                        if (checked) {
+                          setModelId("magnum-v4-local");
+                          toast({
+                            description: isEs
+                              ? "Modo +18 activado: Modelo Magnum v4 72B seleccionado automáticamente."
+                              : "+18 Mode active: Magnum v4 72B model automatically selected."
+                          });
+                        }
                       }}
                       className="data-[state=checked]:bg-red-500"
                     />

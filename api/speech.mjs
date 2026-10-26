@@ -39,31 +39,49 @@ function writePcm(res, pcm, provider, startedAt) {
   finishSpeech(res, provider, startedAt);
 }
 
+// In-memory sliding window rate limiter for speech
+const SPEECH_WINDOW_MS = 60_000;
+const MAX_SPEECH_PER_WINDOW = 40;
+const speechHits = new Map();
+
+function isSpeechRateLimited(identifier) {
+  if (!identifier) return false;
+  const now = Date.now();
+  const entry = speechHits.get(identifier) || { count: 0, resetAt: now + SPEECH_WINDOW_MS };
+  if (now > entry.resetAt) {
+    entry.count = 1;
+    entry.resetAt = now + SPEECH_WINDOW_MS;
+    speechHits.set(identifier, entry);
+    if (speechHits.size > 1500) {
+      for (const [k, v] of speechHits.entries()) {
+        if (now > v.resetAt) speechHits.delete(k);
+      }
+    }
+    return false;
+  }
+  entry.count += 1;
+  speechHits.set(identifier, entry);
+  return entry.count > MAX_SPEECH_PER_WINDOW;
+}
+
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "method_not_allowed" });
   const startedAt = Date.now();
-  const host = String(req.headers?.host || "");
-  const isLocal = /^(localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/i.test(host);
+  const clientIp = String(req.headers["x-forwarded-for"] || "").split(",")[0]?.trim() || req.socket?.remoteAddress || "client";
+  if (isSpeechRateLimited(clientIp)) {
+    return res.status(429).json({ error: "rate_limited", message: "Demasiadas solicitudes de audio simultáneas. Espera unos segundos." });
+  }
+
+  const isDev = process.env.NODE_ENV !== "production" && !process.env.VERCEL;
   const jwt = String(req.headers.authorization || "").replace(/^Bearer\s+/i, "").trim();
-  let isAuthenticated = isLocal;
+  let isAuthenticated = isDev;
   if (!isAuthenticated && jwt) {
     try {
       const { data, error } = await createClient(supabaseUrl, publishableKey, { auth: { persistSession: false } }).auth.getUser(jwt);
       if (!error && data?.user) isAuthenticated = true;
     } catch {}
-    if (!isAuthenticated) {
-      try {
-        const parts = jwt.split(".");
-        if (parts.length === 3) {
-          const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8"));
-          if (payload?.sub && (!payload.exp || payload.exp * 1000 > Date.now() - 60000)) {
-            isAuthenticated = true;
-          }
-        }
-      } catch {}
-    }
   }
-  if (!isAuthenticated && !isLocal) return res.status(401).json({ error: "login_required" });
+  if (!isAuthenticated) return res.status(401).json({ error: "login_required" });
   if (req.body?.metric === "first_playback") {
     const elapsed = Number(req.body.elapsedMs);
     if (!Number.isFinite(elapsed) || elapsed < 0 || elapsed > 120_000) {

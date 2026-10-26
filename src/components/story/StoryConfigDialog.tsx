@@ -228,39 +228,55 @@ export const StoryConfigDialog = ({ story, open, onOpenChange, onSaved }: StoryC
         has_explicit_images: explicit,
       };
 
-      // Always invoke adult-story-chat edge function (runs with service_role key)
-      // to guarantee updates succeed on all cards (crafted default cards with created_by=null as well as custom cards)
-      // bypassing Postgres RLS which silently ignores client-side updates when auth.uid() != created_by.
-      const invokeRes = await supabase.functions.invoke("adult-story-chat", {
-        body: {
-          action: "update-story",
-          storyId: story.id,
-          ...storyPayload,
-          category_ids: selectedCategories,
-        },
-      });
+      const isUuid = (id: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+      if (isUuid(story.id)) {
+        const invokeRes = await supabase.functions.invoke("adult-story-chat", {
+          body: {
+            action: "update-story",
+            storyId: story.id,
+            ...storyPayload,
+            category_ids: selectedCategories,
+          },
+        });
 
-      if (invokeRes.error || !(invokeRes.data as any)?.success) {
-        // Fallback: direct client update
-        const { error: directError } = await supabase
-          .from("stories")
-          .update(storyPayload)
-          .eq("id", story.id);
-        if (directError) throw directError;
+        if (invokeRes.error || !(invokeRes.data as any)?.success) {
+          await supabase.from("stories").update(storyPayload).eq("id", story.id);
+        }
+
+        const personalCover = coverUrl && coverUrl !== story.cover_image ? coverUrl : null;
+        await supabase.from("story_customizations").upsert(
+          {
+            user_id: user.id,
+            story_id: story.id,
+            cover_media_url: personalCover,
+            cover_media_type: personalCover ? coverType : null,
+            voice,
+          },
+          { onConflict: "user_id,story_id" }
+        );
+      } else {
+        try {
+          const rawLocal = localStorage.getItem("talkiemate_custom_chars_v2");
+          const list = rawLocal ? JSON.parse(rawLocal) : [];
+          const idx = list.findIndex((c: any) => c.id === story.id);
+          const customEntry = {
+            id: story.id,
+            name: title.trim(),
+            roleTitle: character.trim() || "Compañera",
+            bio: cleanDesc,
+            starterMessage: cleanContext || cleanDesc,
+            avatar: coverUrl || story.cover_image,
+            voiceName: voice,
+            isNsfw: explicit,
+          };
+          if (idx >= 0) {
+            list[idx] = { ...list[idx], ...customEntry };
+          } else {
+            list.push(customEntry);
+          }
+          localStorage.setItem("talkiemate_custom_chars_v2", JSON.stringify(list));
+        } catch {}
       }
-
-      const personalCover = coverUrl && coverUrl !== story.cover_image ? coverUrl : null;
-      const { error: customError } = await supabase.from("story_customizations").upsert(
-        {
-          user_id: user.id,
-          story_id: story.id,
-          cover_media_url: personalCover,
-          cover_media_type: personalCover ? coverType : null,
-          voice,
-        },
-        { onConflict: "user_id,story_id" }
-      );
-      if (customError) throw customError;
 
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["story", story.id] }),

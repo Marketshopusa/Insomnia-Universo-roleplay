@@ -1,4 +1,4 @@
- import { useState, useRef, useEffect } from "react";
+ import { useState, useRef, useEffect, useMemo } from "react";
  import { useParams, useNavigate } from "react-router-dom";
  import { MainLayout } from "@/components/layout/MainLayout";
  import { Button } from "@/components/ui/button";
@@ -55,6 +55,18 @@ type Mode = "select" | "read" | "roleplay";
    const storyContext = story
      ? ((story as typeof story & { story_context?: string | null }).story_context ?? null)
      : null;
+
+   const localOverride = useMemo(() => {
+     if (!storyId || typeof window === "undefined") return null;
+     try {
+       const raw = localStorage.getItem("talkiemate_custom_chars_v2");
+       if (raw) {
+         const list = JSON.parse(raw);
+         return list.find((c: any) => c.id === storyId) || null;
+       }
+     } catch {}
+     return null;
+   }, [storyId, story]);
 
    
    const [messages, setMessages] = useState<Message[]>([]);
@@ -357,10 +369,10 @@ type Mode = "select" | "read" | "roleplay";
   }, [language, tTitle, tDescription, tCharacter, tPlayer]);
  
    const getIntroMessage = (story: any) => {
-    const characterRole = tCharacter || story.character_role || t("chat.char");
+    const characterRole = localOverride?.roleTitle || tCharacter || story.character_role || t("chat.char");
     const playerRole = tPlayer || story.player_role || t("chat.you");
-    const title = tTitle || story.title;
-    const description = tDescription || story.description || t("story.welcome");
+    const title = localOverride?.name || tTitle || story.title;
+    const description = localOverride?.bio || tDescription || story.description || t("story.welcome");
 
     return `*${title}*\n\n${description}\n\n${t("story.youArePlaying")}: **${playerRole}**\n${t("story.iAmPlaying")}: **${characterRole}**\n\n*${t("story.sceneSet")}*`;
    };
@@ -382,10 +394,10 @@ type Mode = "select" | "read" | "roleplay";
     const { data, error } = await invokeFunctionWithRetry<{ content?: string; error?: string; message?: string }>("story-chat", {
         story: {
           id: story?.id,
-          title: story?.title || tTitle,
-          description: story?.description || tDescription,
-          story_context: storyContext || tDescription,
-          character_role: story?.character_role || tCharacter,
+          title: localOverride?.name || story?.title || tTitle,
+          description: localOverride?.bio || story?.description || tDescription,
+          story_context: localOverride?.starterMessage || storyContext || tDescription,
+          character_role: localOverride?.roleTitle || story?.character_role || tCharacter,
           character_age: Math.max(18, Number(story?.character_age) || 21),
           player_role: story?.player_role || tPlayer,
           story_type: story?.story_type,

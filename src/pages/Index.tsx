@@ -14,7 +14,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useAdultMode } from "@/contexts/AdultModeContext";
 import { AdultConsentDialog } from "@/components/adult/AdultConsentDialog";
 import { Button } from "@/components/ui/button";
-import { ShieldAlert, Sparkles, RefreshCw } from "lucide-react";
+import { ShieldAlert, Sparkles, RefreshCw, Plus } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useShorts } from "@/hooks/useShorts";
 import { seriesStatus } from "@/lib/shortsCatalog";
@@ -25,7 +25,7 @@ type StorySource = "crafted" | "custom";
 
 const Index = () => {
   const navigate = useNavigate();
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const { user } = useAuth();
   const { enabled: adultEnabled, consentGiven, enable, grantConsent } = useAdultMode();
   const [consentOpen, setConsentOpen] = useState(false);
@@ -192,9 +192,18 @@ const Index = () => {
               </div>
             )}
 
-            <div className="mb-3 flex items-end justify-between">
-              <h2 className="font-display text-2xl">{t("index.stories")}</h2>
-              <p className="text-xs text-muted-foreground">{t("index.storiesSubtitle")}</p>
+            <div className="mb-3 flex items-end justify-between flex-wrap gap-2">
+              <div>
+                <h2 className="font-display text-2xl">{t("index.stories")}</h2>
+                <p className="text-xs text-muted-foreground">{t("index.storiesSubtitle")}</p>
+              </div>
+              <Button
+                onClick={() => navigate("/chat")}
+                className="bg-[#ff8c00] hover:bg-amber-500 text-black font-extrabold text-xs flex items-center gap-1.5 shadow-md shadow-[#ff8c00]/20"
+              >
+                <Plus className="w-3.5 h-3.5 stroke-[3]" />
+                {language === "es" ? "Crear Nuevo Personaje" : "Create New Character"}
+              </Button>
             </div>
 
             {isError && (
