@@ -731,11 +731,19 @@ const chapterOptions = [3, 5, 7, 10, 12, 15, 20];
       }))
       .filter((scene: { visual: string }) => scene.visual.length >= 5);
     const chapterTexts = chapterScenes.map((scene: { visual: string }) => scene.visual);
+    const probe = await loopbackProbe;
+    if (probe.status !== "ready") {
+      toast({
+        title: "Novela guardada en Producción",
+        description: "El guion y los capítulos están guardados con éxito. Para renderizar los videos MP4 en tu PC con aceleración gráfica, inicia Kineva Studio (start-local-studio.ps1).",
+      });
+      return;
+    }
     try {
-      await filmChapters(chapterTexts, episodeIds, loopbackProbe, chapterScenes.map((scene: { dialogue: string }) => scene.dialogue), generated);
+      await filmChapters(chapterTexts, episodeIds, probe, chapterScenes.map((scene: { dialogue: string }) => scene.dialogue), generated);
     } catch (e) {
       toast({
-        title: "La novela está guardada, el video no",
+        title: "Error al renderizar el video",
         description: e instanceof Error ? e.message : undefined,
         variant: "destructive",
       });
@@ -756,6 +764,14 @@ const chapterOptions = [3, 5, 7, 10, 12, 15, 20];
     }
 
     const loopbackProbe = probeLocalKineva();
+    const probe = await loopbackProbe;
+    if (probe.status !== "ready") {
+      toast({
+        title: "Motor de video local no detectado",
+        description: "Para filmar y renderizar los videos MP4 en tu PC con tu tarjeta gráfica, ejecuta 'start-local-studio.ps1' para iniciar ComfyUI y Kineva.",
+      });
+      return;
+    }
     try {
       let episodeIds = seriesEpisodeIds;
       const scenes = (novel?.chapters ?? [])
@@ -775,7 +791,7 @@ const chapterOptions = [3, 5, 7, 10, 12, 15, 20];
         setSeriesEpisodeIds(episodeIds);
         setSavedSeriesId(savedSeries.seriesId);
       }
-      await filmChapters(chapterTexts.length ? chapterTexts : [String(description || novel?.logline || "")], episodeIds, loopbackProbe, scenes.map((scene: { dialogue: string }) => scene.dialogue), novel);
+      await filmChapters(chapterTexts.length ? chapterTexts : [String(description || novel?.logline || "")], episodeIds, probe, scenes.map((scene: { dialogue: string }) => scene.dialogue), novel);
     } catch (e) {
       toast({
         title: "No se pudieron generar los videos",
