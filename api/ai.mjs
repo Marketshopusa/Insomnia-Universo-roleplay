@@ -105,8 +105,22 @@ export function isRefusal(text) {
     "no voy a seguir con esta escena",
     "no voy a seguir con",
     "no voy a continuar",
+    "no voy a participar en esta escena",
+    "no voy a participar",
     "no participo en ese tipo",
     "no participo en este tipo",
+    "no hago ese tipo de roleplay",
+    "no hago este tipo de roleplay",
+    "da igual la edad de los personajes",
+    "si quieres seguir roleando",
+    "dime qué te apetece",
+    "dime que te apetece",
+    "crear una historia con personajes sin lazo familiar",
+    "cambiar a otro género o escenario",
+    "cambiar a otro genero o escenario",
+    "relación incestuosa",
+    "relacion incestuosa",
+    "contenido incestuoso",
     "no puedo participar en este tipo",
     "no puedo generar este tipo",
     "no puedo crear contenido explícito",
@@ -847,9 +861,15 @@ export default async function handler(req, res) {
         return role && text ? [{ role, text }] : [];
       });
       const latest = String(body.userMessage || "").trim().slice(0, 1200);
-      const sceneContext = [story.title, story.description, story.story_context, story.character_role, story.player_role, ...history.map((entry) => entry.text), latest].join("\n");
+      const characterName = String(story.character_role || "Personaje").slice(0, 80);
+      const playerName = String(story.player_role || "Usuario").slice(0, 80);
+      const sceneContext = [story.title, story.description, story.story_context, characterName, playerName, ...history.map((entry) => entry.text), latest].join("\n");
+      const allKinshipText = `${playerName} ${characterName} ${sceneContext} ${body.story?.description || ""} ${body.story?.story_context || ""} ${body.userMessage || ""} ${history.slice(-8).map((h) => h.text).join(" ")}`;
+      const isPlayerTio = /\bt[ií]o\b/i.test(allKinshipText) || /\bsobrin[ao]\b/i.test(allKinshipText);
+      const isCharacterSobrina = /\bsobrin[ao]\b/i.test(allKinshipText) || isPlayerTio;
+      const isKinship = Boolean(isPlayerTio || isCharacterSobrina || /\b(?:t[ií]o|sobrin[ao]|padrino|ahijad[ao]|herman[ao]|madre|padre|hij[ao]|prim[ao])\b/i.test(allKinshipText));
       const isExplicitContent = /(?:mamarl[ao]|chupar|polla|pene|huevo|verga|gemir|gemidos|sexo|correrse|masturb|desnud|follar|coger|oral|pezones|tetas|senos|vagina|vulva|clitoris|clítoris|erecci[oó]n|lubricad[ao]|caliente)/i.test(latest + " " + (history.slice(-3).map((entry) => entry.text).join(" ")));
-      const isAdult = Boolean(adultMode || isExplicitContent);
+      const isAdult = Boolean(adultMode || isExplicitContent || isKinship);
 
       // BLOQUEO ESTRICTO DE PROTECCIÓN INFANTIL (CSAM/CSAE)
       if (mentionsMinor(latest) || mentionsMinor(sceneContext)) {
@@ -1021,8 +1041,6 @@ export default async function handler(req, res) {
         "  - Todos los personajes en este roleplay son OBLIGATORIAMENTE ADULTOS mayores de edad (18 años o más).",
         "  - CERO TOLERANCIA a menores de edad: Prohibido terminantemente generar, continuar, insinuar o aceptar cualquier tipo de interacción íntima, erótica o de rol que involucre a menores de 18 años.",
       ].filter(Boolean).join("\n");
-      const characterName = String(story.character_role || "Personaje").slice(0, 80);
-      const playerName = String(story.player_role || "Usuario").slice(0, 80);
       if (!latest) return send(res, 400, { error: "missing_message" });
 
       // ===============================================================
@@ -1030,10 +1048,6 @@ export default async function handler(req, res) {
       // ===============================================================
       const defaultFirstName = (characterName.match(/[A-ZÁÉÍÓÚÑ][a-záéíóúñ]{2,}/)?.[0] || characterName.split(/[\s,()]+/)[0] || "Personaje").trim();
       const playerFirstName = (playerName.match(/[A-ZÁÉÍÓÚÑ][a-záéíóúñ]{2,}/)?.[0] || playerName.split(/[\s,()]+/)[0] || "Usuario").trim();
-      
-      const allKinshipText = `${playerName} ${characterName} ${sceneContext} ${body.story?.description || ""} ${body.story?.story_context || ""} ${body.userMessage || ""} ${history.slice(-8).map((h) => h.text).join(" ")}`;
-      const isPlayerTio = /\bt[ií]o\b/i.test(allKinshipText) || /\bsobrin[ao]\b/i.test(allKinshipText);
-      const isCharacterSobrina = /\bsobrin[ao]\b/i.test(allKinshipText) || isPlayerTio;
       const kinshipTerm = isCharacterSobrina ? "Tío" : (/t[ií]a/i.test(allKinshipText) ? "Sobrino" : (/mam[aá]|madre/i.test(allKinshipText) ? "Hijo" : (/herman[ao]/i.test(allKinshipText) ? "Hermano" : playerFirstName)));
 
       const kinshipDirective = [
@@ -1346,9 +1360,9 @@ export default async function handler(req, res) {
             }
           }
 
-          // 4. Gemini como último recurso si no hay modelos adultos disponibles
+          // 4. Gemini como último recurso si no hay modelos adultos disponibles (Omitir estrictamente si es relación de parentesco para evitar rechazos preenlatados de Google)
           if (!content) {
-            const canTryGemini = Boolean(geminiApiKey || (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== "[SENSITIVE]"));
+            const canTryGemini = !isKinship && Boolean(geminiApiKey || (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== "[SENSITIVE]"));
             if (canTryGemini) {
               try {
                 const geminiContents = contents.map((c) => ({ role: c.role, parts: [...(c.parts || [])] }));
@@ -1376,8 +1390,8 @@ export default async function handler(req, res) {
             }
           }
         } else {
-          // Escena casual / no adulta: Gemini 2.5 Flash prioritario
-          const canTryGemini = Boolean(geminiApiKey || (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== "[SENSITIVE]"));
+          // Escena casual / no adulta: Gemini 2.5 Flash prioritario (omitir si hay parentesco para evitar rechazos de Google)
+          const canTryGemini = !isKinship && Boolean(geminiApiKey || (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== "[SENSITIVE]"));
           if (canTryGemini) {
             try {
               const geminiContents = contents.map((c) => ({ role: c.role, parts: [...(c.parts || [])] }));

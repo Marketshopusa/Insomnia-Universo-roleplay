@@ -182,8 +182,22 @@ export function isClientRefusal(text?: string | null): boolean {
     "no voy a seguir con esta escena",
     "no voy a seguir con",
     "no voy a continuar",
+    "no voy a participar en esta escena",
+    "no voy a participar",
     "no participo en ese tipo",
     "no participo en este tipo",
+    "no hago ese tipo de roleplay",
+    "no hago este tipo de roleplay",
+    "da igual la edad de los personajes",
+    "si quieres seguir roleando",
+    "dime qué te apetece",
+    "dime que te apetece",
+    "crear una historia con personajes sin lazo familiar",
+    "cambiar a otro género o escenario",
+    "cambiar a otro genero o escenario",
+    "relación incestuosa",
+    "relacion incestuosa",
+    "contenido incestuoso",
     "no puedo participar en este tipo",
     "no puedo generar este tipo",
     "no puedo crear contenido explícito",
@@ -226,9 +240,11 @@ export async function invokeFunctionWithRetry<T>(name: string, body: unknown): P
     const needsContent = name === "story-chat" || name === "generate-narrative";
     const isMagnumSelected = (body as any)?.settings?.modelId === "magnum-v4-local";
     const isAdultReq = Boolean((body as any)?.adultMode || (body as any)?.settings?.adultMode || (body as any)?.isNsfw);
+    const bodyStr = JSON.stringify(body || "").toLowerCase();
+    const isKinshipReq = /\b(?:t[ií]o|sobrin[ao]|padrino|ahijad[ao]|herman[ao]|madre|padre|hij[ao]|prim[ao])\b/i.test(bodyStr);
 
-    // Si el usuario tiene Magnum v4 seleccionado o es escena adulta y Magnum local está activo
-    if (name === "story-chat" && (isMagnumSelected || isAdultReq)) {
+    // Si el usuario tiene Magnum v4 seleccionado o es escena adulta/parentesco y Magnum local está activo
+    if (name === "story-chat" && (isMagnumSelected || isAdultReq || isKinshipReq)) {
       const local = await callLocalLlama<T>(body);
       if (local?.data && !isClientRefusal((local.data as any)?.content)) return local;
     }
