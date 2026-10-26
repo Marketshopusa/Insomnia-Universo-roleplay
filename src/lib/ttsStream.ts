@@ -184,7 +184,17 @@ export function streamSpeech(text: string, voice: string, language = "es", rolep
     let playbackEnded: Promise<void> | null = null;
     try {
       context = new AudioContext({ sampleRate: PCM_SAMPLE_RATE });
-      if (context.state === "suspended") await context.resume();
+      if (context.state === "suspended") {
+        try {
+          await Promise.race([
+            context.resume(),
+            new Promise((_, reject) => setTimeout(() => reject(new Error("audio_context_timeout")), 1200))
+          ]);
+        } catch {
+          stop();
+          throw new Error("audio_context_blocked");
+        }
+      }
       if (stopped || !context) return;
       playbackEnded = new Promise<void>((resolve) => { finishPlayback = resolve; });
       const spoken = text.trim();

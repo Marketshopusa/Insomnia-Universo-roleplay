@@ -127,47 +127,135 @@ export function playGuaranteedVoice(
   }
 }
 
-/** Fallback femenino estricto para que NUNCA suene el hombre robótico por defecto */
+/** Fallback femenino garantizado y protegido contra recolección de basura, bloqueos de navegador y retrasos de carga de voces */
 export function fallbackFemaleSpeech(text: string, onEnd?: () => void) {
   if (typeof window === "undefined" || !("speechSynthesis" in window)) {
     onEnd?.();
     return;
   }
-  window.speechSynthesis.cancel();
 
-  const utterance = new SpeechSynthesisUtterance(text);
-  const voices = window.speechSynthesis.getVoices();
-  const esVoices = voices.filter((v) => v.lang.toLowerCase().startsWith("es"));
-
-  // Palabras clave de voces femeninas en navegadores / sistemas
-  const femaleKeywords = [
-    "sabina", "helena", "paulina", "monica", "zira", "laura", "lucia",
-    "victoria", "hilda", "elvira", "camila", "soledad", "mia", "sofia", "valeria", "female", "mujer"
-  ];
-  const maleKeywords = ["raul", "david", "pablo", "jorge", "enrique", "carlos", "diego", "male", "hombre"];
-
-  let best = esVoices.find((v) =>
-    femaleKeywords.some((k) => v.name.toLowerCase().includes(k))
-  );
-
-  if (!best) {
-    best = esVoices.find((v) =>
-      !maleKeywords.some((k) => v.name.toLowerCase().includes(k))
-    );
+  // 1. Limpiar acotaciones teatrales en asteriscos para que la voz no lea símbolos
+  let cleanDialogue = text.replace(/\*[^*]*\*/g, " ").replace(/[#_~`]/g, " ").replace(/\s+/g, " ").trim();
+  if (!cleanDialogue) {
+    cleanDialogue = text.replace(/[*_#~`]/g, " ").replace(/\s+/g, " ").trim();
+  }
+  if (!cleanDialogue) {
+    onEnd?.();
+    return;
   }
 
-  if (best) {
-    utterance.voice = best;
+  // 2. Cancelar síntesis previa de forma segura y asegurar que no esté pausada
+  try {
+    if (window.speechSynthesis.speaking || window.speechSynthesis.pending) {
+      window.speechSynthesis.cancel();
+    }
+    if (window.speechSynthesis.paused) {
+      window.speechSynthesis.resume();
+    }
+  } catch {}
+
+  const executeSpeech = () => {
+    try {
+      const voices = window.speechSynthesis.getVoices();
+      const esVoices = voices.filter((v) => v.lang.toLowerCase().startsWith("es"));
+
+      // Palabras clave de voces femeninas de alta calidad en navegadores y sistemas operativos
+      const femaleKeywords = [
+        "sabina", "helena", "paulina", "monica", "zira", "laura", "lucia",
+        "victoria", "hilda", "elvira", "camila", "soledad", "mia", "sofia", "valeria", "female", "mujer", "maria", "rosa"
+      ];
+      const maleKeywords = ["raul", "david", "pablo", "jorge", "enrique", "carlos", "diego", "male", "hombre", "miguel"];
+
+      let best = esVoices.find((v) =>
+        femaleKeywords.some((k) => v.name.toLowerCase().includes(k))
+      );
+
+      if (!best) {
+        best = esVoices.find((v) =>
+          !maleKeywords.some((k) => v.name.toLowerCase().includes(k))
+        );
+      }
+
+      if (!best && esVoices.length > 0) {
+        best = esVoices[0];
+      }
+
+      if (!best && voices.length > 0) {
+        best = voices.find((v) => femaleKeywords.some((k) => v.name.toLowerCase().includes(k))) || voices[0];
+      }
+
+      const utterance = new SpeechSynthesisUtterance(cleanDialogue);
+      if (best) {
+        utterance.voice = best;
+        utterance.lang = best.lang || "es-ES";
+      } else {
+        utterance.lang = "es-ES";
+      }
+
+      utterance.pitch = 1.15;
+      utterance.rate = 1.0;
+
+      // Mantener referencia global en window para que el Garbage Collector de Chrome/V8 NO lo destruya a mitad de frase
+      (window as any).__insomnia_active_utterance = utterance;
+
+      let timer: any = null;
+      let finished = false;
+      const cleanup = () => {
+        if (finished) return;
+        finished = true;
+        if (timer) clearInterval(timer);
+        (window as any).__insomnia_active_utterance = null;
+        onEnd?.();
+      };
+
+      utterance.onend = cleanup;
+      utterance.onerror = (e) => {
+        console.warn("SpeechSynthesis error:", e);
+        cleanup();
+      };
+
+      // Workaround para bug crónico de Chrome en textos largos: llamar resume periódicamente si sigue hablando
+      timer = setInterval(() => {
+        if (window.speechSynthesis.speaking) {
+          window.speechSynthesis.pause();
+          window.speechSynthesis.resume();
+        } else {
+          clearInterval(timer);
+        }
+      }, 7000);
+
+      // Pequeño retardo para evitar la condición de carrera con cancel() en Chrome
+      setTimeout(() => {
+        try {
+          window.speechSynthesis.speak(utterance);
+        } catch (e) {
+          console.warn("window.speechSynthesis.speak failed:", e);
+          cleanup();
+        }
+      }, 35);
+    } catch (err) {
+      console.warn("Failed executing speech synthesis:", err);
+      onEnd?.();
+    }
+  };
+
+  const initialVoices = window.speechSynthesis.getVoices();
+  if (initialVoices.length > 0) {
+    executeSpeech();
+  } else {
+    // Si las voces aún no cargaron en el navegador, esperar al evento voiceschanged
+    const onVoicesChanged = () => {
+      window.speechSynthesis.onvoiceschanged = null;
+      executeSpeech();
+    };
+    window.speechSynthesis.onvoiceschanged = onVoicesChanged;
+    // Timeout de seguridad en caso de que voiceschanged no se dispare
+    setTimeout(() => {
+      if (!(window as any).__insomnia_active_utterance) {
+        executeSpeech();
+      }
+    }, 150);
   }
-
-  utterance.lang = "es-MX";
-  utterance.pitch = 1.25; // Entonación femenina dulce
-  utterance.rate = 1.02;
-
-  utterance.onend = () => onEnd?.();
-  utterance.onerror = () => onEnd?.();
-
-  window.speechSynthesis.speak(utterance);
 }
 
 export const ChatCharacterConfigDialog: React.FC<ChatCharacterConfigDialogProps> = ({

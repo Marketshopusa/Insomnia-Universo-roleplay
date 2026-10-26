@@ -604,15 +604,19 @@ export default function ChatPage() {
   const toggleChatMute = () => {
     setIsChatMuted((prev) => {
       const next = !prev;
+      try {
+        localStorage.setItem("insomnia_chat_muted", JSON.stringify(next));
+      } catch {}
+      if (next) {
+        stopAudio();
+      }
+      toast({
+        description: next
+          ? (isEs ? "Voz automática desactivada (silencioso)" : "Auto-voice muted")
+          : (isEs ? "Voz automática activada: leerá cada respuesta" : "Auto-voice active: will read replies"),
+      });
       return next;
     });
-    const next = !isChatMuted;
-    try {
-      localStorage.setItem("insomnia_chat_muted", JSON.stringify(next));
-    } catch {}
-    if (next) {
-      stopAudio();
-    }
   };
 
   // Reset conversation for active character to original starter message
@@ -818,6 +822,10 @@ export default function ChatPage() {
     setInputText("");
     setIsTyping(true);
 
+    if (typeof window !== "undefined" && "speechSynthesis" in window && window.speechSynthesis.paused) {
+      try { window.speechSynthesis.resume(); } catch {}
+    }
+
     try {
       const existingHistory = updatedHistory;
       const mother = getMotherCardConfig();
@@ -924,6 +932,7 @@ export default function ChatPage() {
     }
     if (typeof window !== "undefined" && "speechSynthesis" in window) {
       window.speechSynthesis.cancel();
+      (window as any).__insomnia_active_utterance = null;
     }
     setPlayingAudioId(null);
   };
