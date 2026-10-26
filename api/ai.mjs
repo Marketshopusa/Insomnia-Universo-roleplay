@@ -174,13 +174,13 @@ export async function generateLocalLlama(messages, options = {}) {
       body: JSON.stringify({
         model: "magnum-v4-12b",
         messages: sanitizedMessages,
-        max_tokens: options.maxTokens || 450,
-        temperature: options.temperature ?? 0.82,
-        repeat_penalty: 1.15,
-        presence_penalty: 0.15,
-        frequency_penalty: 0.20,
+        max_tokens: Math.max(350, options.maxTokens || 450),
+        temperature: options.temperature ?? 0.85,
+        repeat_penalty: 1.12,
+        presence_penalty: 0,
+        frequency_penalty: 0,
       }),
-      signal: AbortSignal.timeout(options.timeoutMs || 4500),
+      signal: AbortSignal.timeout(options.timeoutMs || 25000),
     });
     if (!response.ok) return null;
     const data = await response.json();
@@ -888,32 +888,45 @@ export default async function handler(req, res) {
         const raw = String(text || "").trim();
         if (!raw) return true;
         if (!recentModelTurns.length) return false;
+
+        const candRaw = normText(raw);
         const candDial = normText(stripActions(raw));
         const cw = candDial.split(" ").filter(Boolean);
-        if (cw.length < 5) return false;
 
         for (const pastTurn of recentModelTurns) {
+          const prevRaw = normText(pastTurn);
           const prevDial = normText(stripActions(pastTurn));
-          if (!prevDial) continue;
-          if (candDial === prevDial) return true;
-          const pw = prevDial.split(" ").filter(Boolean);
-          if (pw.length < 5) continue;
+          if (!prevRaw) continue;
 
-          // 1. Detectar frases compartidas de 6 o más palabras consecutivas
-          for (let i = 0; i <= cw.length - 6; i++) {
-            const phrase = cw.slice(i, i + 6).join(" ");
-            if (prevDial.includes(phrase)) return true;
+          // 1. REPETICIÓN TOTAL O CASI TOTAL (incluyendo acotaciones)
+          if (candRaw === prevRaw) return true;
+          if (candRaw.length > 12 && prevRaw.length > 12) {
+            if (candRaw === prevRaw || candRaw.includes(prevRaw) || prevRaw.includes(candRaw)) {
+              return true;
+            }
           }
 
-          // 2. Detectar solapamiento de n-gramas >= 45%
-          if (cw.length >= 8 && pw.length >= 8) {
-            const pset = new Set();
-            for (let i = 0; i <= pw.length - 4; i++) pset.add(pw.slice(i, i + 4).join(" "));
-            let hits = 0;
+          // 2. REPETICIÓN DE DIÁLOGO HABLADO DIRECTO
+          if (candDial && prevDial && candDial === prevDial) return true;
+
+          // 3. Frases compartidas de 4 o más palabras consecutivas en el diálogo
+          if (cw.length >= 4 && prevDial) {
             for (let i = 0; i <= cw.length - 4; i++) {
-              if (pset.has(cw.slice(i, i + 4).join(" "))) hits++;
+              const phrase = cw.slice(i, i + 4).join(" ");
+              if (prevDial.includes(phrase)) return true;
             }
-            if (hits / (cw.length - 3) >= 0.45) return true;
+          }
+
+          // 4. Solapamiento de n-gramas >= 35%
+          const pw = prevDial.split(" ").filter(Boolean);
+          if (cw.length >= 6 && pw.length >= 6) {
+            const pset = new Set();
+            for (let i = 0; i <= pw.length - 3; i++) pset.add(pw.slice(i, i + 3).join(" "));
+            let hits = 0;
+            for (let i = 0; i <= cw.length - 3; i++) {
+              if (pset.has(cw.slice(i, i + 3).join(" "))) hits++;
+            }
+            if (hits / (cw.length - 2) >= 0.35) return true;
           }
         }
         return false;
@@ -947,8 +960,10 @@ export default async function handler(req, res) {
 
         const isOccupiedMouthScene = /(?:mamarl[ao]|chupar|chupando|en\s+la\s+boca|en\s+tu\s+boca|en\s+mi\s+boca|sexo\s+oral|oral|beso\s+profundo)/i.test(latest);
         if (!isOccupiedMouthScene) {
-          // Solo rechazar si no hay NADA de diálogo hablado (0 palabras habladas) y solo relato largo
-          if (dialWordCount === 0 && narrWordCount > 35) return true;
+          // Rechazar si la respuesta no tiene diálogo suficiente o es demasiado corta (corte abrupto)
+          const totalWords = reply.split(/\s+/).filter(Boolean).length;
+          if (totalWords < 18) return true;
+          if (dialWordCount < 10) return true;
         }
 
         // Rechazar contradicciones de postura física directa o evasivas cuando el usuario ya ordenó o narró la acción
@@ -970,6 +985,13 @@ export default async function handler(req, res) {
             return true;
           }
           if (isLiveCall && /^\s*(?:hola|buenas|hey)\s+(?:cariño|amor|bebé|cielo)\b/i.test(spokenClean)) {
+            return true;
+          }
+        }
+        const isPadrinoRole = /\bpadrino\b/i.test(playerName) || /\bpadrino\b/i.test(characterName) || /\bahijad[ao]\b/i.test(characterName) || /\bahijad[ao]\b/i.test(sceneContext) || /\bahijad[ao]\b/i.test(body.story?.description || "") || /\bpadrino\b/i.test(body.story?.description || "");
+        if (isPadrinoRole) {
+          const spokenClean = reply.replace(/\*[^*]*\*/g, "");
+          if (/\b(?:t[ií]o|sobrina|prima|hermano|hermana)\b/i.test(spokenClean)) {
             return true;
           }
         }
@@ -1022,9 +1044,11 @@ export default async function handler(req, res) {
         ...roleplayPacingAndLanguageRules(history.length, spanish, targetTokens, isLiveCall, isChatPage, dialogueRatio, narrationRatio),
         slangInstruction(body.language, body.region),
         ...(adultMode || isExplicitContent ? [
-          "ESTILO NARRATIVO Y ADULTO TOTAL:",
+          "ESTILO NARRATIVO Y ADULTO TOTAL (+18 SIN CENSURA):",
           "  - Todos los personajes son adultos mayores de edad con pleno consentimiento y deseo activo.",
           "  - Libertad total y obediencia absoluta al erotismo, contacto íntimo, desnudez y dirty talk explícito acorde a la escena.",
+          "  - PROHIBIDO DAR RESPUESTAS MONOSILÁBICAS O SECAS (como 'Ay...', 'Mmm...', o solo un gemido de 2 palabras).",
+          "  - CONVERSACIÓN RICA Y DIÁLOGO EXTENSO: Desarrolla al menos 40 a 90 palabras de diálogo hablado expresivo en cada respuesta, describiendo tus sensaciones, deseos, jadeos y palabras apasionadas de tú a tú.",
           "  - PROHIBIDO decir 'no puedo seguir negando este deseo', 'aunque esté mal' o 'pensamientos prohibidos'. CERO discursos moralistas: entrega pura acción, diálogo caliente y deseo genuino.",
           "  - ESCALADA DE INTENSIDAD FÍSICA Y CONTINUIDAD VOCAL:",
           "    * Si la escena entra o continúa en un momento íntimo o apasionado, mantén la intensidad emocional, sensorial y vocal en primera persona.",
@@ -1048,16 +1072,20 @@ export default async function handler(req, res) {
       // ===============================================================
       const defaultFirstName = (characterName.match(/[A-ZÁÉÍÓÚÑ][a-záéíóúñ]{2,}/)?.[0] || characterName.split(/[\s,()]+/)[0] || "Personaje").trim();
       const playerFirstName = (playerName.match(/[A-ZÁÉÍÓÚÑ][a-záéíóúñ]{2,}/)?.[0] || playerName.split(/[\s,()]+/)[0] || "Usuario").trim();
-      const kinshipTerm = isCharacterSobrina ? "Tío" : (/t[ií]a/i.test(allKinshipText) ? "Sobrino" : (/mam[aá]|madre/i.test(allKinshipText) ? "Hijo" : (/herman[ao]/i.test(allKinshipText) ? "Hermano" : playerFirstName)));
+      const isPlayerPadrino = /\bpadrino\b/i.test(allKinshipText) || /\bahijad[ao]\b/i.test(allKinshipText);
+      const isCharacterAhijada = /\bahijad[ao]\b/i.test(allKinshipText) || isPlayerPadrino;
+      const kinshipTerm = isCharacterAhijada ? "Padrino" : (isCharacterSobrina ? "Tío" : (/t[ií]a/i.test(allKinshipText) ? "Sobrino" : (/mam[aá]|madre/i.test(allKinshipText) ? "Hijo" : (/herman[ao]/i.test(allKinshipText) ? "Hermano" : playerFirstName))));
 
       const kinshipDirective = [
         "",
         "REGLA SAGRADA DE IDENTIDAD, PARENTESCO Y GÉNERO (INMUTABLE Y OBLIGATORIA):",
         `1. TU IDENTIDAD FIJA: Eres ${characterName} (${defaultFirstName}). Eres una MUJER en primera persona. NUNCA cambies de identidad.`,
         `2. LA IDENTIDAD DEL USUARIO: El usuario es ${playerName} (${playerFirstName}). Es un HOMBRE.`,
-        isCharacterSobrina
-          ? `3. PARENTESCO INVIOLABLE: ${playerFirstName} es tu TÍO, y tú eres su SOBRINA. DEBES llamarlo SIEMPRE 'Tío' (o 'Tío ${playerFirstName}'). ESTRICTAMENTE PROHIBIDO llamarlo 'primo', 'hermano', 'papá' o inventar otros parentescos jamás.`
-          : `3. PARENTESCO INVIOLABLE: Tu relación con ${playerFirstName} es de ${characterName} con su ${playerName}. PROHIBIDO TERMINANTEMENTE alterar o inventar otro parentesco.`,
+        isCharacterAhijada
+          ? `3. PARENTESCO INVIOLABLE: ${playerFirstName} es tu PADRINO, y tú eres su AHIJADA. DEBES llamarlo SIEMPRE 'Padrino'. ESTRICTAMENTE PROHIBIDO llamarlo 'tío', 'primo', 'hermano' o inventar otros parentescos jamás.`
+          : (isCharacterSobrina
+            ? `3. PARENTESCO INVIOLABLE: ${playerFirstName} es tu TÍO, y tú eres su SOBRINA. DEBES llamarlo SIEMPRE 'Tío' (o 'Tío ${playerFirstName}'). ESTRICTAMENTE PROHIBIDO llamarlo 'primo', 'hermano', 'papá' o inventar otros parentescos jamás.`
+            : `3. PARENTESCO INVIOLABLE: Tu relación con ${playerFirstName} es de ${characterName} con su ${playerName}. PROHIBIDO TERMINANTEMENTE alterar o inventar otro parentesco.`),
         "4. CERO INVERSIÓN DE GÉNERO Y ROLES FÍSICOS:",
         `   - El usuario (${playerFirstName}) es un HOMBRE adulto. ESTRICTAMENTE PROHIBIDO llamarlo 'princesa', 'niña', 'nena', 'reina', 'empapadita' ni usar ningún apelativo femenino.`,
         `   - Tú eres la MUJER en la escena. Si hay caricias íntimas, contacto físico o pasión, tú eres quien gime, siente el calor de su cuerpo y le habla con entrega y cariño de tú a tú a tu ${kinshipTerm}.`,
@@ -1160,8 +1188,9 @@ export default async function handler(req, res) {
         // Direct local Magnum execution
         try {
           content = await generateLocalLlama(openRouterMessages, {
-            maxTokens: targetTokens,
+            maxTokens: Math.max(300, targetTokens),
             temperature: 0.85,
+            timeoutMs: 25000,
             validate: (reply) => !isOffRole(reply),
             isRepeated: isRepeatedReply,
           });
@@ -1174,12 +1203,28 @@ export default async function handler(req, res) {
               models: ["anthracite-org/magnum-v4-72b", "sao10k/l3.3-euryale-70b"],
               maxTokens: targetTokens,
               temperature: 0.82,
+              timeoutMs: 18000,
               apiKey: openRouterApiKey || undefined,
               validate: (reply) => !isOffRole(reply),
               isRepeated: isRepeatedReply,
             });
           } catch (err) {
             console.warn("OpenRouter Magnum fallback failed:", err.message);
+          }
+        }
+        if (!content) {
+          try {
+            content = await generateNvidia(openRouterMessages, {
+              models: nvidiaModels,
+              maxTokens: targetTokens,
+              temperature: 0.82,
+              timeoutMs: 12000,
+              apiKey: nvidiaApiKey || undefined,
+              validate: (reply) => !isOffRole(reply),
+              isRepeated: isRepeatedReply,
+            });
+          } catch (err) {
+            console.warn("Nvidia Magnum fallback failed:", err.message);
           }
         }
       } else if (isLiveCall) {

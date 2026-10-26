@@ -431,6 +431,7 @@ export function resolveChatKinship(char: CharacterItem, history: ChatMessage[], 
   const histText = history.slice(-15).map((m) => m.content).join(" ");
   const allText = `${char.name} ${charRole} ${charBio} ${starter} ${histText}`;
 
+  const isPadrino = /\b(?:padrino|ahijad[ao])\b/i.test(allText);
   const isSobrina = /\b(?:sobrin[ao]|t[ií]o)\b/i.test(allText);
   const isHermana = /\b(?:herman[ao]|hermanit[ao])\b/i.test(allText);
   const isPrima = /\b(?:prim[ao]|primit[ao])\b/i.test(allText);
@@ -439,7 +440,10 @@ export function resolveChatKinship(char: CharacterItem, history: ChatMessage[], 
   let playerRoleName = isEs ? "Compañero" : "Partner";
   let resolvedCharRole = charRole || char.name;
 
-  if (isSobrina) {
+  if (isPadrino) {
+    playerRoleName = isEs ? "Padrino" : "Godfather";
+    resolvedCharRole = isEs ? `${char.name} (la ahijada)` : `${char.name} (the goddaughter)`;
+  } else if (isSobrina) {
     playerRoleName = isEs ? "Tío" : "Uncle";
     resolvedCharRole = isEs ? `${char.name} (la sobrina)` : `${char.name} (the niece)`;
   } else if (isHermana) {
