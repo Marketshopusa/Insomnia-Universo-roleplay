@@ -422,20 +422,21 @@ const TALKIEMATE_CHARACTERS: CharacterItem[] = [
 
 /**
  * Resuelve dinámicamente el parentesco y rol del personaje y del usuario (Tío, Sobrina, etc.)
- * a partir de la tarjeta (título, bio, mensaje inicial) y del historial acumulado.
+ * a partir ÚNICAMENTE de la tarjeta explícita del personaje (título de rol y biografía).
+ * NUNCA infiere parentesco de palabras sueltas en el historial para evitar alucinaciones.
  */
 export function resolveChatKinship(char: CharacterItem, history: ChatMessage[], isEs: boolean) {
   const charRole = (isEs ? (char.roleTitleEs || char.roleTitle) : (char.roleTitleEn || char.roleTitle)) || "";
   const charBio = (isEs ? (char.bioEs || char.bio) : (char.bioEn || char.bio)) || "";
-  const starter = (isEs ? (char.starterMessageEs || char.starterMessage) : (char.starterMessageEn || char.starterMessage)) || "";
-  const histText = history.slice(-15).map((m) => m.content).join(" ");
-  const allText = `${char.name} ${charRole} ${charBio} ${starter} ${histText}`;
 
-  const isPadrino = /\b(?:padrino|ahijad[ao])\b/i.test(allText);
-  const isSobrina = /\b(?:sobrin[ao]|t[ií]o)\b/i.test(allText);
-  const isHermana = /\b(?:herman[ao]|hermanit[ao])\b/i.test(allText);
-  const isPrima = /\b(?:prim[ao]|primit[ao])\b/i.test(allText);
-  const isMadre = /\b(?:madre|mamá|hijo|hija)\b/i.test(allText);
+  // Inspeccionar estrictamente la definición de la tarjeta, jamás el historial abierto
+  const cardText = `${charRole} ${charBio}`.toLowerCase();
+
+  const isPadrino = /\b(?:padrino|ahijad[ao])\b/i.test(cardText);
+  const isSobrina = /\b(?:sobrin[ao]|es\s+su\s+t[ií]o|eres\s+su\s+t[ií]o|tu\s+t[ií]o)\b/i.test(cardText);
+  const isHermana = /\b(?:herman[ao]|hermanit[ao])\b/i.test(cardText);
+  const isPrima = /\b(?:prim[ao]|primit[ao])\b/i.test(cardText);
+  const isMadre = /\b(?:madre|mamá)\b/i.test(cardText) && !/\b(?:gimnasio|compañera|amiga|ejecutiva)\b/i.test(cardText);
 
   let playerRoleName = isEs ? "Compañero" : "Partner";
   let resolvedCharRole = charRole || char.name;
@@ -976,12 +977,16 @@ export default function ChatPage() {
       );
       const charRegion = spokenRegion(getStoryRegion(activeChar.id), getStoryAccent(activeChar.id)) || (isEs ? "co" : "us");
 
+      const roleRelationSentence = isSobrina
+        ? `Parentesco inmutable: el usuario es su ${playerRoleName} y ella es su ${resolvedCharRole}.`
+        : `Relación: el usuario es su ${playerRoleName} masculino (NO son familiares, estrictamente prohibido inventar que es su tío o pariente).`;
+
       const { data, error } = await invokeFunctionWithRetry<{ content?: string }>("story-chat", {
         story: {
           id: activeChar.id,
           title: activeChar.name,
           description: charBio,
-          story_context: `${resolvedCharRole}. Personalidad: ${charBio}. Parentesco inmutable: el usuario es su ${playerRoleName} y ella es su ${resolvedCharRole}`,
+          story_context: `${resolvedCharRole}. Personalidad: ${charBio}. ${roleRelationSentence}`,
           character_role: resolvedCharRole,
           player_role: playerRoleName,
           story_type: "chat_page"
@@ -1003,18 +1008,41 @@ export default function ChatPage() {
       if (!error && data?.content) {
         reply = data.content;
       } else {
-        const fallbacksEs = [
-          `Mmm, me encanta cuando me hablas así... Ven y cuéntame todo lo que tienes en mente.`,
-          `Me tienes completamente fascinada contigo... No me dejes con la duda, dime más.`,
-          `Eres increíble... Me encanta cómo piensas y disfruto cada instante que pasamos juntos.`
-        ];
-        const fallbacksEn = [
-          `Mmm, I love when you talk to me like that... Tell me everything on your mind.`,
-          `You have me completely captivated... Don't keep me waiting, tell me more.`,
-          `You're amazing... I really enjoy every single moment we spend together.`
-        ];
-        const choices = isEs ? fallbacksEs : fallbacksEn;
-        reply = choices[Math.floor(Math.random() * choices.length)];
+        // Reintento limpio inmediato si hubo un error transitorio
+        const retryResult = await invokeFunctionWithRetry<{ content?: string }>("story-chat", {
+          story: {
+            id: activeChar.id,
+            title: activeChar.name,
+            description: charBio,
+            story_context: `${resolvedCharRole}. Personalidad: ${charBio}. ${roleRelationSentence}`,
+            character_role: resolvedCharRole,
+            player_role: playerRoleName,
+            story_type: "chat_page"
+          },
+          chatSource: "chat_page",
+          isLiveCall: false,
+          language,
+          history: historyPayload,
+          userMessage: text,
+          adultMode: Boolean(adultEnabled || isCharNsfw),
+          isNsfw: isCharNsfw,
+          region: charRegion,
+          settings: charAiSettings
+        });
+
+        if (retryResult?.data?.content) {
+          reply = retryResult.data.content;
+        } else {
+          setIsTyping(false);
+          toast({
+            title: isEs ? "Error de conexión temporal" : "Temporary connection error",
+            description: isEs
+              ? "No se pudo recibir la respuesta del personaje. Por favor pulsa enviar nuevamente."
+              : "Could not receive character reply. Please try resending your message.",
+            variant: "destructive"
+          });
+          return;
+        }
       }
 
       const assistantMsg: ChatMessage = {

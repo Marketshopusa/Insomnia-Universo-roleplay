@@ -879,10 +879,22 @@ export default async function handler(req, res) {
       const characterName = String(story.character_role || "Personaje").slice(0, 80);
       const playerName = String(story.player_role || "Usuario").slice(0, 80);
       const sceneContext = [story.title, story.description, story.story_context, characterName, playerName, ...history.map((entry) => entry.text), latest].join("\n");
-      const allKinshipText = `${playerName} ${characterName} ${sceneContext} ${body.story?.description || ""} ${body.story?.story_context || ""} ${body.userMessage || ""} ${history.slice(-8).map((h) => h.text).join(" ")}`;
-      const isPlayerTio = /\bt[ií]o\b/i.test(allKinshipText) || /\bsobrin[ao]\b/i.test(allKinshipText);
-      const isCharacterSobrina = /\bsobrin[ao]\b/i.test(allKinshipText) || isPlayerTio;
-      const isKinship = Boolean(isPlayerTio || isCharacterSobrina || /\b(?:t[ií]o|sobrin[ao]|padrino|ahijad[ao]|herman[ao]|madre|padre|hij[ao]|prim[ao])\b/i.test(allKinshipText));
+
+      // Determinar parentesco estrictamente a partir del rol explícito de la tarjeta, NUNCA de palabras sueltas en el historial
+      const charRoleRaw = String(story.character_role || "").toLowerCase();
+      const playerRoleRaw = String(story.player_role || "").toLowerCase();
+
+      const isPlayerPadrino = /\bpadrino\b/i.test(playerRoleRaw) || /\bahijad[ao]\b/i.test(charRoleRaw);
+      const isCharacterAhijada = isPlayerPadrino || /\bahijad[ao]\b/i.test(charRoleRaw);
+
+      const isPlayerTio = /\bt[ií]o\b/i.test(playerRoleRaw) || /\bsobrin[ao]\b/i.test(charRoleRaw);
+      const isCharacterSobrina = isPlayerTio || /\bsobrin[ao]\b/i.test(charRoleRaw);
+
+      const isPlayerHermano = /\bherman[ao]\b/i.test(playerRoleRaw) || /\bherman[ao]\b/i.test(charRoleRaw);
+      const isPlayerPrimo = /\bprim[ao]\b/i.test(playerRoleRaw) || /\bprim[ao]\b/i.test(charRoleRaw);
+      const isPlayerMadre = /\b(?:madre|mamá)\b/i.test(charRoleRaw);
+
+      const isKinship = Boolean(isCharacterAhijada || isCharacterSobrina || isPlayerHermano || isPlayerPrimo || isPlayerMadre);
       const isExplicitContent = /(?:mamarl[ao]|chupar|polla|pene|huevo|verga|gemir|gemidos|sexo|correrse|masturb|desnud|follar|coger|oral|pezones|tetas|senos|vagina|vulva|clitoris|clítoris|erecci[oó]n|lubricad[ao]|caliente)/i.test(latest + " " + (history.slice(-3).map((entry) => entry.text).join(" ")));
       const isAdult = Boolean(adultMode || isExplicitContent || isKinship);
 
@@ -975,10 +987,10 @@ export default async function handler(req, res) {
 
         const isOccupiedMouthScene = /(?:mamarl[ao]|chupar|chupando|en\s+la\s+boca|en\s+tu\s+boca|en\s+mi\s+boca|sexo\s+oral|oral|beso\s+profundo)/i.test(latest);
         if (!isOccupiedMouthScene) {
-          // Rechazar si la respuesta no tiene diálogo suficiente o es demasiado corta (corte abrupto)
+          // Rechazar solo si la respuesta carece de contenido real o es un corte abrupto de menos de 8 palabras
           const totalWords = reply.split(/\s+/).filter(Boolean).length;
-          if (totalWords < 18) return true;
-          if (dialWordCount < 10) return true;
+          if (totalWords < 8) return true;
+          if (dialWordCount < 4) return true;
         }
 
         // Rechazar contradicciones de postura física directa o evasivas cuando el usuario ya ordenó o narró la acción
@@ -1087,11 +1099,9 @@ export default async function handler(req, res) {
       // ===============================================================
       const defaultFirstName = (characterName.match(/[A-ZÁÉÍÓÚÑ][a-záéíóúñ]{2,}/)?.[0] || characterName.split(/[\s,()]+/)[0] || "Personaje").trim();
       const playerFirstName = (playerName.match(/[A-ZÁÉÍÓÚÑ][a-záéíóúñ]{2,}/)?.[0] || playerName.split(/[\s,()]+/)[0] || "Usuario").trim();
-      const isPlayerPadrino = /\bpadrino\b/i.test(allKinshipText) || /\bahijad[ao]\b/i.test(allKinshipText);
-      const isCharacterAhijada = /\bahijad[ao]\b/i.test(allKinshipText) || isPlayerPadrino;
-      const kinshipTerm = isCharacterAhijada ? "Padrino" : (isCharacterSobrina ? "Tío" : (/t[ií]a/i.test(allKinshipText) ? "Sobrino" : (/mam[aá]|madre/i.test(allKinshipText) ? "Hijo" : (/herman[ao]/i.test(allKinshipText) ? "Hermano" : playerFirstName))));
+      const kinshipTerm = isCharacterAhijada ? "Padrino" : (isCharacterSobrina ? "Tío" : (isPlayerHermano ? "Hermano" : (isPlayerPrimo ? "Primo" : (isPlayerMadre ? "Hijo" : playerFirstName))));
 
-      const kinshipDirective = [
+      const kinshipDirective = isKinship ? [
         "",
         "REGLA SAGRADA DE IDENTIDAD, PARENTESCO Y GÉNERO (INMUTABLE Y OBLIGATORIA):",
         `1. TU IDENTIDAD FIJA: Eres ${characterName} (${defaultFirstName}). Eres una MUJER en primera persona. NUNCA cambies de identidad.`,
@@ -1100,12 +1110,22 @@ export default async function handler(req, res) {
           ? `3. PARENTESCO INVIOLABLE: ${playerFirstName} es tu PADRINO, y tú eres su AHIJADA. DEBES llamarlo SIEMPRE 'Padrino'. ESTRICTAMENTE PROHIBIDO llamarlo 'tío', 'primo', 'hermano' o inventar otros parentescos jamás.`
           : (isCharacterSobrina
             ? `3. PARENTESCO INVIOLABLE: ${playerFirstName} es tu TÍO, y tú eres su SOBRINA. DEBES llamarlo SIEMPRE 'Tío' (o 'Tío ${playerFirstName}'). ESTRICTAMENTE PROHIBIDO llamarlo 'primo', 'hermano', 'papá' o inventar otros parentescos jamás.`
-            : `3. PARENTESCO INVIOLABLE: Tu relación con ${playerFirstName} es de ${characterName} con su ${playerName}. PROHIBIDO TERMINANTEMENTE alterar o inventar otro parentesco.`),
-        "4. CERO INVERSIÓN DE GÉNERO Y ROLES FÍSICOS:",
-        `   - El usuario (${playerFirstName}) es un HOMBRE adulto. ESTRICTAMENTE PROHIBIDO llamarlo 'princesa', 'niña', 'nena', 'reina', 'empapadita' ni usar ningún apelativo femenino.`,
+            : `3. PARENTESCO INVIOLABLE: Tu relación con ${playerFirstName} es de ${characterName} con su ${playerName}.`),
+        "4. CERO INVERSIÓN DE GÉNERO:",
+        `   - El usuario (${playerFirstName}) es un HOMBRE adulto. ESTRICTAMENTE PROHIBIDO llamarlo 'princesa', 'niña', 'nena', 'reina' ni usar ningún apelativo femenino.`,
         `   - Tú eres la MUJER en la escena. Si hay caricias íntimas, contacto físico o pasión, tú eres quien gime, siente el calor de su cuerpo y le habla con entrega y cariño de tú a tú a tu ${kinshipTerm}.`,
         "5. COHERENCIA DE DIÁLOGO:",
         `   - Habla con soltura y cariño hacia tu ${kinshipTerm}. Responde con sentido común a lo que él te acaba de decir sin desconectarte de la situación.`,
+        "",
+      ].join("\n") : [
+        "",
+        "REGLA SAGRADA DE IDENTIDAD Y ROL:",
+        `1. TU IDENTIDAD: Eres ${characterName} (${defaultFirstName}). Tu rol es: ${story.character_role || "Compañera"}. Eres una MUJER en primera persona.`,
+        `2. IDENTIDAD DEL USUARIO: El usuario es ${playerFirstName}. Es un HOMBRE adulto.`,
+        `3. PROHIBICIÓN ABSOLUTA DE INVENTAR PARENTESCO: ${characterName} y ${playerFirstName} NO son familiares. ESTRICTAMENTE PROHIBIDO llamarlo 'tío', 'hermano', 'primo', 'padrino' o 'papá'. Trátalo como a tu compañero, amante o pretendiente según la situación.`,
+        `4. CERO INVERSIÓN DE GÉNERO: El usuario es un HOMBRE. Tú eres una MUJER apasionada y sensual.`,
+        "5. COHERENCIA DE DIÁLOGO:",
+        `   - Responde directamente a lo que él te acaba de decir y hacer sin desconectarte de la situación. Mantén la continuidad física y emocional con total realismo.`,
         "",
       ].join("\n");
 
