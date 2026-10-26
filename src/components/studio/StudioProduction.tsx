@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { Trash2, RefreshCw, Loader2, Edit3, CheckCircle2 } from "lucide-react";
+import { Trash2, RefreshCw, Loader2, Edit3, CheckCircle2, Clapperboard } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -21,7 +21,7 @@ type Episode = {
 };
 
 export type ProductionSeries = {
-  id: string; title: string; is_published: boolean;
+  id: string; title: string; premise?: string | null; is_published: boolean;
   kineva_reference_image_path: string | null;
   kineva_bible?: { speakers?: string[]; lines?: string[] } | null;
   episodes: Episode[];
@@ -29,10 +29,11 @@ export type ProductionSeries = {
 
 type Review = ProductionSeries & { videos: Record<string, string> };
 
-export function StudioProduction({ userId, refreshKey, onEdit, onDelete }: {
+export function StudioProduction({ userId, refreshKey, onEdit, onFilm, onDelete }: {
   userId: string;
   refreshKey?: string;
   onEdit: (series: ProductionSeries, reference: File | null) => void;
+  onFilm?: (series: ProductionSeries) => void;
   onDelete?: (seriesId: string) => void;
 }) {
   const { toast } = useToast();
@@ -42,7 +43,7 @@ export function StudioProduction({ userId, refreshKey, onEdit, onDelete }: {
 
   const load = useCallback(async () => {
     const { data, error } = await (supabase.from("shorts_series") as any)
-      .select("id,title,is_published,kineva_reference_image_path,kineva_bible,episodes:shorts_episodes(id,episode_number,title,script,video_prompt,video_url,status)")
+      .select("id,title,premise,is_published,kineva_reference_image_path,kineva_bible,episodes:shorts_episodes(id,episode_number,title,script,video_prompt,video_url,status)")
       .eq("created_by", userId).eq("is_published", false).eq("video_provider", "kineva")
       .order("created_at", { ascending: false });
     if (error) throw error;
@@ -254,6 +255,17 @@ export function StudioProduction({ userId, refreshKey, onEdit, onDelete }: {
           </div>
 
           <div className="flex flex-wrap items-center gap-2 pt-1">
+            <Button
+              type="button"
+              variant="default"
+              size="sm"
+              disabled={busy === series.id}
+              onClick={() => onFilm?.(series)}
+              className="gap-1.5"
+            >
+              <Clapperboard className="w-3.5 h-3.5" />
+              Filmar con ComfyUI
+            </Button>
             <Button
               type="button"
               variant="outline"

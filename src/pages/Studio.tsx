@@ -22,7 +22,7 @@ import {
   type LocalStudioStatus,
 } from "@/lib/kinevaLocal";
 import { useEffect, useRef, useState } from "react";
-import { Clapperboard, Loader2, Sparkles, Plus, Trash2, Camera, UserPlus, Users, Film, ShieldAlert, Sparkle } from "lucide-react";
+import { Clapperboard, Loader2, Sparkles, Plus, Trash2, Camera, UserPlus, Users, Film, ShieldAlert, Sparkle, Save } from "lucide-react";
 import { type StudioGenre } from "@/lib/studioPresets";
 
 export type CastSlotRole = "protagonist" | "secondary" | "antagonist" | "key_object" | "location";
@@ -116,6 +116,7 @@ const chapterOptions = [3, 5, 7, 10, 12, 15, 20];
   const [customCast, setCustomCast] = useState<CustomCastItem[]>([]);
   const [castRoles, setCastRoles] = useState<{ name: string; role: string }[]>([]);
   const [draftingThree, setDraftingThree] = useState(false);
+  const [savingDraft, setSavingDraft] = useState(false);
   const [showManualEditor, setShowManualEditor] = useState(false);
   const [isSafeForWork, setIsSafeForWork] = useState(false);
 
@@ -499,6 +500,128 @@ const chapterOptions = [3, 5, 7, 10, 12, 15, 20];
     }
   };
 
+  const handleSaveManualDraftOnly = async () => {
+    if (!user) {
+      toast({ title: "Inicia sesión para guardar la serie.", variant: "destructive" });
+      return;
+    }
+    const title = manualTitle.trim() || description.trim().slice(0, 40) || novel?.title || "Miniserie Insomnia";
+    const scenes = manualScenes.slice(0, chapterCount).map((text) => text.trim());
+    const lines = manualLines.slice(0, chapterCount).map((text) => text.trim());
+    setSavingDraft(true);
+    try {
+      const spokenShots = lines.map((line) => splitKinevaDialogue(line));
+      const chapters = scenes.map((visual, index) => {
+        const extraSubs = (chapterSubShots[index] || []).filter((s) => s.visual.trim().length >= 3);
+        const mainShot = {
+          visual,
+          dialogue: spokenShots[index][0] || "",
+          speaker: manualSpeakers[index] || primaryName,
+        };
+        const allShots = [
+          mainShot,
+          ...extraSubs.map((sub) => ({
+            visual: sub.visual.trim(),
+            dialogue: sub.dialogue.trim(),
+            speaker: sub.speaker.trim() || manualSpeakers[index] || primaryName,
+          })),
+        ];
+        return {
+          number: index + 1,
+          title: "Capítulo " + (index + 1),
+          content: visual + (lines[index] ? "\n" + lines[index] : ""),
+          video_prompt: visual,
+          spoken_line: spokenShots[index][0],
+          shots: allShots,
+        };
+      });
+      const draft = { title, logline: description.trim() || scenes[0] || title, chapters };
+      let referencePath: string | null = null;
+      if (referenceImage) {
+        try {
+          referencePath = await uploadKinevaReference(user.id, title, referenceImage);
+        } catch {
+          // Ignored
+        }
+      }
+      const saved = await saveNovelSeries({
+        userId: user.id,
+        novel: draft,
+        description: draft.logline,
+        isAdult: !isSafeForWork,
+        referencePath,
+        speakers: manualSpeakers.slice(0, chapterCount),
+        lines,
+        existingSeriesId: savedSeriesId || undefined,
+      });
+      setNovel(draft);
+      setSeriesEpisodeIds(saved.episodeIds);
+      setSavedSeriesId(saved.seriesId);
+      setProductionRefresh((v) => v + 1);
+      toast({
+        title: "Guion guardado en Producción",
+        description: `Los cambios de "${title}" quedaron guardados.`,
+      });
+    } catch (error) {
+      toast({
+        title: "No se pudo guardar el guion",
+        description: error instanceof Error ? error.message : undefined,
+        variant: "destructive",
+      });
+    } finally {
+      setSavingDraft(false);
+    }
+  };
+
+  const handleFilmSeriesDirectly = async (series: ProductionSeries) => {
+    if (!user) {
+      toast({ title: t("studio.toast.loginToCreate"), variant: "destructive" });
+      return;
+    }
+    const loopbackProbe = probeLocalKineva();
+    const probe = await loopbackProbe;
+    if (probe.status !== "ready") {
+      toast({
+        title: "Motor de video local no detectado",
+        description: "Para filmar y renderizar los videos MP4 en tu PC, inicia ComfyUI y Kineva.",
+      });
+      return;
+    }
+    setGeneratingVideos(true);
+    setVideoProgress(`Filmando capítulos de "${series.title}" con ComfyUI...`);
+    try {
+      const episodes = [...(series.episodes || [])].sort((a, b) => a.episode_number - b.episode_number);
+      const chapterTexts = episodes.map((ep) => ep.video_prompt || ep.script || series.title);
+      const episodeIds = episodes.map((ep) => ep.id);
+      const dialogues = episodes.map((ep, idx) => series.kineva_bible?.lines?.[idx] || "");
+      const storyPlan = {
+        title: series.title,
+        logline: series.premise || series.title,
+        chapters: episodes.map((ep) => ({
+          number: ep.episode_number,
+          title: ep.title,
+          content: ep.script,
+          video_prompt: ep.video_prompt || ep.script,
+        })),
+      };
+
+      setSavedSeriesId(series.id);
+      setSeriesEpisodeIds(episodeIds);
+      await filmChapters(chapterTexts, episodeIds, probe, dialogues, storyPlan);
+      toast({ title: "Filmación completada", description: `Los capítulos de "${series.title}" fueron generados.` });
+      setProductionRefresh((v) => v + 1);
+    } catch (e) {
+      toast({
+        title: "No se pudieron filmar los videos",
+        description: e instanceof Error ? e.message : undefined,
+        variant: "destructive",
+      });
+    } finally {
+      setGeneratingVideos(false);
+      setVideoProgress("");
+    }
+  };
+
   const handleManualSeries = async () => {
     if (!user) {
       toast({ title: "Inicia sesión para guardar la serie.", variant: "destructive" });
@@ -579,6 +702,7 @@ const chapterOptions = [3, 5, 7, 10, 12, 15, 20];
         referencePath,
         speakers: manualSpeakers.slice(0, chapterCount),
         lines,
+        existingSeriesId: savedSeriesId || undefined,
       });
       setNovel(draft);
       setSeriesEpisodeIds(saved.episodeIds);
@@ -765,7 +889,12 @@ const chapterOptions = [3, 5, 7, 10, 12, 15, 20];
       toast({ title: t("studio.toast.loginToCreate"), variant: "destructive" });
       return;
     }
-    if (description.trim().length < 5 && !novel?.logline) {
+    const existingChapters = (novel?.chapters ?? []).filter((ch: any) =>
+      Boolean(ch.video_prompt || ch.summary || ch.content)
+    );
+    const hasExistingScenes = existingChapters.length > 0 || manualScenes.some((s) => s.trim().length >= 3);
+
+    if (!hasExistingScenes && description.trim().length < 5 && !novel?.logline) {
       toast({ title: "Escribe la idea del video", variant: "destructive" });
       return;
     }
@@ -791,14 +920,21 @@ const chapterOptions = [3, 5, 7, 10, 12, 15, 20];
         const savedSeries = await saveNovelSeries({
           userId: user.id,
           novel,
-          description,
+          description: description.trim() || novel?.logline || novel?.title || "Miniserie",
           isAdult: !isSafeForWork,
+          existingSeriesId: savedSeriesId || undefined,
         });
         episodeIds = savedSeries.episodeIds;
         setSeriesEpisodeIds(episodeIds);
         setSavedSeriesId(savedSeries.seriesId);
       }
-      await filmChapters(chapterTexts.length ? chapterTexts : [String(description || novel?.logline || "")], episodeIds, probe, scenes.map((scene: { dialogue: string }) => scene.dialogue), novel);
+      await filmChapters(
+        chapterTexts.length ? chapterTexts : [String(description || novel?.logline || manualTitle || "Escena")],
+        episodeIds,
+        probe,
+        scenes.map((scene: { dialogue: string }) => scene.dialogue),
+        novel
+      );
     } catch (e) {
       toast({
         title: "No se pudieron generar los videos",
@@ -951,19 +1087,34 @@ const chapterOptions = [3, 5, 7, 10, 12, 15, 20];
         <p className="mb-6 text-center text-sm text-muted-foreground">Aquí se escribe la novela. Las portadas quedan en Shorts.</p>
 
          <StudioProduction userId={user.id} refreshKey={`${savedSeriesId}:${localJob?.state}:${localJob?.videos?.length}:${productionRefresh}`}
+           onFilm={handleFilmSeriesDirectly}
            onEdit={(series: ProductionSeries, reference) => {
              setSavedSeriesId(series.id);
-             setSeriesEpisodeIds(series.episodes.map((episode) => episode.id));
+             const epIds = series.episodes.map((episode) => episode.id);
+             setSeriesEpisodeIds(epIds);
              setManualTitle(series.title);
+             const seriesPremise = series.premise || series.title;
+             setDescription(seriesPremise);
+             setChapterCount(series.episodes.length || 3);
              setManualScenes(series.episodes.map((episode) => episode.video_prompt || episode.script));
              setManualLines(series.episodes.map((episode, index) => series.kineva_bible?.lines?.[index] ||
                (episode.script.length < 500 ? episode.script.replace(episode.video_prompt || "", "").trim() : "")));
              setManualSpeakers(series.episodes.map((_, index) => series.kineva_bible?.speakers?.[index] || ""));
              setReferenceImage(reference);
-             setNovel({ title: series.title, chapters: series.episodes.map((episode) => ({ number: episode.episode_number, title: episode.title, content: episode.script, video_prompt: episode.video_prompt })) });
+             setNovel({
+               title: series.title,
+               logline: seriesPremise,
+               chapters: series.episodes.map((episode) => ({
+                 number: episode.episode_number,
+                 title: episode.title,
+                 content: episode.script,
+                 video_prompt: episode.video_prompt || episode.script,
+                 spoken_line: series.kineva_bible?.lines?.[episode.episode_number - 1] || "",
+               })),
+             });
              setLocalJob(null);
              setShowManualEditor(true);
-             window.sessionStorage.setItem("insomnia.studio.episodeIds", JSON.stringify(series.episodes.map((episode) => episode.id)));
+             window.sessionStorage.setItem("insomnia.studio.episodeIds", JSON.stringify(epIds));
            }}
            onDelete={(deletedId) => {
              if (savedSeriesId === deletedId) {
@@ -1427,23 +1578,43 @@ const chapterOptions = [3, 5, 7, 10, 12, 15, 20];
             );
           })}
 
-          <Button
-            type="button"
-            size="lg"
-            className="w-full h-14 text-base font-semibold"
-            onClick={() => void handleManualSeries()}
-            disabled={generating || generatingVideos || draftingThree || !showManualEditor}
-          >
-            {generatingVideos ? (
-              <>
-                <Loader2 className="w-5 h-5 mr-2 animate-spin" /> {videoProgress || "Filmando con ComfyUI en tu PC…"}
-              </>
-            ) : (
-              <>
-                <Clapperboard className="w-5 h-5 mr-2" /> Filmar los {chapterCount} capítulos en ComfyUI (GPU local)
-              </>
-            )}
-          </Button>
+          <div className="flex flex-col sm:flex-row gap-3 pt-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="lg"
+              className="flex-1 h-14 text-base font-semibold"
+              onClick={() => void handleSaveManualDraftOnly()}
+              disabled={generating || generatingVideos || savingDraft || !showManualEditor}
+            >
+              {savingDraft ? (
+                <>
+                  <Loader2 className="w-5 h-5 mr-2 animate-spin" /> Guardando cambios…
+                </>
+              ) : (
+                <>
+                  <Save className="w-5 h-5 mr-2" /> Guardar cambios del guion
+                </>
+              )}
+            </Button>
+            <Button
+              type="button"
+              size="lg"
+              className="flex-1 h-14 text-base font-semibold"
+              onClick={() => void handleManualSeries()}
+              disabled={generating || generatingVideos || draftingThree || savingDraft || !showManualEditor}
+            >
+              {generatingVideos ? (
+                <>
+                  <Loader2 className="w-5 h-5 mr-2 animate-spin" /> {videoProgress || "Filmando con ComfyUI en tu PC…"}
+                </>
+              ) : (
+                <>
+                  <Clapperboard className="w-5 h-5 mr-2" /> Filmar los {chapterCount} capítulos en ComfyUI (GPU local)
+                </>
+              )}
+            </Button>
+          </div>
           </>}
         </Card>
 
