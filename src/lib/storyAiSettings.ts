@@ -196,6 +196,7 @@ export interface StoryAiSettings {
   openRouterApiKey?: string;
   nvidiaApiKey?: string;
   geminiApiKey?: string;
+  adultMode?: boolean;
 }
 
 export const DEFAULT_AI_SETTINGS: StoryAiSettings = {

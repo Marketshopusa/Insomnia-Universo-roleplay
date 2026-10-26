@@ -93,6 +93,8 @@ export interface CharacterItem {
   starterMessageEn?: string;
   starterMessageEs?: string;
   voiceName: string;
+  isNsfw?: boolean;
+  modelId?: string;
 }
 
 export interface ChatMessage {
@@ -820,9 +822,12 @@ export default function ChatPage() {
       const existingHistory = updatedHistory;
       const mother = getMotherCardConfig();
       const rawAiSettings = getStoryAiSettings(activeChar.id);
+      const isCharNsfw = Boolean(activeChar.isNsfw || rawAiSettings.adultMode || rawAiSettings.modelId === "magnum-v4-local");
       const charAiSettings = {
         ...mother.aiSettings,
         ...rawAiSettings,
+        modelId: isCharNsfw ? "magnum-v4-local" : (activeChar.modelId || rawAiSettings.modelId || mother.aiSettings.modelId),
+        adultMode: Boolean(adultEnabled || isCharNsfw),
         dialogueRatio: mother.dialogueRatio || 0.80,
         narrationRatio: mother.narrationRatio || 0.20,
         customDirective: rawAiSettings.customDirective || mother.masterDirective,
@@ -864,7 +869,8 @@ export default function ChatPage() {
         memory: memoryPayload,
         chronicle: chroniclePayload,
         userMessage: text,
-        adultMode: adultEnabled,
+        adultMode: Boolean(adultEnabled || isCharNsfw),
+        isNsfw: isCharNsfw,
         region: charRegion,
         settings: charAiSettings
       });
@@ -1235,6 +1241,7 @@ export default function ChatPage() {
       const { playerRoleName, resolvedCharRole, isSobrina, charBio } = resolveChatKinship(activeChar, chatHistory[activeChar.id] || [], isEs);
       const mother = getMotherCardConfig();
       const rawAiSettings = getStoryAiSettings(activeChar.id);
+      const isCharNsfw = Boolean(activeChar.isNsfw || rawAiSettings.adultMode || rawAiSettings.modelId === "magnum-v4-local");
       const charAiSettings = {
         ...mother.aiSettings,
         ...rawAiSettings,
@@ -1243,7 +1250,8 @@ export default function ChatPage() {
       // Fast call settings: 45 tokens max for instant snappy phone response (<0.5s)
       const fastCallSettings = {
         ...charAiSettings,
-        modelId: "insomnia-flash",
+        modelId: isCharNsfw ? "magnum-v4-local" : "insomnia-flash",
+        adultMode: Boolean(adultEnabled || isCharNsfw),
         messageLength: 45
       };
       const charRegion = spokenRegion(getStoryRegion(activeChar.id), getStoryAccent(activeChar.id)) || (isEs ? "co" : "us");
@@ -1264,7 +1272,8 @@ export default function ChatPage() {
         history: priorHistory,
         memory: selectStoryMemory(priorHistory, userText),
         userMessage: userText,
-        adultMode: adultEnabled,
+        adultMode: Boolean(adultEnabled || isCharNsfw),
+        isNsfw: isCharNsfw,
         region: charRegion,
         settings: fastCallSettings
       });
@@ -1344,6 +1353,7 @@ export default function ChatPage() {
       }));
       const mother = getMotherCardConfig();
       const rawAiSettings = getStoryAiSettings(activeChar.id);
+      const isCharNsfw = Boolean(activeChar.isNsfw || rawAiSettings.adultMode || rawAiSettings.modelId === "magnum-v4-local");
       const charAiSettings = {
         ...mother.aiSettings,
         ...rawAiSettings,
@@ -1366,9 +1376,10 @@ export default function ChatPage() {
         history: historyPayload,
         memory: selectStoryMemory(historyPayload, promptContext),
         userMessage: promptContext,
-        adultMode: adultEnabled,
+        adultMode: Boolean(adultEnabled || isCharNsfw),
+        isNsfw: isCharNsfw,
         region: charRegion,
-        settings: { ...charAiSettings, modelId: "insomnia-flash", messageLength: 45 }
+        settings: { ...charAiSettings, modelId: isCharNsfw ? "magnum-v4-local" : "insomnia-flash", messageLength: 45 }
       });
 
       if (!error && data?.content) {
@@ -1691,6 +1702,14 @@ export default function ChatPage() {
                       />
                     )}
                     <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent" />
+
+                    {/* +18 NSFW Badge */}
+                    {(char.isNsfw || getStoryAiSettings(char.id).adultMode || getStoryAiSettings(char.id).modelId === "magnum-v4-local") && (
+                      <div className="absolute top-3 left-3 z-10 flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-600/90 text-white font-black text-[10px] tracking-wider shadow-md backdrop-blur border border-red-400/50">
+                        <Flame className="w-3 h-3 fill-current" />
+                        <span>+18</span>
+                      </div>
+                    )}
 
                     <div className="absolute top-3 right-3 flex items-center gap-1.5 z-10">
                       <span className="p-1 rounded-full bg-black/60 backdrop-blur text-zinc-300 hover:text-white">

@@ -19,6 +19,7 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import {
   User,
   Image as ImageIcon,
@@ -36,7 +37,9 @@ import {
   Loader2,
   ImagePlus,
   FolderUp,
-  Link as LinkIcon
+  Link as LinkIcon,
+  Flame,
+  ShieldAlert
 } from "lucide-react";
 import { STORY_VOICES, normalizeStoryVoice, setStoryVoice } from "@/lib/voices";
 import { streamSpeech, type SpeechStream } from "@/lib/ttsStream";
@@ -44,6 +47,7 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
+import { getStoryAiSettings, setStoryAiSettings } from "@/lib/storyAiSettings";
 
 export interface CharacterItem {
   id: string;
@@ -75,6 +79,8 @@ export interface CharacterItem {
   starterMessageEs?: string;
   starterMessageEn?: string;
   voiceName: string;
+  isNsfw?: boolean;
+  modelId?: string;
 }
 
 interface ChatCharacterConfigDialogProps {
@@ -191,6 +197,8 @@ export const ChatCharacterConfigDialog: React.FC<ChatCharacterConfigDialogProps>
   const [avatar, setAvatar] = useState("");
   const [gallery, setGallery] = useState<string[]>([]);
   const [newPhotoUrl, setNewPhotoUrl] = useState("");
+  const [isNsfw, setIsNsfw] = useState(false);
+  const [modelId, setModelId] = useState("magnum-v4-local");
 
   // Media uploading state & file input refs
   const [isUploading, setIsUploading] = useState(false);
@@ -232,6 +240,11 @@ export const ChatCharacterConfigDialog: React.FC<ChatCharacterConfigDialogProps>
       setVoiceName(normalizeStoryVoice(character.voiceName || "Aoede"));
       setAvatar(character.avatar || "");
       setGallery(character.gallery && character.gallery.length > 0 ? [...character.gallery] : [character.avatar || ""]);
+      
+      const currentAi = getStoryAiSettings(character.id);
+      const isCharNsfw = Boolean(character.isNsfw || currentAi.adultMode || currentAi.modelId === "magnum-v4-local");
+      setIsNsfw(isCharNsfw);
+      setModelId(character.modelId || currentAi.modelId || (isCharNsfw ? "magnum-v4-local" : "insomnia-flash"));
     } else {
       // New Character defaults
       setName("");
@@ -254,6 +267,8 @@ export const ChatCharacterConfigDialog: React.FC<ChatCharacterConfigDialogProps>
       setGallery([
         "https://media.talkiemate.com/app/uploads/growtype-ai-uploads/models/6e8f818f9b187d2ebdf4e1d77521e051/3545853885239688145_69992903230.jpg"
       ]);
+      setIsNsfw(true); // Default to +18 NSFW enabled for custom creations
+      setModelId("magnum-v4-local");
     }
     setActiveTab(initialTab || "info");
   }, [open, character, isNew, isEs, initialTab]);
@@ -475,6 +490,8 @@ export const ChatCharacterConfigDialog: React.FC<ChatCharacterConfigDialogProps>
     const charId = character?.id && !isNew ? character.id : `char-${Date.now()}`;
     const mainAvatar = avatar.trim() || gallery[0] || "https://media.talkiemate.com/app/uploads/growtype-ai-uploads/models/6e8f818f9b187d2ebdf4e1d77521e051/3545853885239688145_69992903230.jpg";
 
+    const effectiveModelId = isNsfw ? "magnum-v4-local" : (modelId || "insomnia-flash");
+
     const updated: CharacterItem = {
       id: charId,
       name: name.trim(),
@@ -502,11 +519,21 @@ export const ChatCharacterConfigDialog: React.FC<ChatCharacterConfigDialogProps>
       starterMessage: starterMessage.trim() || (isEs ? "Hola, me alegra verte. ¿En qué estás pensando?" : "Hey, nice to see you. What's on your mind?"),
       starterMessageEn: isEs ? (character?.starterMessageEn || starterMessage.trim()) : starterMessage.trim(),
       starterMessageEs: isEs ? starterMessage.trim() : (character?.starterMessageEs || starterMessage.trim()),
-      voiceName
+      voiceName,
+      isNsfw,
+      modelId: effectiveModelId
     };
 
     // Sync with Insomnia's voice preference helper
     setStoryVoice(charId, voiceName);
+
+    // Sync with Insomnia's AI settings helper (bind Magnum v4 & adultMode)
+    const currentAi = getStoryAiSettings(charId);
+    setStoryAiSettings(charId, {
+      ...currentAi,
+      modelId: effectiveModelId,
+      adultMode: isNsfw
+    });
 
     onSave(updated);
     toast({
@@ -631,6 +658,60 @@ export const ChatCharacterConfigDialog: React.FC<ChatCharacterConfigDialogProps>
                       <SelectItem value="anime">{isEs ? "Anime / Ilustración" : "Anime / Illustration"}</SelectItem>
                     </SelectContent>
                   </Select>
+                </div>
+              </div>
+
+              {/* +18 NSFW Card Switch */}
+              <div
+                className={`p-4 rounded-2xl border transition-all ${
+                  isNsfw
+                    ? "bg-gradient-to-r from-red-950/40 via-red-900/20 to-black/40 border-red-500/50 shadow-lg shadow-red-950/20"
+                    : "bg-[#141414] border-[#262626]"
+                }`}
+              >
+                <div className="flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <div
+                      className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${
+                        isNsfw ? "bg-red-500 text-white shadow-md shadow-red-500/30" : "bg-zinc-800 text-zinc-400"
+                      }`}
+                    >
+                      <Flame className="w-5 h-5 fill-current" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-bold text-white">
+                          {isEs ? "Contenido Adulto +18 (NSFW)" : "Adult Content +18 (NSFW)"}
+                        </span>
+                        <span
+                          className={`text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider ${
+                            isNsfw
+                              ? "bg-red-500/30 text-red-300 border border-red-500/50"
+                              : "bg-zinc-800 text-zinc-400"
+                          }`}
+                        >
+                          +18
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-zinc-400 mt-0.5">
+                        {isEs
+                          ? "Activa automáticamente el motor Magnum v4 (rol adulto inmersivo, sin censura comercial)."
+                          : "Automatically activates the Magnum v4 engine (immersive adult roleplay, zero commercial censorship)."}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Switch
+                      checked={isNsfw}
+                      onCheckedChange={(checked) => {
+                        setIsNsfw(checked);
+                        if (checked) {
+                          setModelId("magnum-v4-local");
+                        }
+                      }}
+                      className="data-[state=checked]:bg-red-500"
+                    />
+                  </div>
                 </div>
               </div>
 

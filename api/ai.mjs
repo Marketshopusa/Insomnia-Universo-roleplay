@@ -853,7 +853,7 @@ export default async function handler(req, res) {
       const openRouterApiKey = String(settings.openRouterApiKey || "").trim();
       const nvidiaApiKey = String(settings.nvidiaApiKey || "").trim();
       const geminiApiKey = String(settings.geminiApiKey || "").trim();
-      const adultMode = body.adultMode === true || /(?:\+18|18\+|nsfw|er[oó]tic|sexual|hentai|\badult[oa]?\b)/i.test([story.title, story.description, story.story_context, story.story_type].filter(Boolean).join(" "));
+      const adultMode = body.adultMode === true || body.isNsfw === true || body.isAdult === true || /(?:\+18|18\+|nsfw|er[oó]tic|sexual|hentai|\badult[oa]?\b)/i.test([story.title, story.description, story.story_context, story.story_type].filter(Boolean).join(" "));
       const locale = spanish ? "español" : "inglés";
       const history = (Array.isArray(body.history) ? body.history : []).flatMap((entry) => {
         const role = entry?.role === "assistant" ? "model" : entry?.role === "user" ? "user" : null;
