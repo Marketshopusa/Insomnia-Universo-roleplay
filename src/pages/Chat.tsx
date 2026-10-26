@@ -1541,10 +1541,22 @@ export default function ChatPage() {
 
           {/* Section: Explore Featured Experiences */}
           <div className="space-y-4">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-              <h3 className="text-xl md:text-2xl font-bold text-white tracking-wide flex items-center gap-2">
-                {isEs ? "Explorar" : "Explore"} <span className="text-[#ff8c00]">{isEs ? "Experiencias Destacadas" : "Featured Experiences"}</span>
-              </h3>
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+              <div className="flex flex-wrap items-center justify-between sm:justify-start gap-3 w-full lg:w-auto">
+                <h3 className="text-xl md:text-2xl font-bold text-white tracking-wide flex items-center gap-2">
+                  {isEs ? "Explorar" : "Explore"} <span className="text-[#ff8c00]">{isEs ? "Experiencias Destacadas" : "Featured Experiences"}</span>
+                </h3>
+
+                {/* Prominent Create Character Button in Lobby Header */}
+                <button
+                  onClick={handleOpenCreateConfig}
+                  className="px-3.5 py-1.5 sm:px-4 sm:py-2 rounded-xl border border-[#ff8c00] bg-black text-[#ff8c00] hover:bg-[#ff8c00]/15 font-bold text-xs sm:text-sm tracking-wide transition-all shadow-md shadow-[#ff8c00]/10 flex items-center gap-2 hover:scale-[1.02] active:scale-[0.98]"
+                  title={isEs ? "Crear un nuevo personaje" : "Create new character"}
+                >
+                  <Plus className="w-4 h-4 stroke-[3]" />
+                  <span>{isEs ? "Crear Personaje / Chat" : "Create Character / Chat"}</span>
+                </button>
+              </div>
 
               <div className="flex flex-wrap items-center gap-2 text-xs">
                 {/* Gender filters */}
@@ -1607,6 +1619,50 @@ export default function ChatPage() {
 
             {/* Grid of Character Cards */}
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2.5 sm:gap-4 w-full">
+              {/* Card 1: Interactive 'Create your Character' card in the lobby */}
+              <div
+                onClick={handleOpenCreateConfig}
+                className="group relative rounded-2xl overflow-hidden aspect-[3/4] sm:aspect-[9/15] bg-gradient-to-b from-[#1c1208] via-[#0e0703] to-[#000000] border-2 border-dashed border-[#ff8c00]/70 hover:border-[#ff8c00] cursor-pointer transition-all shadow-lg hover:shadow-2xl hover:shadow-[#ff8c00]/25 flex flex-col items-center justify-between p-3 sm:p-4 text-center w-full max-w-full hover:scale-[1.02] active:scale-[0.98]"
+              >
+                {/* Ambient glow effect */}
+                <div className="absolute inset-0 bg-radial-gradient from-[#ff8c00]/15 via-transparent to-transparent opacity-70 group-hover:opacity-100 transition-opacity pointer-events-none" />
+
+                {/* Top badge & icon */}
+                <div className="relative z-10 w-full flex flex-col items-center pt-1 sm:pt-2">
+                  <span className="text-[10px] uppercase font-extrabold tracking-widest text-[#ff8c00] bg-[#ff8c00]/15 px-2.5 py-0.5 rounded-full border border-[#ff8c00]/30 mb-2.5 shadow-sm">
+                    {isEs ? "Nuevo Personaje" : "New Character"}
+                  </span>
+
+                  <div className="w-13 h-13 sm:w-16 sm:h-16 rounded-full bg-gradient-to-tr from-[#ff8c00]/20 to-[#ff8c00]/40 border-2 border-[#ff8c00] flex items-center justify-center text-[#ff8c00] shadow-lg shadow-[#ff8c00]/30 group-hover:scale-110 transition-transform mb-2 sm:mb-3">
+                    <Plus className="w-6 h-6 sm:w-8 sm:h-8 stroke-[3]" />
+                  </div>
+
+                  <h4 className="text-sm sm:text-base font-extrabold text-white leading-tight drop-shadow">
+                    {isEs ? "¿Quieres crear tu personaje?" : "Create your character?"}
+                  </h4>
+                  <p className="text-[11px] sm:text-xs text-zinc-300 mt-1 leading-snug line-clamp-3">
+                    {isEs
+                      ? "Crea su personalidad, voz, avatar e historia a tu medida."
+                      : "Create personality, voice, avatar, and custom story suited to you."}
+                  </p>
+                </div>
+
+                {/* Bottom button inside the card */}
+                <div className="relative z-10 w-full pb-1">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleOpenCreateConfig();
+                    }}
+                    className="w-full py-2 sm:py-2.5 px-2 rounded-xl border border-[#ff8c00] bg-black text-[#ff8c00] group-hover:bg-[#ff8c00] group-hover:text-black font-extrabold text-xs tracking-wide transition-all flex items-center justify-center gap-1.5 shadow-md shadow-[#ff8c00]/20"
+                  >
+                    <Plus className="w-3.5 h-3.5 stroke-[3]" />
+                    <span className="truncate">{isEs ? "Crear Personaje / Chat" : "Create Character / Chat"}</span>
+                  </button>
+                </div>
+              </div>
+
               {filteredExploreChars.map((char) => {
                 const shortBioText = isEs
                   ? (char.shortBioEs || char.shortBio)
@@ -1776,7 +1832,7 @@ export default function ChatPage() {
                   onClick={handleOpenCreateConfig}
                   className="w-full py-2.5 rounded-xl border border-[#ff8c00] bg-black text-[#ff8c00] hover:bg-[#ff8c00]/10 font-bold text-xs tracking-wide transition-colors flex items-center justify-center gap-1.5"
                 >
-                  <Plus className="w-3.5 h-3.5 stroke-[3]" /> {isEs ? "+ Crear Personaje / Chat" : "+ Add Character / Chat"}
+                  <Plus className="w-3.5 h-3.5 stroke-[3]" /> {isEs ? "Crear Personaje / Chat" : "Create Character / Chat"}
                 </button>
               </div>
             </aside>
