@@ -81,6 +81,19 @@ const languages = [
 
 const chapterOptions = [3, 5, 7, 10, 12, 15, 20];
 
+function extractDialogueFromText(text: string): string {
+  if (!text) return "";
+  const match = text.match(/["'«»]([^"'«»]{4,140})["'«»]/);
+  if (match) return match[1].trim();
+  const dashMatch = text.match(/—\s*([^—\n]{4,140})/);
+  if (dashMatch) return dashMatch[1].trim();
+  const sentences = text.split(/[.!?]+/).map((s) => s.trim()).filter((s) => s.length > 5);
+  if (sentences.length > 0) {
+    return sentences[0].split(/\s+/).slice(0, 14).join(" ");
+  }
+  return "";
+}
+
  const Studio = () => {
    const { user } = useAuth();
    const { toast } = useToast();
@@ -172,6 +185,15 @@ const chapterOptions = [3, 5, 7, 10, 12, 15, 20];
       const current = [...(prev[chapterIndex] || [])];
       current.splice(shotIndex, 1);
       return { ...prev, [chapterIndex]: current };
+    });
+  };
+
+  const updateChapterField = (index: number, field: string, value: string) => {
+    setNovel((prev: any) => {
+      if (!prev) return prev;
+      const chapters = [...(prev.chapters || [])];
+      chapters[index] = { ...chapters[index], [field]: value };
+      return { ...prev, chapters };
     });
   };
 
@@ -597,9 +619,19 @@ const chapterOptions = [3, 5, 7, 10, 12, 15, 20];
     });
     try {
       const episodes = [...(series.episodes || [])].sort((a, b) => a.episode_number - b.episode_number);
-      const chapterTexts = episodes.map((ep) => ep.video_prompt || ep.script || series.title);
+      const isHorrorOrSuspense = /horror|terror|misterio|selva|silb[oó]n|noche|sombra|muerte|miedo|fantasmas|bosque/i.test(
+        series.title + " " + (series.premise || "")
+      );
+      const atmosphere = isHorrorOrSuspense
+        ? "Cinematic dark horror atmosphere, October autumn mist, ominous forest shadows, cold moonlight, intense suspense, tense expressions, 8k photorealistic"
+        : "Cinematic dramatic lighting, detailed textures, expressive faces, 8k photorealistic";
+
+      const chapterTexts = episodes.map((ep) => {
+        const base = ep.video_prompt || (ep.script ? ep.script.slice(0, 250) : series.title);
+        return `${base}. ${atmosphere}`;
+      });
       const episodeIds = episodes.map((ep) => ep.id);
-      const dialogues = episodes.map((ep, idx) => series.kineva_bible?.lines?.[idx] || "");
+      const dialogues = episodes.map((ep, idx) => series.kineva_bible?.lines?.[idx] || extractDialogueFromText(ep.script));
       const storyPlan = {
         title: series.title,
         logline: series.premise || series.title,
@@ -891,6 +923,35 @@ const chapterOptions = [3, 5, 7, 10, 12, 15, 20];
     }
   };
 
+  const handleSaveNovelChanges = async () => {
+    if (!user || !novel) return;
+    setSavingDraft(true);
+    try {
+      const saved = await saveNovelSeries({
+        userId: user.id,
+        novel,
+        description: description.trim() || novel.logline || novel.title,
+        isAdult: !isSafeForWork,
+        existingSeriesId: savedSeriesId || undefined,
+      });
+      setSavedSeriesId(saved.seriesId);
+      setSeriesEpisodeIds(saved.episodeIds);
+      setProductionRefresh((v) => v + 1);
+      toast({
+        title: "Guion guardado",
+        description: `Los cambios de "${novel.title}" quedaron guardados en Producción.`,
+      });
+    } catch (e) {
+      toast({
+        title: "No se pudo guardar el guion",
+        description: e instanceof Error ? e.message : undefined,
+        variant: "destructive",
+      });
+    } finally {
+      setSavingDraft(false);
+    }
+  };
+
   const handleGenerateVideos = async () => {
     if (!user) {
       toast({ title: t("studio.toast.loginToCreate"), variant: "destructive" });
@@ -917,11 +978,25 @@ const chapterOptions = [3, 5, 7, 10, 12, 15, 20];
     }
     try {
       let episodeIds = seriesEpisodeIds;
+      const isHorrorOrSuspense = /horror|terror|misterio|selva|silb[oó]n|noche|sombra|muerte|miedo|fantasmas|bosque/i.test(
+        (novel?.title || "") + " " + (description || "") + " " + (manualTitle || "")
+      );
+      const atmosphere = isHorrorOrSuspense
+        ? "Cinematic dark horror atmosphere, October autumn mist, ominous forest shadows, cold moonlight, intense suspense, tense expressions, 8k photorealistic"
+        : "Cinematic lighting, detailed textures, expressive faces, 8k photorealistic";
+
       const scenes = (novel?.chapters ?? [])
-        .map((chapter: { video_prompt?: string; summary?: string; content?: string; spoken_line?: string }) => ({
-          visual: String(chapter.video_prompt || chapter.summary || chapter.content || "").trim(),
-          dialogue: String(chapter.spoken_line || "").trim(),
-        })).filter((scene: { visual: string }) => scene.visual.length >= 5);
+        .map((chapter: { video_prompt?: string; summary?: string; content?: string; spoken_line?: string }) => {
+          const rawDialogue = String(chapter.spoken_line || "").trim() || extractDialogueFromText(String(chapter.content || ""));
+          const basePrompt = String(chapter.video_prompt || chapter.summary || "").trim();
+          const narrative = String(chapter.content || "").slice(0, 250);
+          const visual = [basePrompt || narrative, atmosphere].filter(Boolean).join(". ").trim();
+          return {
+            visual,
+            dialogue: rawDialogue,
+          };
+        }).filter((scene: { visual: string }) => scene.visual.length >= 5);
+
       const chapterTexts = scenes.map((scene: { visual: string }) => scene.visual);
       if (!episodeIds.length && novel) {
         const savedSeries = await saveNovelSeries({
@@ -1118,12 +1193,15 @@ const chapterOptions = [3, 5, 7, 10, 12, 15, 20];
                  title: episode.title,
                  content: episode.script,
                  video_prompt: episode.video_prompt || episode.script,
-                 spoken_line: series.kineva_bible?.lines?.[episode.episode_number - 1] || "",
+                 spoken_line: series.kineva_bible?.lines?.[episode.episode_number - 1] || extractDialogueFromText(episode.script),
                })),
              });
              setLocalJob(null);
-             setShowManualEditor(true);
+             setShowManualEditor(false);
              window.sessionStorage.setItem("insomnia.studio.episodeIds", JSON.stringify(epIds));
+             setTimeout(() => {
+               document.getElementById("studio-novel-card")?.scrollIntoView({ behavior: "smooth" });
+             }, 150);
            }}
            onDelete={(deletedId) => {
              if (savedSeriesId === deletedId) {
@@ -1489,7 +1567,7 @@ const chapterOptions = [3, 5, 7, 10, 12, 15, 20];
             }}
           />
 
-          {showManualEditor && <>
+          {!novel && showManualEditor && <>
           {!!castRoles.length && <p className="text-sm text-muted-foreground">Reparto propuesto: {castRoles.map((actor) => `${actor.name}: ${actor.role}`).join(" · ")}</p>}
           <input aria-label="Título de la miniserie" placeholder="Título de la miniserie" value={manualTitle}
             onChange={(event) => setManualTitle(event.target.value)} maxLength={120}
@@ -1688,14 +1766,24 @@ const chapterOptions = [3, 5, 7, 10, 12, 15, 20];
         )}
 
         {novel && (
-          <Card className="p-6 mb-6 space-y-6">
+          <Card id="studio-novel-card" className="p-6 mb-6 space-y-6">
             <div className="flex flex-wrap items-start justify-between gap-4">
-              <div>
-              <h2 className="font-display text-2xl">{novel.title}</h2>
-              {savedSeriesId && <a href="#studio-production" className="mt-2 inline-block text-xs uppercase tracking-[0.16em] text-accent">Ver borrador privado en Producción</a>}
-              {novel.logline && (
-                <p className="text-sm text-muted-foreground mt-1">{novel.logline}</p>
-              )}
+              <div className="flex-1">
+                <input
+                  aria-label="Título de la miniserie"
+                  value={novel.title || ""}
+                  onChange={(e) => setNovel((prev: any) => prev ? ({ ...prev, title: e.target.value }) : prev)}
+                  placeholder="Título de la miniserie"
+                  className="font-display text-2xl font-bold bg-transparent border-b border-border/60 pb-1 w-full focus:outline-none focus:border-primary"
+                />
+                {savedSeriesId && (
+                  <a href="#studio-production" className="mt-2 inline-block text-xs uppercase tracking-[0.16em] text-accent">
+                    Ver borrador privado en Producción
+                  </a>
+                )}
+                {novel.logline && (
+                  <p className="text-sm text-muted-foreground mt-1">{novel.logline}</p>
+                )}
               </div>
             </div>
 
@@ -1730,49 +1818,101 @@ const chapterOptions = [3, 5, 7, 10, 12, 15, 20];
               </div>
             )}
 
-            <div className="space-y-4">
-              <h3 className="text-sm uppercase tracking-[0.2em] text-accent">Capítulos</h3>
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm uppercase tracking-[0.2em] text-accent">Capítulos de la miniserie</h3>
+                <span className="text-xs text-muted-foreground">{(novel.chapters ?? []).length} capítulos listos para filmar</span>
+              </div>
               {(novel.chapters ?? []).map((ch: any, i: number) => (
-                <div key={i} className="border border-border p-4 space-y-2">
-                  <p className="font-display text-lg">
-                    {ch.number}. {ch.title}
-                  </p>
-                  <p className="text-sm whitespace-pre-wrap leading-relaxed">{ch.content}</p>
-                  <Button variant="secondary" size="sm" disabled={illustratingChapter !== null}
-                    onClick={() => illustrateChapter(ch, i)}>
-                    {illustratingChapter === i ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Sparkles className="w-4 h-4 mr-2" />}
-                    {chapterImages[i] ? "Recrear imagen" : "Ilustrar capítulo"}
-                  </Button>
-                  {chapterImages[i] && <img src={chapterImages[i]} alt={"Escena del capítulo " + (i + 1)}
-                    className="w-full max-w-md rounded-md" />}
+                <div key={i} className="border border-border p-4 rounded-lg space-y-3 bg-muted/10">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/50 pb-2">
+                    <div className="flex items-center gap-2 flex-1">
+                      <span className="font-display font-bold text-accent">{ch.number || i + 1}.</span>
+                      <input
+                        aria-label={"Título del capítulo " + (ch.number || i + 1)}
+                        value={ch.title || ""}
+                        onChange={(e) => updateChapterField(i, "title", e.target.value)}
+                        placeholder="Título del capítulo"
+                        className="font-display text-base font-semibold bg-transparent border-none focus:outline-none focus:ring-0 flex-1"
+                      />
+                    </div>
+                    <Button variant="outline" size="sm" disabled={illustratingChapter !== null}
+                      onClick={() => illustrateChapter(ch, i)} className="gap-1.5 text-xs h-8">
+                      {illustratingChapter === i ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                      {chapterImages[i] ? "Recrear imagen" : "Ilustrar capítulo"}
+                    </Button>
+                  </div>
 
-                  {ch.video_prompt && (
-                    <p className="text-xs font-mono text-muted-foreground break-words border-t border-border pt-2">
-                      Video prompt: {ch.video_prompt}
-                    </p>
+                  <div>
+                    <Label className="text-xs font-medium text-muted-foreground mb-1 block">Guion / Narración completa del capítulo</Label>
+                    <Textarea
+                      value={ch.content || ""}
+                      onChange={(e) => updateChapterField(i, "content", e.target.value)}
+                      placeholder="Escribe la historia y acciones completas de este capítulo..."
+                      className="min-h-[100px] text-sm leading-relaxed"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <Label className="text-xs font-medium text-muted-foreground mb-1 block">Toma visual y encuadre para Wan 2.1</Label>
+                      <Textarea
+                        value={ch.video_prompt || ""}
+                        onChange={(e) => updateChapterField(i, "video_prompt", e.target.value)}
+                        placeholder="Descripción visual de la escena, ángulo y atmósfera"
+                        className="min-h-[50px] text-xs font-mono"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs font-medium text-muted-foreground mb-1 block">Diálogo hablado o voz en español</Label>
+                      <input
+                        value={ch.spoken_line || ""}
+                        onChange={(e) => updateChapterField(i, "spoken_line", e.target.value)}
+                        placeholder="Frase hablada por el personaje en español"
+                        className="w-full rounded-md border border-border bg-background px-3 py-2 text-xs h-[50px]"
+                      />
+                    </div>
+                  </div>
+
+                  {chapterImages[i] && (
+                    <img src={chapterImages[i]} alt={"Escena del capítulo " + (i + 1)}
+                      className="w-full max-w-md rounded-md mt-2" />
                   )}
                 </div>
               ))}
             </div>
 
-            <Button
-              size="lg"
-              className="w-full h-14 text-base rounded-none"
-              onClick={handleGenerateVideos}
-              disabled={generatingVideos || generating}
-            >
-              {generatingVideos ? (
-                <>
-                  <Loader2 className="w-5 h-5 mr-2 animate-spin" /> {videoProgress || "Generando videos…"}
-                </>
-              ) : (
-                <>
-                  <Clapperboard className="w-5 h-5 mr-2" /> Filmar cada capítulo con ComfyUI en esta PC
-                </>
-              )}
-            </Button>
+            <div className="flex flex-col sm:flex-row gap-3 pt-3 border-t border-border">
+              <Button
+                type="button"
+                variant="outline"
+                size="lg"
+                className="flex-1 h-14 text-base font-semibold"
+                onClick={() => void handleSaveNovelChanges()}
+                disabled={generatingVideos || savingDraft}
+              >
+                {savingDraft ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : <Save className="w-5 h-5 mr-2" />}
+                Guardar cambios del guion
+              </Button>
+              <Button
+                size="lg"
+                className="flex-1 h-14 text-base font-semibold"
+                onClick={handleGenerateVideos}
+                disabled={generatingVideos || generating}
+              >
+                {generatingVideos ? (
+                  <>
+                    <Loader2 className="w-5 h-5 mr-2 animate-spin" /> {videoProgress || "Generando videos…"}
+                  </>
+                ) : (
+                  <>
+                    <Clapperboard className="w-5 h-5 mr-2" /> Filmar cada capítulo con ComfyUI en esta PC
+                  </>
+                )}
+              </Button>
+            </div>
             <p className="text-xs text-muted-foreground text-center">
-              ComfyUI filma el texto de cada capítulo y el video queda guardado dentro de la novela.
+              ComfyUI filma el texto y tomas de cada capítulo usando tu GPU y el video queda guardado dentro de la novela.
             </p>
           </Card>
         )}
