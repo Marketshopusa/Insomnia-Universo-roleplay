@@ -117,6 +117,7 @@ const chapterOptions = [3, 5, 7, 10, 12, 15, 20];
   const [castRoles, setCastRoles] = useState<{ name: string; role: string }[]>([]);
   const [draftingThree, setDraftingThree] = useState(false);
   const [savingDraft, setSavingDraft] = useState(false);
+  const [filmingSeriesId, setFilmingSeriesId] = useState<string | null>(null);
   const [showManualEditor, setShowManualEditor] = useState(false);
   const [isSafeForWork, setIsSafeForWork] = useState(false);
 
@@ -587,8 +588,13 @@ const chapterOptions = [3, 5, 7, 10, 12, 15, 20];
       });
       return;
     }
+    setFilmingSeriesId(series.id);
     setGeneratingVideos(true);
     setVideoProgress(`Filmando capítulos de "${series.title}" con ComfyUI...`);
+    toast({
+      title: "Iniciando filmación con ComfyUI",
+      description: `ComfyUI está procesando los capítulos de "${series.title}" en tu GPU.`,
+    });
     try {
       const episodes = [...(series.episodes || [])].sort((a, b) => a.episode_number - b.episode_number);
       const chapterTexts = episodes.map((ep) => ep.video_prompt || ep.script || series.title);
@@ -608,7 +614,7 @@ const chapterOptions = [3, 5, 7, 10, 12, 15, 20];
       setSavedSeriesId(series.id);
       setSeriesEpisodeIds(episodeIds);
       await filmChapters(chapterTexts, episodeIds, probe, dialogues, storyPlan);
-      toast({ title: "Filmación completada", description: `Los capítulos de "${series.title}" fueron generados.` });
+      toast({ title: "Filmación completada", description: `Los capítulos de "${series.title}" fueron generados con éxito.` });
       setProductionRefresh((v) => v + 1);
     } catch (e) {
       toast({
@@ -617,6 +623,7 @@ const chapterOptions = [3, 5, 7, 10, 12, 15, 20];
         variant: "destructive",
       });
     } finally {
+      setFilmingSeriesId(null);
       setGeneratingVideos(false);
       setVideoProgress("");
     }
@@ -1087,6 +1094,8 @@ const chapterOptions = [3, 5, 7, 10, 12, 15, 20];
         <p className="mb-6 text-center text-sm text-muted-foreground">Aquí se escribe la novela. Las portadas quedan en Shorts.</p>
 
          <StudioProduction userId={user.id} refreshKey={`${savedSeriesId}:${localJob?.state}:${localJob?.videos?.length}:${productionRefresh}`}
+           isFilming={generatingVideos}
+           filmingSeriesId={filmingSeriesId}
            onFilm={handleFilmSeriesDirectly}
            onEdit={(series: ProductionSeries, reference) => {
              setSavedSeriesId(series.id);

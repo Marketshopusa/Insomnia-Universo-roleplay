@@ -29,12 +29,14 @@ export type ProductionSeries = {
 
 type Review = ProductionSeries & { videos: Record<string, string> };
 
-export function StudioProduction({ userId, refreshKey, onEdit, onFilm, onDelete }: {
+export function StudioProduction({ userId, refreshKey, onEdit, onFilm, onDelete, isFilming, filmingSeriesId }: {
   userId: string;
   refreshKey?: string;
   onEdit: (series: ProductionSeries, reference: File | null) => void;
   onFilm?: (series: ProductionSeries) => void;
   onDelete?: (seriesId: string) => void;
+  isFilming?: boolean;
+  filmingSeriesId?: string | null;
 }) {
   const { toast } = useToast();
   const [drafts, setDrafts] = useState<Review[]>([]);
@@ -259,12 +261,21 @@ export function StudioProduction({ userId, refreshKey, onEdit, onFilm, onDelete 
               type="button"
               variant="default"
               size="sm"
-              disabled={busy === series.id}
+              disabled={busy === series.id || isFilming}
               onClick={() => onFilm?.(series)}
               className="gap-1.5"
             >
-              <Clapperboard className="w-3.5 h-3.5" />
-              Filmar con ComfyUI
+              {isFilming && filmingSeriesId === series.id ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  Filmando con ComfyUI...
+                </>
+              ) : (
+                <>
+                  <Clapperboard className="w-3.5 h-3.5" />
+                  Filmar con ComfyUI
+                </>
+              )}
             </Button>
             <Button
               type="button"
