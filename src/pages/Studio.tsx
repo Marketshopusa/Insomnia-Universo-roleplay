@@ -962,8 +962,8 @@ function extractDialogueFromText(text: string): string {
     );
     const hasExistingScenes = existingChapters.length > 0 || manualScenes.some((s) => s.trim().length >= 3);
 
-    if (!hasExistingScenes && description.trim().length < 5 && !novel?.logline) {
-      toast({ title: "Escribe la idea del video", variant: "destructive" });
+    if (!hasExistingScenes && !novel?.chapters?.length && description.trim().length < 5) {
+      toast({ title: "Escribe la idea o agrega capítulos al guion.", variant: "destructive" });
       return;
     }
 
@@ -1404,87 +1404,6 @@ function extractDialogueFromText(text: string): string {
             </div>
           </Card>
 
-        {/* Description */}
-         <Card className="p-6 mb-6">
-          <h2 className="text-lg font-medium text-center mb-4">{t("studio.description")}</h2>
-           <Textarea
-            placeholder={t("studio.descriptionPlaceholder")}
-             value={description}
-             onChange={(e) => setDescription(e.target.value)}
-             className="min-h-[200px] resize-none"
-           />
-
-           <div className="flex flex-wrap items-center justify-between gap-4 mt-4">
-             <div className="flex flex-wrap items-center gap-4">
-               <div className="flex items-center gap-2">
-                 <Label>Género:</Label>
-                 <Select
-                   value={studioGenre}
-                   onValueChange={(g: StudioGenre) => {
-                     setStudioGenre(g);
-                     setIsSafeForWork(g !== "adult");
-                   }}
-                 >
-                   <SelectTrigger className="w-36">
-                     <SelectValue />
-                   </SelectTrigger>
-                   <SelectContent>
-                     <SelectItem value="adult">Adulto / NSFW</SelectItem>
-                     <SelectItem value="romance">Romance / Drama</SelectItem>
-                     <SelectItem value="horror">Terror / Suspenso</SelectItem>
-                     <SelectItem value="sports">Deportivo</SelectItem>
-                     <SelectItem value="action">Acción</SelectItem>
-                   </SelectContent>
-                 </Select>
-               </div>
-
-               <div className="flex items-center gap-2">
-                <Label>{t("studio.numChapters")}:</Label>
-                 <Select value={chapterCount.toString()} onValueChange={(v) => handleChapterCountChange(parseInt(v))}>
-                   <SelectTrigger className="w-20">
-                     <SelectValue />
-                   </SelectTrigger>
-                   <SelectContent>
-                     {chapterOptions.map((num) => (
-                       <SelectItem key={num} value={num.toString()}>
-                         {num}
-                       </SelectItem>
-                     ))}
-                   </SelectContent>
-                 </Select>
-               </div>
-
-               <div className="flex items-center gap-2">
-                 <Switch
-                   checked={isSafeForWork}
-                   onCheckedChange={(checked) => {
-                     setIsSafeForWork(checked);
-                     if (!checked && studioGenre !== "adult") setStudioGenre("adult");
-                     if (checked && studioGenre === "adult") setStudioGenre("romance");
-                   }}
-                 />
-                <Label>{t("studio.safeForWork")}</Label>
-               </div>
-             </div>
-
-             <div className="flex items-center gap-2">
-              <Label>{t("studio.language")}:</Label>
-               <Select value={language} onValueChange={setLanguage}>
-                 <SelectTrigger className="w-32">
-                   <SelectValue />
-                 </SelectTrigger>
-                 <SelectContent>
-                   {languages.map((lang) => (
-                     <SelectItem key={lang} value={lang}>
-                       {lang}
-                     </SelectItem>
-                   ))}
-                 </SelectContent>
-               </Select>
-             </div>
-           </div>
-         </Card>
-
         <Card id="studio-editor" className="p-6 mb-6 space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
@@ -1706,25 +1625,6 @@ function extractDialogueFromText(text: string): string {
         </Card>
 
         {/* Generar proyecto completo con IA solo cuando no se usa el editor de 3 capítulos */}
-        {!showManualEditor && (
-          <Button
-            size="lg"
-            className="w-full mb-6 h-14 text-base rounded-none"
-            onClick={handleGenerateProject}
-            disabled={generating || generatingVideos}
-          >
-            {generating ? (
-              <>
-                <Loader2 className="w-5 h-5 mr-2 animate-spin" /> Generando novela completa…
-              </>
-            ) : (
-              <>
-                <Sparkles className="w-5 h-5 mr-2" /> Generar proyecto y videos con IA
-              </>
-            )}
-          </Button>
-        )}
-
         {localJob && (
           <Card className="p-6 mb-6 space-y-4">
             <h2 className="text-lg font-medium">Video en esta PC</h2>
@@ -1917,16 +1817,7 @@ function extractDialogueFromText(text: string): string {
           </Card>
         )}
 
-        {/* Action Buttons */}
-        <div className="grid grid-cols-3 gap-4 mb-6">
-          <Button variant="secondary" onClick={handleGenerateProject} disabled={generating}>
-            {t("studio.writeNovel")}
-          </Button>
-          <Button onClick={handleWriteOutline}>{t("studio.writeOutline")}</Button>
-          <Button onClick={handleBlankNovel}>{t("studio.blankNovel")}</Button>
-         </div>
-
-         {/* Project Management */}
+        {/* Project Management */}
          <div className="grid grid-cols-3 gap-4 mb-4">
            <Button variant="secondary" onClick={handleSaveProject}>
             {t("studio.saveProject")}

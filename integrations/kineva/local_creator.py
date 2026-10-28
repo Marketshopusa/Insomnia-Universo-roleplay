@@ -16,7 +16,6 @@ from image_worker import COMFY_INPUT, preflight, render, save_cover_reference, s
 from worker import Api, default_api_template, load_api_template, find_manifest, one, probe_video, release_idle_models, wait_for_render
 from image_quality import review
 from studio_assembly import assemble_episode
-from narration_sync import sync_episode_narration
 HOST = "127.0.0.1"
 PORT = int(os.environ.get("KINEVA_LOCAL_PORT", "8787"))
 HOME = Path.home()
@@ -497,19 +496,6 @@ def run_job(job_id, image, ideas, cast=None, shot_plans=None):
                 else:
                     final_path = OUTPUT / "kineva_episodes" / job_id / f"episode_{episode:02d}.mp4"
                     assemble_episode(approved_shots, final_path)
-                # Synchronize high-fidelity Spanish narration and video duration
-                full_script = "\n".join(episode_scripts).strip()
-                if full_script:
-                    try:
-                        remastered_dir = OUTPUT / "kineva_episodes" / job_id
-                        remastered_dir.mkdir(parents=True, exist_ok=True)
-                        synced_dest = remastered_dir / f"episode_{episode:02d}_synced.mp4"
-                        synced_result = sync_episode_narration(final_path, full_script, synced_dest)
-                        if synced_result and synced_result.is_file():
-                            final_path = synced_result
-                            print(f"[Kineva] Episode {episode} synced with Spanish voiceover: {final_path}", flush=True)
-                    except Exception as narr_err:
-                        print(f"[Kineva] Warning syncing narration: {narr_err}", flush=True)
                 video_id = str(uuid.uuid4())
                 with JOBS_LOCK:
                     JOBS[job_id]["videos"].append({

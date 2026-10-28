@@ -1910,25 +1910,24 @@ export default async function handler(req, res) {
       const castNames = Array.isArray(body.cast_names) ? body.cast_names.slice(0, 20)
         .map((name) => String(name || "").trim().slice(0, 80)).filter(Boolean) : [];
       const count = Math.min(20, Math.max(1, Number(body.chapters || body.chapterCount || 3)));
-      const prompt = `Crea un guion cinematográfico breve y coherente de exactamente ${count} capítulos a partir de una idea sencilla. `
-        + "Entrega solo JSON con esta estructura: "
+      const prompt = `Actúa como un Showrunner y Director Cinematográfico de miniseries verticales (estilo ReelShort / DramaBox). `
+        + `Crea el desglose técnico y guion de rodaje de exactamente ${count} capítulos a partir de la idea. `
+        + "REGLAS FUNDAMENTALES DE FILMACIÓN CINEMATOGRÁFICA:\n"
+        + "1. NO ESCRIBAS PROSA LITERARIA NI AUDIOLIBROS: En 'visual', describe EXCLUSIVAMENTE acciones físicas visibles, movimientos corporales exactos (blocking), dirección de miradas (eyeline), vestuario coherente con el clima/locación y objetos que interactúan (ej. 'Elena tropieza, la cámara cae al barro, se agacha a recogerla con respiración agitada').\n"
+        + "2. DIÁLOGOS DE PERSONAJES: Cada capítulo debe tener su diálogo hablado directo por el actor en 'dialogue' (máximo 15 palabras) y el nombre exacto del actor en 'speaker'. Nunca atribuyas voces de hombres a mujeres.\n"
+        + "3. CERO METADATOS TÉCNICOS: Nunca incluyas '9:16', 'Capítulo X de Y', ni palabras como 'Ilustrar' en el texto narrativo ni en el diálogo.\n"
+        + "Devuelve solo JSON con esta estructura:\n"
         + JSON.stringify({
-          title: "",
-          cast_roles: [{ name: "Nombre del elenco", role: "Papel en esta historia" }],
+          title: "Título dramático de la miniserie",
+          cast_roles: [{ name: "Nombre del actor", role: "Papel dramático exacto" }],
           chapters: Array.from({ length: Math.min(count, 3) }, () => ({
-            visual: "Una acción visual concreta y encuadre en un lugar",
-            dialogue: "Frase breve",
-            speaker: "Nombre exacto del actor que pronuncia la frase"
+            visual: "Encuadre de cámara + Acción física corporal concreta + Dirección de mirada + Vestuario de locación",
+            dialogue: "Línea hablada real del personaje (sin descripciones ni metadatos)",
+            speaker: "Nombre exacto del actor que habla"
           }))
         })
-        + `. Cada capítulo debe tener exactamente una entrada en el array chapters (total obligatorio: ${count} capítulos). Cada visual muestra una acción distinta y conserva el reparto y los hechos entre capítulos. `
-        + "Cada diálogo tiene hasta 20 palabras, puede quedar vacío y no contiene instrucciones técnicas. "
-        + "Si hay diálogo, speaker debe ser el nombre exacto de un actor del elenco que aparece en esa toma; "
-        + "distribuye las frases entre los personajes según su papel, sin atribuir la voz del hombre a la mujer. "
-        + "Usa los nombres literales de actores presentes en cada visual, con máximo dos personas por toma; "
-        + `asigna a cada actor elegido un papel coherente en cast_roles, sin forzar a los 20 en los ${count} capítulos. `
-        + "No inventes personajes adicionales ni sustituyas la idea. Idioma: " + language
-        + ". Elenco disponible: " + JSON.stringify(castNames) + ". Idea: " + idea;
+        + `.\nObligatorio: exactamente ${count} capítulos en el array chapters. Idioma: ${language}. Elenco disponible: `
+        + JSON.stringify(castNames) + `. Idea: ${idea}`;
       const raw = await generate("gemini-3.5-flash-lite", [{ text: prompt }],
         { responseMimeType: "application/json", maxOutputTokens: Math.max(1800, count * 350), temperature: 0.5 },
         { fallbackModels: ["gemini-3.1-flash-lite", "gemini-3.8-flash"], retryBadRequest: true });
