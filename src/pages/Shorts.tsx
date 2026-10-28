@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,6 +35,11 @@ import {
   ListVideo,
   Clapperboard,
   ExternalLink,
+  MessageSquare,
+  GitFork,
+  Lock,
+  Unlock,
+  Film,
 } from "lucide-react";
 import {
   useShorts,
@@ -53,8 +58,9 @@ import { toast } from "sonner";
 
 const Shorts = () => {
   const { enabled: adultEnabled } = useAdultMode();
-  const { user } = useAuth();
+  const { user, isAdmin, isPremium } = useAuth();
   const { language } = useLanguage();
+  const navigate = useNavigate();
   const isEs = language === "es";
   const { series, loading, reload } = useShorts(adultEnabled);
 
@@ -150,6 +156,20 @@ const Shorts = () => {
       toast.error("Esta serie no tiene capítulos creados.");
       return;
     }
+    const isFree = episodeIndex < 2;
+    const isUnlocked = isFree || isAdmin || isPremium;
+    if (!isUnlocked) {
+      toast.info(isEs ? "Episodio exclusivo para miembros VIP" : "VIP Members Exclusive Episode", {
+        description: isEs
+          ? "Desbloquea todos los capítulos con el Pase VIP Insomnia."
+          : "Unlock all full episodes with the Insomnia VIP Pass.",
+        action: {
+          label: isEs ? "Ver Planes" : "View Plans",
+          onClick: () => navigate("/plans"),
+        },
+      });
+      return;
+    }
     const episode = targetSeries.episodes[episodeIndex];
     if (!episode) return;
 
@@ -166,6 +186,20 @@ const Shorts = () => {
   // Cambiar de episodio
   const handleSelectEpisodeInPlayer = async (idx: number) => {
     if (!currentPlayingSeries) return;
+    const isFree = idx < 2;
+    const isUnlocked = isFree || isAdmin || isPremium;
+    if (!isUnlocked) {
+      toast.info(isEs ? "Episodio exclusivo para miembros VIP" : "VIP Members Exclusive Episode", {
+        description: isEs
+          ? "Desbloquea todos los capítulos con el Pase VIP Insomnia."
+          : "Unlock all full episodes with the Insomnia VIP Pass.",
+        action: {
+          label: isEs ? "Ver Planes" : "View Plans",
+          onClick: () => navigate("/plans"),
+        },
+      });
+      return;
+    }
     const ep = currentPlayingSeries.episodes[idx];
     if (!ep) return;
     setCurrentEpisodeIndex(idx);
@@ -571,8 +605,9 @@ const Shorts = () => {
                       </span>
                       <div className="flex items-center gap-1.5">
                         {item.is_adult && (
-                          <span className="bg-rose-950/80 border border-rose-500/40 text-rose-300 text-[10px] font-bold px-1.5 py-0.5 rounded">
-                            18+
+                          <span className="bg-gradient-to-r from-red-600 via-rose-600 to-pink-600 text-white text-[10px] font-black tracking-wider px-2 py-0.5 rounded shadow-lg shadow-pink-600/30 flex items-center gap-1">
+                            <Flame className="w-3 h-3 fill-white" />
+                            SPICY 18+
                           </span>
                         )}
                         <button
@@ -675,8 +710,9 @@ const Shorts = () => {
                         {selectedSeries.category || (isEs ? "HISTORIA" : "STORY")}
                       </span>
                       {selectedSeries.is_adult && (
-                        <span className="text-rose-400 text-xs font-bold px-1.5 py-0.5 rounded bg-rose-500/10 border border-rose-500/20">
-                          {isEs ? "18+ Adulto" : "18+ Mature"}
+                        <span className="bg-gradient-to-r from-red-600 via-rose-600 to-pink-600 text-white text-xs font-black tracking-wider px-2.5 py-0.5 rounded shadow flex items-center gap-1">
+                          <Flame className="w-3.5 h-3.5 fill-white" />
+                          {isEs ? "SPICY 18+ ADULTO" : "SPICY 18+ MATURE"}
                         </span>
                       )}
                       <span className="text-xs text-neutral-500">•</span>
@@ -706,6 +742,8 @@ const Shorts = () => {
                     <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
                       {selectedSeries.episodes.map((ep, idx) => {
                         const hasVideo = Boolean(ep.video_url);
+                        const isFree = idx < 2;
+                        const isUnlocked = isFree || isAdmin || isPremium;
                         return (
                           <button
                             key={ep.id}
@@ -715,12 +753,31 @@ const Shorts = () => {
                           >
                             <div className="flex items-center gap-3">
                               <div className="w-6 h-6 rounded-full bg-[#181818] border border-[#363636] group-hover:border-[#ff2d78] group-hover:bg-[#ff2d78] flex items-center justify-center transition-colors">
-                                <Play className="w-3 h-3 ml-0.5 fill-current text-neutral-400 group-hover:text-white" />
+                                {isUnlocked ? (
+                                  <Play className="w-3 h-3 ml-0.5 fill-current text-neutral-400 group-hover:text-white" />
+                                ) : (
+                                  <Lock className="w-3 h-3 text-amber-400" />
+                                )}
                               </div>
                               <div>
-                                <p className="font-semibold group-hover:text-white transition-colors">
-                                  {isEs ? "Ep." : "Ep."} {ep.episode_number}: {ep.title}
-                                </p>
+                                <div className="flex items-center gap-2">
+                                  <p className="font-semibold group-hover:text-white transition-colors">
+                                    {isEs ? "Ep." : "Ep."} {ep.episode_number}: {ep.title}
+                                  </p>
+                                  {isFree ? (
+                                    <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                                      {isEs ? "GRATIS" : "FREE"}
+                                    </span>
+                                  ) : !isUnlocked ? (
+                                    <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center gap-0.5">
+                                      <Lock className="w-2.5 h-2.5" /> VIP
+                                    </span>
+                                  ) : (
+                                    <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                                      VIP PASS
+                                    </span>
+                                  )}
+                                </div>
                                 <p className="text-[10px] text-neutral-400 line-clamp-1 max-w-xs">
                                   {ep.script.slice(0, 60)}...
                                 </p>
@@ -855,6 +912,24 @@ const Shorts = () => {
                       <Volume2 className="w-4 h-4" />
                     )}
                   </button>
+
+                  <Link
+                    to={`/chat?series=${encodeURIComponent(currentPlayingSeries.title)}&character=${encodeURIComponent(currentPlayingSeries.title)}&premise=${encodeURIComponent(currentPlayingSeries.premise || '')}&avatar=${encodeURIComponent(currentPlayingSeries.cover_url || '')}&adult=${currentPlayingSeries.is_adult ? '1' : '0'}`}
+                    className="h-9 px-3 rounded-full bg-black/60 backdrop-blur-md flex items-center justify-center gap-1.5 text-xs font-semibold text-white hover:bg-[#ff2d78]/30 transition-colors border border-white/10"
+                    title={isEs ? "Chatear con el personaje de esta serie" : "Chat with this character"}
+                  >
+                    <MessageSquare className="w-3.5 h-3.5 text-[#ff2d78]" />
+                    <span className="hidden sm:inline">{isEs ? "Chatear" : "Chat"}</span>
+                  </Link>
+
+                  <Link
+                    to={`/studio?remix=${currentPlayingSeries.id}&title=${encodeURIComponent(currentPlayingSeries.title)}&premise=${encodeURIComponent(currentPlayingSeries.premise || '')}&category=${encodeURIComponent(currentPlayingSeries.category || '')}&adult=${currentPlayingSeries.is_adult ? '1' : '0'}`}
+                    className="h-9 px-3 rounded-full bg-black/60 backdrop-blur-md flex items-center justify-center gap-1.5 text-xs font-semibold text-white hover:bg-purple-600/30 transition-colors border border-white/10"
+                    title={isEs ? "Hacer Remix o Spin-off en Studio" : "Remix / Spin-off in Studio"}
+                  >
+                    <GitFork className="w-3.5 h-3.5 text-purple-400" />
+                    <span className="hidden sm:inline">{isEs ? "Remix" : "Remix"}</span>
+                  </Link>
 
                   <button
                     onClick={() => setShowEpisodeListInPlayer((prev) => !prev)}

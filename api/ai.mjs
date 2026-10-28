@@ -1909,6 +1909,9 @@ export default async function handler(req, res) {
       const language = body.language === "English" ? "English" : "español";
       const castNames = Array.isArray(body.cast_names) ? body.cast_names.slice(0, 20)
         .map((name) => String(name || "").trim().slice(0, 80)).filter(Boolean) : [];
+      const locationName = String(body.location_name || "").trim().slice(0, 100);
+      const locationDesc = String(body.location_description || "").trim().slice(0, 300);
+      const props = Array.isArray(body.props) ? body.props.slice(0, 10).map((p) => String(p).trim()).filter(Boolean) : [];
       const count = Math.min(20, Math.max(1, Number(body.chapters || body.chapterCount || 3)));
       const prompt = `Actúa como un Showrunner y Director Cinematográfico de miniseries verticales (estilo ReelShort / DramaBox). `
         + `Crea el desglose técnico y guion de rodaje de exactamente ${count} capítulos a partir de la idea. `
@@ -1916,6 +1919,8 @@ export default async function handler(req, res) {
         + "1. NO ESCRIBAS PROSA LITERARIA NI AUDIOLIBROS: En 'visual', describe EXCLUSIVAMENTE acciones físicas visibles, movimientos corporales exactos (blocking), dirección de miradas (eyeline), vestuario coherente con el clima/locación y objetos que interactúan (ej. 'Elena tropieza, la cámara cae al barro, se agacha a recogerla con respiración agitada').\n"
         + "2. DIÁLOGOS DE PERSONAJES: Cada capítulo debe tener su diálogo hablado directo por el actor en 'dialogue' (máximo 15 palabras) y el nombre exacto del actor en 'speaker'. Nunca atribuyas voces de hombres a mujeres.\n"
         + "3. CERO METADATOS TÉCNICOS: Nunca incluyas '9:16', 'Capítulo X de Y', ni palabras como 'Ilustrar' en el texto narrativo ni en el diálogo.\n"
+        + (locationName ? `4. LOCACIÓN FIJA: Desarrolla las escenas en el set: "${locationName}"${locationDesc ? ` (${locationDesc})` : ""}. Mantén este set e iluminación en todas las tomas.\n` : "")
+        + (props.length ? `5. OBJETOS / PROPS CLAVE: Incorpora activamente estos objetos en las acciones físicas de los personajes: ${props.join(", ")}.\n` : "")
         + "Devuelve solo JSON con esta estructura:\n"
         + JSON.stringify({
           title: "Título dramático de la miniserie",

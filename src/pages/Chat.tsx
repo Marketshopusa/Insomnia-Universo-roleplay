@@ -637,6 +637,81 @@ export default function ChatPage() {
     } catch {}
   }, [chatHistory]);
 
+  // CandyShorts -> Chat Bridge: Ingest character from Series / Shorts directly into Room mode
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const seriesTitle = params.get("series");
+      const charName = params.get("character") || seriesTitle;
+      const premise = params.get("premise");
+      const avatar = params.get("avatar");
+      const isAdultParam = params.get("adult") === "1";
+
+      if (charName) {
+        const cleanId = `series-${charName.toLowerCase().replace(/[^a-z0-9]/g, "-")}`;
+        const found = characterList.find((c) => c.id === cleanId || c.name.toLowerCase() === charName.toLowerCase());
+        const targetId = found ? found.id : cleanId;
+
+        if (!found) {
+          const newChar: CharacterItem = {
+            id: cleanId,
+            name: charName,
+            title: seriesTitle || charName,
+            titleEs: seriesTitle || charName,
+            age: 24,
+            gender: "female",
+            relationshipStatus: "Single",
+            relationshipStatusEs: "Soltera",
+            occupation: "Protagonista de Serie",
+            occupationEs: "Protagonista de Serie",
+            personality: ["Enigmática", "Sensual", "Divertida"],
+            personalityEs: ["Enigmática", "Sensual", "Divertida"],
+            bio: premise || `Protagonista de la serie "${seriesTitle || charName}".`,
+            bioEs: premise || `Protagonista de la serie "${seriesTitle || charName}".`,
+            avatar: avatar || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=800&q=80",
+            gallery: [avatar || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=800&q=80"],
+            imageCount: 1,
+            unreadCount: 0,
+            isOnline: true,
+            starterMessage: `Hola... Estaba esperando a que vinieras después de ver mi serie "${seriesTitle || charName}". ¿De qué quieres hablar hoy?`,
+            starterMessageEs: `Hola... Estaba esperando a que vinieras después de ver mi serie "${seriesTitle || charName}". ¿De qué quieres hablar hoy?`,
+            starterMessageEn: `Hey... I was waiting for you to come by after watching my series "${seriesTitle || charName}". What should we talk about?`,
+            voiceName: "es-VE-PaolaNeural",
+            voiceEngine: "edge",
+            style: "realistic",
+            isSpicy: isAdultParam,
+          };
+          setCharacterList((prev) => [newChar, ...prev]);
+        }
+
+        setSelectedCharacterId(targetId);
+        setViewMode("room");
+
+        // Set starter greeting if no prior conversation exists
+        setChatHistory((prev) => {
+          if (!prev[targetId] || prev[targetId].length === 0) {
+            return {
+              ...prev,
+              [targetId]: [
+                {
+                  id: `starter-${targetId}`,
+                  role: "assistant",
+                  content: isEs
+                    ? `Hola... Me alegra verte aquí después de ver mi serie "${seriesTitle || charName}". Cuéntame, ¿qué fue lo que más te gustó?`
+                    : `Hey... So glad to see you here after watching my series "${seriesTitle || charName}". Tell me, what did you like most?`,
+                  timestamp: isEs ? "Ahora" : "Now",
+                },
+              ],
+            };
+          }
+          return prev;
+        });
+      }
+    } catch (e) {
+      console.warn("Could not parse character parameters from URL:", e);
+    }
+  }, []);
+
   // Chat inputs
   const [inputText, setInputText] = useState("");
   const [isTyping, setIsTyping] = useState(false);

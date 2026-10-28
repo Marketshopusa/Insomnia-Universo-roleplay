@@ -22,7 +22,8 @@ import {
   type LocalStudioStatus,
 } from "@/lib/kinevaLocal";
 import { useEffect, useRef, useState } from "react";
-import { Clapperboard, Loader2, Sparkles, Plus, Trash2, Camera, UserPlus, Users, Film, ShieldAlert, Sparkle, Save } from "lucide-react";
+import { Clapperboard, Loader2, Sparkles, Plus, Trash2, Camera, UserPlus, Users, Film, ShieldAlert, Sparkle, Save, MapPin, Box, GitFork } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { type StudioGenre } from "@/lib/studioPresets";
 
 export type CastSlotRole = "protagonist" | "secondary" | "antagonist" | "key_object" | "location";
@@ -253,6 +254,31 @@ function extractDialogueFromText(text: string): string {
     loadedFromUrl.current = true;
     handleLoadProject(project);
   }, [projects]);
+
+  // Support Showrunner "Remix" flow from Shorts / Explore
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const remixId = params.get("remix");
+    const remixTitle = params.get("title");
+    const remixPremise = params.get("premise");
+    const remixAdult = params.get("adult");
+
+    if (remixId || remixPremise) {
+      if (remixPremise) setDescription(remixPremise);
+      if (remixTitle) setManualTitle(`Remix: ${remixTitle}`);
+      if (remixAdult === "1") {
+        setStudioGenre("adult");
+        setIsSafeForWork(false);
+      }
+      setShowManualEditor(true);
+      toast({
+        title: "🎬 Modo Remix Activado (Showrunner)",
+        description: remixTitle
+          ? `Iniciaste un spin-off basado en "${remixTitle}". Ajusta el elenco, la locación o las tomas antes de filmar.`
+          : "Cargamos la premisa de la serie seleccionada para crear un nuevo spin-off.",
+      });
+    }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -490,12 +516,17 @@ function extractDialogueFromText(text: string): string {
           ...customCast.filter((c) => c.role !== "location" && c.role !== "key_object").map((c) => c.name),
         ].filter(Boolean);
 
+        const keyProps = customCast.filter((c) => c.role === "key_object").map((c) => c.name).filter(Boolean);
+
         const { data, error } = await invokeFunctionWithRetry<{ draft?: { title: string; cast_roles?: { name: string; role: string }[]; chapters: { visual: string; dialogue: string; speaker?: string }[] } }>("generate-studio-draft", {
           description: idea,
           language,
           chapters: chapterCount,
           chapterCount,
           cast_names: allCast,
+          location_name: locationName,
+          location_description: locationDescription,
+          props: keyProps,
         });
         if (error || !data?.draft?.chapters || data.draft.chapters.length === 0) {
           throw new Error(error?.message || "La IA no entregó los capítulos.");
@@ -1255,154 +1286,297 @@ function extractDialogueFromText(text: string): string {
                </Select>
              </div>
            </div>
-         </Card>
+         </Card>           <Card className="p-6 mb-6 space-y-5 border-primary/20 bg-card/60 backdrop-blur-sm">
+             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 pb-3">
+               <div>
+                 <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-primary/10 border border-primary/20 text-[10px] font-bold text-primary uppercase tracking-wider mb-1">
+                   <Film className="w-3 h-3" />
+                   <span>LTX Elements & Casting Studio</span>
+                 </div>
+                 <h2 className="text-xl font-bold flex items-center gap-2">
+                   Elementos de Producción (Elements)
+                 </h2>
+                 <p className="text-xs text-muted-foreground">
+                   Fija los personajes, las locaciones fijas y los objetos/props clave para garantizar consistencia cinematográfica cuadro a cuadro.
+                 </p>
+               </div>
+               <div className="flex items-center gap-2">
+                 <Button
+                   type="button"
+                   variant="outline"
+                   size="sm"
+                   onClick={() => addCustomCastMember("secondary")}
+                   className="gap-1.5 text-xs h-8"
+                 >
+                   <UserPlus className="w-3.5 h-3.5" /> + Personaje
+                 </Button>
+                 <Button
+                   type="button"
+                   variant="outline"
+                   size="sm"
+                   onClick={() => addCustomCastMember("location")}
+                   className="gap-1.5 text-xs h-8"
+                 >
+                   <MapPin className="w-3.5 h-3.5" /> + Locación
+                 </Button>
+                 <Button
+                   type="button"
+                   variant="outline"
+                   size="sm"
+                   onClick={() => addCustomCastMember("key_object")}
+                   className="gap-1.5 text-xs h-8"
+                 >
+                   <Box className="w-3.5 h-3.5" /> + Prop Clave
+                 </Button>
+               </div>
+             </div>
 
-          <Card className="p-6 mb-6 space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h2 className="text-lg font-medium flex items-center gap-2">
-                  <Users className="w-5 h-5 text-primary" /> Elenco y Elementos Consistentes
-                </h2>
-                <p className="text-xs text-muted-foreground">
-                  Asigna actores principales, secundarios, antagonistas o lugares clave para mantener consistencia visual vía LoRA / IP-Adapter en Wan 2.1.
-                </p>
-              </div>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => addCustomCastMember("secondary")}
-                className="gap-1.5 text-xs"
-              >
-                <UserPlus className="w-4 h-4" /> + Asignar Personaje / Elemento
-              </Button>
-            </div>
+             <Tabs defaultValue="cast" className="w-full">
+               <TabsList className="grid grid-cols-3 w-full bg-muted/40 p-1 rounded-xl border border-border/60">
+                 <TabsTrigger value="cast" className="text-xs font-bold gap-1.5 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+                   <Users className="w-3.5 h-3.5" />
+                   <span>1. Personajes & Elenco</span>
+                   {primaryName ? <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> : null}
+                 </TabsTrigger>
+                 <TabsTrigger value="locations" className="text-xs font-bold gap-1.5 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+                   <MapPin className="w-3.5 h-3.5" />
+                   <span>2. Locaciones & Sets</span>
+                   {locationName ? <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> : null}
+                 </TabsTrigger>
+                 <TabsTrigger value="props" className="text-xs font-bold gap-1.5 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+                   <Box className="w-3.5 h-3.5" />
+                   <span>3. Objetos & Props</span>
+                   {customCast.some(c => c.role === "key_object") ? <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> : null}
+                 </TabsTrigger>
+               </TabsList>
 
-            {/* Slots Activos de Asignación Inmediata (Wan 2.1) */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-1">
-              {/* Protagonista */}
-              <div className="space-y-2 p-3 rounded-lg border border-primary/30 bg-primary/5">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="kineva-reference" className="text-xs font-semibold text-primary">Protagonista (Principal)</Label>
-                  <span className="text-[10px] text-primary/80 font-medium">Requerido</span>
-                </div>
-                <input id="kineva-reference" type="file" accept="image/png,image/jpeg,image/webp"
-                  onChange={(event) => setReferenceImage(event.target.files?.[0] ?? null)}
-                  className="block w-full text-xs" />
-                <input aria-label="Nombre del personaje principal" placeholder="Nombre del protagonista" value={primaryName}
-                  onChange={(event) => setPrimaryName(event.target.value)} maxLength={80}
-                  className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-xs" />
-              </div>
+               {/* TAB 1: PERSONAJES */}
+               <TabsContent value="cast" className="space-y-4 pt-3">
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                   {/* Protagonista con Upload Yourself */}
+                   <div className="space-y-2.5 p-4 rounded-xl border-2 border-primary/40 bg-primary/5 relative">
+                     <div className="flex items-center justify-between">
+                       <Label htmlFor="kineva-reference" className="text-xs font-bold text-primary flex items-center gap-1.5 uppercase tracking-wide">
+                         <Users className="w-3.5 h-3.5" /> Protagonista (Upload Yourself)
+                       </Label>
+                       <span className="text-[10px] bg-primary/20 text-primary px-2 py-0.5 rounded-full font-bold">Rostro Ancla</span>
+                     </div>
+                     <p className="text-[11px] text-muted-foreground">
+                       Sube tu propia foto o el rostro del actor principal. Wan 2.1 e IP-Adapter fijarán esta identidad en todos los capítulos.
+                     </p>
+                     <input id="kineva-reference" type="file" accept="image/png,image/jpeg,image/webp"
+                       onChange={(event) => setReferenceImage(event.target.files?.[0] ?? null)}
+                       className="block w-full text-xs" />
+                     <input aria-label="Nombre del personaje principal" placeholder="Nombre del protagonista (ej. Elena, Marco)" value={primaryName}
+                       onChange={(event) => setPrimaryName(event.target.value)} maxLength={80}
+                       className="w-full rounded-md border border-border bg-background px-3 py-2 text-xs font-medium" />
+                   </div>
 
-              {/* Segundo protagonista */}
-              <div className="space-y-2 p-3 rounded-lg border border-border bg-card/60">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="kineva-second" className="text-xs font-semibold">Segundo Protagonista</Label>
-                  <span className="text-[10px] text-muted-foreground">Opcional</span>
-                </div>
-                <input id="kineva-second" type="file" accept="image/png,image/jpeg,image/webp"
-                  onChange={(event) => setSecondaryImage(event.target.files?.[0] ?? null)} className="block w-full text-xs" />
-                <input aria-label="Nombre del segundo personaje" placeholder="Nombre (co-protagonista)" value={secondaryName}
-                  onChange={(event) => setSecondaryName(event.target.value)} maxLength={80}
-                  className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-xs" />
-              </div>
+                   {/* Co-Protagonista */}
+                   <div className="space-y-2.5 p-4 rounded-xl border border-border bg-card/60">
+                     <div className="flex items-center justify-between">
+                       <Label htmlFor="kineva-second" className="text-xs font-bold flex items-center gap-1.5 uppercase tracking-wide">
+                         <Users className="w-3.5 h-3.5" /> Segundo Protagonista / Rival
+                       </Label>
+                       <span className="text-[10px] text-muted-foreground font-semibold">Opcional</span>
+                     </div>
+                     <p className="text-[11px] text-muted-foreground">
+                       Foto de referencia para el interés romántico, rival o compañero de escena.
+                     </p>
+                     <input id="kineva-second" type="file" accept="image/png,image/jpeg,image/webp"
+                       onChange={(event) => setSecondaryImage(event.target.files?.[0] ?? null)}
+                       className="block w-full text-xs" />
+                     <input aria-label="Nombre del segundo personaje" placeholder="Nombre (co-protagonista o rival)" value={secondaryName}
+                       onChange={(event) => setSecondaryName(event.target.value)} maxLength={80}
+                       className="w-full rounded-md border border-border bg-background px-3 py-2 text-xs font-medium" />
+                   </div>
+                 </div>
 
-              {/* Lugar / Entorno */}
-              <div className="space-y-2 p-3 rounded-lg border border-border bg-card/60">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="kineva-location" className="text-xs font-semibold">Lugar o Entorno</Label>
-                  <span className="text-[10px] text-muted-foreground">Opcional</span>
-                </div>
-                <input id="kineva-location" type="file" accept="image/png,image/jpeg,image/webp"
-                  onChange={(event) => setLocationImage(event.target.files?.[0] ?? null)} className="block w-full text-xs" />
-                <input aria-label="Nombre del lugar" placeholder="Nombre del lugar o set" value={locationName}
-                  onChange={(event) => setLocationName(event.target.value)} maxLength={80}
-                  className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-xs" />
-                <input aria-label="Descripción del lugar" placeholder="Iluminación, época o estilo" value={locationDescription}
-                  onChange={(event) => setLocationDescription(event.target.value)} maxLength={400}
-                  className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-xs" />
-              </div>
-            </div>
+                 {/* Additional Cast slots (Secundarios, Antagonistas) */}
+                 {customCast.filter(c => c.role !== "location" && c.role !== "key_object").length > 0 && (
+                   <div className="space-y-2.5 pt-2">
+                     <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block">
+                       Reparto adicional asignado ({customCast.filter(c => c.role !== "location" && c.role !== "key_object").length}):
+                     </span>
+                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                       {customCast.filter(c => c.role !== "location" && c.role !== "key_object").map((member) => (
+                         <div key={member.id} className="p-3 rounded-lg border border-border bg-card/80 space-y-2 relative shadow-sm">
+                           <div className="flex items-center justify-between gap-2">
+                             <select
+                               value={member.role}
+                               onChange={(e) => updateCustomCastMember(member.id, { role: e.target.value as CastSlotRole })}
+                               className="text-xs rounded border border-border bg-background px-2 py-1 font-semibold text-primary"
+                             >
+                               <option value="secondary">Personaje Secundario</option>
+                               <option value="antagonist">Antagonista / Villano</option>
+                             </select>
+                             <Button
+                               type="button"
+                               variant="ghost"
+                               size="icon"
+                               className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                               onClick={() => removeCustomCastMember(member.id)}
+                             >
+                               <Trash2 className="w-3.5 h-3.5" />
+                             </Button>
+                           </div>
+                           <input
+                             placeholder="Nombre del personaje"
+                             value={member.name}
+                             onChange={(e) => updateCustomCastMember(member.id, { name: e.target.value })}
+                             className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-xs font-medium"
+                           />
+                           <input
+                             type="file"
+                             accept="image/png,image/jpeg,image/webp"
+                             onChange={(e) => updateCustomCastMember(member.id, { file: e.target.files?.[0] || null })}
+                             className="block w-full text-xs"
+                           />
+                         </div>
+                       ))}
+                     </div>
+                   </div>
+                 )}
 
-            {/* Custom Cast coral slots */}
-            {customCast.length > 0 && (
-              <div className="space-y-3 pt-3 border-t border-border">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-primary uppercase tracking-wider flex items-center gap-1.5">
-                    <UserPlus className="w-3.5 h-3.5" /> Reparto Adicional y Roles Extra ({customCast.length}):
-                  </span>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => addCustomCastMember("secondary")}
-                    className="text-xs h-7 text-muted-foreground hover:text-foreground"
-                  >
-                    + Otro rol
-                  </Button>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {customCast.map((member) => (
-                    <div id={`custom-cast-${member.id}`} key={member.id} className="p-3 rounded-lg border border-primary/40 bg-card/80 space-y-2 relative shadow-sm">
-                      <div className="flex items-center justify-between gap-2">
-                        <select
-                          value={member.role}
-                          onChange={(e) => updateCustomCastMember(member.id, { role: e.target.value as CastSlotRole })}
-                          className="text-xs rounded border border-border bg-background px-2 py-1 font-medium"
-                        >
-                          <option value="secondary">Personaje Secundario</option>
-                          <option value="antagonist">Antagonista / Rival / Monstruo</option>
-                          <option value="key_object">Objeto Clave / Vehículo</option>
-                          <option value="location">Locación Adicional</option>
-                        </select>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="h-6 w-6 text-muted-foreground hover:text-destructive"
-                          onClick={() => removeCustomCastMember(member.id)}
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </Button>
-                      </div>
-                      <input
-                        placeholder="Nombre del personaje o elemento"
-                        value={member.name}
-                        onChange={(e) => updateCustomCastMember(member.id, { name: e.target.value })}
-                        className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-xs font-medium"
-                      />
-                      <input
-                        type="file"
-                        accept="image/png,image/jpeg,image/webp"
-                        onChange={(e) => updateCustomCastMember(member.id, { file: e.target.files?.[0] || null })}
-                        className="block w-full text-xs"
-                      />
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+                 {/* Cast Gallery */}
+                 <div className="pt-3 border-t border-border space-y-2">
+                   <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block">
+                     Galería de Rostros Guardados (Asigna con un clic):
+                   </span>
+                   <CastGallery
+                     userId={user.id}
+                     onPrimary={(file, name) => { setReferenceImage(file); setPrimaryName(name); }}
+                     onSecondary={(file, name) => { setSecondaryImage(file); setSecondaryName(name); }}
+                     onSupporting={(file, name) => setSupportingCast((current) => current.some((actor) => actor.name === name) ? current : [...current, { file, name }])}
+                     onAssignCustom={(file, name) => addCustomCastMember("secondary", name, file)}
+                   />
+                 </div>
+               </TabsContent>
 
-            {!!supportingCast.length && <div aria-label="Reparto de esta serie" className="flex flex-wrap gap-2 text-sm pt-2">
-              {supportingCast.map((actor) => <span key={actor.name} className="rounded border px-2 py-1 text-xs flex items-center gap-1.5 bg-muted/40">{actor.name}
-                <button type="button" className="text-muted-foreground hover:text-foreground" aria-label={`Quitar ${actor.name} del reparto de esta serie`} onClick={() => setSupportingCast((current) => current.filter((item) => item.name !== actor.name))}>×</button>
-              </span>)}
-            </div>}
+               {/* TAB 2: LOCACIONES */}
+               <TabsContent value="locations" className="space-y-4 pt-3">
+                 <div className="p-4 rounded-xl border border-border bg-card/60 space-y-3">
+                   <div className="flex items-center justify-between">
+                     <Label htmlFor="kineva-location" className="text-xs font-bold flex items-center gap-1.5 uppercase tracking-wide">
+                       <MapPin className="w-3.5 h-3.5 text-primary" /> Set / Locación Principal
+                     </Label>
+                     <span className="text-[10px] text-muted-foreground font-semibold">Consistencia de Escenario</span>
+                   </div>
+                   <p className="text-[11px] text-muted-foreground">
+                     Define el entorno donde transcurre la miniserie (mansión victoriana, bosque nocturno, penthouse, hospital). La IA mantendrá la misma iluminación y geometría.
+                   </p>
+                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                     <div className="space-y-2">
+                       <input aria-label="Nombre del lugar" placeholder="Nombre del set (ej. Mansión Blackwood, Bar Neón)" value={locationName}
+                         onChange={(event) => setLocationName(event.target.value)} maxLength={80}
+                         className="w-full rounded-md border border-border bg-background px-3 py-2 text-xs font-medium" />
+                       <input aria-label="Descripción del lugar" placeholder="Iluminación, clima o atmósfera (ej. Lluvia torrencial, luces rojas tenues)" value={locationDescription}
+                         onChange={(event) => setLocationDescription(event.target.value)} maxLength={400}
+                         className="w-full rounded-md border border-border bg-background px-3 py-2 text-xs" />
+                     </div>
+                     <div>
+                       <input id="kineva-location" type="file" accept="image/png,image/jpeg,image/webp"
+                         onChange={(event) => setLocationImage(event.target.files?.[0] ?? null)} className="block w-full text-xs" />
+                       <p className="text-[10px] text-muted-foreground mt-1.5">
+                         Sube una foto de referencia del decorado o set si quieres recrear un lugar específico.
+                       </p>
+                     </div>
+                   </div>
+                 </div>
 
-            {/* Galería de Rostros (20 slots) */}
-            <div className="pt-4 border-t border-border space-y-2">
-              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block">
-                Galería de Rostros Guardados (Asigna con un clic):
-              </span>
-              <CastGallery
-                userId={user.id}
-                onPrimary={(file, name) => { setReferenceImage(file); setPrimaryName(name); }}
-                onSecondary={(file, name) => { setSecondaryImage(file); setSecondaryName(name); }}
-                onSupporting={(file, name) => setSupportingCast((current) => current.some((actor) => actor.name === name) ? current : [...current, { file, name }])}
-                onAssignCustom={(file, name) => addCustomCastMember("secondary", name, file)}
-              />
-            </div>
-          </Card>
+                 {/* Additional Locations */}
+                 {customCast.filter(c => c.role === "location").length > 0 && (
+                   <div className="space-y-2.5 pt-2">
+                     <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block">
+                       Locaciones Secundarias ({customCast.filter(c => c.role === "location").length}):
+                     </span>
+                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                       {customCast.filter(c => c.role === "location").map((loc) => (
+                         <div key={loc.id} className="p-3 rounded-lg border border-border bg-card/80 space-y-2">
+                           <div className="flex items-center justify-between">
+                             <span className="text-xs font-bold text-primary flex items-center gap-1">
+                               <MapPin className="w-3 h-3" /> Locación Adicional
+                             </span>
+                             <Button
+                               type="button"
+                               variant="ghost"
+                               size="icon"
+                               className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                               onClick={() => removeCustomCastMember(loc.id)}
+                             >
+                               <Trash2 className="w-3.5 h-3.5" />
+                             </Button>
+                           </div>
+                           <input
+                             placeholder="Nombre del set secundario"
+                             value={loc.name}
+                             onChange={(e) => updateCustomCastMember(loc.id, { name: e.target.value })}
+                             className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-xs font-medium"
+                           />
+                         </div>
+                       ))}
+                     </div>
+                   </div>
+                 )}
+               </TabsContent>
+
+               {/* TAB 3: PROPS Y OBJETOS CLAVE */}
+               <TabsContent value="props" className="space-y-4 pt-3">
+                 <div className="p-4 rounded-xl border border-border bg-card/60 space-y-3">
+                   <div className="flex items-center justify-between">
+                     <Label className="text-xs font-bold flex items-center gap-1.5 uppercase tracking-wide">
+                       <Box className="w-3.5 h-3.5 text-primary" /> Objetos de Interacción (Props)
+                     </Label>
+                     <Button
+                       type="button"
+                       variant="outline"
+                       size="sm"
+                       onClick={() => addCustomCastMember("key_object")}
+                       className="text-xs h-7 gap-1"
+                     >
+                       <Plus className="w-3 h-3" /> Añadir Prop
+                     </Button>
+                   </div>
+                   <p className="text-[11px] text-muted-foreground">
+                     Los personajes interactúan con props físicos en cada toma: una cámara que se cae, una llave secreta, una copa de vino, un teléfono. Añade los objetos relevantes de la historia aquí.
+                   </p>
+
+                   {customCast.filter(c => c.role === "key_object").length === 0 ? (
+                     <div className="py-6 text-center rounded-lg border border-dashed border-border text-xs text-muted-foreground">
+                       No hay props registrados. Pulsa <strong>+ Añadir Prop</strong> para registrar objetos clave (ej. Cámara réflex, Llave maestra, Linterna).
+                     </div>
+                   ) : (
+                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                       {customCast.filter(c => c.role === "key_object").map((prop) => (
+                         <div key={prop.id} className="p-3 rounded-lg border border-primary/30 bg-card/80 space-y-2">
+                           <div className="flex items-center justify-between">
+                             <span className="text-xs font-bold text-primary flex items-center gap-1">
+                               <Box className="w-3 h-3" /> Prop Físico
+                             </span>
+                             <Button
+                               type="button"
+                               variant="ghost"
+                               size="icon"
+                               className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                               onClick={() => removeCustomCastMember(prop.id)}
+                             >
+                               <Trash2 className="w-3.5 h-3.5" />
+                             </Button>
+                           </div>
+                           <input
+                             placeholder="Nombre del objeto (ej. Cámara réflex negra, Teléfono con mensaje)"
+                             value={prop.name}
+                             onChange={(e) => updateCustomCastMember(prop.id, { name: e.target.value })}
+                             className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-xs font-medium"
+                           />
+                         </div>
+                       ))}
+                     </div>
+                   )}
+                 </div>
+               </TabsContent>
+             </Tabs>
+           </Card>
 
         <Card id="studio-editor" className="p-6 mb-6 space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1817,69 +1991,9 @@ function extractDialogueFromText(text: string): string {
           </Card>
         )}
 
-        {/* Project Management */}
-         <div className="grid grid-cols-3 gap-4 mb-4">
-           <Button variant="secondary" onClick={handleSaveProject}>
-            {t("studio.saveProject")}
-           </Button>
-           <AlertDialog>
-             <AlertDialogTrigger asChild>
-              <Button variant="secondary">{t("studio.loadProject")}</Button>
-             </AlertDialogTrigger>
-             <AlertDialogContent>
-               <AlertDialogHeader>
-                <AlertDialogTitle>{t("studio.loadProject")}</AlertDialogTitle>
-                 <AlertDialogDescription>
-                   {projectsLoading ? (
-                    t("studio.loadingProjects")
-                   ) : projects?.length === 0 ? (
-                    t("studio.noSavedProjects")
-                   ) : (
-                     <div className="space-y-2 mt-4">
-                       {projects?.map((project) => (
-                         <Button
-                           key={project.id}
-                           variant="outline"
-                           className="w-full justify-start"
-                           onClick={() => handleLoadProject(project)}
-                         >
-                           {project.title}
-                         </Button>
-                       ))}
-                     </div>
-                   )}
-                 </AlertDialogDescription>
-               </AlertDialogHeader>
-               <AlertDialogFooter>
-                <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
-               </AlertDialogFooter>
-             </AlertDialogContent>
-           </AlertDialog>
-           <AlertDialog>
-             <AlertDialogTrigger asChild>
-              <Button variant="secondary">{t("studio.deleteProjects")}</Button>
-             </AlertDialogTrigger>
-             <AlertDialogContent>
-               <AlertDialogHeader>
-                <AlertDialogTitle>{t("studio.deleteAllTitle")}</AlertDialogTitle>
-                <AlertDialogDescription>{t("studio.deleteAllDesc")}</AlertDialogDescription>
-               </AlertDialogHeader>
-               <AlertDialogFooter>
-                <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
-                <AlertDialogAction onClick={handleDeleteProjects}>{t("common.delete")}</AlertDialogAction>
-               </AlertDialogFooter>
-             </AlertDialogContent>
-           </AlertDialog>
-         </div>
+      </div>
+    </MainLayout>
+  );
+};
 
-         <div className="grid grid-cols-3 gap-4">
-          <Button variant="outline">{t("studio.downloadProject")}</Button>
-          <Button variant="outline">{t("studio.uploadProject")}</Button>
-          <Button variant="outline" onClick={handleReset}>{t("studio.reset")}</Button>
-         </div>
-       </div>
-     </MainLayout>
-   );
- };
-
- export default Studio;
+export default Studio;
