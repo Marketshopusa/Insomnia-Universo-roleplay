@@ -94,7 +94,7 @@ export default async function handler(req, res) {
   if (!isGeminiConfigured()) {
     return res.status(503).json({
       error: "neural_voice_not_configured",
-      message: "Gemini 2.5 Flash TTS no está configurado en este sitio.",
+      message: "El servicio de voz neural no está configurado en este sitio.",
     });
   }
   const raw = typeof req.body?.text === "string" ? req.body.text : "";

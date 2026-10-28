@@ -125,9 +125,9 @@ export function explainGeminiFailure(status, detail = "") {
       : "https://console.cloud.google.com/apis/library/aiplatform.googleapis.com";
     return `Gemini 2.5 Flash TTS está instalado, pero la API Agent Platform sigue apagada en el proyecto. Actívala aquí: ${link}`;
   }
-  if (status === 403) return "Google Cloud negó el permiso de Gemini 2.5 Flash TTS a la cuenta insomnia-chirp-tts.";
-  if (status === 429) return "Se acabó la cuota de Gemini 2.5 Flash TTS. El texto sigue disponible.";
-  return "Gemini 2.5 Flash TTS no pudo hablar esta línea.";
+  if (status === 403) return "El servicio de voz no tiene permisos configurados.";
+  if (status === 429) return "Se agotó la cuota temporal de voz. El texto sigue disponible.";
+  return "El servicio de voz no pudo procesar esta línea.";
 }
 
 function agentPlatformDisabled(detail) {
