@@ -130,7 +130,10 @@ En este momento de la escena, ${activeChar.playerFirstName} está interactuando 
       }
     }
     if (alternating.length > 0 && alternating[alternating.length - 1].role === "user") {
-      alternating[alternating.length - 1].content += "\n" + userContent;
+      const lastText = alternating[alternating.length - 1].content.trim().toLowerCase();
+      if (!lastText.endsWith(userContent.trim().toLowerCase())) {
+        alternating[alternating.length - 1].content += "\n" + userContent;
+      }
     } else {
       alternating.push({ role: "user", content: userContent });
     }
@@ -140,55 +143,90 @@ En este momento de la escena, ${activeChar.playerFirstName} está interactuando 
       ...alternating,
     ];
 
-    let res: Response | null = null;
-    try {
-      res = await fetch("http://127.0.0.1:8787/chat", {
-        method: "POST",
-        mode: "cors",
-        ...({ targetAddressSpace: "loopback" } as any),
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "magnum-v4-12b",
-          messages,
-          max_tokens: 450,
-          temperature: 0.82,
-        }),
-        signal: AbortSignal.timeout(12000),
-      });
-    } catch {
-      res = null;
-    }
+    const fetchMagnumCandidate = async (
+      chatMessages: { role: string; content: string }[],
+      opts: { temperature?: number; repeat_penalty?: number; presence_penalty?: number } = {},
+    ): Promise<string | null> => {
+      const temperature = opts.temperature ?? 0.82;
+      const repeat_penalty = opts.repeat_penalty ?? 1.25;
+      const presence_penalty = opts.presence_penalty ?? 0.5;
+      const frequency_penalty = 0.3;
+      const repeat_last_n = 512;
+      const max_tokens = 450;
 
-    if (!res || !res.ok) {
+      let res: Response | null = null;
       try {
-        res = await fetch("http://127.0.0.1:8788/v1/chat/completions", {
+        res = await fetch("http://127.0.0.1:8787/chat", {
           method: "POST",
+          mode: "cors",
+          ...({ targetAddressSpace: "loopback" } as any),
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             model: "magnum-v4-12b",
-            messages,
-            max_tokens: 450,
-            temperature: 0.82,
-            repeat_penalty: 1.12,
-            presence_penalty: 0,
-            frequency_penalty: 0,
+            messages: chatMessages,
+            max_tokens,
+            temperature,
+            repeat_penalty,
+            presence_penalty,
+            frequency_penalty,
+            repeat_last_n,
           }),
           signal: AbortSignal.timeout(12000),
         });
       } catch {
-        return null;
+        res = null;
       }
+
+      if (!res || !res.ok) {
+        try {
+          res = await fetch("http://127.0.0.1:8788/v1/chat/completions", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              model: "magnum-v4-12b",
+              messages: chatMessages,
+              max_tokens,
+              temperature,
+              repeat_penalty,
+              presence_penalty,
+              frequency_penalty,
+              repeat_last_n,
+            }),
+            signal: AbortSignal.timeout(12000),
+          });
+        } catch {
+          return null;
+        }
+      }
+
+      if (!res || !res.ok) return null;
+      const data = await res.json().catch(() => null);
+      let reply = data?.choices?.[0]?.message?.content?.trim();
+      if (reply) {
+        reply = reply.replace(/[\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff\u3040-\u30ff]/g, "").trim();
+      }
+      return reply || null;
+    };
+
+    // 1er intento de generación con penalización de repetición calibrada
+    let rawReply = await fetchMagnumCandidate(messages, { temperature: 0.82, repeat_penalty: 1.25, presence_penalty: 0.5 });
+    let content = rawReply ? sanitizeSwitchedReply(compactRoleplayReply(rawReply), activeChar) : "";
+
+    // Si la respuesta es una repetición idéntica del turno anterior, reintentar con penalización reforzada y advertencia explícita
+    if (content && isRepeatedAssistantReply(content, historyList)) {
+      const antiRepeatMessages = [
+        {
+          role: "system",
+          content: systemPrompt + `\nPROHIBICIÓN TOTAL DE REPETIR: Tu respuesta anterior coincidió con una frase previa. ESTÁ TERMINANTEMENTE PROHIBIDO repetir las mismas palabras, respuestas o acciones. Debes reaccionar con NUEVAS palabras y acciones frescas.`
+        },
+        ...alternating,
+      ];
+      rawReply = await fetchMagnumCandidate(antiRepeatMessages, { temperature: 0.95, repeat_penalty: 1.35, presence_penalty: 0.8 });
+      content = rawReply ? sanitizeSwitchedReply(compactRoleplayReply(rawReply), activeChar) : "";
     }
 
-    if (!res.ok) return null;
-    const data = await res.json();
-    let content = data?.choices?.[0]?.message?.content?.trim();
-    if (content) {
-      content = content.replace(/[\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff\u3040-\u30ff]/g, "").trim();
-      content = sanitizeSwitchedReply(compactRoleplayReply(content), activeChar);
-      if (content) {
-        return { data: { content } as T, error: null };
-      }
+    if (content && !isRepeatedAssistantReply(content, historyList)) {
+      return { data: { content } as T, error: null };
     }
     return null;
   } catch {
@@ -273,12 +311,16 @@ export async function invokeFunctionWithRetry<T>(name: string, body: unknown): P
       b?.settings?.modelId === "magnum-v4-local"
     );
     const isMagnumSelected = isAdultReq || b?.settings?.modelId === "magnum-v4-local";
+    const historyList = (b?.history || []) as any[];
 
     // Si el contenido es +18 / adulto o se configuró explícitamente Magnum v4 local, intentar primero servidor local
     if (name === "story-chat" && isMagnumSelected) {
       try {
         const local = await callLocalLlama<T>(body);
-        if (local?.data && !isClientRefusal((local.data as any)?.content)) return local;
+        const localContent = (local?.data as any)?.content;
+        if (local?.data && !isClientRefusal(localContent) && !isRepeatedAssistantReply(localContent, historyList)) {
+          return local;
+        }
       } catch {
         // Fallback a servidor
       }
@@ -287,8 +329,9 @@ export async function invokeFunctionWithRetry<T>(name: string, body: unknown): P
     let cloudResult = await callOwnAi<T>(name, body);
     const firstContent = (cloudResult.data as any)?.content;
     const isRefused = name === "story-chat" && isClientRefusal(firstContent);
+    const isRepeated = name === "story-chat" && isRepeatedAssistantReply(firstContent, historyList);
 
-    const okFirst = !cloudResult.error && !isRefused && (needsContent ? Boolean(firstContent) : Boolean(cloudResult.data));
+    const okFirst = !cloudResult.error && !isRefused && !isRepeated && (needsContent ? Boolean(firstContent) : Boolean(cloudResult.data));
     if (okFirst) return cloudResult;
 
     const firstStatus = cloudResult.error?.context?.status ?? 503;
@@ -297,7 +340,8 @@ export async function invokeFunctionWithRetry<T>(name: string, body: unknown): P
       const retryCloud = await callOwnAi<T>(name, body);
       const retryContent = (retryCloud.data as any)?.content;
       const retryRefused = name === "story-chat" && isClientRefusal(retryContent);
-      const okRetry = !retryCloud.error && !retryRefused && (needsContent ? Boolean(retryContent) : Boolean(retryCloud.data));
+      const retryRepeated = name === "story-chat" && isRepeatedAssistantReply(retryContent, historyList);
+      const okRetry = !retryCloud.error && !retryRefused && !retryRepeated && (needsContent ? Boolean(retryContent) : Boolean(retryCloud.data));
       if (okRetry) return retryCloud;
       cloudResult = retryCloud;
     }
@@ -306,7 +350,10 @@ export async function invokeFunctionWithRetry<T>(name: string, body: unknown): P
     if (name === "story-chat" && !isMagnumSelected) {
       try {
         const local = await callLocalLlama<T>(body);
-        if (local?.data && !isClientRefusal((local.data as any)?.content)) return local;
+        const localContent = (local?.data as any)?.content;
+        if (local?.data && !isClientRefusal(localContent) && !isRepeatedAssistantReply(localContent, historyList)) {
+          return local;
+        }
       } catch {
         // N/A
       }

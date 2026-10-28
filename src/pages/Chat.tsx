@@ -1015,7 +1015,7 @@ export default function ChatPage() {
 
       // Memory depth matching story cards (up to 260 turns for 32k, 140 for 16k)
       const maxTurns = charAiSettings.memoryTier === "32k" ? 260 : charAiSettings.memoryTier === "16k" ? 140 : charAiSettings.memoryTier === "4k" ? 60 : 30;
-      const historyPayload = existingHistory.slice(-maxTurns).map((m) => ({
+      const historyPayload = currentHistory.slice(-maxTurns).map((m) => ({
         role: m.role,
         content: m.content
       }));

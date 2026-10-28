@@ -45,3 +45,19 @@ it("keeps a scene without adult mode on Gemini", async () => {
   expect(invoke).not.toHaveBeenCalled();
   fetchMock.mockRestore();
 });
+
+it("rejects candidate reply if it repeats previous assistant turn and returns the retried non-repeated reply", async () => {
+  const fetchMock = vi.spyOn(globalThis, "fetch")
+    .mockResolvedValueOnce(new Response(JSON.stringify({ content: "Mensaje idéntico anterior." }), { status: 200 }))
+    .mockResolvedValueOnce(new Response(JSON.stringify({ content: "Nueva respuesta fresca y diferente." }), { status: 200 }));
+  const result = await invokeFunctionWithRetry<{ content: string }>("story-chat", {
+    adultMode: false,
+    story: { title: "Historia" },
+    history: [{ role: "assistant", content: "Mensaje idéntico anterior." }],
+    userMessage: "¿Qué dices?",
+  });
+  expect(result.error).toBeNull();
+  expect(result.data?.content).toBe("Nueva respuesta fresca y diferente.");
+  expect(fetchMock).toHaveBeenCalledTimes(2);
+  fetchMock.mockRestore();
+});

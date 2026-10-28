@@ -192,9 +192,10 @@ export async function generateLocalLlama(messages, options = {}) {
         messages: sanitizedMessages,
         max_tokens: Math.max(350, options.maxTokens || 450),
         temperature: options.temperature ?? 0.85,
-        repeat_penalty: 1.12,
-        presence_penalty: 0,
-        frequency_penalty: 0,
+        repeat_penalty: options.repeat_penalty ?? 1.25,
+        presence_penalty: options.presence_penalty ?? 0.5,
+        frequency_penalty: options.frequency_penalty ?? 0.3,
+        repeat_last_n: options.repeat_last_n ?? 512,
       }),
       signal: AbortSignal.timeout(options.timeoutMs || 3500),
     });
@@ -1203,7 +1204,9 @@ export default async function handler(req, res) {
       }
 
       if (contents.at(-1)?.role === "user") {
-        contents.at(-1).parts[0].text += "\n" + latest;
+        if (!contents.at(-1).parts[0].text.trim().toLowerCase().endsWith(latest.trim().toLowerCase())) {
+          contents.at(-1).parts[0].text += "\n" + latest;
+        }
       } else {
         contents.push({ role: "user", parts: [{ text: latest }] });
       }
