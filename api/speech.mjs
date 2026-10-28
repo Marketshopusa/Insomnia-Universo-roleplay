@@ -139,8 +139,10 @@ export default async function handler(req, res) {
   try {
     const sentences = splitSentences(text);
 
-    // For short single-sentence lines, synthesize directly as a single piece
-    if (sentences.length <= 1) {
+    // For responses up to 900 characters or single paragraphs, synthesize as one unified,
+    // unbroken track so the radionovela narration, breath, and dialogue flow together with natural cadence
+    // without awkward 10-15 second pauses or dropped dialogue.
+    if (text.length <= 900 || sentences.length <= 1) {
       const expressive = await synthesizePieceWithRetry(text, req.body.voice, req.body.language, { performance, region, expression });
       if (expressive.status !== 200) {
         console.warn("Insomnia speech gemini-2.5-flash-tts", expressive.status, expressive.detail || "", "after_ms", Date.now() - startedAt);
@@ -186,7 +188,12 @@ export default async function handler(req, res) {
       const worker = async () => {
         while (cursor < sentences.length) {
           const idx = cursor++;
-          const piece = await synthesizePieceWithRetry(sentences[idx], req.body.voice, req.body.language, { performance, region, expression });
+          const pieceExpr = req.body?.roleplay ? prepareExpressiveSpeech(sentences[idx], { roleplay: true }) : null;
+          const piece = await synthesizePieceWithRetry(sentences[idx], req.body.voice, req.body.language, {
+            performance: (pieceExpr?.performance && pieceExpr.performance !== "neutral") ? pieceExpr.performance : performance,
+            region,
+            expression: pieceExpr || expression,
+          });
           results[idx] = (piece.status === 200 && piece.pcm?.length) ? piece.pcm : Buffer.alloc(1920);
           emitReady();
         }
