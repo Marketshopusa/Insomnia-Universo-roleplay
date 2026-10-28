@@ -116,5 +116,12 @@ describe("role reply presentation", () => {
     expect(cleaned).not.toContain("a las...");
     expect(cleaned).toContain("en boxers en la sala.");
   });
+  it("does not falsely switch character on Venezuelan slang (mamá Huevo) or third-person father friend references", () => {
+    const rawTurn = "daniela me voy me voyyy mierdaaaa me corroooo Le digo desbordándome dentro de su boca con tanto gusto y placer eran chorros y chorros intensos, demasiado chorros, se le echa haciendo la tragar y al mismo tiempo a mitad de chorros los saco y le pego el huevo contra la cara llenándole los ojos, la nariz, toda la cara de leche y volviéndolo a meter en su boca para que trague el recibo que queda sintiendo ella la leche caliente del huevo de William del mejor amigo de su papá, que ahora la tenía allí mamá Huevo, tragando leche y sintiendo esa leche caliente sobre ella, sobre toda su cara";
+    const info = resolveActiveCharacter(rawTurn, [], "Daniela", "William");
+    expect(info.isSwitched).toBe(false);
+    expect(info.name).toBe("Daniela");
+    expect(info.role).toBe("Daniela");
+    expect(info.fullLabel).toBe("Daniela");
+  });
 });
-

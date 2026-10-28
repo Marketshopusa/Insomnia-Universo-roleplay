@@ -176,6 +176,10 @@ const NON_NAME_WORDS = new Set([
   "hace", "hizo", "ve", "vio", "mira", "miró", "besa", "besó", "abraza", "abrazó", "toca", "tocó",
   "salta", "saltó", "camina", "corre", "grita", "gime", "llora", "ríe", "sonríe", "pregunta", "responde",
   "cierra", "cerró", "pide", "pidió", "quiere", "quería", "puede", "pudo", "sabe", "sabía", "allí", "alli", "aquí", "aqui",
+  "huevo", "guevo", "verga", "pene", "bicho", "polla", "coño", "culo", "chichi", "teta", "tetas", "senos", "pezones",
+  "leche", "chorros", "semen", "puta", "perra", "zorra", "amigo", "amiga", "papa", "papá", "mama", "mamá", "padre", "madre",
+  "hijo", "hija", "tio", "tío", "tia", "tía", "primo", "prima", "señor", "señora", "don", "doña", "dios", "mierda", "carajo",
+  "diablos", "maldita", "maldito", "hombre", "mujer", "chico", "chica", "niño", "niña", "mamahuevo", "mamaguevo",
 ]);
 
 export interface ActiveCharacterInfo {
@@ -231,9 +235,31 @@ export function resolveActiveCharacter(
     const text = String(line || "").trim();
     if (!text) return null;
 
+    // 0. Si el mensaje se dirige directamente al personaje por defecto (ej: "daniela me voy...", "Daniela:", "le digo a Daniela...")
+    if (defaultFirstName) {
+      const esc = defaultFirstName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const directlyCallsDefault = new RegExp(
+        `(?:^|[.!?¡¿]\\s*|["«“])\\s*(?:hola\\s+|oye\\s+|mira\\s+|ven\\s+|dime\\s+|ay\\s+)?${esc}\\b|` +
+        `\\b(?:le\\s+(?:digo|pregunto|susurro|respondo|hablo|pido|ordeno)\\s+a|hablo\\s+con|beso\\s+a|abrazo\\s+a|toco\\s+a|miro\\s+a|le\\s+echo\\s+a|agarro\\s+a|tomo\\s+a)\\s+${esc}\\b`,
+        "i"
+      ).test(text);
+
+      if (directlyCallsDefault) {
+        return { isDefault: true, name: defaultFirstName, role: defaultCharacterRole, addressTerm: defaultIsSobrina ? "Tío" : playerFirstName };
+      }
+    }
+
+    // Limpiar jerga vulgar, actos sexuales y frases descriptivas en tercera persona para no confundirlas con parentesco ni nombres
+    const cleanTextForKin = text
+      .replace(/\bmam[aá]\s+(?:huevo|guevo|verga|bicho|pepa|polla)\b/gi, "acto_oral")
+      .replace(/\b(?:el\s+|un\s+)?(?:mejor\s+)?amig[ao]\s+de\s+[^\n,.;!?]+/gi, "tercero_mencionado")
+      .replace(/\bamig[ao]\s+de\s+[^\n,.;!?]+/gi, "tercero_mencionado")
+      .replace(/\bcomo\s+(?:un\s+|una\s+)?(?:herman[ao]|madre|padre|hij[ao]|amig[ao])\b/gi, "comparacion_fraternal")
+      .replace(/\bhij[ao]\s+de\s+(?:puta|perra|mierda|su\s+madre)\b/gi, "insulto");
+
     // 1. Check "Gabriela, mi hermana" pattern (case-sensitive on the capitalized name!)
-    const preNamed = text.match(/\b([A-ZÁÉÍÓÚÑ][a-záéíóúñ]{2,15})\s*,?\s*(?:[Mm]i|[Ss]u|[Ll]a)\s+(hermana|hermanita|prima|primita|cuñada|mam[aá]|madre|t[ií]a|vecina|amiga|sobrina)\b/);
-    const rawKinMatches = [...text.matchAll(/\b((?:su|la|mi)\s+mam[aá]|(?:su|la|mi)\s+madre|mam[aá]|madre|como\s+hermanos|herman[ao]s?|hermanit[ao]s?|prim[ao]|primit[ao]|cuñad[ao]|t[ií][ao]|sobrin[ao]|vecin[ao]|amig[ao]|suegr[ao]|esposa|novia|jefa|secretaria|profesora|enfermera|doctora)(?:\s+(?:llamad[ao]\s+)?([A-ZÁÉÍÓÚÑ][a-záéíóúñ]{2,15}))?\b/gi)];
+    const preNamed = cleanTextForKin.match(/\b([A-ZÁÉÍÓÚÑ][a-záéíóúñ]{2,15})\s*,?\s*(?:[Mm]i|[Ss]u|[Ll]a)\s+(hermana|hermanita|prima|primita|cuñada|mam[aá]|madre|t[ií]a|vecina|amiga|sobrina)\b/);
+    const rawKinMatches = [...cleanTextForKin.matchAll(/\b((?:su|la|mi)\s+mam[aá]|(?:su|la|mi)\s+madre|mam[aá]|madre|como\s+hermanos|herman[ao]s?|hermanit[ao]s?|prim[ao]|primit[ao]|cuñad[ao]|t[ií][ao]|sobrin[ao]|vecin[ao]|amig[ao]|suegr[ao]|esposa|novia|jefa|secretaria|profesora|enfermera|doctora)(?:\s+(?:llamad[ao]\s+)?([A-ZÁÉÍÓÚÑ][a-záéíóúñ]{2,15}))?\b/gi)];
     // Ignore negated kinship statements like "no era mi sobrina"
     const kinMatches = rawKinMatches.filter((m) => {
       const idx = m.index ?? 0;
@@ -259,6 +285,12 @@ export function resolveActiveCharacter(
     }
 
     if (rawKin) {
+      const isKinshipWithAction = /(?:abre(?:\s+la\s+puerta)?|entra|llega|aparece|se\s+acerca|le\s+digo|digo\s+a|hablo\s+con)\s+(?:mi\s+|la\s+)?(hermana|prima|cuñada|t[ií]a|mam[aá]|madre)|(?:mi|la)\s+(hermana|prima|cuñada|t[ií]a|mam[aá]|madre)\s+(?:abre|entra|llega|aparece|se\s+acerca)|(?:^|[.!?¡¿]\s*|["«“])\s*(?:hola\s+|oye\s+|mira\s+|ven\s+)?(hermana|prima|cuñada|t[ií]a)\s*[,!?:]|\bte\s+extrañ[eé]\s+mucho\s+hermana\b/i.test(text);
+
+      if (!candidateName && !isKinshipWithAction && !currentlySwitched) {
+        return null;
+      }
+
       if (/sobrin/i.test(rawKin) && defaultIsSobrina) {
         if (currentlySwitched && !isDirectSwitchToTarget(text, "sobrina")) {
           return null;
