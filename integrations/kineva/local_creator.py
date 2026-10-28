@@ -647,13 +647,14 @@ class Handler(BaseHTTPRequestHandler):
             if len(idea) < 10:
                 return self._reply(400, {"error": "La idea debe tener al menos 10 caracteres."})
             language = str(body.get("language") or "español").strip()
+            count = min(20, max(1, int(body.get("chapters") or body.get("chapterCount") or 3)))
             payload = {
                 "messages": [
-                    {"role": "system", "content": f"Eres un guionista profesional de series cinematográficas y para adultos. A partir de la idea del usuario, genera un guion de exactamente 3 capítulos ordenados (capítulo 1 introducción/encuentro, capítulo 2 desarrollo/clímax, capítulo 3 desenlace). Escribe en {language}. Responde ÚNICAMENTE en JSON válido con las claves: 'title' (string breve del título), y 'chapters' (lista de 3 objetos, cada uno con 'visual' describiendo la toma visible para la cámara en 1 o 2 oraciones en español, y 'dialogue' con una frase corta dicha por el personaje)."},
+                    {"role": "system", "content": f"Eres un guionista profesional de series cinematográficas y para adultos. A partir de la idea del usuario, genera un guion de exactamente {count} capítulos ordenados con progresión dramática. Escribe en {language}. Responde ÚNICAMENTE en JSON válido con las claves: 'title' (string breve del título), y 'chapters' (lista de {count} objetos, cada uno con 'visual' describiendo la acción visible en 1 o 2 oraciones, 'dialogue' con una frase corta dicha por el personaje, y 'speaker' con el nombre del personaje)."},
                     {"role": "user", "content": f"Idea: {idea}"}
                 ],
                 "temperature": 0.7,
-                "max_tokens": 700,
+                "max_tokens": min(2500, max(700, count * 220)),
                 "response_format": {"type": "json_object"}
             }
             chat_url = os.environ.get("KINEVA_CHAT_MODEL_URL", "http://127.0.0.1:8788/v1/chat/completions")
@@ -662,22 +663,19 @@ class Handler(BaseHTTPRequestHandler):
                 res_data = json.loads(resp.read().decode("utf-8"))
                 content = res_data["choices"][0]["message"]["content"]
                 draft = json.loads(content)
-                if not draft.get("chapters") or len(draft["chapters"]) != 3:
-                    raise ValueError("El modelo no generó 3 capítulos.")
+                if not draft.get("chapters") or len(draft["chapters"]) < 1:
+                    raise ValueError("El modelo no generó capítulos.")
                 return self._reply(200, {"draft": draft})
         except Exception:
             sentences = [s.strip() for s in re.split(r'[.!?\n]+', idea) if len(s.strip()) > 3]
-            c1 = sentences[0] if len(sentences) > 0 else idea[:150]
-            c2 = sentences[1] if len(sentences) > 1 else (sentences[0] if len(sentences) > 0 else idea[150:300])
-            c3 = sentences[2] if len(sentences) > 2 else (sentences[-1] if len(sentences) > 0 else idea[300:])
+            fallback_chapters = []
+            for i in range(count):
+                part = sentences[i] if i < len(sentences) else (idea[i * 120 : (i + 1) * 120] or f"Capítulo {i + 1}: continuación dramática de la escena.")
+                fallback_chapters.append({"visual": part, "dialogue": "...", "speaker": "Protagonista"})
             return self._reply(200, {
                 "draft": {
-                    "title": idea[:40].strip() or "Trilogía Insomnia",
-                    "chapters": [
-                        {"visual": c1, "dialogue": "..." },
-                        {"visual": c2, "dialogue": "..." },
-                        {"visual": c3, "dialogue": "..." }
-                    ]
+                    "title": idea[:40].strip() or f"Miniserie Insomnia ({count} Capítulos)",
+                    "chapters": fallback_chapters
                 }
             })
     def _chat(self):

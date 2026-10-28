@@ -1936,9 +1936,21 @@ export default async function handler(req, res) {
         })
         + `.\nObligatorio: exactamente ${count} capítulos en el array chapters. Idioma: ${language}. Elenco disponible: `
         + JSON.stringify(castNames) + `. Idea: ${idea}`;
-      const raw = await generate("gemini-3.5-flash-lite", [{ text: prompt }],
-        { responseMimeType: "application/json", maxOutputTokens: Math.max(1800, count * 350), temperature: 0.5 },
-        { fallbackModels: ["gemini-3.1-flash-lite", "gemini-3.8-flash"], retryBadRequest: true });
+      let raw;
+      try {
+        raw = await generate("gemini-3.5-flash-lite", [{ text: prompt }],
+          { responseMimeType: "application/json", maxOutputTokens: Math.max(1800, count * 350), temperature: 0.5 },
+          { fallbackModels: ["gemini-3.1-flash-lite", "gemini-3.8-flash"], retryBadRequest: true });
+      } catch (err) {
+        // Fallback robusto para miniseries de adultos o si Gemini bloquea
+        const local = await generateLocalLlama([{ role: "user", content: prompt + "\nResponde exclusivamente en JSON válido." }], { maxTokens: Math.max(1800, count * 350) });
+        if (local) raw = local;
+        else {
+          const cloud = await generateOpenRouter([{ role: "user", content: prompt + "\nResponde exclusivamente en JSON válido." }], { maxTokens: Math.max(1800, count * 350) });
+          if (cloud) raw = cloud;
+          else throw err;
+        }
+      }
       const draft = JSON.parse(raw);
       if (!draft.title || !Array.isArray(draft.chapters) || draft.chapters.length < 1
           || draft.chapters.some((chapter) => String(chapter.visual || "").trim().length < 5)) {
