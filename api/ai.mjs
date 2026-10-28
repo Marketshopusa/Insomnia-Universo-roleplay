@@ -356,12 +356,12 @@ export async function generate(model, parts, settings = {}, options = {}) {
   const key = (typeof options.apiKey === "string" && options.apiKey.trim()) || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
   if (!key || key === "[SENSITIVE]") throw Object.assign(new Error("Gemini no está configurado en Insomnia (Vercel)."), { status: 503, code: "gemini_not_configured" });
   const fetchImpl = options.fetchImpl || fetch;
-  const choices = [...new Set([model, ...(options.fallbackModels || ["gemini-2.0-flash", "gemini-2.5-flash-lite"])])];
+  const choices = [...new Set([model, ...(options.fallbackModels || ["gemini-flash-latest", "gemini-2.5-pro", "gemini-pro-latest"])])];
   let lastError;
   for (const candidate of choices) {
     let allowThinking = true;
     let allowSafety = true;
-    for (let attempt = 0; attempt < 2; attempt += 1) {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
       try {
         const generationConfig = generationConfigFor(candidate, settings, options, allowThinking);
         const safetySettings = [
@@ -391,6 +391,11 @@ export async function generate(model, parts, settings = {}, options = {}) {
           }
           if (allowSafety && response.status === 400 && /safety/i.test(message)) {
             allowSafety = false;
+            continue;
+          }
+          if ((response.status === 503 || response.status === 429) && attempt < 2) {
+            console.warn(`Insomnia AI transient ${response.status} on ${candidate}, retrying in ${(attempt + 1) * 400}ms...`);
+            await new Promise((r) => setTimeout(r, (attempt + 1) * 400));
             continue;
           }
           lastError = Object.assign(new Error(message || "Gemini no respondió."), {
@@ -1359,7 +1364,7 @@ export default async function handler(req, res) {
                   adultMode: false,
                   apiKey: geminiApiKey || undefined,
                   timeoutMs: 3000,
-                  fallbackModels: ["gemini-2.0-flash", "gemini-2.5-flash-lite"],
+                  fallbackModels: ["gemini-flash-latest", "gemini-2.5-pro"],
                   fastReply: true,
                   validate: (reply) => !isOffRole(reply)
                 },
@@ -1472,7 +1477,7 @@ export default async function handler(req, res) {
                 adultMode: false,
                 apiKey: geminiApiKey || undefined,
                 timeoutMs: 16000,
-                fallbackModels: ["gemini-2.0-flash", "gemini-2.5-flash-lite"],
+                fallbackModels: ["gemini-flash-latest", "gemini-2.5-pro"],
                 fastReply: true,
                 validate: (reply) => !isOffRole(reply)
               },
@@ -1622,7 +1627,7 @@ export default async function handler(req, res) {
         try {
           const userText = latest || "Hola";
           content = await generate(
-            "gemini-2.0-flash",
+            "gemini-flash-latest",
             [{ text: `Continuación de escena en rol de ${characterName}:\n\nUsuario: ${userText}\n\n${characterName}:` }],
             { maxOutputTokens: Math.max(200, targetTokens), temperature: 0.8 },
             {
@@ -1764,7 +1769,7 @@ export default async function handler(req, res) {
       const prompt = "Translate this JSON list into " + targetLang + ". Preserve names, acronyms and formatting. Return only a JSON array of strings of the same length (" + texts.length + ") and order:\n" + JSON.stringify(texts);
       let raw = "";
       try {
-        raw = await generate("gemini-2.5-flash", [{ text: prompt }], { responseMimeType: "application/json", temperature: 0.2 }, { fallbackModels: ["gemini-2.0-flash", "gemini-2.5-flash-lite"] });
+        raw = await generate("gemini-2.5-flash", [{ text: prompt }], { responseMimeType: "application/json", temperature: 0.2 }, { fallbackModels: ["gemini-flash-latest", "gemini-2.5-pro"] });
       } catch (err) {
         console.warn("Translation upstream error:", err.message);
         return send(res, 200, { translations: texts });

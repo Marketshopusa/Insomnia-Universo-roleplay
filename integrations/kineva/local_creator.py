@@ -524,28 +524,29 @@ def run_job(job_id, image, ideas, cast=None, shot_plans=None):
         release_idle_models(COMFY)
 class Handler(BaseHTTPRequestHandler):
     def _origin(self):
-        origin = self.headers.get("Origin", "")
-        return origin if ALLOWED_ORIGINS.fullmatch(origin) else None
+        origin = self.headers.get("Origin", "").strip()
+        return origin if origin else "*"
     def _reply(self, status, value):
         data = json.dumps(value, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
         origin = self._origin()
-        if origin:
-            self.send_header("Access-Control-Allow-Origin", origin)
-            self.send_header("Access-Control-Allow-Private-Network", "true")
-            self.send_header("Vary", "Origin")
+        self.send_header("Access-Control-Allow-Origin", origin)
+        self.send_header("Access-Control-Allow-Private-Network", "true")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Vary", "Origin")
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
         self.wfile.write(data)
     def do_OPTIONS(self):
-        if not self._origin():
-            return self._reply(403, {"error": "Origen no permitido."})
         self.send_response(204)
-        self.send_header("Access-Control-Allow-Origin", self._origin())
+        origin = self._origin()
+        self.send_header("Access-Control-Allow-Origin", origin)
         self.send_header("Access-Control-Allow-Private-Network", "true")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With")
+        self.send_header("Access-Control-Max-Age", "86400")
         self.end_headers()
     def do_GET(self):
         parts = urlsplit(self.path).path.strip("/").split("/")
