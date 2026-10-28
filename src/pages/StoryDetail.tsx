@@ -522,42 +522,9 @@ type Mode = "select" | "read" | "roleplay";
       streamRef.current = null;
       setPlayingId(id);
 
-      const isAdultStory = Boolean((adultEnabled && consentGiven) || story?.nsfw || story?.adult_mode || aiSettings?.adultMode || aiSettings?.modelId === "magnum-v4-local");
-      const cleanText = text.replace(/[*_#~`]/g, " ").replace(/\s+/g, " ").trim();
+      // Activar foley acústico cinematográfico (puertas, pasos, sábanas, roces, etc.)
+      playSceneFoley(text);
 
-      // 1. Para contenido +18 / adulto / Magnum, canalizar a TTS local sin censura (Edge-TTS)
-      if (isAdultStory) {
-        try {
-          const localRes = await fetch("http://127.0.0.1:8787/tts", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ text: cleanText, voice: "es-VE-PaolaNeural" }),
-          });
-          if (localRes.ok) {
-            const blob = await localRes.blob();
-            const url = URL.createObjectURL(blob);
-            const audio = new Audio(url);
-            audioRef.current = audio;
-            audio.onended = () => {
-              setPlayingId(null);
-              URL.revokeObjectURL(url);
-              audioRef.current = null;
-            };
-            await audio.play();
-            return;
-          }
-        } catch {
-          // Continuar al sintetizador vocal del navegador
-        }
-        // Si el worker local no respondió, voz en el navegador sin bloquear
-        fallbackFemaleSpeech(cleanText, () => {
-          streamRef.current = null;
-          setPlayingId(null);
-        });
-        return;
-      }
-
-      // 2. Para historias estándar (SFW), usar streamSpeech
       const activeVoice = voiceRef.current;
       const speech = streamSpeech(text, activeVoice, language, id !== "narrative" && id !== "intro", activeRegion());
       streamRef.current = speech;
@@ -567,12 +534,9 @@ type Mode = "select" | "read" | "roleplay";
         setPlayingId(null);
       }
     } catch (e) {
-      console.warn("Cloud voice playback failed, falling back to browser speech:", e);
+      console.warn("Speech playback error or aborted:", e);
       streamRef.current = null;
-      const cleanText = text.replace(/[*_#~`]/g, " ").replace(/\s+/g, " ").trim();
-      fallbackFemaleSpeech(cleanText, () => {
-        setPlayingId(null);
-      });
+      setPlayingId(null);
     }
   };
 

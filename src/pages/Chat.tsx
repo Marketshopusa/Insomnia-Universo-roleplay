@@ -1136,6 +1136,7 @@ export default function ChatPage() {
   };
 
   // Play audio with Insomnia's native expressive speech engine
+  // Play audio with Insomnia's native expressive speech engine
   const handlePlayAudio = async (messageId: string, text: string) => {
     if (playingAudioId === messageId) {
       stopAudio();
@@ -1145,34 +1146,10 @@ export default function ChatPage() {
     stopAudio();
     setPlayingAudioId(messageId);
 
-    const isAdultChar = Boolean(activeChar.isNsfw || activeAiSettings.adultMode || activeAiSettings.modelId === "magnum-v4-local");
-    const cleanText = text.replace(/[*_#~`]/g, " ").replace(/\s+/g, " ").trim();
+    // Activar foley acústico cinematográfico (puertas, pasos, sábanas, roces, etc.)
+    playSceneFoley(text);
 
-    // 1. For adult / Magnum uncensored roleplay, use local uncensored TTS first
-    if (isAdultChar) {
-      try {
-        const localRes = await fetch("http://127.0.0.1:8787/tts", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text: cleanText, voice: "es-VE-PaolaNeural" }),
-        });
-        if (localRes.ok) {
-          const blob = await localRes.blob();
-          const url = URL.createObjectURL(blob);
-          const audio = new Audio(url);
-          audio.onended = () => {
-            setPlayingAudioId(null);
-            URL.revokeObjectURL(url);
-          };
-          await audio.play();
-          return;
-        }
-      } catch {
-        // Fallback to stream / browser
-      }
-    }
-
-    // Pass expressive text so foley, sighs and acoustic cues trigger properly
+    // Voz neural con acento regional auténtico asignado al personaje
     const voiceToUse = activeChar.voiceName || "Aoede";
     const charRegion = spokenRegion(getStoryRegion(activeChar.id), getStoryAccent(activeChar.id)) || (language === "es" ? "co" : "us");
 
@@ -1185,15 +1162,12 @@ export default function ChatPage() {
         setPlayingAudioId(null);
       }
     } catch (err) {
-      console.warn("streamSpeech fallback to guaranteed female speech:", err);
-      fallbackFemaleSpeech(text, () => {
-        speechStreamRef.current = null;
-        setPlayingAudioId(null);
-      });
+      console.warn("streamSpeech audio playback error or aborted:", err);
+      speechStreamRef.current = null;
+      setPlayingAudioId(null);
     }
   };
 
-  // Clear call timers
   const clearCallTimers = () => {
     callTimersRef.current.forEach((id) => {
       window.clearInterval(id);
@@ -1225,6 +1199,7 @@ export default function ChatPage() {
   };
 
   // Speak character voice during call
+  // Speak character voice during call
   const callSpeak = async (text: string): Promise<boolean> => {
     if (!callActiveRef.current) return false;
     setCallState("speaking");
@@ -1242,15 +1217,11 @@ export default function ChatPage() {
       }
       return callActiveRef.current;
     } catch (err) {
-      console.warn("callSpeak fallback to speech synthesis:", err);
-      await new Promise<void>((resolve) => {
-        fallbackFemaleSpeech(spoken.replace(/\*[^*]*\*/g, "").replace(/\s+/g, " ").trim(), () => resolve());
-      });
+      console.warn("callSpeak speech stream error:", err);
       return callActiveRef.current;
     }
   };
 
-  // Listen to microphone with high-speed VAD
   const callListen = async () => {
     if (!callActiveRef.current) return;
     if (callMutedRef.current) {

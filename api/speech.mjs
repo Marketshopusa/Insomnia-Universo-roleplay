@@ -98,7 +98,13 @@ export default async function handler(req, res) {
     });
   }
   const raw = typeof req.body?.text === "string" ? req.body.text : "";
-  const limited = raw.slice(0, 1400);
+  // Normalizar letras repetidas alargadas ("Mmmmmm", "Aaaah", "Ooooh") para que el motor no las deletree
+  const normalizedRaw = raw
+    .replace(/\b([mM]){3,}\b/gi, "Mmm")
+    .replace(/\b([aA]){4,}\b/gi, "Aaah")
+    .replace(/\b([oO]){4,}\b/gi, "Oooh")
+    .replace(/\b([eE]){4,}\b/gi, "Eeeh");
+  const limited = normalizedRaw.slice(0, 1400);
   // Prepare expressive speech parsing vocal reactions (*gime*, *se ríe*, *suspira*, *llora*) from original marked text
   const expression = req.body?.roleplay ? prepareExpressiveSpeech(limited, { roleplay: true }) : null;
   const text = (expression?.text && expression.text.trim()) || limited.replace(/[*_#]/g, "").replace(/\s+/g, " ").trim();
@@ -137,78 +143,26 @@ export default async function handler(req, res) {
   };
 
   try {
-    const sentences = splitSentences(text);
-
-    // For responses up to 900 characters or single paragraphs, synthesize as one unified,
-    // unbroken track so the radionovela narration, breath, and dialogue flow together with natural cadence
-    // without awkward 10-15 second pauses or dropped dialogue.
-    if (text.length <= 900 || sentences.length <= 1) {
-      const expressive = await synthesizePieceWithRetry(text, req.body.voice, req.body.language, { performance, region, expression });
-      if (expressive.status !== 200) {
-        console.warn("Insomnia speech gemini-2.5-flash-tts", expressive.status, expressive.detail || "", "after_ms", Date.now() - startedAt);
-        const status = expressive.status === 429 ? 429 : expressive.status === 403 ? 403 : 502;
-        return res.status(status).json({
-          error: expressive.status === 429 ? "tts_quota_exhausted" : "tts_unavailable",
-          message: explainGeminiFailure(expressive.status, expressive.detail),
+    // 1. Si hay reacciones acústicas marcadas (*gime*, *se ríe*, *suspira*, *llora*), inyectar muestras acústicas hiperrealistas
+    if (expression?.reactions?.length) {
+      try {
+        const scene = await synthesizeExpressiveScene(expression, req.body.voice, req.body.language, {
+          performance,
+          region,
+          resolvedVoice: previewVoice(req.body.voice),
+          samples: (v, lang, event, dir) => vocalSample(v, lang, event, dir) || vocalSample("Aoede", "es", event, dir),
+          synthesize: synthesizePieceWithRetry,
         });
-      }
-      writePcm(res, expressive.pcm, provider, startedAt);
-      return;
-    }
-
-    if (sentences.length > 1) {
-      const results = new Array(sentences.length);
-      let nextEmit = 0;
-
-      const emitReady = () => {
-        while (nextEmit < sentences.length && results[nextEmit]) {
-          if (!opened) {
-            opened = true;
-            openSpeech(res, provider, startedAt);
-          }
-          writePcmChunks(res, results[nextEmit]);
-          nextEmit++;
+        if (scene.status === 200 && scene.pcm?.length) {
+          writePcm(res, scene.pcm, provider, startedAt);
+          return;
         }
-      };
-
-      // Fast-path: Synthesize sentence 0 first to ensure immediate playback in ~400ms
-      const first = await synthesizePieceWithRetry(sentences[0], req.body.voice, req.body.language, { performance, region, expression });
-      if (first.status !== 200 || !first.pcm?.length) {
-        const status = first.status === 429 ? 429 : first.status === 403 ? 403 : 502;
-        return res.status(status).json({
-          error: first.status === 429 ? "tts_quota_exhausted" : "tts_unavailable",
-          message: explainGeminiFailure(first.status, first.detail),
-        });
-      }
-      results[0] = first.pcm;
-      emitReady();
-
-      // Synthesize remaining sentences with concurrent workers in background while sentence 0 plays
-      let cursor = 1;
-      const worker = async () => {
-        while (cursor < sentences.length) {
-          const idx = cursor++;
-          const pieceExpr = req.body?.roleplay ? prepareExpressiveSpeech(sentences[idx], { roleplay: true }) : null;
-          const piece = await synthesizePieceWithRetry(sentences[idx], req.body.voice, req.body.language, {
-            performance: (pieceExpr?.performance && pieceExpr.performance !== "neutral") ? pieceExpr.performance : performance,
-            region,
-            expression: pieceExpr || expression,
-          });
-          results[idx] = (piece.status === 200 && piece.pcm?.length) ? piece.pcm : Buffer.alloc(1920);
-          emitReady();
-        }
-      };
-
-      await Promise.all([worker(), worker()]);
-
-      if (opened) {
-        finishSpeech(res, provider, startedAt);
-        return;
+      } catch (sceneErr) {
+        console.warn("synthesizeExpressiveScene fallback to unified track:", sceneErr);
       }
     }
 
-
-
+    // 2. Sintetizar la escena completa como un solo track continuo para que el relato, respiración y diálogo fluyan sin pausas mecánicas
     const expressive = await synthesizePieceWithRetry(text, req.body.voice, req.body.language, { performance, region, expression });
     if (expressive.status !== 200) {
       console.warn("Insomnia speech gemini-2.5-flash-tts", expressive.status, expressive.detail || "", "after_ms", Date.now() - startedAt);
