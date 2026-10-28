@@ -13,6 +13,7 @@ import { RegionMenu } from "@/components/story/RegionMenu";
 import { getStoryVoice, setStoryVoice } from "@/lib/voices";
 import { getStoryAccent, getStoryRegion, setStoryAccent, setStoryRegion, spokenRegion } from "@/lib/regions";
 import { streamSpeech, type SpeechStream } from "@/lib/ttsStream";
+import { fallbackFemaleSpeech } from "@/components/chat/ChatCharacterConfigDialog";
 import { playSceneFoley } from "@/lib/foleyStudio";
 import { invokeFunctionWithRetry } from "@/lib/invokeFunction";
 import { generateSceneImage } from "@/lib/sceneImage";

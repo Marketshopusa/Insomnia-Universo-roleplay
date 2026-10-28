@@ -224,7 +224,7 @@ export default async function handler(req, res) {
     console.warn("Insomnia speech gemini failed", failure?.message || failure?.name || "Error", "after_ms", Date.now() - startedAt);
     return res.status(502).json({
       error: "tts_unavailable",
-      message: "Gemini 2.5 Flash TTS no pudo hablar esta línea.",
+      message: "La voz no pudo reproducir esta línea.",
     });
   }
 }

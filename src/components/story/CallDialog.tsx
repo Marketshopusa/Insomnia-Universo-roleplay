@@ -116,12 +116,7 @@ export const CallDialog = ({
     } catch (error) {
       streamRef.current?.stop();
       streamRef.current = null;
-      const message = error instanceof Error ? error.message : "";
-      toast({
-        title: es ? "Gemini 2.5 no pudo hablar" : "Gemini 2.5 could not speak",
-        description: message || (es ? "La voz no respondió." : "The voice did not answer."),
-        variant: "destructive",
-      });
+      console.warn("Call speech playback error:", error);
       hangUp();
     }
   };

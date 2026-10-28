@@ -704,6 +704,40 @@ class Handler(BaseHTTPRequestHandler):
                 return self._reply(200, res_data)
         except Exception as e:
             return self._reply(500, {"error": str(e)})
+    def _tts(self):
+        if not self._origin():
+            return self._reply(403, {"error": "Abre Insomnia en esta PC."})
+        length = int(self.headers.get("Content-Length", "0"))
+        if length < 1 or length > 500_000:
+            return self._reply(413, {"error": "La solicitud es demasiado grande."})
+        try:
+            body = json.loads(self.rfile.read(length))
+            text = str(body.get("text") or "").strip()
+            if not text:
+                return self._reply(400, {"error": "Texto vacío."})
+            voice = str(body.get("voice") or "es-VE-PaolaNeural")
+            import asyncio, edge_tts
+            async def run_edge():
+                comm = edge_tts.Communicate(text, voice)
+                chunks = []
+                async for chunk in comm.stream():
+                    if chunk["type"] == "audio":
+                        chunks.append(chunk["data"])
+                return b"".join(chunks)
+            audio_data = asyncio.run(run_edge())
+            self.send_response(200)
+            origin = self._origin()
+            self.send_header("Access-Control-Allow-Origin", origin)
+            self.send_header("Access-Control-Allow-Private-Network", "true")
+            self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With")
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+            self.send_header("Vary", "Origin")
+            self.send_header("Content-Type", "audio/mpeg")
+            self.send_header("Content-Length", str(len(audio_data)))
+            self.end_headers()
+            self.wfile.write(audio_data)
+        except Exception as e:
+            return self._reply(500, {"error": str(e)})
     def do_POST(self):
         match = re.fullmatch(r"/jobs/([0-9a-f-]{36})/(approve|reject)", urlsplit(self.path).path)
         if match:
@@ -723,6 +757,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._draft()
         if urlsplit(self.path).path == "/chat":
             return self._chat()
+        if urlsplit(self.path).path == "/tts":
+            return self._tts()
         if urlsplit(self.path).path != "/jobs":
             return self._reply(404, {"error": "No existe."})
         if not self._origin():
