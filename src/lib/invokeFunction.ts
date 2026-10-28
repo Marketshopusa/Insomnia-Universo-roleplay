@@ -50,7 +50,6 @@ import { compactRoleplayReply, isRepeatedAssistantReply, resolveActiveCharacter,
 async function callLocalLlama<T>(body: unknown): Promise<FunctionResult<T> | null> {
   try {
     if ((import.meta as any).env?.VITEST) return null;
-    if (typeof window !== "undefined" && window.location.protocol === "https:") return null;
     const input = body as {
       story?: { title?: string; description?: string; story_context?: string; character_role?: string; player_role?: string };
       userMessage?: string;
@@ -141,20 +140,45 @@ En este momento de la escena, ${activeChar.playerFirstName} está interactuando 
       ...alternating,
     ];
 
-    const res = await fetch("http://127.0.0.1:8788/v1/chat/completions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: "magnum-v4-12b",
-        messages,
-        max_tokens: 450,
-        temperature: 0.82,
-        repeat_penalty: 1.12,
-        presence_penalty: 0,
-        frequency_penalty: 0,
-      }),
-      signal: AbortSignal.timeout(3000),
-    });
+    let res: Response | null = null;
+    try {
+      res = await fetch("http://127.0.0.1:8787/chat", {
+        method: "POST",
+        mode: "cors",
+        ...({ targetAddressSpace: "loopback" } as any),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "magnum-v4-12b",
+          messages,
+          max_tokens: 450,
+          temperature: 0.82,
+        }),
+        signal: AbortSignal.timeout(12000),
+      });
+    } catch {
+      res = null;
+    }
+
+    if (!res || !res.ok) {
+      try {
+        res = await fetch("http://127.0.0.1:8788/v1/chat/completions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: "magnum-v4-12b",
+            messages,
+            max_tokens: 450,
+            temperature: 0.82,
+            repeat_penalty: 1.12,
+            presence_penalty: 0,
+            frequency_penalty: 0,
+          }),
+          signal: AbortSignal.timeout(12000),
+        });
+      } catch {
+        return null;
+      }
+    }
 
     if (!res.ok) return null;
     const data = await res.json();

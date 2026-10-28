@@ -693,6 +693,30 @@ class Handler(BaseHTTPRequestHandler):
                     ]
                 }
             })
+    def _chat(self):
+        if not self._origin():
+            return self._reply(403, {"error": "Abre Insomnia en esta PC."})
+        length = int(self.headers.get("Content-Length", "0"))
+        if length < 1 or length > 500_000:
+            return self._reply(413, {"error": "La solicitud es demasiado grande."})
+        try:
+            body = json.loads(self.rfile.read(length))
+            chat_url = os.environ.get("KINEVA_CHAT_MODEL_URL", "http://127.0.0.1:8788/v1/chat/completions")
+            payload = {
+                "model": str(body.get("model") or "magnum-v4-12b"),
+                "messages": body.get("messages") or [],
+                "max_tokens": min(800, max(50, int(body.get("max_tokens") or 450))),
+                "temperature": float(body.get("temperature") or 0.85),
+                "repeat_penalty": 1.12,
+                "presence_penalty": 0,
+                "frequency_penalty": 0,
+            }
+            req = urllib.request.Request(chat_url, data=json.dumps(payload).encode("utf-8"), headers={"Content-Type": "application/json"})
+            with urllib.request.urlopen(req, timeout=25) as resp:
+                res_data = json.loads(resp.read().decode("utf-8"))
+                return self._reply(200, res_data)
+        except Exception as e:
+            return self._reply(500, {"error": str(e)})
     def do_POST(self):
         match = re.fullmatch(r"/jobs/([0-9a-f-]{36})/(approve|reject)", urlsplit(self.path).path)
         if match:
@@ -710,6 +734,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._scene()
         if urlsplit(self.path).path == "/draft":
             return self._draft()
+        if urlsplit(self.path).path == "/chat":
+            return self._chat()
         if urlsplit(self.path).path != "/jobs":
             return self._reply(404, {"error": "No existe."})
         if not self._origin():

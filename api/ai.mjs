@@ -1590,7 +1590,7 @@ export default async function handler(req, res) {
             geminiContents.unshift({ role: "user", parts: [{ text: "Continúa la escena." }] });
           }
           content = await generate(
-            "gemini-2.5-flash-lite",
+            "gemini-2.5-flash",
             [],
             { maxOutputTokens: Math.max(200, targetTokens), temperature: 0.8 },
             {
@@ -1627,6 +1627,7 @@ export default async function handler(req, res) {
             { maxOutputTokens: Math.max(200, targetTokens), temperature: 0.8 },
             {
               systemInstruction,
+              adultMode: Boolean(isAdult),
               apiKey: geminiApiKey || undefined,
               timeoutMs: 12000,
               fastReply: true,
@@ -1637,14 +1638,6 @@ export default async function handler(req, res) {
 
       if (content && isRefusal(content)) {
         content = null;
-      }
-
-      // En el caso extremo de que todos los motores de red tengan un corte temporal simultáneo,
-      // responder siempre de forma natural dentro de la escena para no frustrar al usuario con un error 503
-      if (!content) {
-        content = spanish
-          ? `*Te miro a los ojos con una sonrisa intrigada mientras me acomodo cerca de ti.* Dime... ¿qué más tienes en mente? No me dejes con la intriga.`
-          : `*I look into your eyes with an intrigued smile, stepping closer to you.* Tell me... what else is on your mind? Don't leave me waiting.`;
       }
 
       if (content) {
