@@ -925,13 +925,13 @@ export default function ChatPage() {
       const existingHistory = updatedHistory;
       const mother = getMotherCardConfig();
       const rawAiSettings = getStoryAiSettings(activeChar.id);
-      const isCharNsfw = Boolean(activeChar.isNsfw || rawAiSettings.adultMode);
-      const selectedModelId = rawAiSettings.modelId || activeChar.modelId || mother.aiSettings.modelId || "insomnia-flash";
+      const isCharNsfw = Boolean(activeChar.isNsfw || rawAiSettings.adultMode || adultEnabled);
+      const selectedModelId = isCharNsfw ? "magnum-v4-local" : (rawAiSettings.modelId || activeChar.modelId || mother.aiSettings.modelId || "insomnia-flash");
       const charAiSettings = {
         ...mother.aiSettings,
         ...rawAiSettings,
         modelId: selectedModelId,
-        adultMode: Boolean(adultEnabled || isCharNsfw),
+        adultMode: isCharNsfw,
         dialogueRatio: mother.dialogueRatio || 0.80,
         narrationRatio: mother.narrationRatio || 0.20,
         customDirective: rawAiSettings.customDirective || mother.masterDirective,

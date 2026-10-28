@@ -382,9 +382,12 @@ type Mode = "select" | "read" | "roleplay";
       .filter((m) => m.id !== "intro" && m.id !== currentMessageId)
       .map((m) => ({ role: m.role, content: m.content }));
     const mother = getMotherCardConfig();
+    const isAdultStory = Boolean((adultEnabled && consentGiven) || story?.nsfw || story?.adult_mode || aiSettings?.adultMode);
     const effectiveAiSettings: StoryAiSettings = {
       ...mother.aiSettings,
       ...aiSettings,
+      modelId: isAdultStory ? "magnum-v4-local" : (aiSettings?.modelId || mother.aiSettings?.modelId || "insomnia-flash"),
+      adultMode: isAdultStory,
       dialogueRatio: mother.dialogueRatio || 0.80,
       narrationRatio: mother.narrationRatio || 0.20,
       customDirective: aiSettings.customDirective || mother.masterDirective,
@@ -408,7 +411,8 @@ type Mode = "select" | "read" | "roleplay";
         chronicle: buildPersistentChronicle(history, story?.character_role || tCharacter, story?.player_role || tPlayer),
         settings: effectiveAiSettings,
         userMessage,
-        adultMode: adultEnabled && consentGiven,
+        adultMode: isAdultStory,
+        isNsfw: isAdultStory,
         region: activeRegion(),
     });
     if (error || !data?.content) {

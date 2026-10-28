@@ -294,3 +294,23 @@ test("isRefusal detects Spanish and English safety refusals", () => {
   assert.equal(isRefusal("I cannot fulfill this request as an AI."), true);
   assert.equal(isRefusal("*Te miro sonriendo y te tomo de la mano* Claro que sí, dime qué quieres hacer."), false);
 });
+
+test("generateOpenRouter includes uncensored models by default", async () => {
+  const { generateOpenRouter } = await import("./ai.mjs");
+  const previous = process.env.OPENROUTER_API_KEY;
+  process.env.OPENROUTER_API_KEY = "test-openrouter-key";
+  const attemptedModels = [];
+  try {
+    await generateOpenRouter([{ role: "user", content: "Hola" }], {
+      fetchImpl: async (_url, init) => {
+        const body = JSON.parse(init.body);
+        attemptedModels.push(body.model);
+        return new Response(JSON.stringify({ choices: [{ message: { content: "Respuesta de prueba" } }] }), { status: 200 });
+      }
+    });
+    assert.equal(attemptedModels[0], "anthracite-org/magnum-v4-72b");
+  } finally {
+    if (previous === undefined) delete process.env.OPENROUTER_API_KEY;
+    else process.env.OPENROUTER_API_KEY = previous;
+  }
+});

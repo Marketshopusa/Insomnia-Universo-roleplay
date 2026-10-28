@@ -238,9 +238,19 @@ export function isClientRefusal(text?: string | null): boolean {
 export async function invokeFunctionWithRetry<T>(name: string, body: unknown): Promise<FunctionResult<T>> {
   if (ownAi.has(name)) {
     const needsContent = name === "story-chat" || name === "generate-narrative";
-    const isMagnumSelected = (body as any)?.settings?.modelId === "magnum-v4-local";
+    const b = body as any;
+    const isAdultReq = Boolean(
+      b?.adultMode ||
+      b?.isAdult ||
+      b?.isNsfw ||
+      b?.story?.adult_mode ||
+      b?.story?.nsfw ||
+      b?.settings?.adultMode ||
+      b?.settings?.modelId === "magnum-v4-local"
+    );
+    const isMagnumSelected = isAdultReq || b?.settings?.modelId === "magnum-v4-local";
 
-    // Si el usuario configuró explícitamente Magnum v4 local, intentar primero servidor local
+    // Si el contenido es +18 / adulto o se configuró explícitamente Magnum v4 local, intentar primero servidor local
     if (name === "story-chat" && isMagnumSelected) {
       try {
         const local = await callLocalLlama<T>(body);

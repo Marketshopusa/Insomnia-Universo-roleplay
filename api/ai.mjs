@@ -220,16 +220,12 @@ export async function generateOpenRouter(messages, options = {}) {
   const apiKey = (isCustomKey ? options.apiKey.trim() : null) || process.env.OPENROUTER_API_KEY;
   if (!apiKey) return null;
 
-  // Priorizar modelos gratuitos de ultra-baja latencia (<1.8s) que no censuran rol adulto
-  const defaultModels = isCustomKey ? [
+  // Priorizar modelos sin censura para rol adulto
+  const defaultModels = [
     "anthracite-org/magnum-v4-72b",
     "sao10k/l3.3-euryale-70b",
     "nvidia/nemotron-3.5-lightning:free",
     "nvidia/nemotron-3.5-super-vl:free",
-  ] : [
-    "nvidia/nemotron-3.5-lightning:free",
-    "nvidia/nemotron-3.5-super-vl:free",
-    "nvidia/nemotron-3-ultra-550b-a55b:free",
   ];
   const models = [...(options.models || defaultModels)];
   if (!models.includes("nvidia/nemotron-3.5-lightning:free")) {
@@ -240,7 +236,7 @@ export async function generateOpenRouter(messages, options = {}) {
   }
 
   const fetchImpl = options.fetchImpl || fetch;
-  let paidModelsBlocked = !isCustomKey;
+  let paidModelsBlocked = false;
   for (const model of models) {
     if (paidModelsBlocked && !model.endsWith(":free")) continue;
     try {
@@ -895,7 +891,7 @@ export default async function handler(req, res) {
       const openRouterApiKey = String(settings.openRouterApiKey || "").trim();
       const nvidiaApiKey = String(settings.nvidiaApiKey || "").trim();
       const geminiApiKey = String(settings.geminiApiKey || "").trim();
-      const adultMode = body.adultMode === true || body.isNsfw === true || body.isAdult === true || /(?:\+18|18\+|nsfw|er[oó]tic|sexual|hentai|\badult[oa]?\b)/i.test([story.title, story.description, story.story_context, story.story_type].filter(Boolean).join(" "));
+      const adultMode = body.adultMode === true || body.isNsfw === true || body.isAdult === true || settings.adultMode === true || settings.modelId === "magnum-v4-local" || /(?:\+18|18\+|nsfw|er[oó]tic|sexual|hentai|\badult[oa]?\b)/i.test([story.title, story.description, story.story_context, story.story_type].filter(Boolean).join(" "));
       const locale = spanish ? "español" : "inglés";
       const history = (Array.isArray(body.history) ? body.history : []).flatMap((entry) => {
         const role = entry?.role === "assistant" ? "model" : entry?.role === "user" ? "user" : null;
@@ -1246,26 +1242,33 @@ export default async function handler(req, res) {
       }
 
       let content = null;
-      if (modelId === "magnum-v4-local") {
-        // Direct local Magnum execution (quick check if local PC llama-server is online)
+      if (isAdult || modelId === "magnum-v4-local") {
+        // ENRUTAMIENTO DIRECTO A MAGNUM (CONTENIDO +18 O MODELO MAGNUM):
+        // 1. Servidor local llama-server en PC (puerto 8788, Magnum v4 12B Q4_K_M sin censura)
         try {
           content = await generateLocalLlama(openRouterMessages, {
             maxTokens: Math.max(300, targetTokens),
             temperature: 0.85,
-            timeoutMs: 3500,
+            timeoutMs: 4000,
             validate: (reply) => !isOffRole(reply),
             isRepeated: isRepeatedReply,
           });
         } catch (err) {
           console.warn("Local Magnum direct execution error:", err.message);
         }
+        // 2. OpenRouter sin censura (Magnum v4 72B / Euryale 70B / Nemotron)
         if (!content) {
           try {
             content = await generateOpenRouter(openRouterMessages, {
-              models: ["nvidia/nemotron-3.5-lightning:free", "nvidia/nemotron-3.5-super-vl:free", "anthracite-org/magnum-v4-72b"],
+              models: [
+                "anthracite-org/magnum-v4-72b",
+                "sao10k/l3.3-euryale-70b",
+                "nvidia/nemotron-3.5-lightning:free",
+                "nvidia/nemotron-3.5-super-vl:free",
+              ],
               maxTokens: targetTokens,
               temperature: 0.82,
-              timeoutMs: 6000,
+              timeoutMs: 8000,
               apiKey: openRouterApiKey || undefined,
               validate: (reply) => !isOffRole(reply),
               isRepeated: isRepeatedReply,
@@ -1274,10 +1277,11 @@ export default async function handler(req, res) {
             console.warn("OpenRouter Magnum fallback failed:", err.message);
           }
         }
+        // 3. Nvidia NIM (Llama 3.2 Vision / Minimax 3.1 Flash)
         if (!content) {
           try {
             content = await generateNvidia(openRouterMessages, {
-              models: ["minimaxai/minimax-m3.1-flash"],
+              models: ["meta/llama-3.2-11b-vision-instruct", "minimaxai/minimax-m3.1-flash"],
               maxTokens: targetTokens,
               temperature: 0.82,
               timeoutMs: 5000,
@@ -1303,8 +1307,41 @@ export default async function handler(req, res) {
           } catch (err) {
             console.warn("Local llama live call adult failed:", err.message);
           }
-        }
-        if (!content) {
+          if (!content) {
+            try {
+              content = await generateOpenRouter(openRouterMessages, {
+                models: [
+                  "anthracite-org/magnum-v4-72b",
+                  "sao10k/l3.3-euryale-70b",
+                  "nvidia/nemotron-3.5-lightning:free",
+                ],
+                maxTokens: 55,
+                temperature: 0.82,
+                timeoutMs: 4000,
+                apiKey: openRouterApiKey || undefined,
+                validate: (reply) => !isOffRole(reply),
+                isRepeated: isRepeatedReply,
+              });
+            } catch (err) {
+              console.warn("OpenRouter live call adult fallback failed:", err.message);
+            }
+          }
+          if (!content) {
+            try {
+              content = await generateNvidia(openRouterMessages, {
+                models: ["meta/llama-3.2-11b-vision-instruct"],
+                maxTokens: 55,
+                temperature: 0.82,
+                timeoutMs: 2500,
+                apiKey: nvidiaApiKey || undefined,
+                validate: (reply) => !isOffRole(reply),
+                isRepeated: isRepeatedReply,
+              });
+            } catch (err) {
+              console.warn("Nvidia live call adult fallback failed:", err.message);
+            }
+          }
+        } else {
           const canTryGemini = Boolean(geminiApiKey || (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== "[SENSITIVE]"));
           if (canTryGemini) {
             try {
@@ -1319,7 +1356,7 @@ export default async function handler(req, res) {
                 {
                   contents: geminiContents,
                   systemInstruction,
-                  adultMode: true,
+                  adultMode: false,
                   apiKey: geminiApiKey || undefined,
                   timeoutMs: 3000,
                   fallbackModels: ["gemini-2.0-flash", "gemini-2.5-flash-lite"],
@@ -1331,33 +1368,33 @@ export default async function handler(req, res) {
               console.warn("Gemini live call primary failed:", err.message);
             }
           }
-        }
-        if (!content && !isAdult) {
-          try {
-            content = await generateLocalLlama(openRouterMessages, {
-              maxTokens: 55,
-              temperature: 0.82,
-              timeoutMs: 2500,
-              validate: (reply) => !isOffRole(reply),
-              isRepeated: isRepeatedReply,
-            });
-          } catch (err) {
-            console.warn("Local llama live call fallback failed:", err.message);
+          if (!content) {
+            try {
+              content = await generateLocalLlama(openRouterMessages, {
+                maxTokens: 55,
+                temperature: 0.82,
+                timeoutMs: 2500,
+                validate: (reply) => !isOffRole(reply),
+                isRepeated: isRepeatedReply,
+              });
+            } catch (err) {
+              console.warn("Local llama live call fallback failed:", err.message);
+            }
           }
-        }
-        if (!content) {
-          try {
-            content = await generateNvidia(openRouterMessages, {
-              models: ["meta/llama-3.2-11b-vision-instruct"],
-              maxTokens: 55,
-              temperature: 0.82,
-              timeoutMs: 2500,
-              apiKey: nvidiaApiKey || undefined,
-              validate: (reply) => !isOffRole(reply),
-              isRepeated: isRepeatedReply,
-            });
-          } catch (err) {
-            console.warn("Nvidia live call fallback failed:", err.message);
+          if (!content) {
+            try {
+              content = await generateNvidia(openRouterMessages, {
+                models: ["meta/llama-3.2-11b-vision-instruct"],
+                maxTokens: 55,
+                temperature: 0.82,
+                timeoutMs: 2500,
+                apiKey: nvidiaApiKey || undefined,
+                validate: (reply) => !isOffRole(reply),
+                isRepeated: isRepeatedReply,
+              });
+            } catch (err) {
+              console.warn("Nvidia live call fallback failed:", err.message);
+            }
           }
         }
       } else if (isDeluxeOrPremium) {
@@ -1417,9 +1454,8 @@ export default async function handler(req, res) {
           }
         }
       } else {
-        // Insomnia Flash (Motor principal de máxima velocidad e inteligencia narrativa)
-        // 1. Gemini (Ultra-rápido ~1.2s, excelente coherencia de rol y obediencia a órdenes del usuario)
-        const canTryGemini = Boolean(geminiApiKey || (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== "[SENSITIVE]"));
+        // Insomnia Flash para rol seguro / no adulto (Ultra-rápido ~1.2s en Gemini)
+        const canTryGemini = !isAdult && Boolean(geminiApiKey || (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== "[SENSITIVE]"));
         if (canTryGemini) {
           try {
             const geminiContents = contents.map((c) => ({ role: c.role, parts: [...(c.parts || [])] }));
@@ -1433,7 +1469,7 @@ export default async function handler(req, res) {
               {
                 contents: geminiContents,
                 systemInstruction,
-                adultMode: Boolean(isAdult),
+                adultMode: false,
                 apiKey: geminiApiKey || undefined,
                 timeoutMs: 16000,
                 fallbackModels: ["gemini-2.0-flash", "gemini-2.5-flash-lite"],
@@ -1780,31 +1816,59 @@ export default async function handler(req, res) {
         fallbackModels: [],
         validate: (reply) => narrativeStays(source, reply),
       };
-      let content;
-      try {
-        content = await generate("gemini-2.5-flash", [{ text: prompt }], { maxOutputTokens: 2000, temperature: 0.4 }, options);
-      } catch (error) {
-        if (error.code === "off_role") {
+      const isAdultNarrative = Boolean(body.adultMode || body.isNsfw || body.isAdult || /(?:\+18|18\+|nsfw|er[oó]tic|sexual|hentai|\badult[oa]?\b)/i.test(source));
+      let content = null;
+      if (isAdultNarrative) {
+        // En narrativa adulta, NUNCA usar Gemini (usar Llama local, OpenRouter Magnum o Nvidia)
+        try {
+          content = await generateLocalLlama([{ role: "user", content: prompt }], { maxTokens: 1200, temperature: 0.7, timeoutMs: 6000 });
+        } catch { /* ignore */ }
+        if (!content) {
           try {
-            content = await generate(
-              "gemini-2.5-flash",
-              [{ text: prompt + "\n\nEl intento anterior cambió la historia. Escribe solo la premisa, con las mismas personas y el mismo suceso, sin otra trama ni otra edad." }],
-              { maxOutputTokens: 2000, temperature: 0.2 },
-              options,
-            );
-          } catch {
-            content = null;
-          }
+            content = await generateOpenRouter([{ role: "user", content: prompt }], {
+              models: ["anthracite-org/magnum-v4-72b", "sao10k/l3.3-euryale-70b", "nvidia/nemotron-3.5-lightning:free"],
+              maxTokens: 1200,
+              temperature: 0.7,
+              timeoutMs: 10000,
+            });
+          } catch { /* ignore */ }
         }
         if (!content) {
-          content = await generateNvidia([{ role: "user", content: prompt }], {
-            models: ["google/diffusiongemma-26b-a4b-it", "nvidia/nemotron-3-super-120b-a12b"],
-            maxTokens: 1200,
-            temperature: 0.5,
-            timeoutMs: 12000,
-          });
+          try {
+            content = await generateNvidia([{ role: "user", content: prompt }], {
+              models: ["meta/llama-3.2-11b-vision-instruct", "minimaxai/minimax-m3.1-flash"],
+              maxTokens: 1200,
+              temperature: 0.7,
+              timeoutMs: 8000,
+            });
+          } catch { /* ignore */ }
         }
-        if (!content) throw error;
+      } else {
+        try {
+          content = await generate("gemini-2.5-flash", [{ text: prompt }], { maxOutputTokens: 2000, temperature: 0.4 }, options);
+        } catch (error) {
+          if (error.code === "off_role") {
+            try {
+              content = await generate(
+                "gemini-2.5-flash",
+                [{ text: prompt + "\n\nEl intento anterior cambió la historia. Escribe solo la premisa, con las mismas personas y el mismo suceso, sin otra trama ni otra edad." }],
+                { maxOutputTokens: 2000, temperature: 0.2 },
+                options,
+              );
+            } catch {
+              content = null;
+            }
+          }
+          if (!content) {
+            content = await generateNvidia([{ role: "user", content: prompt }], {
+              models: ["google/diffusiongemma-26b-a4b-it", "nvidia/nemotron-3-super-120b-a12b"],
+              maxTokens: 1200,
+              temperature: 0.5,
+              timeoutMs: 12000,
+            });
+          }
+          if (!content) throw error;
+        }
       }
       return send(res, 200, { content });
     }
