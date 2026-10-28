@@ -128,11 +128,11 @@ function extractDialogueFromText(text: string): string {
   const [creativity, setCreativity] = useState("balanced");
   const [description, setDescription] = useState("");
   const [manualTitle, setManualTitle] = useState("");
-  const [chapterCount, setChapterCount] = useState(7);
+  const [chapterCount, setChapterCount] = useState(3);
   const [studioGenre, setStudioGenre] = useState<StudioGenre>("adult");
-  const [manualScenes, setManualScenes] = useState<string[]>(Array(7).fill(""));
-  const [manualLines, setManualLines] = useState<string[]>(Array(7).fill(""));
-  const [manualSpeakers, setManualSpeakers] = useState<string[]>(Array(7).fill(""));
+  const [manualScenes, setManualScenes] = useState<string[]>(Array(3).fill(""));
+  const [manualLines, setManualLines] = useState<string[]>(Array(3).fill(""));
+  const [manualSpeakers, setManualSpeakers] = useState<string[]>(Array(3).fill(""));
   const [chapterSubShots, setChapterSubShots] = useState<Record<number, { id: string; visual: string; dialogue: string; speaker: string }[]>>({});
   const [customCast, setCustomCast] = useState<CustomCastItem[]>([]);
   const [castRoles, setCastRoles] = useState<{ name: string; role: string }[]>([]);
@@ -551,6 +551,22 @@ function extractDialogueFromText(text: string): string {
       setManualScenes(returnedChapters.map((chapter: any) => String(chapter.visual || "").slice(0, 1200)));
       setManualLines(returnedChapters.map((chapter: any) => String(chapter.dialogue || "").slice(0, 400)));
       setManualSpeakers(returnedChapters.map((chapter: any) => String(chapter.speaker || "").slice(0, 80)));
+
+      // Poblar subtomas / ángulos complementarios si la IA los generó
+      const newSubShots: Record<number, { id: string; visual: string; dialogue: string; speaker: string }[]> = {};
+      returnedChapters.forEach((chapter: any, chIdx: number) => {
+        const subs = Array.isArray(chapter.sub_shots) ? chapter.sub_shots : (Array.isArray(chapter.subShots) ? chapter.subShots : []);
+        if (subs.length > 0) {
+          newSubShots[chIdx] = subs.slice(0, 3).map((sub: any, sIdx: number) => ({
+            id: `shot-${chIdx}-${sIdx}-${Date.now()}`,
+            visual: String(sub.visual || "").slice(0, 1200),
+            dialogue: String(sub.dialogue || "").slice(0, 400),
+            speaker: String(sub.speaker || manualSpeakers[chIdx] || primaryName || "").slice(0, 80),
+          }));
+        }
+      });
+      setChapterSubShots(newSubShots);
+
       setShowManualEditor(true);
       toast({ title: "¡Guion preparado con IA!", description: `Los ${returnedChapters.length} capítulos fueron generados a partir de tu idea. Puedes revisarlos o filmarlos.` });
       return true;
@@ -1170,7 +1186,7 @@ function extractDialogueFromText(text: string): string {
      setDescription("");
      setModel("apprentice-6");
      setCreativity("balanced");
-     setChapterCount(7);
+     setChapterCount(3);
      setIsSafeForWork(false);
      setStudioGenre("adult");
      setLanguage("English");
@@ -1267,6 +1283,32 @@ function extractDialogueFromText(text: string): string {
             <Badge variant="secondary" className="text-xs uppercase">
               {studioGenre === "adult" ? "Adulto / NSFW" : `Género: ${studioGenre}`}
             </Badge>
+          </div>
+
+          {/* Selector de número de capítulos para el guion */}
+          <div className="flex flex-wrap items-center gap-2 pt-1 pb-1">
+            <span className="text-xs font-semibold text-muted-foreground mr-1">Estructura dramática:</span>
+            {[
+              { count: 3, label: "3 Capítulos (Trilogía de impacto)" },
+              { count: 5, label: "5 Capítulos (Arco estándar)" },
+              { count: 7, label: "7 Capítulos (Miniserie completa)" },
+              { count: 10, label: "10 Capítulos (Temporada vertical)" },
+            ].map((opt) => (
+              <Button
+                key={opt.count}
+                type="button"
+                variant={chapterCount === opt.count ? "default" : "outline"}
+                size="sm"
+                className={`h-7 px-3 text-xs font-medium transition-all ${
+                  chapterCount === opt.count
+                    ? "bg-primary text-primary-foreground shadow"
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                }`}
+                onClick={() => handleChapterCountChange(opt.count)}
+              >
+                {opt.label}
+              </Button>
+            ))}
           </div>
 
           <Textarea

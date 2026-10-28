@@ -650,16 +650,45 @@ class Handler(BaseHTTPRequestHandler):
             count = min(20, max(1, int(body.get("chapters") or body.get("chapterCount") or 3)))
             payload = {
                 "messages": [
-                    {"role": "system", "content": f"Eres un guionista profesional de series cinematográficas y para adultos. A partir de la idea del usuario, genera un guion de exactamente {count} capítulos ordenados con progresión dramática. Escribe en {language}. Responde ÚNICAMENTE en JSON válido con las claves: 'title' (string breve del título), y 'chapters' (lista de {count} objetos, cada uno con 'visual' describiendo la acción visible en 1 o 2 oraciones, 'dialogue' con una frase corta dicha por el personaje, y 'speaker' con el nombre del personaje)."},
-                    {"role": "user", "content": f"Idea: {idea}"}
+                    {"role": "system", "content": f"""Eres un Showrunner y Director Cinematográfico de élite especializado en miniseries dramáticas, de suspenso y para adultos.
+A partir de la idea del usuario, genera un desglose cinematográfico profesional de rodaje para exactamente {count} capítulos ordenados con progresión dramática.
+Escribe en {language}.
+
+REGLAS DE DIRECCIÓN Y FILMACIÓN CINEMATOGRÁFICA OBLIGATORIAS:
+1. 'visual' (TOMA PRINCIPAL / MASTER SHOT): Describe la escena con desglose cinematográfico completo y rico (NUNCA un resumen seco de una sola frase):
+   - [TIPO DE PLANO Y MOVIMIENTO]: ej. [PLANO MEDIO INTERIOR VEHÍCULO - CÁMARA EN MANO VIBRANDO] o [PLANO GENERAL PICADO - TRAVELLING LATERAL].
+   - [ILUMINACIÓN Y ATMÓSFERA]: Detalla la luz, atmósfera, clima y reflejos (ej. 'Faros cortando la niebla espesa, sombras rojizas del tablero iluminando rostros tensos, lluvia torrencial golpeando el cristal').
+   - [BLOCKING CORPORAL Y SECUENCIA DE ACCIÓN COMPLETA]: Detalla minuciosamente el arco físico visible paso a paso. Qué hace el personaje con su cuerpo, sus manos, la dirección de sus ojos, la tensión en sus músculos, el cambio de expresión ante el peligro, las acciones mecánicas (volantazo, frenazo a fondo, derrape, colisión con el guardarraíl, chispas y vuelco por el barranco).
+2. 'dialogue': Frase exacta hablada por el personaje (máximo 15 palabras, con carga dramática real).
+3. 'speaker': Nombre exacto del personaje que habla.
+4. 'sub_shots': Lista de 1 o 2 subtomas de cobertura de cámara para enriquecer la escena:
+   - Subtoma A (Contraplano o Primer Plano de Reacción): [PRIMER PLANO - REACCIÓN] Expresión facial y mirada de choque.
+   - Subtoma B (Plano Detalle o Acción Mecánica): [PLANO DETALLE / IMPACTO] Manos aferrándose, pedales a fondo, impacto o rotura.
+
+Responde ÚNICAMENTE en JSON válido con el siguiente esquema:
+{{
+  "title": "Título cinematográfico de la miniserie",
+  "chapters": [
+    {{
+      "visual": "[PLANO MEDIO...] Iluminación... Acción física completa paso a paso...",
+      "dialogue": "Frase hablada...",
+      "speaker": "Personaje",
+      "sub_shots": [
+        {{ "visual": "[PRIMER PLANO - REACCIÓN] ...", "dialogue": "...", "speaker": "..." }},
+        {{ "visual": "[PLANO DETALLE - ACCIÓN] ...", "dialogue": "...", "speaker": "..." }}
+      ]
+    }}
+  ]
+}}"""},
+                    {"role": "user", "content": f"Idea de la miniserie: {idea}"}
                 ],
-                "temperature": 0.7,
-                "max_tokens": min(2500, max(700, count * 220)),
+                "temperature": 0.65,
+                "max_tokens": min(4000, max(1200, count * 500)),
                 "response_format": {"type": "json_object"}
             }
             chat_url = os.environ.get("KINEVA_CHAT_MODEL_URL", "http://127.0.0.1:8788/v1/chat/completions")
             req = urllib.request.Request(chat_url, data=json.dumps(payload).encode("utf-8"), headers={"Content-Type": "application/json"})
-            with urllib.request.urlopen(req, timeout=30) as resp:
+            with urllib.request.urlopen(req, timeout=40) as resp:
                 res_data = json.loads(resp.read().decode("utf-8"))
                 content = res_data["choices"][0]["message"]["content"]
                 draft = json.loads(content)
@@ -667,11 +696,22 @@ class Handler(BaseHTTPRequestHandler):
                     raise ValueError("El modelo no generó capítulos.")
                 return self._reply(200, {"draft": draft})
         except Exception:
-            sentences = [s.strip() for s in re.split(r'[.!?\n]+', idea) if len(s.strip()) > 3]
+            sentences = [s.strip() for s in re.split(r"[.!?\n]+", idea) if len(s.strip()) > 3]
             fallback_chapters = []
             for i in range(count):
-                part = sentences[i] if i < len(sentences) else (idea[i * 120 : (i + 1) * 120] or f"Capítulo {i + 1}: continuación dramática de la escena.")
-                fallback_chapters.append({"visual": part, "dialogue": "...", "speaker": "Protagonista"})
+                part = sentences[i] if i < len(sentences) else (idea[i * 120 : (i + 1) * 120] or f"Capítulo {i + 1}: punto dramático clave.")
+                fallback_chapters.append({
+                    "visual": f"[PLANO MEDIO DINÁMICO - NOCHE] Iluminación cinematográfica de alto contraste. {part}. El personaje reacciona con tensión en el cuerpo, observando con respiración contenida y movimientos cautelosos.",
+                    "dialogue": "...",
+                    "speaker": "Protagonista",
+                    "sub_shots": [
+                        {
+                            "visual": f"[PRIMER PLANO - REACCIÓN] Rostro en primer plano reflejando sorpresa y tensión extrema ante la situación.",
+                            "dialogue": "",
+                            "speaker": "Protagonista"
+                        }
+                    ]
+                })
             return self._reply(200, {
                 "draft": {
                     "title": idea[:40].strip() or f"Miniserie Insomnia ({count} Capítulos)",

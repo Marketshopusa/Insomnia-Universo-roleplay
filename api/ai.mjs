@@ -1916,37 +1916,54 @@ export default async function handler(req, res) {
       const locationDesc = String(body.location_description || "").trim().slice(0, 300);
       const props = Array.isArray(body.props) ? body.props.slice(0, 10).map((p) => String(p).trim()).filter(Boolean) : [];
       const count = Math.min(20, Math.max(1, Number(body.chapters || body.chapterCount || 3)));
-      const prompt = `Actúa como un Showrunner y Director Cinematográfico de miniseries verticales (estilo ReelShort / DramaBox). `
-        + `Crea el desglose técnico y guion de rodaje de exactamente ${count} capítulos a partir de la idea. `
-        + "REGLAS FUNDAMENTALES DE FILMACIÓN CINEMATOGRÁFICA:\n"
-        + "1. NO ESCRIBAS PROSA LITERARIA NI AUDIOLIBROS: En 'visual', describe EXCLUSIVAMENTE acciones físicas visibles, movimientos corporales exactos (blocking), dirección de miradas (eyeline), vestuario coherente con el clima/locación y objetos que interactúan (ej. 'Elena tropieza, la cámara cae al barro, se agacha a recogerla con respiración agitada').\n"
-        + "2. DIÁLOGOS DE PERSONAJES: Cada capítulo debe tener su diálogo hablado directo por el actor en 'dialogue' (máximo 15 palabras) y el nombre exacto del actor en 'speaker'. Nunca atribuyas voces de hombres a mujeres.\n"
-        + "3. CERO METADATOS TÉCNICOS: Nunca incluyas '9:16', 'Capítulo X de Y', ni palabras como 'Ilustrar' en el texto narrativo ni en el diálogo.\n"
-        + (locationName ? `4. LOCACIÓN FIJA: Desarrolla las escenas en el set: "${locationName}"${locationDesc ? ` (${locationDesc})` : ""}. Mantén este set e iluminación en todas las tomas.\n` : "")
-        + (props.length ? `5. OBJETOS / PROPS CLAVE: Incorpora activamente estos objetos en las acciones físicas de los personajes: ${props.join(", ")}.\n` : "")
-        + "Devuelve solo JSON con esta estructura:\n"
+      const prompt = `Actúa como un Showrunner y Director Cinematográfico de miniseries de alta gama (estilo ReelShort / DramaBox). `
+        + `Crea el desglose técnico y guion de rodaje cinematográfico de exactamente ${count} capítulos a partir de la idea. `
+        + "
+REGLAS FUNDAMENTALES DE FILMACIÓN CINEMATOGRÁFICA:
+"
+        + "1. 'visual' (TOMA PRINCIPAL / MASTER SHOT): NUNCA escribas un resumen seco de una sola frase. Describe la toma principal con desglose cinematográfico completo: [TIPO DE PLANO Y CÁMARA] (ej. [PLANO MEDIO INTERIOR VEHÍCULO - CÁMARA EN MANO VIBRANDO] o [PLANO GENERAL PICADO]), [ILUMINACIÓN Y ATMÓSFERA] (niebla, lluvia, contrastes, reflejos de faros o tablero) y la [SECUENCIA DE ACCIÓN Y BLOCKING COMPLETO] detallando el movimiento físico visible paso a paso (ej. 'Conduce tenso aferrado al volante; mira al copiloto con extrañeza; al volver la vista al frente advierte la curva en pánico; frena bruscamente, da un volantazo, el auto derrapa soltando chispas y vuelca por el barranco').
+"
+        + "2. COBERTURA DE CÁMARA ('sub_shots'): En cada capítulo incluye un array 'sub_shots' con 1 o 2 subtomas complementarias para rodaje: Contraplano/Reacción en primer plano [PRIMER PLANO - REACCIÓN] y Plano Detalle o Acción mecánica [PLANO DETALLE / IMPACTO].
+"
+        + "3. DIÁLOGOS DE PERSONAJES: Cada capítulo debe tener su diálogo hablado directo por el actor en 'dialogue' (máximo 15 palabras, con carga dramática real) y el nombre exacto del actor en 'speaker'. Nunca atribuyas voces de hombres a mujeres.
+"
+        + "4. CERO METADATOS TÉCNICOS: Nunca incluyas '9:16', 'Capítulo X de Y', ni palabras como 'Ilustrar' en el texto narrativo ni en el diálogo.
+"
+        + (locationName ? `5. LOCACIÓN FIJA: Desarrolla las escenas en el set: "${locationName}"${locationDesc ? ` (${locationDesc})` : ""}. Mantén este set e iluminación en todas las tomas.
+` : "")
+        + (props.length ? `6. OBJETOS / PROPS CLAVE: Incorpora activamente estos objetos en las acciones físicas de los personajes: ${props.join(", ")}.
+` : "")
+        + "Devuelve solo JSON con esta estructura:
+"
         + JSON.stringify({
           title: "Título dramático de la miniserie",
           cast_roles: [{ name: "Nombre del actor", role: "Papel dramático exacto" }],
           chapters: Array.from({ length: Math.min(count, 3) }, () => ({
-            visual: "Encuadre de cámara + Acción física corporal concreta + Dirección de mirada + Vestuario de locación",
-            dialogue: "Línea hablada real del personaje (sin descripciones ni metadatos)",
-            speaker: "Nombre exacto del actor que habla"
+            visual: "[PLANO MEDIO DINÁMICO] Iluminación cinematográfica. Acción corporal física detallada paso a paso...",
+            dialogue: "Línea hablada real del personaje",
+            speaker: "Nombre exacto del actor",
+            sub_shots: [
+              { visual: "[PRIMER PLANO - REACCIÓN] Rostro...", dialogue: "", speaker: "" },
+              { visual: "[PLANO DETALLE / IMPACTO] Acción mecánica...", dialogue: "", speaker: "" }
+            ]
           }))
         })
-        + `.\nObligatorio: exactamente ${count} capítulos en el array chapters. Idioma: ${language}. Elenco disponible: `
+        + `.
+Obligatorio: exactamente ${count} capítulos en el array chapters. Cada capítulo DEBE tener 'visual' cinematográfico completo, 'dialogue', 'speaker' y 'sub_shots'. Idioma: ${language}. Elenco disponible: `
         + JSON.stringify(castNames) + `. Idea: ${idea}`;
       let raw;
       try {
         raw = await generate("gemini-3.5-flash-lite", [{ text: prompt }],
-          { responseMimeType: "application/json", maxOutputTokens: Math.max(1800, count * 350), temperature: 0.5 },
+          { responseMimeType: "application/json", maxOutputTokens: Math.max(2500, count * 650), temperature: 0.5 },
           { fallbackModels: ["gemini-3.1-flash-lite", "gemini-3.8-flash"], retryBadRequest: true });
       } catch (err) {
         // Fallback robusto para miniseries de adultos o si Gemini bloquea
-        const local = await generateLocalLlama([{ role: "user", content: prompt + "\nResponde exclusivamente en JSON válido." }], { maxTokens: Math.max(1800, count * 350) });
+        const local = await generateLocalLlama([{ role: "user", content: prompt + "
+Responde exclusivamente en JSON válido." }], { maxTokens: Math.max(2500, count * 650) });
         if (local) raw = local;
         else {
-          const cloud = await generateOpenRouter([{ role: "user", content: prompt + "\nResponde exclusivamente en JSON válido." }], { maxTokens: Math.max(1800, count * 350) });
+          const cloud = await generateOpenRouter([{ role: "user", content: prompt + "
+Responde exclusivamente en JSON válido." }], { maxTokens: Math.max(2500, count * 650) });
           if (cloud) raw = cloud;
           else throw err;
         }
