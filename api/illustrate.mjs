@@ -117,10 +117,10 @@ export async function drawScene(prompt, options = {}) {
   }
   const fetchImpl = options.fetchImpl || fetch;
   const safetySettings = [
-    { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "OFF" },
-    { category: "HARM_CATEGORY_HARASSMENT", threshold: "OFF" },
-    { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "OFF" },
-    { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "OFF" },
+    { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
+    { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
+    { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" },
+    { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
   ];
   const models = ["gemini-2.5-flash-image", "gemini-3.1-flash-image"];
   let allowSafety = true;

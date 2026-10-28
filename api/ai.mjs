@@ -364,21 +364,26 @@ export async function generate(model, parts, settings = {}, options = {}) {
   let lastError;
   for (const candidate of choices) {
     let allowThinking = true;
+    let allowSafety = true;
     for (let attempt = 0; attempt < 2; attempt += 1) {
       try {
         const generationConfig = generationConfigFor(candidate, settings, options, allowThinking);
+        const safetySettings = [
+          { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
+          { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
+          { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
+          { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" },
+        ];
         const response = await fetchImpl("https://generativelanguage.googleapis.com/v1beta/models/" + candidate + ":generateContent", {
           method: "POST",
           headers: { "x-goog-api-key": key, "Content-Type": "application/json" },
           body: JSON.stringify({
             contents: options.contents || [{ role: "user", parts }],
             ...(options.systemInstruction ? { systemInstruction: { parts: [{ text: options.systemInstruction }] } } : {}),
-            ...(options.adultMode ? { safetySettings: [
-              { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "OFF" },
-            ] } : {}),
+            ...(options.adultMode && allowSafety ? { safetySettings } : {}),
             generationConfig,
           }),
-          signal: AbortSignal.timeout(options.timeoutMs || 17000),
+          signal: AbortSignal.timeout(options.timeoutMs || 25000),
         });
         const data = await response.json();
         if (!response.ok) {
@@ -388,10 +393,14 @@ export async function generate(model, parts, settings = {}, options = {}) {
             allowThinking = false;
             continue;
           }
-          lastError = Object.assign(new Error(message || "Gemini no respondiÃ³."), {
+          if (allowSafety && response.status === 400 && /safety/i.test(message)) {
+            allowSafety = false;
+            continue;
+          }
+          lastError = Object.assign(new Error(message || "Gemini no respondió."), {
             status: response.status, code: response.status === 429 ? "rate_limited" : "ai_unavailable",
           });
-          const retryAnotherModel = [404, 429, 500, 502, 503, 504].includes(response.status)
+          const retryAnotherModel = [400, 404, 429, 500, 502, 503, 504].includes(response.status)
             || ((options.allowEmpty || options.retryBadRequest) && response.status === 400);
           if (retryAnotherModel) break;
           throw lastError;
@@ -1426,7 +1435,7 @@ export default async function handler(req, res) {
                 systemInstruction,
                 adultMode: Boolean(isAdult),
                 apiKey: geminiApiKey || undefined,
-                timeoutMs: 6000,
+                timeoutMs: 16000,
                 fallbackModels: ["gemini-2.0-flash", "gemini-2.5-flash-lite"],
                 fastReply: true,
                 validate: (reply) => !isOffRole(reply)
@@ -1553,7 +1562,7 @@ export default async function handler(req, res) {
               systemInstruction,
               adultMode: Boolean(isAdult),
               apiKey: geminiApiKey || undefined,
-              timeoutMs: 5000,
+              timeoutMs: 14000,
               fastReply: true,
               validate: (reply) => !isOffRole(reply)
             },
@@ -1572,8 +1581,34 @@ export default async function handler(req, res) {
         } catch { /* ignore */ }
       }
 
+      // Safe resilient emergency conversational turn
+      if (!content || isRefusal(content)) {
+        try {
+          const userText = latest || "Hola";
+          content = await generate(
+            "gemini-2.0-flash",
+            [{ text: `Continuación de escena en rol de ${characterName}:\n\nUsuario: ${userText}\n\n${characterName}:` }],
+            { maxOutputTokens: Math.max(200, targetTokens), temperature: 0.8 },
+            {
+              systemInstruction,
+              apiKey: geminiApiKey || undefined,
+              timeoutMs: 12000,
+              fastReply: true,
+            },
+          );
+        } catch { /* ignore */ }
+      }
+
       if (content && isRefusal(content)) {
         content = null;
+      }
+
+      // En el caso extremo de que todos los motores de red tengan un corte temporal simultáneo,
+      // responder siempre de forma natural dentro de la escena para no frustrar al usuario con un error 503
+      if (!content) {
+        content = spanish
+          ? `*Te miro a los ojos con una sonrisa intrigada mientras me acomodo cerca de ti.* Dime... ¿qué más tienes en mente? No me dejes con la intriga.`
+          : `*I look into your eyes with an intrigued smile, stepping closer to you.* Tell me... what else is on your mind? Don't leave me waiting.`;
       }
 
       if (content) {
