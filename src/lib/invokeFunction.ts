@@ -57,8 +57,10 @@ async function callLocalLlama<T>(body: unknown): Promise<FunctionResult<T> | nul
       language?: string;
     };
 
-    const characterName = input.story?.character_role || "Personaje";
-    const playerName = input.story?.player_role || "Usuario";
+    const rawChar = input.story?.character_role || input.story?.title || "Personaje";
+    const characterName = (rawChar.match(/[A-ZÁÉÍÓÚÑ][a-záéíóúñ]{2,}/)?.[0] || rawChar.split(/[\s,()]+/)[0] || "Personaje").trim();
+    const rawPlayer = input.story?.player_role || "Usuario";
+    const playerName = (rawPlayer.match(/[A-ZÁÉÍÓÚÑ][a-záéíóúñ]{2,}/)?.[0] || rawPlayer.split(/[\s,()]+/)[0] || "Usuario").trim();
     const historyList = input.history || [];
     const activeChar = resolveActiveCharacter(input.userMessage || "", historyList, characterName, playerName);
     const premise = [
@@ -75,16 +77,20 @@ async function callLocalLlama<T>(body: unknown): Promise<FunctionResult<T> | nul
 ${premise ? `\nCONTEXTO DE LA HISTORIA:\n${premise}\n` : ""}
 REGLAS DE RAZONAMIENTO Y FORMATO:
 1. IDIOMA: 100% español nativo.
-2. COMPRENSIÓN DE NARRACIÓN MIXTA: Cuando ${playerName} mezcle diálogo directo ("le digo...") con explicaciones en tercera persona sobre otro personaje, distingue claramente CON QUIÉN está hablando cara a cara vs. DE QUIÉN está hablando en tercera persona.
-3. PROPORCIÓN EQUILIBRADA 20% RELATO / 80% DIÁLOGO HABLADO:
-   - RELATO (*...*): El 20% de tu respuesta (1 oración descriptiva completa de 12 a 16 palabras en PRIMERA PERSONA entre asteriscos, o 2 acotaciones de 7 a 9 palabras cada una).
-   - DIÁLOGO HABLADO: El 80% de tu respuesta (de 50 a 65 palabras, 2 a 3 oraciones completas en primera persona).
-4. COHERENCIA: Mantén el trato natural acorde a tu rol o relación en la historia con ${playerName}. NUNCA hables ni actúes por ${playerName}.
-5. OBEDIENCIA TOTAL A ACCIONES NARRADAS POR EL USUARIO:
-   - Cuando ${playerName} narra o describe en tercera persona lo que tú haces, asume de inmediato esa acción en primera persona en asteriscos (*...*).
-   - PROHIBIDO contradecir la postura o acción física dictada por ${playerName} (ej: inventar que estás en otra posición o sobre él).
-   - PROHIBIDO preguntar "¿qué quieres que haga?" si ${playerName} ya te lo acaba de indicar o narrar: actúa de inmediato con entrega.
-   - Si tu boca está ocupada o te pide silencio, responde con acotaciones físicas y gemidos o palabras entrecortadas, nunca monólogos largos.`;
+2. ADAPTACIÓN AL TONO Y RITMO DE LA HISTORIA (CRÍTICO):
+   - Responde fielmente a tu personaje y al estado actual de la trama.
+   - Si la escena empieza con una conversación casual, un conflicto, sorpresa, vergüenza o duda (como un error, un encuentro o una charla normal), REACCIONA EN PERSONAJE CON ESA EMOCIÓN REALISTA.
+   - PROHIBIDO saltar a insinuaciones eróticas, gemidos, jadeos o actos sexuales si ${playerName} no ha propuesto o iniciado ese contacto íntimo. La tensión o intimidad se desarrolla paso a paso, con sentido común y coherencia.
+3. COHERENCIA ESTRICTA:
+   - Responde directamente a lo que ${playerName} te acaba de decir o preguntar.
+   - Cero delirios: no inventes situaciones desconectadas, ni cambies de tema abruptamente, ni hables de cosas ajenas a la conversación actual.
+4. PROPORCIÓN EQUILIBRADA 20% RELATO / 80% DIÁLOGO HABLADO:
+   - RELATO (*...*): El 20% de tu respuesta (1 o 2 acotaciones descriptivas breves en PRIMERA PERSONA entre asteriscos sobre tu gesto, expresión o movimiento inmediato).
+   - DIÁLOGO HABLADO: El 80% de tu respuesta (diálogo directo, hablado en primera persona, interactuando con ${playerName}).
+5. CERO GODMODING:
+   - NUNCA hables ni actúes por ${playerName}. TÚ solo eres ${characterName}.
+6. OBEDIENCIA A ACCIONES FÍSICAS CUANDO HAYA INTIMIDAD:
+   - Si la escena llega a un momento íntimo consensuado y ${playerName} describe tus acciones o postura, asúmela en primera persona sin contradecirla ni preguntar repetitivamente qué hacer.`;
 
     const activeSceneRule = activeChar.isSwitched
       ? `\nESTADO ACTUAL DE LA ESCENA (INTERLOCUTOR ACTIVO):
@@ -147,11 +153,11 @@ En este momento de la escena, ${activeChar.playerFirstName} está interactuando 
       chatMessages: { role: string; content: string }[],
       opts: { temperature?: number; repeat_penalty?: number; presence_penalty?: number } = {},
     ): Promise<string | null> => {
-      const temperature = opts.temperature ?? 0.82;
-      const repeat_penalty = opts.repeat_penalty ?? 1.25;
-      const presence_penalty = opts.presence_penalty ?? 0.5;
-      const frequency_penalty = 0.3;
-      const repeat_last_n = 512;
+      const temperature = opts.temperature ?? 0.72;
+      const repeat_penalty = opts.repeat_penalty ?? 1.06;
+      const presence_penalty = 0.0;
+      const frequency_penalty = 0.0;
+      const repeat_last_n = 256;
       const max_tokens = 450;
 
       let res: Response | null = null;
@@ -223,7 +229,7 @@ En este momento de la escena, ${activeChar.playerFirstName} está interactuando 
         },
         ...alternating,
       ];
-      rawReply = await fetchMagnumCandidate(antiRepeatMessages, { temperature: 0.95, repeat_penalty: 1.35, presence_penalty: 0.8 });
+      rawReply = await fetchMagnumCandidate(antiRepeatMessages, { temperature: 0.78, repeat_penalty: 1.10 });
       content = rawReply ? sanitizeSwitchedReply(compactRoleplayReply(rawReply), activeChar) : "";
     }
 

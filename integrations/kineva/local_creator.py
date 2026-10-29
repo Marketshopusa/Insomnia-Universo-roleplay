@@ -806,15 +806,15 @@ Responde ÚNICAMENTE en JSON válido con el siguiente esquema:
         try:
             body = json.loads(self.rfile.read(length))
             chat_url = os.environ.get("KINEVA_CHAT_MODEL_URL", "http://127.0.0.1:8788/v1/chat/completions")
-            repeat_penalty = float(body.get("repeat_penalty") or 1.25)
-            presence_penalty = float(body.get("presence_penalty") or 0.5)
-            frequency_penalty = float(body.get("frequency_penalty") or 0.3)
-            repeat_last_n = int(body.get("repeat_last_n") or 512)
+            repeat_penalty = float(body.get("repeat_penalty") or 1.06)
+            presence_penalty = float(body.get("presence_penalty") or 0.0)
+            frequency_penalty = float(body.get("frequency_penalty") or 0.0)
+            repeat_last_n = int(body.get("repeat_last_n") or 256)
             payload = {
                 "model": str(body.get("model") or "magnum-v4-12b"),
                 "messages": body.get("messages") or [],
                 "max_tokens": min(800, max(50, int(body.get("max_tokens") or 450))),
-                "temperature": float(body.get("temperature") or 0.85),
+                "temperature": float(body.get("temperature") or 0.72),
                 "repeat_penalty": repeat_penalty,
                 "presence_penalty": presence_penalty,
                 "frequency_penalty": frequency_penalty,

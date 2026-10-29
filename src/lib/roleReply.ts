@@ -217,7 +217,7 @@ export function resolveActiveCharacter(
   const defaultFirstName = (defaultCharacterRole.match(/[A-ZÁÉÍÓÚÑ][a-záéíóúñ]{2,}/)?.[0] || defaultCharacterRole.split(/[\s,()]+/)[0] || "Personaje").trim();
   const playerFirstName = (playerRole.match(/[A-ZÁÉÍÓÚÑ][a-záéíóúñ]{2,}/)?.[0] || playerRole.split(/[\s,()]+/)[0] || "Usuario").trim();
   const allText = [defaultCharacterRole, playerRole, userMessage, ...history.map((h) => h.content || h.text || "")].join(" ");
-  const defaultIsSobrina = /sobrin|estefan[ií]a|maya/i.test(defaultCharacterRole) || /t[ií][oa]/i.test(playerRole) || /\b(?:sobrin[ao]|t[ií][oa])\b/i.test(allText);
+  const defaultIsSobrina = /sobrin/i.test(defaultCharacterRole) || /\bt[i\u00ed]o\b/i.test(playerRole);
 
   const knownByName = new Map<string, { name: string; role: string; addressTerm: string }>();
 
