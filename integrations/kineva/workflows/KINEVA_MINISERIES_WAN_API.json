@@ -1,0 +1,239 @@
+{
+  "1": {
+    "class_type": "UNETLoader",
+    "inputs": {
+      "unet_name": "wan2.2_ti2v_5B_fp16.safetensors",
+      "weight_dtype": "default"
+    }
+  },
+  "2": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+      "device": "default",
+      "type": "wan"
+    }
+  },
+  "3": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "wan2.2_vae.safetensors"
+    }
+  },
+  "4": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "clip": [
+        "2",
+        0
+      ],
+      "text": "__KINEVA_JOB_PROMPT__"
+    }
+  },
+  "5": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "clip": [
+        "2",
+        0
+      ],
+      "text": "extra people, changing faces, extra fingers, duplicated limbs, ghosting, trailing silhouette, blur, jump cuts, text"
+    }
+  },
+  "6": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "__KINEVA_REFERENCE_IMAGE__"
+    }
+  },
+  "7": {
+    "class_type": "Wan22ImageToVideoLatent",
+    "inputs": {
+      "batch_size": 1,
+      "height": 1344,
+      "length": 81,
+      "start_image": [
+        "6",
+        0
+      ],
+      "vae": [
+        "3",
+        0
+      ],
+      "width": 768
+    }
+  },
+  "8": {
+    "class_type": "ModelSamplingSD3",
+    "inputs": {
+      "model": [
+        "1",
+        0
+      ],
+      "shift": 8.0
+    }
+  },
+  "9": {
+    "class_type": "KSampler",
+    "inputs": {
+      "cfg": 5.0,
+      "denoise": 1.0,
+      "latent_image": [
+        "7",
+        0
+      ],
+      "model": [
+        "8",
+        0
+      ],
+      "negative": [
+        "5",
+        0
+      ],
+      "positive": [
+        "4",
+        0
+      ],
+      "sampler_name": "uni_pc",
+      "scheduler": "simple",
+      "seed": 994128547692507,
+      "steps": 20
+    }
+  },
+  "10": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": [
+        "9",
+        0
+      ],
+      "vae": [
+        "3",
+        0
+      ]
+    }
+  },
+  "11": {
+    "class_type": "CreateVideo",
+    "inputs": {
+      "fps": 24.0,
+      "images": [
+        "10",
+        0
+      ]
+    }
+  },
+  "32": {
+    "class_type": "KinevaDirectShotPlan",
+    "inputs": {
+      "prompt": "__KINEVA_JOB_PROMPT__",
+      "exact_dialogue": "__KINEVA_EXACT_DIALOGUE__",
+      "style": "photorealistic, natural lighting",
+      "duration_seconds": 5.2,
+      "camera": "fixed medium shot; no zoom, cuts or reframing",
+      "primary_character": "the adult person in the uploaded reference image",
+      "secondary_character": "",
+      "location_name": "the setting in the uploaded reference image",
+      "location_description": "Preserve the original room, geometry, lighting and surfaces."
+    }
+  },
+  "50": {
+    "class_type": "KinevaPlanLock",
+    "inputs": {
+      "story_plan": [
+        "32",
+        0
+      ],
+      "profile": "MINISERIES",
+      "preserve_dialogue": true,
+      "force_single_take": false,
+      "presenter_visible": false,
+      "lock_camera": false,
+      "camera_rule": "locked medium close-up / half-body shot, presenter visible",
+      "exact_dialogue": "__KINEVA_EXACT_DIALOGUE__",
+      "dialogue_language": "Spanish",
+      "project_id": "__KINEVA_PROJECT_ID__"
+    }
+  },
+  "55": {
+    "class_type": "KinevaVideoQC",
+    "inputs": {
+      "video": [
+        "11",
+        0
+      ],
+      "check_temporal": true,
+      "cut_threshold": 0.18,
+      "sample_size": 64
+    }
+  },
+  "67": {
+    "class_type": "KinevaProjectContext",
+    "inputs": {
+      "project_name": "__KINEVA_PROJECT__",
+      "episode": 1,
+      "scene": 1,
+      "shot": 1,
+      "take": 1
+    }
+  },
+  "56": {
+    "class_type": "KinevaMasterExport",
+    "inputs": {
+      "video": [
+        "55",
+        0
+      ],
+      "filename_prefix": [
+        "67",
+        0
+      ],
+      "profile": "MASTER"
+    }
+  },
+  "57": {
+    "class_type": "KinevaRunManifest",
+    "inputs": {
+      "saved_path": [
+        "56",
+        1
+      ],
+      "qc_report": [
+        "55",
+        1
+      ],
+      "lock_report": [
+        "50",
+        1
+      ],
+      "locked_plan_json": [
+        "50",
+        2
+      ],
+      "project_context": [
+        "67",
+        1
+      ],
+      "project_name": "__KINEVA_PROJECT__"
+    }
+  },
+  "47": {
+    "class_type": "KinevaPromptTrace",
+    "inputs": {
+      "original_prompt": "__KINEVA_JOB_PROMPT__",
+      "plan_json": [
+        "32",
+        1
+      ],
+      "prompt_log": "__KINEVA_JOB_PROMPT__",
+      "lock_report": [
+        "50",
+        1
+      ],
+      "locked_plan_json": [
+        "50",
+        2
+      ]
+    }
+  }
+}

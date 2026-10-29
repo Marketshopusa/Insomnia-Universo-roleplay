@@ -155,11 +155,10 @@ En este momento de la escena, ${activeChar.playerFirstName} está interactuando 
       const max_tokens = 450;
 
       let res: Response | null = null;
+      // 1. Intentar directamente llama-server en puerto 8788 (sin intermediarios de proxy)
       try {
-        res = await fetch("http://127.0.0.1:8787/chat", {
+        res = await fetch("http://127.0.0.1:8788/v1/chat/completions", {
           method: "POST",
-          mode: "cors",
-          ...({ targetAddressSpace: "loopback" } as any),
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             model: "magnum-v4-12b",
@@ -171,16 +170,19 @@ En este momento de la escena, ${activeChar.playerFirstName} está interactuando 
             frequency_penalty,
             repeat_last_n,
           }),
-          signal: AbortSignal.timeout(12000),
+          signal: AbortSignal.timeout(35000),
         });
       } catch {
         res = null;
       }
 
+      // 2. Si 8788 no respondió directamente, intentar a través de local_creator en 8787
       if (!res || !res.ok) {
         try {
-          res = await fetch("http://127.0.0.1:8788/v1/chat/completions", {
+          res = await fetch("http://127.0.0.1:8787/chat", {
             method: "POST",
+            mode: "cors",
+            ...({ targetAddressSpace: "loopback" } as any),
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               model: "magnum-v4-12b",
@@ -192,7 +194,7 @@ En este momento de la escena, ${activeChar.playerFirstName} está interactuando 
               frequency_penalty,
               repeat_last_n,
             }),
-            signal: AbortSignal.timeout(12000),
+            signal: AbortSignal.timeout(35000),
           });
         } catch {
           return null;
@@ -307,13 +309,16 @@ export async function invokeFunctionWithRetry<T>(name: string, body: unknown): P
       b?.isNsfw ||
       b?.story?.adult_mode ||
       b?.story?.nsfw ||
+      b?.story?.story_type === "real_sex" ||
+      b?.story?.has_explicit_images ||
+      b?.story?.is_adult ||
       b?.settings?.adultMode ||
       b?.settings?.modelId === "magnum-v4-local"
     );
     const isMagnumSelected = isAdultReq || b?.settings?.modelId === "magnum-v4-local";
     const historyList = (b?.history || []) as any[];
 
-    // Si el contenido es +18 / adulto o se configuró explícitamente Magnum v4 local, intentar primero servidor local
+    // Si el contenido es +18 / adulto o se configuro explicitamente Magnum v4 local, intentar primero servidor local
     if (name === "story-chat" && isMagnumSelected) {
       try {
         const local = await callLocalLlama<T>(body);
@@ -322,8 +327,36 @@ export async function invokeFunctionWithRetry<T>(name: string, body: unknown): P
           return local;
         }
       } catch {
-        // Fallback a servidor
+        // Fallback
       }
+
+      // Reintento limpio en local si fallo por contencion momentanea de GPU
+      try {
+        await wait(500);
+        const retryLocal = await callLocalLlama<T>(body);
+        const retryLocalContent = (retryLocal?.data as any)?.content;
+        if (retryLocal?.data && !isClientRefusal(retryLocalContent) && !isRepeatedAssistantReply(retryLocalContent, historyList)) {
+          return retryLocal;
+        }
+      } catch {
+        // Fallback a servidor sin censura
+      }
+
+      // En contenido adulto, JAMAS llamar a Gemini. Intentar exclusivamente a traves de callOwnAi (que usara OpenRouter uncensored)
+      const cloudResult = await callOwnAi<T>(name, { ...b, adultMode: true, isNsfw: true });
+      const firstContent = (cloudResult.data as any)?.content;
+      if (!cloudResult.error && firstContent && !isClientRefusal(firstContent) && !isRepeatedAssistantReply(firstContent, historyList)) {
+        return cloudResult;
+      }
+
+      // Si todo fallo en modo adulto, devolver un error claro de motor ocupado sin tocar Gemini jamas
+      return {
+        data: null,
+        error: {
+          message: "El motor de contenido adulto (Magnum v4) esta ocupado en la GPU. Intentalo de nuevo en unos segundos.",
+          context: new Response(null, { status: 503 })
+        }
+      };
     }
 
     let cloudResult = await callOwnAi<T>(name, body);

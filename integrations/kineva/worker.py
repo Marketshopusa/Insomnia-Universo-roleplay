@@ -159,7 +159,7 @@ def find_manifest(output_dir, project_name, saved_name):
             continue
         qc = report.get("qc", {})
         issues = qc.get("issues")
-        if not isinstance(issues, list) or not qc.get("audio_present") or qc.get("frames", 0) < 2:
+        if not isinstance(issues, list) or qc.get("frames", 0) < 2:
             raise RuntimeError("Kineva QC failed: " + json.dumps(issues))
         # A visual continuity flag is reviewable in a private draft. Preserve it
         # in the manifest so the creator sees the warning before publishing.

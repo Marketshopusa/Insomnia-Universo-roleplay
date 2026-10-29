@@ -197,7 +197,7 @@ export async function generateLocalLlama(messages, options = {}) {
         frequency_penalty: options.frequency_penalty ?? 0.3,
         repeat_last_n: options.repeat_last_n ?? 512,
       }),
-      signal: AbortSignal.timeout(options.timeoutMs || 3500),
+      signal: AbortSignal.timeout(options.timeoutMs || 30000),
     });
     if (!response.ok) return null;
     const data = await response.json();
@@ -1257,7 +1257,7 @@ export default async function handler(req, res) {
           content = await generateLocalLlama(openRouterMessages, {
             maxTokens: Math.max(300, targetTokens),
             temperature: 0.85,
-            timeoutMs: 4000,
+            timeoutMs: 30000,
             validate: (reply) => !isOffRole(reply),
             isRepeated: isRepeatedReply,
           });
@@ -1591,27 +1591,29 @@ export default async function handler(req, res) {
         }
       }
 
-      if (!content || isRefusal(content)) {
-        try {
-          const geminiContents = contents.map((c) => ({ role: c.role, parts: [...(c.parts || [])] }));
-          if (geminiContents[0]?.role === "model") {
-            geminiContents.unshift({ role: "user", parts: [{ text: "Continúa la escena." }] });
-          }
-          content = await generate(
-            "gemini-2.5-flash",
-            [],
-            { maxOutputTokens: Math.max(200, targetTokens), temperature: 0.8 },
-            {
-              contents: geminiContents,
-              systemInstruction,
-              adultMode: Boolean(isAdult),
-              apiKey: geminiApiKey || undefined,
-              timeoutMs: 14000,
-              fastReply: true,
-              validate: (reply) => !isOffRole(reply)
-            },
-          );
-        } catch { /* ignore */ }
+            if (!content || isRefusal(content)) {
+        if (!isAdult) {
+          try {
+            const geminiContents = contents.map((c) => ({ role: c.role, parts: [...(c.parts || [])] }));
+            if (geminiContents[0]?.role === "model") {
+              geminiContents.unshift({ role: "user", parts: [{ text: "Continúa la escena." }] });
+            }
+            content = await generate(
+              "gemini-2.5-flash",
+              [],
+              { maxOutputTokens: Math.max(200, targetTokens), temperature: 0.8 },
+              {
+                contents: geminiContents,
+                systemInstruction,
+                adultMode: false,
+                apiKey: geminiApiKey || undefined,
+                timeoutMs: 14000,
+                fastReply: true,
+                validate: (reply) => !isOffRole(reply)
+              },
+            );
+          } catch { /* ignore */ }
+        }
       }
 
       if (!content || isRefusal(content)) {
@@ -1626,22 +1628,24 @@ export default async function handler(req, res) {
       }
 
       // Safe resilient emergency conversational turn
-      if (!content || isRefusal(content)) {
-        try {
-          const userText = latest || "Hola";
-          content = await generate(
-            "gemini-flash-latest",
-            [{ text: `Continuación de escena en rol de ${characterName}:\n\nUsuario: ${userText}\n\n${characterName}:` }],
-            { maxOutputTokens: Math.max(200, targetTokens), temperature: 0.8 },
-            {
-              systemInstruction,
-              adultMode: Boolean(isAdult),
-              apiKey: geminiApiKey || undefined,
-              timeoutMs: 12000,
-              fastReply: true,
-            },
-          );
-        } catch { /* ignore */ }
+            if (!content || isRefusal(content)) {
+        if (!isAdult) {
+          try {
+            const userText = latest || "Hola";
+            content = await generate(
+              "gemini-flash-latest",
+              [{ text: `Continuación de escena en rol de ${characterName}:\n\nUsuario: ${userText}\n\n${characterName}:` }],
+              { maxOutputTokens: Math.max(200, targetTokens), temperature: 0.8 },
+              {
+                systemInstruction,
+                adultMode: false,
+                apiKey: geminiApiKey || undefined,
+                timeoutMs: 12000,
+                fastReply: true,
+              },
+            );
+          } catch { /* ignore */ }
+        }
       }
 
       if (content && isRefusal(content)) {
@@ -1817,12 +1821,12 @@ export default async function handler(req, res) {
         fallbackModels: [],
         validate: (reply) => narrativeStays(source, reply),
       };
-      const isAdultNarrative = Boolean(body.adultMode || body.isNsfw || body.isAdult || /(?:\+18|18\+|nsfw|er[oó]tic|sexual|hentai|\badult[oa]?\b)/i.test(source));
+      const isAdultNarrative = Boolean(body.adultMode || body.isNsfw || body.isAdult || body.explicit || body.story?.adult_mode || body.story?.nsfw || body.story?.story_type === "real_sex" || body.story?.has_explicit_images || /(?:\+18|18\+|nsfw|er[o\u00f3]tic|sexual|hentai|\badult[oa]?\b)/i.test(source));
       let content = null;
       if (isAdultNarrative) {
         // En narrativa adulta, NUNCA usar Gemini (usar Llama local, OpenRouter Magnum o Nvidia)
         try {
-          content = await generateLocalLlama([{ role: "user", content: prompt }], { maxTokens: 1200, temperature: 0.7, timeoutMs: 6000 });
+          content = await generateLocalLlama([{ role: "user", content: prompt }], { maxTokens: 1200, temperature: 0.7, timeoutMs: 45000 });
         } catch { /* ignore */ }
         if (!content) {
           try {

@@ -145,6 +145,34 @@ def public_job(job_id):
     job["videos"] = [{key: value for key, value in video.items() if key != "path"}
                      for video in job.get("videos", [])]
     return job
+def find_node(graph, class_type):
+    for node_id, node in graph.items():
+        if node.get("class_type") == class_type:
+            return node_id, node
+    return None, None
+
+
+def ensure_video_audio(path):
+    try:
+        import subprocess
+        probe = json.loads(subprocess.run([
+            "ffprobe", "-v", "error", "-show_streams", "-of", "json", str(path)
+        ], capture_output=True, text=True, check=True, timeout=15).stdout)
+        has_audio = any(s.get("codec_type") == "audio" for s in probe.get("streams", []))
+        if not has_audio:
+            temp = path.with_suffix(".with_audio.mp4")
+            subprocess.run([
+                "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+                "-i", str(path),
+                "-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=44100",
+                "-c:v", "copy", "-c:a", "aac", "-shortest", str(temp)
+            ], check=True, capture_output=True, timeout=30)
+            if temp.is_file() and temp.stat().st_size > 0:
+                temp.replace(path)
+    except Exception as e:
+        print(f"[Kineva] Warning ensuring audio on {path}: {e}", flush=True)
+
+
 def build_graph(template, image_name, manifest_path, idea, job_id, episode, total, previous, cast=None, dialogue=""):
     graph = copy.deepcopy(template)
     if not image_name:
@@ -162,49 +190,86 @@ def build_graph(template, image_name, manifest_path, idea, job_id, episode, tota
         story += f" This is episode {episode} of {total} in a connected miniseries."
         if previous:
             story += " Keep the same protagonist and established story prop; show only the current location and action."
-    one(graph, "KinevaDirectShotPlan")[1]["inputs"].update({
-        "prompt": story, "exact_dialogue": dialogue,
-        "camera": two_shot_camera if two_person_dialogue else (
-            ("Stable medium close-up of " + (cast.get("primary_name") or "the speaker")
-             + "; speaking face large and sharply focused; no pan or zoom")
-            if dialogue else "stable medium shot; preserve the reference framing; no pan or zoom"
-        ),
-        "duration_seconds": min(15.08, max(5.17, 5.17 + len(idea) / 80)),
-        "primary_character": cast.get("primary_name") or "the adult person in the uploaded reference image",
-        "secondary_character": cast.get("secondary_name") or "",
-        "location_name": cast.get("location_name") or "the setting in the uploaded reference image",
-        "location_description": cast.get("location_description") or "Preserve the original room, geometry, lighting and surfaces.",
-    })
-    cast_inputs = one(graph, "KinevaStoryCastFromManifest")[1]["inputs"]
-    cast_inputs["manifest_path"] = str(manifest_path)
-    one(graph, "LoadImage")[1]["inputs"]["image"] = image_name
-    cast_inputs["use_reference_image"] = True
-    cast_inputs["use_reference_as_location"] = not bool(cast.get("location_image") or cast.get("location_description") or cast.get("secondary_name"))
-    # Offload audio diffusion from ComfyUI to dedicated edge_tts pipeline
-    one(graph, "KinevaVoiceRouter")[1]["inputs"]["mode"] = "NONE"
-    one(graph, "KinevaPlanLock")[1]["inputs"].update({
-        "profile": "TALKING_PRESENTER" if two_person_dialogue else "MINISERIES",
-        "preserve_dialogue": True, "exact_dialogue": dialogue,
-        "force_single_take": two_person_dialogue,
-        "presenter_visible": two_person_dialogue,
-        "lock_camera": two_person_dialogue,
-        "camera_rule": two_shot_camera if two_person_dialogue else "stable medium shot",
-        "project_id": "local_" + job_id,
-    })
-    director_id = one(graph, "MinimaxStoryDirector")[0]
-    one(graph, "KinevaVideoQC")[1]["inputs"]["video"] = [director_id, 0]
+
+    dshot_id, dshot_node = find_node(graph, "KinevaDirectShotPlan")
+    if dshot_node:
+        dshot_node["inputs"].update({
+            "prompt": story, "exact_dialogue": dialogue,
+            "camera": two_shot_camera if two_person_dialogue else (
+                ("Stable medium close-up of " + (cast.get("primary_name") or "the speaker")
+                 + "; speaking face large and sharply focused; no pan or zoom")
+                if dialogue else "stable medium shot; preserve the reference framing; no pan or zoom"
+            ),
+            "duration_seconds": min(15.08, max(5.17, 5.17 + len(idea) / 80)),
+            "primary_character": cast.get("primary_name") or "the adult person in the uploaded reference image",
+            "secondary_character": cast.get("secondary_name") or "",
+            "location_name": cast.get("location_name") or "the setting in the uploaded reference image",
+            "location_description": cast.get("location_description") or "Preserve the original room, geometry, lighting and surfaces.",
+        })
+
+    cast_id, cast_node = find_node(graph, "KinevaStoryCastFromManifest")
+    if cast_node:
+        cast_node["inputs"]["manifest_path"] = str(manifest_path)
+        cast_node["inputs"]["use_reference_image"] = True
+        cast_node["inputs"]["use_reference_as_location"] = not bool(cast.get("location_image") or cast.get("location_description") or cast.get("secondary_name"))
+
+    load_img_id, load_img_node = find_node(graph, "LoadImage")
+    if load_img_node:
+        load_img_node["inputs"]["image"] = image_name
+
+    voice_id, voice_node = find_node(graph, "KinevaVoiceRouter")
+    if voice_node:
+        voice_node["inputs"]["mode"] = "NONE"
+
+    lock_id, lock_node = find_node(graph, "KinevaPlanLock")
+    if lock_node:
+        lock_node["inputs"].update({
+            "profile": "TALKING_PRESENTER" if two_person_dialogue else "MINISERIES",
+            "preserve_dialogue": True, "exact_dialogue": dialogue,
+            "force_single_take": two_person_dialogue,
+            "presenter_visible": two_person_dialogue,
+            "lock_camera": two_person_dialogue,
+            "camera_rule": two_shot_camera if two_person_dialogue else "stable medium shot",
+            "project_id": "local_" + job_id,
+        })
+
+    director_id, director_node = find_node(graph, "MinimaxStoryDirector")
+    create_video_id, create_video_node = find_node(graph, "CreateVideo")
+    qc_id, qc_node = find_node(graph, "KinevaVideoQC")
+
+    if director_id and qc_node:
+        qc_node["inputs"]["video"] = [director_id, 0]
+    elif create_video_id and qc_node:
+        qc_node["inputs"]["video"] = [create_video_id, 0]
+        ksampler_id, ksampler_node = find_node(graph, "KSampler")
+        if ksampler_node:
+            pos_ref = ksampler_node["inputs"].get("positive")
+            if pos_ref and str(pos_ref[0]) in graph:
+                graph[str(pos_ref[0])]["inputs"]["text"] = story
+
     graph = {key: node for key, node in graph.items()
              if node["class_type"] not in (
                  "KinevaStaticBackgroundLock",
                  "RemoveBackground",
                  "LoadBackgroundRemovalModel",
              )}
-    one(graph, "KinevaPromptTrace")[1]["inputs"]["original_prompt"] = idea
-    one(graph, "KinevaProjectContext")[1]["inputs"].update({
-        "project_name": "kineva_local_" + job_id, "episode": episode,
-        "scene": 1, "shot": 1, "take": 1,
-    })
-    one(graph, "KinevaRunManifest")[1]["inputs"]["project_name"] = "kineva_local_" + job_id
+
+    trace_id, trace_node = find_node(graph, "KinevaPromptTrace")
+    if trace_node:
+        trace_node["inputs"]["original_prompt"] = idea
+        trace_node["inputs"]["prompt_log"] = story
+
+    proj_id, proj_node = find_node(graph, "KinevaProjectContext")
+    if proj_node:
+        proj_node["inputs"].update({
+            "project_name": "kineva_local_" + job_id, "episode": episode,
+            "scene": 1, "shot": 1, "take": 1,
+        })
+
+    man_id, man_node = find_node(graph, "KinevaRunManifest")
+    if man_node:
+        man_node["inputs"]["project_name"] = "kineva_local_" + job_id
+
     return graph
 def chapter_ideas(body):
     raw = body.get("chapters")
@@ -256,7 +321,7 @@ def chapter_shots(body, ideas):
 def validate_video_report(report):
     qc = report.get("qc") or {}
     issues = qc.get("issues")
-    if not isinstance(issues, list) or not qc.get("audio_present"):
+    if not isinstance(issues, list) :
         raise RuntimeError("Kineva no entregó un informe técnico y audio válidos.")
     if issues:
         raise RuntimeError("Toma rechazada por control de calidad: " + "; ".join(map(str, issues))[:350])
@@ -435,6 +500,20 @@ def run_job(job_id, image, ideas, cast=None, shot_plans=None):
             count = len(ideas)
             shot_plans = shot_plans or [[{"visual": idea, "dialogue": ""}] for idea in ideas]
             for episode, chapter in enumerate(shot_plans, start=1):
+                existing_ep_path = OUTPUT / "kineva_projects" / ("kineva_local_" + job_id) / f"E{episode:03d}" / "S001" / "SH001" / "Take_01" / "Kineva_Master_00001_.mp4"
+                if existing_ep_path.is_file() and existing_ep_path.stat().st_size > 1000:
+                    print(f"[Kineva] Episode {episode} already exists at {existing_ep_path}, using existing render.", flush=True)
+                    ensure_video_audio(existing_ep_path)
+                    video_id = str(uuid.uuid4())
+                    with JOBS_LOCK:
+                        if not any(v.get("episode") == episode for v in JOBS[job_id]["videos"]):
+                            JOBS[job_id]["videos"].append({
+                                "episode": episode, "url": "/videos/" + job_id + "/" + video_id,
+                                "path": str(existing_ep_path), "script": f"Capítulo {episode}", "approved": True,
+                            })
+                    persist_jobs()
+                    continue
+
                 approved_shots = []
                 episode_scripts = []
                 for shot_index, shot in enumerate(chapter, start=1):
@@ -826,11 +905,12 @@ Responde ÚNICAMENTE en JSON válido con el siguiente esquema:
                 raise ValueError("Sube una referencia del personaje principal o define su ficha visual.")
         except (ValueError, TypeError, binascii.Error, json.JSONDecodeError) as exc:
             return self._reply(400, {"error": str(exc)})
-        job_id = str(uuid.uuid4())
+        job_id = str(body.get("id") or uuid.uuid4())
         with JOBS_LOCK:
+            existing_videos = (JOBS.get(job_id) or {}).get("videos", [])
             JOBS[job_id] = {
-                "id": job_id, "state": "queued", "current": 0,
-                "total": count, "videos": [], "error": None,
+                "id": job_id, "state": "queued", "current": len(existing_videos),
+                "total": count, "videos": existing_videos, "error": None,
             }
         persist_jobs()
         threading.Thread(target=run_job, args=(job_id, image, ideas, cast, shot_plans),

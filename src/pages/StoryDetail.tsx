@@ -383,7 +383,15 @@ type Mode = "select" | "read" | "roleplay";
       .filter((m) => m.id !== "intro" && m.id !== currentMessageId)
       .map((m) => ({ role: m.role, content: m.content }));
     const mother = getMotherCardConfig();
-    const isAdultStory = Boolean((adultEnabled && consentGiven) || story?.nsfw || story?.adult_mode || aiSettings?.adultMode);
+    const isAdultStory = Boolean(
+      (adultEnabled && consentGiven) ||
+      story?.nsfw ||
+      story?.adult_mode ||
+      story?.story_type === "real_sex" ||
+      story?.has_explicit_images ||
+      story?.is_adult ||
+      aiSettings?.adultMode
+    );
     const effectiveAiSettings: StoryAiSettings = {
       ...mother.aiSettings,
       ...aiSettings,
@@ -628,7 +636,9 @@ type Mode = "select" | "read" | "roleplay";
            },
            language,
            region: activeRegion(),
-           explicit: story.story_type === "real_sex" || !!story.has_explicit_images,
+           explicit: story.story_type === "real_sex" || !!story.has_explicit_images || Boolean(story?.nsfw || story?.adult_mode || story?.is_adult || adultEnabled),
+           adultMode: Boolean(story.story_type === "real_sex" || !!story.has_explicit_images || story?.nsfw || story?.adult_mode || story?.is_adult || adultEnabled),
+           isNsfw: Boolean(story.story_type === "real_sex" || !!story.has_explicit_images || story?.nsfw || story?.adult_mode || story?.is_adult || adultEnabled),
            chapters: 5,
            scene: messages
              .filter((message) => message.id !== "intro")
@@ -641,6 +651,7 @@ type Mode = "select" | "read" | "roleplay";
          const code = (data as any)?.error;
          if (code === "rate_limited") toast({ title: t("mode.rateLimited"), variant: "destructive" });
          else if (code === "credits_exhausted") toast({ title: t("mode.creditsExhausted"), variant: "destructive" });
+         else if (error?.message) toast({ title: language === "es" ? "Aviso del motor de IA" : "AI engine notification", description: error.message, variant: "destructive" });
          else toast({ title: t("mode.aiError"), variant: "destructive" });
        } else {
          setNarrative((data as any).content);
