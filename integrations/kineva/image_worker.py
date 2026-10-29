@@ -70,6 +70,9 @@ def save_cover_reference(url, job_id):
 
 def graph_for(job, attempt=0):
     neg_text = job.get("negative_prompt") or "worst quality, low quality, bad anatomy, deformed limbs, extra limbs, extra hands, mutated fingers, duplicate bodies, distorted face, blurry"
+    init_image = job.get("init_image")
+    denoise = float(job.get("denoise", 0.58 if init_image else 1.0))
+    steps = int(job.get("steps", 6 if init_image else 4))
     graph = {
         "1": {"class_type": "UNETLoader", "inputs": {"unet_name": MODEL, "weight_dtype": "default"}},
         "2": {"class_type": "CLIPLoader", "inputs": {"clip_name": ENCODER, "type": "flux2", "device": "default"}},
@@ -78,13 +81,17 @@ def graph_for(job, attempt=0):
         "5": {"class_type": "CLIPTextEncode", "inputs": {"text": neg_text, "clip": ["2", 0]}},
         "6": {"class_type": "EmptyFlux2LatentImage", "inputs": {"width": 768, "height": 1024, "batch_size": 1}},
         "7": {"class_type": "KSampler", "inputs": {"model": ["1", 0],
-            "seed": int(job["id"].replace("-", "")[:12], 16) + attempt, "steps": 4, "cfg": 1,
+            "seed": int(job["id"].replace("-", "")[:12], 16) + attempt, "steps": steps, "cfg": 1,
             "sampler_name": "euler", "scheduler": "simple", "positive": ["4", 0],
-            "negative": ["5", 0], "latent_image": ["6", 0], "denoise": 1}},
+            "negative": ["5", 0], "latent_image": ["6", 0], "denoise": denoise}},
         "8": {"class_type": "VAEDecode", "inputs": {"samples": ["7", 0], "vae": ["3", 0]}},
         "9": {"class_type": "SaveImage", "inputs": {
             "images": ["8", 0], "filename_prefix": "kineva_scenes/" + job["id"].replace("-", "")}},
     }
+    if init_image:
+        graph["6_load"] = {"class_type": "LoadImage", "inputs": {"image": init_image}}
+        graph["6_enc"] = {"class_type": "VAEEncode", "inputs": {"pixels": ["6_load", 0], "vae": ["3", 0]}}
+        graph["7"]["inputs"]["latent_image"] = ["6_enc", 0]
     references = job.get("reference_names") or ([job["reference_name"]] if job.get("reference_name") else [])
     positive, negative = ["4", 0], ["5", 0]
     for index, name in enumerate(references[:3]):

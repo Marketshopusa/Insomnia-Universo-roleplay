@@ -154,13 +154,57 @@ def find_node(graph, class_type):
 
 def pick_voice_for_speaker(speaker, language="Spanish"):
     name = str(speaker or "").lower()
-    male_indicators = ("hombre", "él", "chico", "padre", "policía", "detective", "carlos", "juan", "david", "diego", "pedro", "conductor", "narrador", "pasajero")
-    female_indicators = ("mujer", "ella", "chica", "madre", "paola", "dalia", "sofia", "maria", "laura", "conductora", "acompañante")
+    if any(ind in name for ind in ("javier", "alvaro", "andres", "marcos", "marco", "luis", "victor")):
+        return "es-VE-SebastianNeural"
+    if any(ind in name for ind in ("ana", "paola", "elena", "clara", "laura")):
+        return "es-VE-PaolaNeural"
+    male_indicators = ("carlos", "juan", "david", "diego", "pedro", "conductor", "padre", "policía", "detective", "hombre", "él", "chico", "narrador")
+    female_indicators = ("marta", "dalia", "sofia", "maria", "mujer", "ella", "chica", "madre", "conductora")
     if any(ind in name for ind in male_indicators):
         return "es-MX-JorgeNeural"
     if any(ind in name for ind in female_indicators):
         return "es-MX-DaliaNeural"
-    return "es-MX-DaliaNeural"
+    return "es-MX-JorgeNeural" if any(m in name for m in ("o", "el", "él")) else "es-MX-DaliaNeural"
+
+
+def synthesize_neural_dialogue(dialogue, speaker, output_wav_path, language="Spanish"):
+    dialogue = str(dialogue or "").strip()
+    if not dialogue:
+        return None
+    import asyncio, edge_tts
+    voice = pick_voice_for_speaker(speaker, language)
+    is_panic = bool(re.search(r"[!¡?¿]|corran|miedo|dios|monstruo|grito|ayuda|detendr|cuidado|rápido|qu[eé] fue", dialogue, re.I))
+    rate = "+12%" if is_panic else "+3%"
+    pitch = "+6Hz" if is_panic else "+0Hz"
+    output_wav = Path(output_wav_path)
+    output_wav.parent.mkdir(parents=True, exist_ok=True)
+    temp_mp3 = output_wav.with_suffix(".temp.mp3")
+    try:
+        asyncio.run(edge_tts.Communicate(dialogue, voice, rate=rate, pitch=pitch).save(str(temp_mp3)))
+        if temp_mp3.is_file() and temp_mp3.stat().st_size > 0:
+            subprocess.run([
+                "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+                "-i", str(temp_mp3),
+                "-ar", "16000", "-ac", "1",
+                str(output_wav)
+            ], check=True, timeout=20)
+            return output_wav
+    except Exception as exc:
+        print(f"[Kineva] Error generating neural dialogue: {exc}", flush=True)
+    finally:
+        temp_mp3.unlink(missing_ok=True)
+    return None
+
+
+def resolve_setting_anchor(cast, idea=""):
+    loc_name = str(cast.get("location_name") or "").strip()
+    loc_desc = str(cast.get("location_description") or "").strip()
+    if loc_name and len(loc_name) >= 3 and not re.search(r"^(captura|screenshot|img|image|foto)", loc_name, re.I):
+        return f"Setting anchor: {loc_name}. {loc_desc}. Continuous scene at this exact location, same environment and lighting."
+    txt = (str(idea or "") + " " + loc_desc).lower()
+    if any(w in txt for w in ("lago", "campamento", "bosque", "fogata", "marshmallow", "carpa", "árbol")):
+        return "Setting anchor: Campamento nocturno a orillas de un lago oscuro rodeado de altos pinos, fogata encendida con brasas en el centro, agua oscura reflejando la noche. Exact same campsite setting and campfire lighting across all shots."
+    return "Setting anchor: Consistent photorealistic cinematic scene, preserve identical room geometry, props and lighting."
 
 
 def inject_shot_audio(video_path, dialogue="", speaker="", language="Spanish"):
@@ -231,35 +275,39 @@ def ensure_video_audio(path):
 
 def determine_camera_rule(visual_prompt, has_dialogue, primary_name=""):
     vp = str(visual_prompt or "").lower()
-    if any(k in vp for k in ("primer plano", "close-up", "closeup", "rostro", "mirada", "expresión")):
-        return f"Stable cinematic close-up of {primary_name or 'the character'}; sharply focused face, natural subtle movement, no camera distortion."
-    if any(k in vp for k in ("plano detalle", "detalle", "manos", "pedal", "volante", "impacto", "objeto")):
-        return "Cinematic detail insert shot focusing exclusively on the described physical action or object; high physical realism, no extra characters."
-    if any(k in vp for k in ("plano general", "wide shot", "entorno", "paisaje", "barranco", "carretera")):
-        return "Cinematic wide establishing shot capturing the dramatic scale and lighting of the environment; steady cinematic camera movement."
+    is_horror = any(k in vp for k in ("miedo", "terror", "huyendo", "corran", "monstruo", "pánico", "figura", "oscura", "crujido", "grita"))
+    if any(k in vp for k in ("primer plano", "close-up", "closeup", "rostro", "mirada", "expresión", "cara")):
+        return f"Cinematic close-up portrait of {primary_name or 'the character'}; highly expressive face, natural subtle breathing, eye contact, dramatic atmospheric lighting, shallow depth of field, 24fps motion."
+    if any(k in vp for k in ("plano detalle", "detalle", "manos", "pedal", "volante", "impacto", "objeto", "marshmallow", "fuego")):
+        return "Cinematic detail insert macro shot with fluid realistic motion, crisp focus, dynamic physical realism, floating fire sparks and smoke drift."
+    if any(k in vp for k in ("plano general", "wide shot", "entorno", "paisaje", "barranco", "carretera", "bosque", "claro", "lago")):
+        return "Cinematic slow tracking wide establishing shot capturing the dark nocturnal environment; flickering campfire flames, rising embers, swaying pine trees, high atmospheric dynamism."
     if any(k in vp for k in ("dos personas", "dos personajes", "plano compartido", "conversación cara a cara")):
-        return "Stable medium two-shot keeping both characters distinct in their established positions, no merging of bodies, no camera jitter."
+        return "Cinematic dynamic two-shot keeping both characters distinctly framed in their positions, expressive acting interactions, natural motion, no merging."
+    if is_horror:
+        return "Cinematic dynamic handheld camera movement with subtle tension shake, rapid character movement, high-contrast chiaroscuro campfire lighting, fluid horror motion."
     if has_dialogue:
-        return f"Stable cinematic medium shot of {primary_name or 'the character'} speaking naturally; maintain exact identity and framing from the reference image."
-    return "Stable cinematic shot preserving the composition, lighting and framing of the initial frame; smooth natural motion."
+        return f"Cinematic medium portrait of {primary_name or 'the character'} speaking naturally; mouth articulating dialogue with expressive facial movement, steady camera with subtle organic drift."
+    return "Cinematic fluid camera shot preserving the character identity, lighting and location with dynamic realistic motion, no frozen frames."
 
 
-def build_graph(template, image_name, manifest_path, idea, job_id, episode, total, previous, cast=None, dialogue=""):
+def build_graph(template, image_name, manifest_path, idea, job_id, episode, total, previous, cast=None, dialogue="", audio_filename=None):
     graph = copy.deepcopy(template)
     if not image_name:
         raise ValueError("Kineva necesita una imagen inicial para esta toma.")
     cast = cast or {}
+    anchor = resolve_setting_anchor(cast, idea)
     camera_rule = determine_camera_rule(idea, bool(dialogue), cast.get("primary_name"))
-    story = idea.strip()
+    story = f"{anchor} {idea.strip()}. Fluid cinematic motion, 24fps filmic realism, natural performance."
     if total > 1:
         story += f" This is episode {episode} of {total} in a connected miniseries."
         if previous:
-            story += " Keep the same protagonist and established story prop; show only the current location and action."
+            story += " Keep the same protagonist and established setting; show only the current location and action."
 
     dshot_id, dshot_node = find_node(graph, "KinevaDirectShotPlan")
     if dshot_node:
         dshot_node["inputs"].update({
-            "prompt": story, "exact_dialogue": dialogue,
+            "prompt": idea.strip() if total <= 1 else story, "exact_dialogue": dialogue,
             "camera": camera_rule,
             "duration_seconds": min(15.08, max(5.17, 5.17 + len(idea) / 80)),
             "primary_character": cast.get("primary_name") or "the adult person in the uploaded reference image",
@@ -280,7 +328,7 @@ def build_graph(template, image_name, manifest_path, idea, job_id, episode, tota
 
     voice_id, voice_node = find_node(graph, "KinevaVoiceRouter")
     if voice_node:
-        voice_node["inputs"]["mode"] = "NONE"
+        voice_node["inputs"]["mode"] = "H3_DESIGNED" if dialogue else "NONE"
 
     lock_id, lock_node = find_node(graph, "KinevaPlanLock")
     if lock_node:
@@ -308,6 +356,43 @@ def build_graph(template, image_name, manifest_path, idea, job_id, episode, tota
             pos_ref = ksampler_node["inputs"].get("positive")
             if pos_ref and str(pos_ref[0]) in graph:
                 graph[str(pos_ref[0])]["inputs"]["text"] = story
+            neg_ref = ksampler_node["inputs"].get("negative")
+            if neg_ref and str(neg_ref[0]) in graph:
+                existing_neg = graph[str(neg_ref[0])]["inputs"].get("text", "")
+                motion_neg = "static image, frozen frame, lifeless, motionless slide show, mannequin, freeze frame"
+                if motion_neg not in existing_neg:
+                    graph[str(neg_ref[0])]["inputs"]["text"] = f"{existing_neg}, {motion_neg}".strip(", ")
+
+            if audio_filename:
+                wan_latent_id, wan_latent_node = find_node(graph, "Wan22ImageToVideoLatent")
+                vae_ref = wan_latent_node["inputs"].get("vae") if wan_latent_node else ["3", 0]
+                graph["98_load_audio"] = {
+                    "class_type": "LoadAudio",
+                    "inputs": {"audio": audio_filename}
+                }
+                graph["99_dancer_audio"] = {
+                    "class_type": "WanDancerEncodeAudio",
+                    "inputs": {"audio": ["98_load_audio", 0], "video_frames": 81, "audio_inject_scale": 1.2}
+                }
+                graph["7_sound_latent"] = {
+                    "class_type": "WanSoundImageToVideo",
+                    "inputs": {
+                        "positive": pos_ref,
+                        "negative": neg_ref,
+                        "vae": vae_ref,
+                        "ref_image": [load_img_id or "6", 0],
+                        "audio_encoder_output": ["99_dancer_audio", 0],
+                        "width": 768,
+                        "height": 1344,
+                        "length": 81,
+                        "batch_size": 1,
+                    }
+                }
+                ksampler_node["inputs"]["positive"] = ["7_sound_latent", 0]
+                ksampler_node["inputs"]["negative"] = ["7_sound_latent", 1]
+                ksampler_node["inputs"]["latent_image"] = ["7_sound_latent", 2]
+                if wan_latent_id and wan_latent_id in graph:
+                    del graph[wan_latent_id]
 
     graph = {key: node for key, node in graph.items()
              if node["class_type"] not in (
@@ -337,8 +422,8 @@ def chapter_ideas(body):
     raw = body.get("chapters")
     if isinstance(raw, list) and raw:
         ideas = []
-        if len(raw) > 20:
-            raise ValueError("Kineva admite hasta 20 capítulos por proyecto local.")
+        if len(raw) > 12:
+            raise ValueError("Kineva admite hasta 12 capítulos por proyecto local.")
         for item in raw:
             text = str(item or "").strip()
             if len(text) < 5 or len(text) > 4000:
@@ -409,6 +494,7 @@ def review_video_people(path, max_people):
         print(f"[Kineva] Warning during review_video_people: {exc}", flush=True)
 def select_shot_cast(cast, references, image_name, visual, speaker="", dialogue=""):
     """Put the actual speaker first so the voice and exact dialogue bind to that identity."""
+    is_creature = bool(re.search(r"\b(figura oscura|monstruo|criatura|sombra|ente|bestia|demonio|espectro|aparici[oó]n|cad[aá]ver)\b", visual, re.IGNORECASE))
     primary_label = (cast.get("primary_name") or "").strip() or "Protagonista"
     actor_sources = [(primary_label, image_name)]
     if cast.get("secondary_image") and cast.get("secondary_name"):
@@ -426,7 +512,12 @@ def select_shot_cast(cast, references, image_name, visual, speaker="", dialogue=
     mentioned = [(name, path) for name, path in actor_sources
                  if name and re.search(r"(?<!\w)" + re.escape(name) + r"(?!\w)", visual, re.IGNORECASE)]
     if len(mentioned) > 2:
-        mentioned = mentioned[:2]
+        raise RuntimeError("Una toma individual no admite más de dos personajes en cuadro.")
+
+    if is_creature and not mentioned and not (speaker and dialogue):
+        shot_cast = dict(cast, primary_name="Inhuman shadowy creature", secondary_name="")
+        return shot_cast, []
+
     selected = mentioned if mentioned else actor_sources[:2]
 
     speaker = str(speaker or "").strip()
@@ -434,11 +525,9 @@ def select_shot_cast(cast, references, image_name, visual, speaker="", dialogue=
         speaking = next(((name, path) for name, path in actor_sources
                          if name and name.casefold() == speaker.casefold()), None)
         if speaking is None:
-            # Fallback 1: substring match
             speaking = next(((name, path) for name, path in actor_sources
                              if name and (name.casefold() in speaker.casefold() or speaker.casefold() in name.casefold())), None)
         if speaking is None:
-            # Fallback 2: asignar automáticamente al protagonista principal sin error
             speaking = actor_sources[0]
 
         selected = [speaking] + [actor for actor in selected if actor[0] != speaking[0]][:1]
@@ -452,33 +541,51 @@ def select_shot_cast(cast, references, image_name, visual, speaker="", dialogue=
 
 def create_shot_reference(job_id, episode, shot_index, visual, cast, source_names, dialogue=""):
     """Make a distinct, reviewable first frame for each shot from cast references."""
-    prompt = (
-        "One coherent photorealistic cinematic film frame, one instant in one location. "
-        "Depict this visible action exactly: " + visual[:1200] + ". "
-        "Image 1 identifies the primary adult, not the location or camera pose. "
-        "Keep that person's face, age, hair and build. "
-    )
-    if dialogue:
-        prompt += ("Frame the speaking person in a medium close-up with a sharply visible face. "
-                   "Keep the listener visually distinct and the same room recognizable. ")
-    if len(source_names) >= 2 and cast.get("secondary_name") and re.search(r"(?<!\w)" + re.escape(cast["secondary_name"]) + r"(?!\w)", visual, re.IGNORECASE):
-        prompt += (
-            "Image 2 identifies the second adult separately; never merge their faces or bodies. "
-            "Primary: " + cast.get("primary_name", "primary") + ". "
-            "Second: " + cast["secondary_name"] + ". "
+    anchor = resolve_setting_anchor(cast, visual)
+    is_creature = bool(re.search(r"\b(figura oscura|monstruo|criatura|sombra|ente|bestia|demonio|espectro|aparici[oó]n|cad[aá]ver)\b", visual, re.IGNORECASE))
+    is_detail = bool(re.search(r"\b(plano detalle|detalle|manos|fuego|fogata|objeto|marshmallows)\b", visual, re.IGNORECASE))
+
+    if is_creature and not source_names:
+        prompt = (
+            f"{anchor} Terrifying photorealistic cinematic film frame: A horrific twisted humanoid shadow figure, "
+            f"sinister monstrous creature emerging from between dark pine trees into the faint rim of firelight. "
+            f"Inhuman nightmarish anatomy, deformed silhouette, pure horror cinematography. No human actor face."
         )
+        init_image = None
+        denoise = 1.0
     else:
-        prompt += " Single individual in frame only. No secondary character. Anatomically complete human body, exactly one head, two arms, two hands, no extra limbs. " 
-    if cast.get("location_name"):
-        prompt += "Location: " + cast["location_name"] + ". " + cast.get("location_description", "")[:350] + ". "
-    prompt += "Exactly the participants in the action, distinct anatomically complete people. No duplicates, collage, captions or extra limbs."
+        prompt = (
+            f"{anchor} One coherent photorealistic cinematic film frame, one instant in one location. "
+            f"Depict this visible action exactly: {visual[:1000]}. "
+            f"Image 1 identifies the primary character {cast.get('primary_name', '')}; preserve that person's exact face, age, hair and build. "
+        )
+        if dialogue:
+            prompt += "Frame the speaking person in a medium close-up with a sharply visible face and natural mouth articulation. "
+        if len(source_names) >= 2 and cast.get("secondary_name") and re.search(r"(?<!\w)" + re.escape(cast["secondary_name"]) + r"(?!\w)", visual, re.IGNORECASE):
+            prompt += (
+                f"Image 2 identifies the second character {cast['secondary_name']} separately; never merge their faces or bodies. "
+                f"Primary: {cast.get('primary_name', 'primary')}. Second: {cast['secondary_name']}. "
+            )
+        else:
+            prompt += "Single individual in frame only. Anatomically complete human body, exactly one head, two arms, two hands, no extra limbs. "
+        prompt += "Distinct anatomically complete people. No duplicates, collage, captions or extra limbs."
+        init_image = source_names[0] if (source_names and not is_detail) else None
+        denoise = 0.58 if init_image else 1.0
+
     seed_id = str(uuid.uuid5(uuid.UUID(job_id), f"shot-{episode}-{shot_index}"))
-    max_people = 2 if cast.get("secondary_name") else 1
+    max_people = 2 if cast.get("secondary_name") and len(source_names) >= 2 else 1
     image = None
     last_candidate = None
     for attempt in range(3):
-        candidate = render({"id": seed_id, "prompt": prompt, "reference_names": source_names},
-                           COMFY, OUTPUT, attempt=attempt, timeout=900)
+        render_payload = {
+            "id": seed_id,
+            "prompt": prompt,
+            "reference_names": source_names,
+        }
+        if init_image:
+            render_payload["init_image"] = init_image
+            render_payload["denoise"] = denoise
+        candidate = render(render_payload, COMFY, OUTPUT, attempt=attempt, timeout=900)
         if candidate:
             last_candidate = candidate
             try:
@@ -604,8 +711,14 @@ def run_job(job_id, image, ideas, cast=None, shot_plans=None):
                         cast, references, image_name, idea, shot.get("speaker"), dialogue)
                     shot_image_name = create_shot_reference(
                         job_id, episode, shot_index, idea, shot_cast, shot_sources, dialogue)
+                    audio_filename = None
+                    if dialogue:
+                        rel_audio = f"kineva_local/{job_id}_ep{episode}_shot{shot_index}_dialogue.wav"
+                        full_audio = INPUT / rel_audio
+                        if synthesize_neural_dialogue(dialogue, shot.get("speaker"), full_audio):
+                            audio_filename = rel_audio
                     graph = build_graph(
-                        template, shot_image_name, manifest_path, idea, job_id, episode, count, previous, shot_cast, dialogue)
+                        template, shot_image_name, manifest_path, idea, job_id, episode, count, previous, shot_cast, dialogue, audio_filename=audio_filename)
                     one(graph, "KinevaProjectContext")[1]["inputs"]["shot"] = shot_index
                     export_node = one(graph, "KinevaMasterExport")[0]
                     created = COMFY.call("POST", "/prompt", {

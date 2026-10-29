@@ -853,26 +853,18 @@ function extractDialogueFromText(text: string): string {
     ];
 
     const effectivePrimary = primaryName.trim() || String(first.name || "").slice(0, 80) || manualSpeakers.find(Boolean) || "Protagonista";
+    const effectiveLocName = locationName.trim() || String(setting.place || "").slice(0, 80) || (description.toLowerCase().includes("lago") ? "Campamento en el Lago" : "");
+    const effectiveLocDesc = locationDescription.trim() || String([setting.place, setting.time, setting.visual_style].filter(Boolean).join(". ")).slice(0, 500) || (description.toLowerCase().includes("lago") ? "Campamento nocturno a orillas de un lago oscuro, fogata encendida con brasas, pinos y agua oscura de fondo." : "");
     const cast = {
-
       primary_name: effectivePrimary,
-
       primary_description: image ? "" : String(first.visual_prompt || [first.appearance, first.wardrobe].filter(Boolean).join(". ")).slice(0, 500),
-
       secondary_name: secondaryName.trim() || (secondaryImage ? "" : String(second.name || "").slice(0, 80)),
-
       secondary_description: secondaryImage ? "" : String(second.visual_prompt || [second.appearance, second.wardrobe].filter(Boolean).join(". ")).slice(0, 500),
-
       secondary_image: secondaryImage ? await encodeLocalImage(secondaryImage) : null,
-
       supporting,
-
-      location_name: locationName.trim() || String(setting.place || "").slice(0, 80),
-
-      location_description: locationDescription.trim() || String([setting.place, setting.time, setting.visual_style].filter(Boolean).join(". ")).slice(0, 500),
-
+      location_name: effectiveLocName,
+      location_description: effectiveLocDesc,
       location_image: locationImage ? await encodeLocalImage(locationImage) : null,
-
     };
 
     const shotPlans = chapters.map((chapText, index) => {
@@ -1120,6 +1112,39 @@ function extractDialogueFromText(text: string): string {
       setManualLines(returnedChapters.map((chapter: any) => String(chapter.dialogue || "").slice(0, 400)));
 
       setManualSpeakers(returnedChapters.map((chapter: any) => String(chapter.speaker || "").slice(0, 80)));
+
+      // Auto-enlazar personajes del guion al reparto si los nombres son genericos
+      const draftNames: string[] = [];
+      if (Array.isArray(draft.cast_roles)) {
+        draft.cast_roles.forEach((cr: any) => {
+          if (cr?.name && typeof cr.name === "string" && !draftNames.includes(cr.name.trim())) {
+            draftNames.push(cr.name.trim());
+          }
+        });
+      }
+      returnedChapters.forEach((ch: any) => {
+        if (ch?.speaker && typeof ch.speaker === "string" && !draftNames.includes(ch.speaker.trim())) {
+          draftNames.push(ch.speaker.trim());
+        }
+      });
+      const isGeneric = (n: string) => !n || /^(captura|screenshot|img|image|foto|actor|personaje|protagonista)/i.test(n.trim());
+      if (draftNames.length > 0) {
+        if (isGeneric(primaryName) && draftNames[0]) setPrimaryName(draftNames[0]);
+        if (isGeneric(secondaryName) && draftNames[1]) setSecondaryName(draftNames[1]);
+        if (supportingCast.length > 0) {
+          setSupportingCast((curr) => curr.map((act, idx) => {
+            const assigned = draftNames[2 + idx];
+            return (assigned && isGeneric(act.name)) ? { ...act, name: assigned } : act;
+          }));
+        }
+      }
+      if (!locationName.trim()) {
+        const textToScan = `${draft.title || ""} ${idea || ""}`.toLowerCase();
+        if (textToScan.includes("lago") || textToScan.includes("bosque") || textToScan.includes("campamento")) {
+          setLocationName("Campamento en el Lago");
+          setLocationDescription("Campamento nocturno a orillas de un lago oscuro, fogata encendida con brasas, altos pinos y agua oscura de fondo.");
+        }
+      }
 
 
 
@@ -3804,18 +3829,23 @@ function extractDialogueFromText(text: string): string {
                    </span>
 
                    <CastGallery
-
-                     userId={user.id}
-
-                     onPrimary={(file, name) => { setReferenceImage(file); setPrimaryName(name); }}
-
-                     onSecondary={(file, name) => { setSecondaryImage(file); setSecondaryName(name); }}
-
-                     onSupporting={(file, name) => setSupportingCast((current) => current.some((actor) => actor.name === name) ? current : [...current, { file, name }])}
-
-                     onAssignCustom={(file, name) => addCustomCastMember("secondary", name, file)}
-
-                   />
+                    userId={user.id}
+                    onPrimary={(file, name) => {
+                      setReferenceImage(file);
+                      const clean = (/^(captura|screenshot|img|image|foto)/i.test(name) || !name.trim()) ? "Carlos" : name;
+                      setPrimaryName(clean);
+                    }}
+                    onSecondary={(file, name) => {
+                      setSecondaryImage(file);
+                      const clean = (/^(captura|screenshot|img|image|foto)/i.test(name) || !name.trim()) ? "Marta" : name;
+                      setSecondaryName(clean);
+                    }}
+                    onSupporting={(file, name) => {
+                      const clean = (/^(captura|screenshot|img|image|foto)/i.test(name) || !name.trim()) ? `Actor ${supportingCast.length + 1}` : name;
+                      setSupportingCast((current) => current.some((actor) => actor.name === clean) ? current : [...current, { file, name: clean }]);
+                    }}
+                    onAssignCustom={(file, name) => addCustomCastMember("secondary", name, file)}
+                  />
 
                  </div>
 
