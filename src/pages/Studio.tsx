@@ -235,6 +235,7 @@ function extractDialogueFromText(text: string): string {
   const [secondaryImage, setSecondaryImage] = useState<File | null>(null);
 
   const [supportingCast, setSupportingCast] = useState<{ name: string; file: File }[]>([]);
+  const [showAdvancedCast, setShowAdvancedCast] = useState(false);
 
   const [locationName, setLocationName] = useState("");
 
@@ -2625,1504 +2626,642 @@ function extractDialogueFromText(text: string): string {
         {/* Pestañas de Dirección de Estudio */}
 
         <Tabs value={studioTab} onValueChange={(v) => setStudioTab(v as any)} className="w-full space-y-6">
-
-          <TabsList className="grid grid-cols-2 md:grid-cols-4 w-full h-auto p-1.5 bg-card/60 backdrop-blur-md border border-border/80 rounded-xl shadow-inner">
-
-            <TabsTrigger value="script" className="flex items-center gap-2 py-2.5 text-xs font-semibold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground transition-all">
-
+          <TabsList className="grid grid-cols-2 max-w-xl mx-auto w-full h-auto p-1.5 bg-card/60 backdrop-blur-md border border-border/80 rounded-xl shadow-inner">
+            <TabsTrigger value="script" className="flex items-center justify-center gap-2 py-3 text-xs sm:text-sm font-semibold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground transition-all">
               <Sparkles className="w-4 h-4" />
-
-              <span>1. Guion & Reparto</span>
-
+              <span>1. Estudio de Creación (Paso a Paso)</span>
             </TabsTrigger>
-
-            <TabsTrigger value="filming" className="flex items-center gap-2 py-2.5 text-xs font-semibold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground transition-all">
-
+            <TabsTrigger value="filming" className="flex items-center justify-center gap-2 py-3 text-xs sm:text-sm font-semibold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground transition-all">
               <Clapperboard className="w-4 h-4" />
-
-              <span>2. Monitor de Rodaje en Vivo</span>
-
+              <span>2. Sala de Rodaje y Series</span>
               {(generatingVideos || (localJob && ["rendering", "queued", "video_review"].includes(localJob.state))) && (
-
-                <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse ml-1" />
-
+                <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse ml-1.5" />
               )}
-
             </TabsTrigger>
-
-            <TabsTrigger value="catalog" className="flex items-center gap-2 py-2.5 text-xs font-semibold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground transition-all">
-
-              <Film className="w-4 h-4" />
-
-              <span>3. Mis Series Producidas</span>
-
-            </TabsTrigger>
-
-            <TabsTrigger value="elements" className="flex items-center gap-2 py-2.5 text-xs font-semibold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground transition-all">
-
-              <Users className="w-4 h-4" />
-
-              <span>4. Casting Avanzado & Sets</span>
-
-            </TabsTrigger>
-
           </TabsList>
 
-
-
-          {/* TAB 1: GUION & STORYBOARD */}
-
+          {/* VISTA 1: ESTUDIO DE CREACIÓN LINEAL PASO A PASO */}
           <TabsContent value="script" className="space-y-6 m-0 focus-visible:outline-none">
 
-            <Card id="studio-editor" className="p-6 mb-6 space-y-4">
-
-          <div className="flex flex-wrap items-center justify-between gap-2">
-
-            <div>
-
-              <h2 className="text-lg font-medium">
-
-                {chapterCount === 1 ? "Producción de Capítulo Piloto (2 Minutos / Multi-toma)" : `Producción de miniserie (${chapterCount} capítulos)`}
-
-              </h2>
-
-              <p className="text-sm text-muted-foreground">
-
-                {chapterCount === 1
-
-                  ? "Escribe una idea. La IA desglosa un episodio piloto completo de 2 minutos (120s) en tomas cinematográficas encadenadas con voz neural en español latino."
-
-                  : `Escribe una idea. La IA prepara los ${chapterCount} capítulos con tomas cinematográficas y diálogos listos para Wan 2.1.`}
-
-              </p>
-
-            </div>
-
-            <Badge variant="secondary" className="text-xs uppercase">
-
-              {studioGenre === "adult" ? "Adulto / NSFW" : `Género: ${studioGenre}`}
-
-            </Badge>
-
-          </div>
-
-
-
-          {/* Selector de número de capítulos para el guion */}
-
-          <div className="flex flex-wrap items-center gap-2 pt-1 pb-1">
-
-            <span className="text-xs font-semibold text-muted-foreground mr-1">Estructura dramática:</span>
-
-            {[
-
-              { count: 1, label: "1 Capítulo (Piloto 2 Minutos / Multi-toma)" },
-
-              { count: 3, label: "3 Capítulos (Trilogía de impacto)" },
-
-              { count: 5, label: "5 Capítulos (Arco estándar)" },
-
-              { count: 7, label: "7 Capítulos (Miniserie completa)" },
-
-              { count: 10, label: "10 Capítulos (Temporada vertical)" },
-
-            ].map((opt) => (
-
-              <Button
-
-                key={opt.count}
-
-                type="button"
-
-                variant={chapterCount === opt.count ? "default" : "outline"}
-
-                size="sm"
-
-                className={`h-7 px-3 text-xs font-medium transition-all ${
-
-                  chapterCount === opt.count
-
-                    ? "bg-primary text-primary-foreground shadow"
-
-                    : "text-muted-foreground hover:text-foreground hover:bg-muted"
-
-                }`}
-
-                onClick={() => handleChapterCountChange(opt.count)}
-
-              >
-
-                {opt.label}
-
-              </Button>
-
-            ))}
-
-          </div>
-
-
-
-          <Textarea
-
-            aria-label="Idea de la miniserie"
-
-            placeholder="Ejemplo: una pareja investiga una mansión abandonada cuando las sombras cobran vida"
-
-            value={description}
-
-            onChange={(event) => setDescription(event.target.value)}
-
-            className="min-h-[80px]"
-
-          />
-
-
-
-          <div className="flex flex-wrap gap-2">
-
-            <Button
-
-              type="button"
-
-              className="bg-accent text-accent-foreground font-semibold hover:bg-accent/90"
-
-              onClick={() => void draftThreeChapters()}
-
-              disabled={draftingThree || generatingVideos}
-
-            >
-
-              {draftingThree ? (
-
-                <>
-
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" /> {chapterCount === 1 ? "Preparando guion del Piloto (2 Minutos Multi-toma) con IA…" : `Preparando ${chapterCount} capítulos con IA…`}
-
-                </>
-
-              ) : (
-
-                <>
-
-                  <Sparkles className="w-4 h-4 mr-2" /> {chapterCount === 1 ? "Generar guion del Piloto (2 Minutos Multi-toma) con IA" : `Generar guion de los ${chapterCount} capítulos con IA`}
-
-                </>
-
-              )}
-
-            </Button>
-
-            <Button type="button" variant="outline" onClick={() => setShowManualEditor((value) => !value)}>
-
-              {showManualEditor ? "Ocultar edición de escenas" : "Editar tomas manualmente"}
-
-            </Button>
-
-          </div>
-
-
-
-          {/* Director Visual de Poses y Escenas Multi-Género */}
-
-          <StudioPresetDirector
-
-            chapterCount={chapterCount}
-
-            activeGenre={studioGenre}
-
-            onGenreSelect={(g) => {
-
-              setStudioGenre(g);
-
-              setIsSafeForWork(g !== "adult");
-
-            }}
-
-            initialCategory={isSafeForWork ? "sfw" : "nsfw"}
-
-            onApplyScene={(chapterIndex, visualPrompt, suggestedLine) => {
-
-              setManualScenes((current) =>
-
-                current.map((s, i) => (i === chapterIndex ? visualPrompt : s))
-
-              );
-
-              if (suggestedLine) {
-
-                setManualLines((current) =>
-
-                  current.map((l, i) => (i === chapterIndex ? suggestedLine : l))
-
-                );
-
-              }
-
-              setShowManualEditor(true);
-
-              toast({
-
-                title: `Escena configurada en Capítulo ${chapterIndex + 1}`,
-
-                description: "Se inyectó el encuadre de cámara y prompt cinematográfico.",
-
-              });
-
-            }}
-
-            onApplyArc={(arcTitle, chapters) => {
-
-              setManualTitle(arcTitle);
-
-              if (chapters.length > 0) {
-
-                setChapterCount(chapters.length);
-
-                setManualScenes(chapters.map((c) => c.visual));
-
-                setManualLines(chapters.map((c) => c.line));
-
-              }
-
-              setShowManualEditor(true);
-
-              toast({
-
-                title: `Arco cinematográfico cargado: ${arcTitle}`,
-
-                description: `Se configuraron ${chapters.length} capítulos con tomas y diálogos coordinados.`,
-
-              });
-
-            }}
-
-          />
-
-
-
-          {!novel && showManualEditor && <>
-
-          {!!castRoles.length && <p className="text-sm text-muted-foreground">Reparto propuesto: {castRoles.map((actor) => `${actor.name}: ${actor.role}`).join(" · ")}</p>}
-
-          <input aria-label="Título de la miniserie" placeholder="Título de la miniserie" value={manualTitle}
-
-            onChange={(event) => setManualTitle(event.target.value)} maxLength={120}
-
-            className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm" />
-
-
-
-          {manualScenes.slice(0, chapterCount).map((scene, index) => {
-
-            const subShots = chapterSubShots[index] || [];
-
-            return (
-
-              <div key={index} className="space-y-3 border-t border-border pt-4 bg-muted/10 p-3 rounded-lg">
-
-                <div className="flex items-center justify-between">
-
-                  <Label htmlFor={"manual-scene-" + index} className="font-semibold text-sm">
-
-                    Capítulo {index + 1}: Toma Principal (Master Shot)
-
-                  </Label>
-
-                  <Button
-
-                    type="button"
-
-                    variant="ghost"
-
-                    size="sm"
-
-                    className="text-xs text-primary hover:bg-primary/10 gap-1 h-7"
-
-                    onClick={() => addSubShot(index)}
-
-                  >
-
-                    <Plus className="w-3.5 h-3.5" /> Añadir Subtoma / Ángulo
-
-                  </Button>
-
-                </div>
-
-                <Textarea id={"manual-scene-" + index} value={scene} placeholder="Describe la acción cinematográfica o pose de la toma principal"
-
-                  onChange={(event) => setManualScenes((current) => current.map((value, i) => i === index ? event.target.value : value))}
-
-                  className="min-h-[70px]" maxLength={1200} />
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-
-                  <select aria-label={"Quién habla en el capítulo " + (index + 1)} value={manualSpeakers[index] || ""}
-
-                    onChange={(event) => setManualSpeakers((current) => current.map((name, i) => i === index ? event.target.value : name))}
-
-                    className="w-full rounded-md border border-border bg-background px-3 py-2 text-xs">
-
-                    <option value="">Habla el personaje principal</option>
-
-                    {allAvailableSpeakers.map((name) =>
-
-                      <option key={name} value={name}>{name}</option>)}
-
-                  </select>
-
-                  <input aria-label={"Frase del capítulo " + (index + 1)} value={manualLines[index] || ""}
-
-                    placeholder="Diálogo hablado en la toma principal (opcional)"
-
-                    onChange={(event) => setManualLines((current) => current.map((value, i) => i === index ? event.target.value : value))}
-
-                    className="w-full rounded-md border border-border bg-background px-3 py-2 text-xs" maxLength={400} />
-
-                </div>
-
-
-
-                {/* Sub-shots list */}
-
-                {subShots.length > 0 && (
-
-                  <div className="space-y-2.5 pl-3 border-l-2 border-primary/40 pt-2">
-
-                    <span className="text-[11px] font-semibold text-primary uppercase tracking-wider flex items-center gap-1">
-
-                      <Camera className="w-3 h-3" /> Subtomas adicionales ({subShots.length})
-
-                    </span>
-
-                    {subShots.map((sub, sIdx) => (
-
-                      <div key={sub.id} className="p-2.5 rounded border border-border/80 bg-background space-y-2">
-
-                        <div className="flex items-center justify-between">
-
-                          <span className="text-xs font-medium">Toma {index + 1}.{sIdx + 2} (Ángulo secundario / Reacción)</span>
-
-                          <Button
-
-                            type="button"
-
-                            variant="ghost"
-
-                            size="icon"
-
-                            className="h-5 w-5 text-muted-foreground hover:text-destructive"
-
-                            onClick={() => removeSubShot(index, sIdx)}
-
-                          >
-
-                            <Trash2 className="w-3 h-3" />
-
-                          </Button>
-
-                        </div>
-
-                        <Textarea
-
-                          placeholder="Describe el ángulo secundario (ej. Primer plano reacción, detalle manos, contraplano)"
-
-                          value={sub.visual}
-
-                          onChange={(e) => updateSubShot(index, sIdx, "visual", e.target.value)}
-
-                          className="min-h-[50px] text-xs"
-
-                          maxLength={1200}
-
-                        />
-
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-
-                          <select
-
-                            value={sub.speaker}
-
-                            onChange={(e) => updateSubShot(index, sIdx, "speaker", e.target.value)}
-
-                            className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-xs"
-
-                          >
-
-                            <option value="">Quién habla en esta toma</option>
-
-                            {allAvailableSpeakers.map((name) => (
-
-                              <option key={name} value={name}>{name}</option>
-
-                            ))}
-
-                          </select>
-
-                          <input
-
-                            placeholder="Línea de diálogo o sonido específico"
-
-                            value={sub.dialogue}
-
-                            onChange={(e) => updateSubShot(index, sIdx, "dialogue", e.target.value)}
-
-                            className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-xs"
-
-                            maxLength={400}
-
-                          />
-
-                        </div>
-
-                      </div>
-
-                    ))}
-
+            {/* PASO 1: TU HISTORIA Y GÉNERO */}
+            <Card id="studio-editor" className="p-6 space-y-5 border-border/80 bg-card/60 backdrop-blur-sm shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-border/40">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-full bg-primary/10 border border-primary/20 text-primary font-bold flex items-center justify-center text-sm shadow-sm">
+                    1
                   </div>
-
-                )}
-
-
-
-                {seriesEpisodeIds[index] && savedSeriesId && <Button type="button" size="sm" variant="secondary" disabled={generatingVideos}
-
-                  onClick={() => void regenerateChapter(index)}>Regenerar solo capítulo {index + 1}</Button>}
-
-              </div>
-
-            );
-
-          })}
-
-
-
-          <div className="flex flex-col sm:flex-row gap-3 pt-2">
-
-            <Button
-
-              type="button"
-
-              variant="outline"
-
-              size="lg"
-
-              className="flex-1 h-14 text-base font-semibold"
-
-              onClick={() => void handleSaveManualDraftOnly()}
-
-              disabled={generating || generatingVideos || savingDraft || !showManualEditor}
-
-            >
-
-              {savingDraft ? (
-
-                <>
-
-                  <Loader2 className="w-5 h-5 mr-2 animate-spin" /> Guardando cambios…
-
-                </>
-
-              ) : (
-
-                <>
-
-                  <Save className="w-5 h-5 mr-2" /> Guardar cambios del guion
-
-                </>
-
-              )}
-
-            </Button>
-
-            <Button
-
-              type="button"
-
-              size="lg"
-
-              className="flex-1 h-14 text-base font-semibold"
-
-              onClick={() => void handleManualSeries()}
-
-              disabled={generating || generatingVideos || draftingThree || savingDraft || !showManualEditor}
-
-            >
-
-              {generatingVideos ? (
-
-                <>
-
-                  <Loader2 className="w-5 h-5 mr-2 animate-spin" /> {videoProgress || "Filmando con ComfyUI en tu PC…"}
-
-                </>
-
-              ) : (
-
-                <>
-
-                  <Clapperboard className="w-5 h-5 mr-2" /> Filmar los {chapterCount} capítulos en ComfyUI (GPU local)
-
-                </>
-
-              )}
-
-            </Button>
-
-          </div>
-
-          </>}
-
-        </Card>
-
-
-
-        {/* Generar proyecto completo con IA solo cuando no se usa el editor de 3 capítulos */}
-
-            {novel && (
-
-          <Card id="studio-novel-card" className="p-6 mb-6 space-y-6">
-
-            <div className="flex flex-wrap items-start justify-between gap-4">
-
-              <div className="flex-1">
-
-                <input
-
-                  aria-label="Título de la miniserie"
-
-                  value={novel.title || ""}
-
-                  onChange={(e) => setNovel((prev: any) => prev ? ({ ...prev, title: e.target.value }) : prev)}
-
-                  placeholder="Título de la miniserie"
-
-                  className="font-display text-2xl font-bold bg-transparent border-b border-border/60 pb-1 w-full focus:outline-none focus:border-primary"
-
-                />
-
-                {savedSeriesId && (
-
-                  <a href="#studio-production" className="mt-2 inline-block text-xs uppercase tracking-[0.16em] text-accent">
-
-                    Ver borrador privado en Producción
-
-                  </a>
-
-                )}
-
-                {novel.logline && (
-
-                  <p className="text-sm text-muted-foreground mt-1">{novel.logline}</p>
-
-                )}
-
-              </div>
-
-            </div>
-
-
-
-            {Array.isArray(novel.characters) && novel.characters.length > 0 && (
-
-              <div className="space-y-3">
-
-                <h3 className="text-sm uppercase tracking-[0.2em] text-accent">
-
-                  Biblia de personajes (persistente)
-
-                </h3>
-
-                {novel.characters.map((c: any, i: number) => (
-
-                  <div key={i} className="border border-border p-3 text-sm space-y-1">
-
-                    <p className="font-medium">
-
-                      {c.name} {c.age ? `· ${c.age}` : ""} {c.role ? `· ${c.role}` : ""}
-
-                    </p>
-
-                    <p className="text-muted-foreground">{c.appearance}</p>
-
-                    {c.wardrobe && <p className="text-muted-foreground">Vestuario: {c.wardrobe}</p>}
-
-                    {c.visual_prompt && (
-
-                      <p className="text-xs font-mono text-accent/80 break-words">
-
-                        {c.visual_prompt}
-
-                      </p>
-
-                    )}
-
-                  </div>
-
-                ))}
-
-              </div>
-
-            )}
-
-
-
-            {novel.setting?.visual_style && (
-
-              <div className="border border-border p-3 text-sm">
-
-                <p className="font-medium mb-1">Estilo visual de la serie</p>
-
-                <p className="text-xs font-mono text-accent/80 break-words">
-
-                  {novel.setting.visual_style}
-
-                </p>
-
-              </div>
-
-            )}
-
-
-
-            <div className="space-y-6">
-
-              <div className="flex items-center justify-between">
-
-                <h3 className="text-sm uppercase tracking-[0.2em] text-accent">Capítulos de la miniserie</h3>
-
-                <span className="text-xs text-muted-foreground">{(novel.chapters ?? []).length} capítulos listos para filmar</span>
-
-              </div>
-
-              {(novel.chapters ?? []).map((ch: any, i: number) => (
-
-                <div key={i} className="border border-border p-4 rounded-lg space-y-3 bg-muted/10">
-
-                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/50 pb-2">
-
-                    <div className="flex items-center gap-2 flex-1">
-
-                      <span className="font-display font-bold text-accent">{ch.number || i + 1}.</span>
-
-                      <input
-
-                        aria-label={"Título del capítulo " + (ch.number || i + 1)}
-
-                        value={ch.title || ""}
-
-                        onChange={(e) => updateChapterField(i, "title", e.target.value)}
-
-                        placeholder="Título del capítulo"
-
-                        className="font-display text-base font-semibold bg-transparent border-none focus:outline-none focus:ring-0 flex-1"
-
-                      />
-
-                    </div>
-
-                    <Button variant="outline" size="sm" disabled={illustratingChapter !== null}
-
-                      onClick={() => illustrateChapter(ch, i)} className="gap-1.5 text-xs h-8">
-
-                      {illustratingChapter === i ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
-
-                      {chapterImages[i] ? "Recrear imagen" : "Ilustrar capítulo"}
-
-                    </Button>
-
-                  </div>
-
-
-
                   <div>
+                    <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
+                      Paso 1: Tu Historia y Género
+                    </h2>
+                    <p className="text-xs text-muted-foreground">
+                      Define el formato, duración y la idea central de tu miniserie.
+                    </p>
+                  </div>
+                </div>
+                <Badge variant="secondary" className="text-xs uppercase tracking-wider font-semibold">
+                  {studioGenre === "adult" ? "Adulto / NSFW" : `Género: ${studioGenre}`}
+                </Badge>
+              </div>
 
-                    <Label className="text-xs font-medium text-muted-foreground mb-1 block">Guion / Narración completa del capítulo</Label>
+              {/* Formato y duración */}
+              <div className="space-y-2">
+                <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                  Estructura dramática y duración:
+                </Label>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { count: 1, label: "1 Capítulo (Piloto 2 Minutos / Multi-toma)" },
+                    { count: 3, label: "3 Capítulos (Trilogía de impacto)" },
+                    { count: 5, label: "5 Capítulos (Arco estándar)" },
+                    { count: 7, label: "7 Capítulos (Miniserie completa)" },
+                    { count: 10, label: "10 Capítulos (Temporada vertical)" },
+                  ].map((opt) => (
+                    <Button
+                      key={opt.count}
+                      type="button"
+                      variant={chapterCount === opt.count ? "default" : "outline"}
+                      size="sm"
+                      className={`h-8 px-3 text-xs font-medium transition-all ${
+                        chapterCount === opt.count
+                          ? "bg-primary text-primary-foreground shadow"
+                          : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                      }`}
+                      onClick={() => handleChapterCountChange(opt.count)}
+                    >
+                      {opt.label}
+                    </Button>
+                  ))}
+                </div>
+              </div>
 
-                    <Textarea
+              {/* Selector de Género */}
+              <div className="space-y-2">
+                <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                  Tono y género cinematográfico:
+                </Label>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { id: "horror", label: "👻 Terror / Misterio", nsfw: false },
+                    { id: "action", label: "💥 Acción / Suspenso", nsfw: false },
+                    { id: "romance", label: "❤️ Romance / Drama", nsfw: false },
+                    { id: "scifi", label: "🚀 Sci-Fi / Cyberpunk", nsfw: false },
+                    { id: "fantasy", label: "🔮 Fantasía Épica", nsfw: false },
+                    { id: "adult", label: "🔥 Adulto / NSFW", nsfw: true },
+                  ].map((g) => (
+                    <Button
+                      key={g.id}
+                      type="button"
+                      variant={studioGenre === g.id ? "default" : "outline"}
+                      size="sm"
+                      className={`h-8 px-3 text-xs font-medium transition-all ${
+                        studioGenre === g.id
+                          ? "bg-accent text-accent-foreground font-semibold shadow"
+                          : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                      }`}
+                      onClick={() => {
+                        setStudioGenre(g.id as any);
+                        setIsSafeForWork(!g.nsfw);
+                      }}
+                    >
+                      {g.label}
+                    </Button>
+                  ))}
+                </div>
+              </div>
 
-                      value={ch.content || ""}
+              {/* Idea de la historia */}
+              <div className="space-y-2">
+                <Label htmlFor="studio-description" className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                  Idea central de la historia:
+                </Label>
+                <Textarea
+                  id="studio-description"
+                  aria-label="Idea de la miniserie"
+                  placeholder="Ejemplo: Una pareja de investigadores acampa en la orilla de un lago en la noche. Al escuchar un susurro entre la niebla, descubren una criatura acechando..."
+                  value={description}
+                  onChange={(event) => setDescription(event.target.value)}
+                  className="min-h-[85px] text-sm bg-background/80"
+                />
+              </div>
+            </Card>
 
-                      onChange={(e) => updateChapterField(i, "content", e.target.value)}
+            {/* PASO 2: EL REPARTO Y ESCENARIO */}
+            <Card className="p-6 space-y-5 border-border/80 bg-card/60 backdrop-blur-sm shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-border/40">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-full bg-primary/10 border border-primary/20 text-primary font-bold flex items-center justify-center text-sm shadow-sm">
+                    2
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
+                      Paso 2: El Reparto y Escenario
+                    </h2>
+                    <p className="text-xs text-muted-foreground">
+                      Elige los personajes principales y el lugar fijo del rodaje para garantizar coherencia cuadro a cuadro.
+                    </p>
+                  </div>
+                </div>
+              </div>
 
-                      placeholder="Escribe la historia y acciones completas de este capítulo..."
-
-                      className="min-h-[100px] text-sm leading-relaxed"
-
+              {/* Tarjetas del Reparto Principal y Escenario */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {/* Protagonista */}
+                <div className="p-4 rounded-xl border-2 border-primary/40 bg-primary/5 space-y-3 relative">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-primary flex items-center gap-1.5 uppercase tracking-wide">
+                      <Users className="w-3.5 h-3.5" /> ⭐ Protagonista
+                    </span>
+                    <span className="text-[10px] bg-primary/20 text-primary px-2 py-0.5 rounded-full font-bold">Rostro Ancla</span>
+                  </div>
+                  <div className="space-y-2">
+                    <input
+                      aria-label="Nombre del protagonista"
+                      placeholder="Nombre (ej. Carlos, Elena)"
+                      value={primaryName}
+                      onChange={(event) => setPrimaryName(event.target.value)}
+                      maxLength={80}
+                      className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-xs font-semibold"
                     />
-
-                  </div>
-
-
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-
-                    <div>
-
-                      <Label className="text-xs font-medium text-muted-foreground mb-1 block">Toma visual y encuadre para Wan 2.1</Label>
-
-                      <Textarea
-
-                        value={ch.video_prompt || ""}
-
-                        onChange={(e) => updateChapterField(i, "video_prompt", e.target.value)}
-
-                        placeholder="Descripción visual de la escena, ángulo y atmósfera"
-
-                        className="min-h-[50px] text-xs font-mono"
-
-                      />
-
-                    </div>
-
-                    <div>
-
-                      <Label className="text-xs font-medium text-muted-foreground mb-1 block">Diálogo hablado o voz en español</Label>
-
+                    <div className="flex items-center gap-2">
                       <input
-
-                        value={ch.spoken_line || ""}
-
-                        onChange={(e) => updateChapterField(i, "spoken_line", e.target.value)}
-
-                        placeholder="Frase hablada por el personaje en español"
-
-                        className="w-full rounded-md border border-border bg-background px-3 py-2 text-xs h-[50px]"
-
+                        id="kineva-reference"
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp"
+                        onChange={(event) => setReferenceImage(event.target.files?.[0] ?? null)}
+                        className="block w-full text-[11px]"
                       />
-
+                      {referenceImage && (
+                        <span className="text-[10px] text-green-500 font-bold whitespace-nowrap">✓ Foto lista</span>
+                      )}
                     </div>
-
+                    <p className="text-[10px] text-muted-foreground">
+                      Foto fija para consistencia con Wan 2.1 e IP-Adapter.
+                    </p>
                   </div>
-
-
-
-                  {chapterImages[i] && (
-
-                    <img src={chapterImages[i]} alt={"Escena del capítulo " + (i + 1)}
-
-                      className="w-full max-w-md rounded-md mt-2" />
-
-                  )}
-
                 </div>
 
-              ))}
+                {/* Co-Protagonista */}
+                <div className="p-4 rounded-xl border border-border bg-card/60 space-y-3 relative">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold flex items-center gap-1.5 uppercase tracking-wide">
+                      <Users className="w-3.5 h-3.5" /> 🎭 Co-Protagonista
+                    </span>
+                    <span className="text-[10px] text-muted-foreground font-semibold">Opcional</span>
+                  </div>
+                  <div className="space-y-2">
+                    <input
+                      aria-label="Nombre del segundo personaje"
+                      placeholder="Nombre (ej. Marta, Javier)"
+                      value={secondaryName}
+                      onChange={(event) => setSecondaryName(event.target.value)}
+                      maxLength={80}
+                      className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-xs font-semibold"
+                    />
+                    <div className="flex items-center gap-2">
+                      <input
+                        id="kineva-second"
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp"
+                        onChange={(event) => setSecondaryImage(event.target.files?.[0] ?? null)}
+                        className="block w-full text-[11px]"
+                      />
+                      {secondaryImage && (
+                        <span className="text-[10px] text-green-500 font-bold whitespace-nowrap">✓ Foto lista</span>
+                      )}
+                    </div>
+                    <p className="text-[10px] text-muted-foreground">
+                      Para escenas en pareja, diálogos o enfrentamientos.
+                    </p>
+                  </div>
+                </div>
 
-            </div>
+                {/* Set / Escenario */}
+                <div className="p-4 rounded-xl border border-border bg-card/60 space-y-3 relative">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold flex items-center gap-1.5 uppercase tracking-wide">
+                      <MapPin className="w-3.5 h-3.5 text-primary" /> 📍 Set / Locación
+                    </span>
+                    <span className="text-[10px] text-muted-foreground font-semibold">Anclaje Escénico</span>
+                  </div>
+                  <div className="space-y-2">
+                    <input
+                      aria-label="Nombre del lugar"
+                      placeholder="Nombre del set (ej. Cabaña en el lago)"
+                      value={locationName}
+                      onChange={(event) => setLocationName(event.target.value)}
+                      maxLength={80}
+                      className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-xs font-semibold"
+                    />
+                    <input
+                      aria-label="Descripción del lugar"
+                      placeholder="Atmósfera (ej. Bosque nocturno, niebla, muelle)"
+                      value={locationDescription}
+                      onChange={(event) => setLocationDescription(event.target.value)}
+                      maxLength={400}
+                      className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-xs"
+                    />
+                    <div className="flex items-center gap-2">
+                      <input
+                        id="kineva-location"
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp"
+                        onChange={(event) => setLocationImage(event.target.files?.[0] ?? null)}
+                        className="block w-full text-[11px]"
+                      />
+                      {locationImage && (
+                        <span className="text-[10px] text-green-500 font-bold whitespace-nowrap">✓ Foto set</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
 
+              {/* Galería de Rostros (CastGallery simplificada) */}
+              <div className="pt-2 border-t border-border/40 space-y-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block">
+                    Galería de Personajes Guardados:
+                  </span>
+                  <span className="text-[11px] text-muted-foreground">
+                    Asigna ⭐ Protagonista o 🎭 Co-Estrella en 1 clic.
+                  </span>
+                </div>
+                <CastGallery
+                  userId={user.id}
+                  onPrimary={(file, name) => {
+                    setReferenceImage(file);
+                    const clean = (/^(captura|screenshot|img|image|foto)/i.test(name) || !name.trim()) ? "Carlos" : name;
+                    setPrimaryName(clean);
+                    toast({ title: `⭐ ${clean} asignado como Protagonista` });
+                  }}
+                  onSecondary={(file, name) => {
+                    setSecondaryImage(file);
+                    const clean = (/^(captura|screenshot|img|image|foto)/i.test(name) || !name.trim()) ? "Marta" : name;
+                    setSecondaryName(clean);
+                    toast({ title: `🎭 ${clean} asignado como Co-Protagonista` });
+                  }}
+                  onSupporting={(file, name) => {
+                    const clean = (/^(captura|screenshot|img|image|foto)/i.test(name) || !name.trim()) ? `Actor ${supportingCast.length + 1}` : name;
+                    setSupportingCast((current) => current.some((actor) => actor.name === clean) ? current : [...current, { file, name: clean }]);
+                  }}
+                  onAssignCustom={(file, name) => addCustomCastMember("secondary", name, file)}
+                />
+              </div>
 
-
-            <div className="flex flex-col sm:flex-row gap-3 pt-3 border-t border-border">
-
-              <Button
-
-                type="button"
-
-                variant="outline"
-
-                size="lg"
-
-                className="flex-1 h-14 text-base font-semibold"
-
-                onClick={() => void handleSaveNovelChanges()}
-
-                disabled={generatingVideos || savingDraft}
-
-              >
-
-                {savingDraft ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : <Save className="w-5 h-5 mr-2" />}
-
-                Guardar cambios del guion
-
-              </Button>
-
-              <Button
-
-                size="lg"
-
-                className="flex-1 h-14 text-base font-semibold"
-
-                onClick={handleGenerateVideos}
-
-                disabled={generatingVideos || generating}
-
-              >
-
-                {generatingVideos ? (
-
-                  <>
-
-                    <Loader2 className="w-5 h-5 mr-2 animate-spin" /> {videoProgress || "Generando videos…"}
-
-                  </>
-
-                ) : (
-
-                  <>
-
-                    <Clapperboard className="w-5 h-5 mr-2" /> Filmar cada capítulo con ComfyUI en esta PC
-
-                  </>
-
+              {/* Opciones avanzadas de reparto adicional y objetos (Opcional colapsable) */}
+              <div className="pt-1 border-t border-border/30">
+                <button
+                  type="button"
+                  onClick={() => setShowAdvancedCast((v) => !v)}
+                  className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1.5 font-medium transition-colors"
+                >
+                  <span>{showAdvancedCast ? "▲ Ocultar reparto adicional y props" : "▼ Opciones avanzadas: Reparto adicional y objetos clave (props)"}</span>
+                </button>
+                {showAdvancedCast && (
+                  <div className="mt-3 p-4 rounded-xl border border-border/60 bg-muted/20 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold">Reparto Adicional (Villanos, Secundarios):</span>
+                      <Button type="button" variant="outline" size="sm" onClick={() => addCustomCastMember("secondary")} className="text-xs h-7">
+                        + Añadir personaje extra
+                      </Button>
+                    </div>
+                    {customCast.filter(c => c.role !== "location" && c.role !== "key_object").length > 0 && (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {customCast.filter(c => c.role !== "location" && c.role !== "key_object").map((member) => (
+                          <div key={member.id} className="p-3 rounded-lg border border-border bg-card/80 space-y-2">
+                            <div className="flex items-center justify-between gap-2">
+                              <select
+                                value={member.role}
+                                onChange={(e) => updateCustomCastMember(member.id, { role: e.target.value as CastSlotRole })}
+                                className="text-xs rounded border border-border bg-background px-2 py-1 font-semibold text-primary"
+                              >
+                                <option value="secondary">Personaje Secundario</option>
+                                <option value="antagonist">Antagonista / Villano</option>
+                              </select>
+                              <Button type="button" variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-destructive" onClick={() => removeCustomCastMember(member.id)}>
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </Button>
+                            </div>
+                            <input
+                              placeholder="Nombre del personaje"
+                              value={member.name}
+                              onChange={(e) => updateCustomCastMember(member.id, { name: e.target.value })}
+                              className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-xs font-medium"
+                            />
+                            <input
+                              type="file"
+                              accept="image/png,image/jpeg,image/webp"
+                              onChange={(e) => updateCustomCastMember(member.id, { file: e.target.files?.[0] || null })}
+                              className="block w-full text-xs"
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <div className="pt-2 border-t border-border/40">
+                      <span className="text-xs font-semibold block mb-2">Objeto clave / Prop (Opcional):</span>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                        <input
+                          placeholder="Nombre del objeto (ej. Linterna antigua, Daga)"
+                          value={keyObjectName}
+                          onChange={(e) => setKeyObjectName(e.target.value)}
+                          className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-xs"
+                        />
+                        <input
+                          placeholder="Descripción del objeto"
+                          value={keyObjectDescription}
+                          onChange={(e) => setKeyObjectDescription(e.target.value)}
+                          className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-xs"
+                        />
+                      </div>
+                    </div>
+                  </div>
                 )}
+              </div>
+            </Card>
 
-              </Button>
-
-            </div>
-
-            <p className="text-xs text-muted-foreground text-center">
-
-              ComfyUI filma el texto y tomas de cada capítulo usando tu GPU y el video queda guardado dentro de la novela.
-
-            </p>
-
-          </Card>
-
-          )}
-
-            <div className="flex items-center justify-between p-4 rounded-xl border border-primary/20 bg-primary/5">
-
-              <div className="text-xs text-muted-foreground">
-
-                <span className="font-semibold text-foreground">Paso siguiente:</span> Personaliza el rostro del protagonista y locaciones en el panel de Casting, o pasa directo a filmar.
-
+            {/* PASO 3: GUION CINEMÁTICO CON IA */}
+            <Card className="p-6 space-y-5 border-border/80 bg-card/60 backdrop-blur-sm shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-border/40">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-full bg-primary/10 border border-primary/20 text-primary font-bold flex items-center justify-center text-sm shadow-sm">
+                    3
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
+                      Paso 3: Guion Cinemático con IA
+                    </h2>
+                    <p className="text-xs text-muted-foreground">
+                      La inteligencia desglosa las tomas cinematográficas, encuadres dinámicos y diálogos con voz neural y lip-sync.
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  type="button"
+                  className="bg-accent text-accent-foreground font-semibold hover:bg-accent/90 shadow-md"
+                  onClick={() => void draftThreeChapters()}
+                  disabled={draftingThree || generatingVideos}
+                >
+                  {draftingThree ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      {chapterCount === 1 ? "Escribiendo Piloto de 2 Minutos..." : `Preparando ${chapterCount} capítulos con IA...`}
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-4 h-4 mr-2" />
+                      {chapterCount === 1 ? "Generar Guion del Piloto (2 Minutos Multi-toma)" : `Generar Guion (${chapterCount} Capítulos) con IA`}
+                    </>
+                  )}
+                </Button>
               </div>
 
-              <div className="flex gap-2">
-
-                <Button type="button" variant="outline" size="sm" onClick={() => setStudioTab("elements")} className="text-xs gap-1.5">
-
-                  <Users className="w-3.5 h-3.5" /> 2. Configurar Casting (LTX)
-
-                </Button>
-
-                <Button type="button" size="sm" onClick={() => setStudioTab("filming")} className="text-xs gap-1.5">
-
-                  <Clapperboard className="w-3.5 h-3.5" /> 3. Ir a Producción & Render
-
-                </Button>
-
-              </div>
-
-            </div>
-
-          </TabsContent>
-
-
-
-          {/* TAB 2: CASTING & ELEMENTOS (LTX ELEMENTS) */}
-
-          <TabsContent value="elements" className="space-y-6 m-0 focus-visible:outline-none">
-
-            <Card className="p-6 mb-6 space-y-5 border-primary/20 bg-card/60 backdrop-blur-sm">
-
-             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 pb-3">
-
-               <div>
-
-                 <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-primary/10 border border-primary/20 text-[10px] font-bold text-primary uppercase tracking-wider mb-1">
-
-                   <Film className="w-3 h-3" />
-
-                   <span>LTX Elements & Casting Studio</span>
-
-                 </div>
-
-                 <h2 className="text-xl font-bold flex items-center gap-2">
-
-                   Elementos de Producción (Elements)
-
-                 </h2>
-
-                 <p className="text-xs text-muted-foreground">
-
-                   Fija los personajes, las locaciones fijas y los objetos/props clave para garantizar consistencia cinematográfica cuadro a cuadro.
-
-                 </p>
-
-               </div>
-
-               <div className="flex items-center gap-2">
-
-                 <Button
-
-                   type="button"
-
-                   variant="outline"
-
-                   size="sm"
-
-                   onClick={() => addCustomCastMember("secondary")}
-
-                   className="gap-1.5 text-xs h-8"
-
-                 >
-
-                   <UserPlus className="w-3.5 h-3.5" /> + Personaje
-
-                 </Button>
-
-                 <Button
-
-                   type="button"
-
-                   variant="outline"
-
-                   size="sm"
-
-                   onClick={() => addCustomCastMember("location")}
-
-                   className="gap-1.5 text-xs h-8"
-
-                 >
-
-                   <MapPin className="w-3.5 h-3.5" /> + Locación
-
-                 </Button>
-
-                 <Button
-
-                   type="button"
-
-                   variant="outline"
-
-                   size="sm"
-
-                   onClick={() => addCustomCastMember("key_object")}
-
-                   className="gap-1.5 text-xs h-8"
-
-                 >
-
-                   <Box className="w-3.5 h-3.5" /> + Prop Clave
-
-                 </Button>
-
-               </div>
-
-             </div>
-
-
-
-             <Tabs defaultValue="cast" className="w-full">
-
-               <TabsList className="grid grid-cols-3 w-full bg-muted/40 p-1 rounded-xl border border-border/60">
-
-                 <TabsTrigger value="cast" className="text-xs font-bold gap-1.5 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
-
-                   <Users className="w-3.5 h-3.5" />
-
-                   <span>1. Personajes & Elenco</span>
-
-                   {primaryName ? <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> : null}
-
-                 </TabsTrigger>
-
-                 <TabsTrigger value="locations" className="text-xs font-bold gap-1.5 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
-
-                   <MapPin className="w-3.5 h-3.5" />
-
-                   <span>2. Locaciones & Sets</span>
-
-                   {locationName ? <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> : null}
-
-                 </TabsTrigger>
-
-                 <TabsTrigger value="props" className="text-xs font-bold gap-1.5 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
-
-                   <Box className="w-3.5 h-3.5" />
-
-                   <span>3. Objetos & Props</span>
-
-                   {customCast.some(c => c.role === "key_object") ? <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> : null}
-
-                 </TabsTrigger>
-
-               </TabsList>
-
-
-
-               {/* TAB 1: PERSONAJES */}
-
-               <TabsContent value="cast" className="space-y-4 pt-3">
-
-                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-
-                   {/* Protagonista con Upload Yourself */}
-
-                   <div className="space-y-2.5 p-4 rounded-xl border-2 border-primary/40 bg-primary/5 relative">
-
-                     <div className="flex items-center justify-between">
-
-                       <Label htmlFor="kineva-reference" className="text-xs font-bold text-primary flex items-center gap-1.5 uppercase tracking-wide">
-
-                         <Users className="w-3.5 h-3.5" /> Protagonista (Upload Yourself)
-
-                       </Label>
-
-                       <span className="text-[10px] bg-primary/20 text-primary px-2 py-0.5 rounded-full font-bold">Rostro Ancla</span>
-
-                     </div>
-
-                     <p className="text-[11px] text-muted-foreground">
-
-                       Sube tu propia foto o el rostro del actor principal. Wan 2.1 e IP-Adapter fijarán esta identidad en todos los capítulos.
-
-                     </p>
-
-                     <input id="kineva-reference" type="file" accept="image/png,image/jpeg,image/webp"
-
-                       onChange={(event) => setReferenceImage(event.target.files?.[0] ?? null)}
-
-                       className="block w-full text-xs" />
-
-                     <input aria-label="Nombre del personaje principal" placeholder="Nombre del protagonista (ej. Elena, Marco)" value={primaryName}
-
-                       onChange={(event) => setPrimaryName(event.target.value)} maxLength={80}
-
-                       className="w-full rounded-md border border-border bg-background px-3 py-2 text-xs font-medium" />
-
-                   </div>
-
-
-
-                   {/* Co-Protagonista */}
-
-                   <div className="space-y-2.5 p-4 rounded-xl border border-border bg-card/60">
-
-                     <div className="flex items-center justify-between">
-
-                       <Label htmlFor="kineva-second" className="text-xs font-bold flex items-center gap-1.5 uppercase tracking-wide">
-
-                         <Users className="w-3.5 h-3.5" /> Segundo Protagonista / Rival
-
-                       </Label>
-
-                       <span className="text-[10px] text-muted-foreground font-semibold">Opcional</span>
-
-                     </div>
-
-                     <p className="text-[11px] text-muted-foreground">
-
-                       Foto de referencia para el interés romántico, rival o compañero de escena.
-
-                     </p>
-
-                     <input id="kineva-second" type="file" accept="image/png,image/jpeg,image/webp"
-
-                       onChange={(event) => setSecondaryImage(event.target.files?.[0] ?? null)}
-
-                       className="block w-full text-xs" />
-
-                     <input aria-label="Nombre del segundo personaje" placeholder="Nombre (co-protagonista o rival)" value={secondaryName}
-
-                       onChange={(event) => setSecondaryName(event.target.value)} maxLength={80}
-
-                       className="w-full rounded-md border border-border bg-background px-3 py-2 text-xs font-medium" />
-
-                   </div>
-
-                 </div>
-
-
-
-                 {/* Additional Cast slots (Secundarios, Antagonistas) */}
-
-                 {customCast.filter(c => c.role !== "location" && c.role !== "key_object").length > 0 && (
-
-                   <div className="space-y-2.5 pt-2">
-
-                     <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block">
-
-                       Reparto adicional asignado ({customCast.filter(c => c.role !== "location" && c.role !== "key_object").length}):
-
-                     </span>
-
-                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-
-                       {customCast.filter(c => c.role !== "location" && c.role !== "key_object").map((member) => (
-
-                         <div key={member.id} className="p-3 rounded-lg border border-border bg-card/80 space-y-2 relative shadow-sm">
-
-                           <div className="flex items-center justify-between gap-2">
-
-                             <select
-
-                               value={member.role}
-
-                               onChange={(e) => updateCustomCastMember(member.id, { role: e.target.value as CastSlotRole })}
-
-                               className="text-xs rounded border border-border bg-background px-2 py-1 font-semibold text-primary"
-
-                             >
-
-                               <option value="secondary">Personaje Secundario</option>
-
-                               <option value="antagonist">Antagonista / Villano</option>
-
-                             </select>
-
-                             <Button
-
-                               type="button"
-
-                               variant="ghost"
-
-                               size="icon"
-
-                               className="h-6 w-6 text-muted-foreground hover:text-destructive"
-
-                               onClick={() => removeCustomCastMember(member.id)}
-
-                             >
-
-                               <Trash2 className="w-3.5 h-3.5" />
-
-                             </Button>
-
-                           </div>
-
-                           <input
-
-                             placeholder="Nombre del personaje"
-
-                             value={member.name}
-
-                             onChange={(e) => updateCustomCastMember(member.id, { name: e.target.value })}
-
-                             className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-xs font-medium"
-
-                           />
-
-                           <input
-
-                             type="file"
-
-                             accept="image/png,image/jpeg,image/webp"
-
-                             onChange={(e) => updateCustomCastMember(member.id, { file: e.target.files?.[0] || null })}
-
-                             className="block w-full text-xs"
-
-                           />
-
-                         </div>
-
-                       ))}
-
-                     </div>
-
-                   </div>
-
-                 )}
-
-
-
-                 {/* Cast Gallery */}
-
-                 <div className="pt-3 border-t border-border space-y-2">
-
-                   <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block">
-
-                     Galería de Rostros Guardados (Asigna con un clic):
-
-                   </span>
-
-                   <CastGallery
-                    userId={user.id}
-                    onPrimary={(file, name) => {
-                      setReferenceImage(file);
-                      const clean = (/^(captura|screenshot|img|image|foto)/i.test(name) || !name.trim()) ? "Carlos" : name;
-                      setPrimaryName(clean);
+              {/* Vista Previa de los Capítulos Generados */}
+              {manualScenes.some(s => s.trim().length > 0) && (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-primary uppercase tracking-wider">
+                      Tomas y Capítulos del Guion ({chapterCount}):
+                    </span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="text-xs text-muted-foreground hover:text-foreground h-7"
+                      onClick={() => setShowManualEditor((v) => !v)}
+                    >
+                      {showManualEditor ? "▲ Ocultar editor de tomas" : "⚙️ Ajustar diálogos o poses a mano"}
+                    </Button>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-3">
+                    {manualScenes.slice(0, chapterCount).map((scene, index) => {
+                      const speaker = manualSpeakers[index] || primaryName || "Protagonista";
+                      const line = manualLines[index] || "";
+                      const subShots = chapterSubShots[index] || [];
+                      return (
+                        <div key={index} className="p-4 rounded-xl border border-border/80 bg-muted/20 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-bold text-foreground flex items-center gap-2">
+                              <Film className="w-3.5 h-3.5 text-primary" />
+                              {chapterCount === 1 ? `Toma ${index + 1} de la Secuencia Piloto (2 Min)` : `Capítulo ${index + 1}`}
+                            </span>
+                            <span className="text-[10px] bg-primary/10 text-primary border border-primary/20 px-2 py-0.5 rounded-full font-semibold">
+                              {speaker}: Voz Neural Activa (Wan Lip-Sync)
+                            </span>
+                          </div>
+                          <p className="text-xs text-muted-foreground leading-relaxed">
+                            <span className="font-semibold text-foreground">Acción / Visual: </span>
+                            {scene || "Sin descripción de toma aún."}
+                          </p>
+                          {line && (
+                            <div className="p-2 rounded-lg bg-background/60 border border-border/40 text-xs">
+                              <span className="font-semibold text-primary">{speaker}: </span>
+                              <span className="italic font-medium">"{line}"</span>
+                            </div>
+                          )}
+                          {subShots.length > 0 && (
+                            <div className="text-[11px] text-muted-foreground pl-3 border-l-2 border-primary/30">
+                              + {subShots.length} subtomas / ángulos encadenados
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Acordeón de Edición Manual y Director de Poses (Opcional) */}
+              {showManualEditor && (
+                <div className="p-4 rounded-xl border border-border/80 bg-card/80 space-y-4">
+                  <div className="flex items-center justify-between border-b border-border/40 pb-2">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                      Editor Avanzado de Tomas y Diálogos
+                    </h4>
+                    <Button type="button" variant="ghost" size="sm" onClick={() => setShowManualEditor(false)} className="text-xs h-6">
+                      Cerrar
+                    </Button>
+                  </div>
+
+                  <StudioPresetDirector
+                    chapterCount={chapterCount}
+                    activeGenre={studioGenre}
+                    onGenreSelect={(g) => {
+                      setStudioGenre(g);
+                      setIsSafeForWork(g !== "adult");
                     }}
-                    onSecondary={(file, name) => {
-                      setSecondaryImage(file);
-                      const clean = (/^(captura|screenshot|img|image|foto)/i.test(name) || !name.trim()) ? "Marta" : name;
-                      setSecondaryName(clean);
+                    initialCategory={isSafeForWork ? "sfw" : "nsfw"}
+                    onApplyScene={(chapterIndex, visualPrompt, suggestedLine) => {
+                      setManualScenes((current) => current.map((s, i) => (i === chapterIndex ? visualPrompt : s)));
+                      if (suggestedLine) {
+                        setManualLines((current) => current.map((l, i) => (i === chapterIndex ? suggestedLine : l)));
+                      }
+                      toast({ title: `Escena configurada en Capítulo ${chapterIndex + 1}` });
                     }}
-                    onSupporting={(file, name) => {
-                      const clean = (/^(captura|screenshot|img|image|foto)/i.test(name) || !name.trim()) ? `Actor ${supportingCast.length + 1}` : name;
-                      setSupportingCast((current) => current.some((actor) => actor.name === clean) ? current : [...current, { file, name: clean }]);
+                    onApplyArc={(arcTitle, chapters) => {
+                      setManualTitle(arcTitle);
+                      if (chapters.length > 0) {
+                        setChapterCount(chapters.length);
+                        setManualScenes(chapters.map((c) => c.visual));
+                        setManualLines(chapters.map((c) => c.line));
+                      }
+                      toast({ title: `Arco cargado: ${arcTitle}` });
                     }}
-                    onAssignCustom={(file, name) => addCustomCastMember("secondary", name, file)}
                   />
 
-                 </div>
-
-               </TabsContent>
-
-
-
-               {/* TAB 2: LOCACIONES */}
-
-               <TabsContent value="locations" className="space-y-4 pt-3">
-
-                 <div className="p-4 rounded-xl border border-border bg-card/60 space-y-3">
-
-                   <div className="flex items-center justify-between">
-
-                     <Label htmlFor="kineva-location" className="text-xs font-bold flex items-center gap-1.5 uppercase tracking-wide">
-
-                       <MapPin className="w-3.5 h-3.5 text-primary" /> Set / Locación Principal
-
-                     </Label>
-
-                     <span className="text-[10px] text-muted-foreground font-semibold">Consistencia de Escenario</span>
-
-                   </div>
-
-                   <p className="text-[11px] text-muted-foreground">
-
-                     Define el entorno donde transcurre la miniserie (mansión victoriana, bosque nocturno, penthouse, hospital). La IA mantendrá la misma iluminación y geometría.
-
-                   </p>
-
-                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-
-                     <div className="space-y-2">
-
-                       <input aria-label="Nombre del lugar" placeholder="Nombre del set (ej. Mansión Blackwood, Bar Neón)" value={locationName}
-
-                         onChange={(event) => setLocationName(event.target.value)} maxLength={80}
-
-                         className="w-full rounded-md border border-border bg-background px-3 py-2 text-xs font-medium" />
-
-                       <input aria-label="Descripción del lugar" placeholder="Iluminación, clima o atmósfera (ej. Lluvia torrencial, luces rojas tenues)" value={locationDescription}
-
-                         onChange={(event) => setLocationDescription(event.target.value)} maxLength={400}
-
-                         className="w-full rounded-md border border-border bg-background px-3 py-2 text-xs" />
-
-                     </div>
-
-                     <div>
-
-                       <input id="kineva-location" type="file" accept="image/png,image/jpeg,image/webp"
-
-                         onChange={(event) => setLocationImage(event.target.files?.[0] ?? null)} className="block w-full text-xs" />
-
-                       <p className="text-[10px] text-muted-foreground mt-1.5">
-
-                         Sube una foto de referencia del decorado o set si quieres recrear un lugar específico.
-
-                       </p>
-
-                     </div>
-
-                   </div>
-
-                 </div>
-
-
-
-                 {/* Additional Locations */}
-
-                 {customCast.filter(c => c.role === "location").length > 0 && (
-
-                   <div className="space-y-2.5 pt-2">
-
-                     <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block">
-
-                       Locaciones Secundarias ({customCast.filter(c => c.role === "location").length}):
-
-                     </span>
-
-                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-
-                       {customCast.filter(c => c.role === "location").map((loc) => (
-
-                         <div key={loc.id} className="p-3 rounded-lg border border-border bg-card/80 space-y-2">
-
-                           <div className="flex items-center justify-between">
-
-                             <span className="text-xs font-bold text-primary flex items-center gap-1">
-
-                               <MapPin className="w-3 h-3" /> Locación Adicional
-
-                             </span>
-
-                             <Button
-
-                               type="button"
-
-                               variant="ghost"
-
-                               size="icon"
-
-                               className="h-6 w-6 text-muted-foreground hover:text-destructive"
-
-                               onClick={() => removeCustomCastMember(loc.id)}
-
-                             >
-
-                               <Trash2 className="w-3.5 h-3.5" />
-
-                             </Button>
-
-                           </div>
-
-                           <input
-
-                             placeholder="Nombre del set secundario"
-
-                             value={loc.name}
-
-                             onChange={(e) => updateCustomCastMember(loc.id, { name: e.target.value })}
-
-                             className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-xs font-medium"
-
-                           />
-
-                         </div>
-
-                       ))}
-
-                     </div>
-
-                   </div>
-
-                 )}
-
-               </TabsContent>
-
-
-
-               {/* TAB 3: PROPS Y OBJETOS CLAVE */}
-
-               <TabsContent value="props" className="space-y-4 pt-3">
-
-                 <div className="p-4 rounded-xl border border-border bg-card/60 space-y-3">
-
-                   <div className="flex items-center justify-between">
-
-                     <Label className="text-xs font-bold flex items-center gap-1.5 uppercase tracking-wide">
-
-                       <Box className="w-3.5 h-3.5 text-primary" /> Objetos de Interacción (Props)
-
-                     </Label>
-
-                     <Button
-
-                       type="button"
-
-                       variant="outline"
-
-                       size="sm"
-
-                       onClick={() => addCustomCastMember("key_object")}
-
-                       className="text-xs h-7 gap-1"
-
-                     >
-
-                       <Plus className="w-3 h-3" /> Añadir Prop
-
-                     </Button>
-
-                   </div>
-
-                   <p className="text-[11px] text-muted-foreground">
-
-                     Los personajes interactúan con props físicos en cada toma: una cámara que se cae, una llave secreta, una copa de vino, un teléfono. Añade los objetos relevantes de la historia aquí.
-
-                   </p>
-
-
-
-                   {customCast.filter(c => c.role === "key_object").length === 0 ? (
-
-                     <div className="py-6 text-center rounded-lg border border-dashed border-border text-xs text-muted-foreground">
-
-                       No hay props registrados. Pulsa <strong>+ Añadir Prop</strong> para registrar objetos clave (ej. Cámara réflex, Llave maestra, Linterna).
-
-                     </div>
-
-                   ) : (
-
-                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-
-                       {customCast.filter(c => c.role === "key_object").map((prop) => (
-
-                         <div key={prop.id} className="p-3 rounded-lg border border-primary/30 bg-card/80 space-y-2">
-
-                           <div className="flex items-center justify-between">
-
-                             <span className="text-xs font-bold text-primary flex items-center gap-1">
-
-                               <Box className="w-3 h-3" /> Prop Físico
-
-                             </span>
-
-                             <Button
-
-                               type="button"
-
-                               variant="ghost"
-
-                               size="icon"
-
-                               className="h-6 w-6 text-muted-foreground hover:text-destructive"
-
-                               onClick={() => removeCustomCastMember(prop.id)}
-
-                             >
-
-                               <Trash2 className="w-3.5 h-3.5" />
-
-                             </Button>
-
-                           </div>
-
-                           <input
-
-                             placeholder="Nombre del objeto (ej. Cámara réflex negra, Teléfono con mensaje)"
-
-                             value={prop.name}
-
-                             onChange={(e) => updateCustomCastMember(prop.id, { name: e.target.value })}
-
-                             className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-xs font-medium"
-
-                           />
-
-                         </div>
-
-                       ))}
-
-                     </div>
-
-                   )}
-
-                 </div>
-
-               </TabsContent>
-
-             </Tabs>
-
-           </Card>
-
-            <div className="flex items-center justify-between p-4 rounded-xl border border-border bg-card/60">
-
-              <span className="text-xs text-muted-foreground">
-
-                Los elementos configurados aquí quedarán anclados cuadro por cuadro en Wan 2.1 e IP-Adapter.
-
-              </span>
-
-              <Button type="button" size="sm" onClick={() => setStudioTab("script")} className="text-xs gap-1.5">
-
-                <Sparkles className="w-3.5 h-3.5" /> Volver a Guion & Storyboard
-
-              </Button>
-
-            </div>
+                  <input
+                    aria-label="Título de la miniserie"
+                    placeholder="Título de la miniserie"
+                    value={manualTitle}
+                    onChange={(event) => setManualTitle(event.target.value)}
+                    maxLength={120}
+                    className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                  />
+
+                  {manualScenes.slice(0, chapterCount).map((scene, index) => {
+                    const subShots = chapterSubShots[index] || [];
+                    return (
+                      <div key={index} className="space-y-3 border-t border-border/60 pt-3 bg-muted/10 p-3 rounded-lg">
+                        <div className="flex items-center justify-between">
+                          <Label htmlFor={"manual-scene-" + index} className="font-semibold text-xs">
+                            Capítulo {index + 1}: Toma Principal (Master Shot)
+                          </Label>
+                          <Button type="button" variant="ghost" size="sm" className="text-xs text-primary hover:bg-primary/10 gap-1 h-7" onClick={() => addSubShot(index)}>
+                            <Plus className="w-3.5 h-3.5" /> Añadir Subtoma
+                          </Button>
+                        </div>
+                        <Textarea
+                          id={"manual-scene-" + index}
+                          value={scene}
+                          placeholder="Describe la acción cinematográfica o pose de la toma principal"
+                          onChange={(event) => setManualScenes((current) => current.map((value, i) => i === index ? event.target.value : value))}
+                          className="min-h-[70px] text-xs"
+                          maxLength={1200}
+                        />
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          <select
+                            aria-label={"Quién habla en el capítulo " + (index + 1)}
+                            value={manualSpeakers[index] || ""}
+                            onChange={(event) => setManualSpeakers((current) => current.map((name, i) => i === index ? event.target.value : name))}
+                            className="w-full rounded-md border border-border bg-background px-3 py-2 text-xs"
+                          >
+                            <option value="">Habla el protagonista ({primaryName})</option>
+                            {allAvailableSpeakers.map((name) => (
+                              <option key={name} value={name}>{name}</option>
+                            ))}
+                          </select>
+                          <input
+                            placeholder="Línea de diálogo hablada (español latino)"
+                            value={manualLines[index] || ""}
+                            onChange={(event) => setManualLines((current) => current.map((value, i) => i === index ? event.target.value : value))}
+                            className="w-full rounded-md border border-border bg-background px-3 py-2 text-xs"
+                            maxLength={400}
+                          />
+                        </div>
+                        {subShots.length > 0 && (
+                          <div className="space-y-2 pt-2 border-t border-border/40 pl-3">
+                            {subShots.map((sub, sIdx) => (
+                              <div key={sub.id} className="p-2 rounded bg-background/50 border border-border/40 space-y-1.5">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[11px] font-semibold text-muted-foreground">Subtoma {sIdx + 1}</span>
+                                  <Button type="button" variant="ghost" size="icon" className="h-5 w-5 text-muted-foreground hover:text-destructive" onClick={() => removeSubShot(index, sIdx)}>
+                                    <Trash2 className="w-3 h-3" />
+                                  </Button>
+                                </div>
+                                <input
+                                  placeholder="Ángulo o acción (ej. Primer plano del rostro, reacción de pánico)"
+                                  value={sub.visual}
+                                  onChange={(e) => updateSubShot(index, sIdx, "visual", e.target.value)}
+                                  className="w-full rounded border border-border bg-background px-2 py-1 text-xs"
+                                />
+                                <div className="grid grid-cols-2 gap-1.5">
+                                  <select
+                                    value={sub.speaker}
+                                    onChange={(e) => updateSubShot(index, sIdx, "speaker", e.target.value)}
+                                    className="rounded border border-border bg-background px-2 py-1 text-xs"
+                                  >
+                                    <option value="">Quién habla</option>
+                                    {allAvailableSpeakers.map((name) => (
+                                      <option key={name} value={name}>{name}</option>
+                                    ))}
+                                  </select>
+                                  <input
+                                    placeholder="Diálogo en esta toma"
+                                    value={sub.dialogue}
+                                    onChange={(e) => updateSubShot(index, sIdx, "dialogue", e.target.value)}
+                                    className="rounded border border-border bg-background px-2 py-1 text-xs"
+                                  />
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+
+                  <div className="flex gap-2 pt-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="text-xs"
+                      onClick={() => void handleSaveManualDraftOnly()}
+                      disabled={generating || generatingVideos || savingDraft}
+                    >
+                      {savingDraft ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <Save className="w-3.5 h-3.5 mr-1.5" />}
+                      Guardar cambios del guion
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </Card>
+
+            {/* PASO 4: ¡FILMAR MINISERIE! */}
+            <Card className="p-8 border-2 border-primary/50 bg-gradient-to-b from-primary/10 via-card/80 to-card/90 shadow-xl rounded-2xl text-center space-y-4">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/20 text-primary text-xs font-bold uppercase tracking-wider">
+                <Clapperboard className="w-4 h-4" /> Paso 4: Rodaje Cinemático
+              </div>
+              <div className="space-y-1.5 max-w-xl mx-auto">
+                <h3 className="text-xl sm:text-2xl font-bold tracking-tight text-foreground">
+                  {chapterCount === 1 ? "Filmar Piloto de 2 Minutos (120s Multi-toma)" : `Filmar Miniserie de ${chapterCount} Capítulos`}
+                </h3>
+                <p className="text-xs sm:text-sm text-muted-foreground">
+                  ComfyUI procesará la secuencia en tu tarjeta gráfica con rostros fijados (anclaje IP-Adapter), encuadres dinámicos continuos y voces neurales en español latino con sincronización labial.
+                </p>
+              </div>
+
+              <div className="pt-2 max-w-md mx-auto">
+                <Button
+                  type="button"
+                  size="lg"
+                  className="w-full h-16 text-base sm:text-lg font-bold shadow-2xl bg-primary hover:bg-primary/90 text-primary-foreground flex items-center justify-center gap-3 rounded-xl transition-all transform hover:scale-[1.02]"
+                  onClick={() => void handleManualSeries()}
+                  disabled={generating || generatingVideos || draftingThree || savingDraft}
+                >
+                  {generatingVideos ? (
+                    <>
+                      <Loader2 className="w-6 h-6 animate-spin mr-2" />
+                      <span>{videoProgress || "Filmando con ComfyUI en tu PC..."}</span>
+                    </>
+                  ) : (
+                    <>
+                      <Clapperboard className="w-6 h-6 mr-2" />
+                      <span>Iniciar Rodaje Cinemático (ComfyUI GPU)</span>
+                    </>
+                  )}
+                </Button>
+                <p className="text-[11px] text-muted-foreground mt-2">
+                  Al hacer clic, el rodaje inicia y pasarás automáticamente a la Sala de Rodaje en Vivo.
+                </p>
+              </div>
+            </Card>
 
           </TabsContent>
 
-
-
-          {/* TAB 2: MONITOR DE RODAJE EN VIVO */}
-
+          {/* VISTA 2: MONITOR DE RODAJE EN VIVO Y MIS SERIES UNIFICADAS */}
           <TabsContent value="filming" className="space-y-6 m-0 focus-visible:outline-none">
 
             {/* Header del Monitor */}
@@ -4393,7 +3532,7 @@ function extractDialogueFromText(text: string): string {
 
                     {localJob.videos && localJob.videos.length > 0 && (
 
-                      <Button size="sm" variant="ghost" onClick={() => setStudioTab("catalog")} className="text-xs text-primary gap-1">
+                      <Button size="sm" variant="ghost" onClick={() => { const el = document.getElementById("studio-production-catalog"); if (el) el.scrollIntoView({ behavior: "smooth" }); else setStudioTab("filming"); }} className="text-xs text-primary gap-1">
 
                         Ver en Catálogo General <Tv className="w-3.5 h-3.5" />
 
@@ -4541,7 +3680,7 @@ function extractDialogueFromText(text: string): string {
 
                   </Button>
 
-                  <Button variant="outline" onClick={() => setStudioTab("catalog")} className="text-xs gap-2">
+                  <Button variant="outline" onClick={() => { const el = document.getElementById("studio-production-catalog"); if (el) el.scrollIntoView({ behavior: "smooth" }); else setStudioTab("filming"); }} className="text-xs gap-2">
 
                     <Film className="w-4 h-4" /> Ver Mis Series Producidas
 
@@ -4553,15 +3692,30 @@ function extractDialogueFromText(text: string): string {
 
             )}
 
-          </TabsContent>
-
-
-
-          {/* TAB 4: MIS SERIES (CATÁLOGO SHOWRUNNER) */}
-
-          <TabsContent value="catalog" className="space-y-6 m-0 focus-visible:outline-none">
-
-            <StudioProduction userId={user.id} refreshKey={`${savedSeriesId}:${localJob?.state}:${localJob?.videos?.length}:${productionRefresh}`}
+            {/* MIS SERIES PRODUCIDAS UNIFICADAS EN SALA DE RODAJE */}
+            <div id="studio-production-catalog" className="pt-8 border-t border-border/80 space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <span className="p-2 rounded-xl bg-primary/10 text-primary">
+                    <Film className="w-5 h-5" />
+                  </span>
+                  <div>
+                    <h3 className="text-lg font-bold text-foreground">Mis Series Producidas</h3>
+                    <p className="text-xs text-muted-foreground">Catálogo de capítulos y series completadas en tu estudio.</p>
+                  </div>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setStudioTab("script")}
+                  className="text-xs gap-1.5 h-8 font-semibold"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-primary" />
+                  Crear Nueva Miniserie
+                </Button>
+              </div>
+              <StudioProduction userId={user.id} refreshKey={`${savedSeriesId}:${localJob?.state}:${localJob?.videos?.length}:${productionRefresh}`}
 
            isFilming={generatingVideos}
 
@@ -4656,9 +3810,8 @@ function extractDialogueFromText(text: string): string {
              }
 
            }} />
-
+            </div>
           </TabsContent>
-
         </Tabs>
 
 </div>

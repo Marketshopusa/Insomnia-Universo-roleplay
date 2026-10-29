@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
+import { Trash2, Star, Users, Upload, Sparkles } from "lucide-react";
 
 type Role = "h" | "m" | "x";
 type Member = { name: string; role: Role; path: string; url: string };
@@ -125,7 +126,9 @@ export function CastGallery({ userId, onPrimary, onSecondary, onSupporting, onAs
     try {
       await Promise.all(
         pending.map(async (item) => {
-          const actorName = (pending.length === 1 && name.trim() ? name.trim() : item.source.name.replace(/\.[^.]+$/, "")).slice(0, 80);
+          const rawName = pending.length === 1 && name.trim() ? name.trim() : item.source.name.replace(/\.[^.]+$/, "");
+          const cleanName = (/^(captura|screenshot|img|image|foto)/i.test(rawName) || !rawName.trim()) ? "Actor " + (members.length + saved + 1) : rawName;
+          const actorName = cleanName.slice(0, 80);
           const path = userId + "/cast_" + crypto.randomUUID() + "_" + role + "_" + encodeName(actorName) + ".jpg";
           const { error } = await supabase.storage.from(BUCKET).upload(path, item.portrait, { contentType: "image/jpeg", upsert: false });
           if (error) throw error;
@@ -155,7 +158,7 @@ export function CastGallery({ userId, onPrimary, onSecondary, onSupporting, onAs
       else if (position === "secondary") onSecondary(file, entry.name);
       else if (position === "supporting") onSupporting(file, entry.name);
       else if (position === "custom" && onAssignCustom) onAssignCustom(file, entry.name);
-      toast({ title: entry.name + " seleccionado para esta serie." });
+      toast({ title: `${entry.name} asignado como ${position === "primary" ? "Protagonista" : position === "secondary" ? "Co-Protagonista" : "Reparto"}.` });
     } catch (error) {
       toast({ title: "No se pudo cargar esa foto.", description: error instanceof Error ? error.message : undefined, variant: "destructive" });
     } finally { setBusy(false); }
@@ -171,50 +174,132 @@ export function CastGallery({ userId, onPrimary, onSecondary, onSupporting, onAs
       toast({ title: "No se pudo quitar la foto.", description: error instanceof Error ? error.message : undefined, variant: "destructive" });
     } finally { setBusy(false); }
   };
-  return <section id="elenco" className="space-y-3" aria-label="Elenco">
-    <h2 className="text-lg font-medium">Elenco · {members.length}/{LIMIT} rostros</h2>
-    <p className="text-xs text-muted-foreground">Selecciona varias fotos a la vez. Verás un recorte de rostro por actor. El nombre del archivo identifica cada foto; puedes dar otro nombre si agregas solo una.</p>
-    <div className="grid gap-2 sm:grid-cols-[1fr_auto_auto_auto]">
-      <input aria-label="Nombre del actor" placeholder="Nombre (si agregas una foto)" value={name} onChange={(e) => setName(e.target.value)}
-        className="rounded-md border border-border bg-background px-3 py-2 text-sm" maxLength={80} />
-      <select aria-label="Grupo del elenco" value={role} onChange={(e) => setRole(e.target.value as Role)}
-        className="rounded-md border border-border bg-background px-2 py-2 text-sm">
-        <option value="m">Mujeres</option><option value="h">Hombres</option><option value="x">Otros</option>
-      </select>
-      <input ref={fileInput} aria-label="Fotos del elenco" type="file" multiple accept="image/png,image/jpeg,image/webp"
-        onChange={(e) => void selectFiles(e.target.files)} className="max-w-52 text-xs" />
-      <Button type="button" variant="outline" disabled={busy || !pending.length} onClick={() => void add()}>
-        {busy ? "Preparando…" : "Guardar " + pending.length + (pending.length === 1 ? " rostro" : " rostros")}
-      </Button>
-    </div>
-    {!!pending.length && <div aria-label="Rostros por guardar" className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-5">
-      {pending.map((item) => <div key={item.url} className="rounded-md border border-border p-2 text-sm">
-        <img src={item.url} alt={item.source.name} className="aspect-square w-full rounded object-cover" />
-        <div className="truncate text-xs">{item.source.name.replace(/\.[^.]+$/, "")}</div>
-        <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={() => {
-          URL.revokeObjectURL(item.url);
-          setPending((current) => current.filter((candidate) => candidate.url !== item.url));
-        }}>Quitar</Button>
-      </div>)}
-    </div>}
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-5">
-      {members.map((entry) => <div key={entry.path} className="rounded-md border border-border p-2 text-sm">
-        {entry.url ? <img src={entry.url} alt={entry.name} className="aspect-square w-full rounded object-cover" />
-          : <div className="aspect-square rounded bg-muted" aria-label="Foto no disponible" />}
-        <div className="truncate font-medium">{entry.name}</div>
-        <div className="text-xs text-muted-foreground">{entry.role === "m" ? "Mujer" : entry.role === "h" ? "Hombre" : "Reparto"}</div>
-        <div className="mt-2 flex flex-wrap gap-1">
-          <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void applyMember(entry, "primary")} className="text-[11px] h-7 px-2">Principal</Button>
-          <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void applyMember(entry, "secondary")} className="text-[11px] h-7 px-2">Segundo</Button>
-          <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void applyMember(entry, "supporting")} className="text-[11px] h-7 px-2">Reparto</Button>
-          {onAssignCustom && (
-            <Button type="button" size="sm" variant="secondary" disabled={busy} onClick={() => void applyMember(entry, "custom")} className="text-[11px] h-7 px-2 font-medium">
-              + Rol Extra
-            </Button>
-          )}
-          <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={() => void remove(entry)} className="text-[11px] h-7 px-2 text-muted-foreground hover:text-destructive">Quitar</Button>
+
+  return (
+    <section id="elenco" className="space-y-4" aria-label="Elenco de actores">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-border/50 pb-2">
+        <div>
+          <h3 className="text-sm font-semibold flex items-center gap-1.5 text-foreground">
+            <Users className="w-4 h-4 text-primary" />
+            Galería de Actores Guardados ({members.length}/{LIMIT})
+          </h3>
+          <p className="text-xs text-muted-foreground">Toca cualquier rostro para asignarlo como Protagonista o Co-Protagonista en 1 clic.</p>
         </div>
-      </div>)}
-    </div>
-  </section>;
+        <div className="flex items-center gap-2">
+          <label className="cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-card/60 hover:bg-accent text-xs font-medium transition-colors">
+            <Upload className="w-3.5 h-3.5" />
+            <span>Subir nueva foto</span>
+            <input ref={fileInput} type="file" multiple accept="image/png,image/jpeg,image/webp" onChange={(e) => void selectFiles(e.target.files)} className="hidden" />
+          </label>
+        </div>
+      </div>
+
+      {/* Mini form for adding pending uploaded faces */}
+      {!!pending.length && (
+        <div className="p-3 rounded-xl border border-primary/30 bg-primary/5 space-y-3">
+          <div className="text-xs font-semibold text-primary flex items-center gap-1.5">
+            <Sparkles className="w-3.5 h-3.5" /> {pending.length} foto(s) lista(s) para guardar en tu galería:
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-2">
+            {pending.map((item) => (
+              <div key={item.url} className="relative rounded-lg border border-border bg-card p-1 text-center">
+                <img src={item.url} alt={item.source.name} className="aspect-square w-full rounded object-cover" />
+                <div className="truncate text-[11px] font-medium mt-1">{item.source.name.replace(/\.[^.]+$/, "")}</div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    URL.revokeObjectURL(item.url);
+                    setPending((current) => current.filter((c) => c.url !== item.url));
+                  }}
+                  className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-black/70 hover:bg-red-600 text-white flex items-center justify-center transition-colors"
+                  title="Descartar"
+                >
+                  &times;
+                </button>
+              </div>
+            ))}
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              placeholder="Nombre del personaje (ej: Carlos, Elena)"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="flex-1 rounded-md border border-border bg-background px-3 py-1.5 text-xs"
+              maxLength={80}
+            />
+            <Button type="button" size="sm" disabled={busy || !pending.length} onClick={() => void add()} className="text-xs">
+              {busy ? "Guardando..." : "Guardar en Galería"}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Grid of faces */}
+      {members.length === 0 ? (
+        <div className="text-center py-8 border border-dashed border-border rounded-xl bg-card/20 text-muted-foreground text-xs space-y-2">
+          <Users className="w-8 h-8 mx-auto opacity-40" />
+          <p>No tienes actores guardados todavía.</p>
+          <p className="text-[11px] opacity-75">Sube una foto o captura de un rostro para usarlo como actor recurrente.</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+          {members.map((entry) => (
+            <div
+              key={entry.path}
+              className="group relative rounded-xl border border-border/70 bg-card/60 hover:bg-card/90 hover:border-primary/50 transition-all p-2 flex flex-col justify-between shadow-sm"
+            >
+              <div className="relative">
+                {entry.url ? (
+                  <img src={entry.url} alt={entry.name} className="aspect-square w-full rounded-lg object-cover bg-black/20" />
+                ) : (
+                  <div className="aspect-square rounded-lg bg-muted flex items-center justify-center text-xs text-muted-foreground">Foto</div>
+                )}
+                {/* Delete button (discreet top-right) */}
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void remove(entry)}
+                  className="absolute top-1.5 right-1.5 w-6 h-6 rounded-md bg-black/60 hover:bg-destructive text-white opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center shadow"
+                  title="Eliminar rostro de galería"
+                >
+                  <Trash2 className="w-3 h-3" />
+                </button>
+              </div>
+
+              <div className="my-2">
+                <div className="truncate text-xs font-semibold text-foreground">{entry.name}</div>
+                <div className="text-[10px] text-muted-foreground capitalize">{entry.role === "m" ? "Mujer" : entry.role === "h" ? "Hombre" : "Reparto"}</div>
+              </div>
+
+              {/* 2 Clear, Prominent Action Buttons */}
+              <div className="grid grid-cols-2 gap-1 pt-1 border-t border-border/40">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={busy}
+                  onClick={() => void applyMember(entry, "primary")}
+                  className="h-7 text-[10px] px-1 hover:bg-primary/20 hover:text-primary hover:border-primary/40 font-medium"
+                  title="Asignar como actor principal"
+                >
+                  <Star className="w-2.5 h-2.5 mr-1 text-amber-400" /> Protagonista
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={busy}
+                  onClick={() => void applyMember(entry, "secondary")}
+                  className="h-7 text-[10px] px-1 hover:bg-secondary hover:text-foreground font-medium"
+                  title="Asignar como segundo protagonista"
+                >
+                  🎭 Co-Estrella
+                </Button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
 }
