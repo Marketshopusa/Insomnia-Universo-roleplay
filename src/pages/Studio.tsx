@@ -22,7 +22,7 @@ import {
   type LocalStudioStatus,
 } from "@/lib/kinevaLocal";
 import { useEffect, useRef, useState } from "react";
-import { Clapperboard, Loader2, Sparkles, Plus, Trash2, Camera, UserPlus, Users, Film, ShieldAlert, Sparkle, Save, MapPin, Box, GitFork } from "lucide-react";
+import { Clapperboard, Loader2, Sparkles, Plus, Trash2, Camera, UserPlus, Users, Film, ShieldAlert, Sparkle, Save, MapPin, Box, GitFork, Eye, Play, CheckCircle2, AlertCircle, Tv } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { type StudioGenre } from "@/lib/studioPresets";
 
@@ -667,6 +667,7 @@ function extractDialogueFromText(text: string): string {
     }
     setFilmingSeriesId(series.id);
     setGeneratingVideos(true);
+    setStudioTab("filming");
     setVideoProgress(`Filmando capítulos de "${series.title}" con ComfyUI...`);
     toast({
       title: "Iniciando filmación con ComfyUI",
@@ -802,7 +803,8 @@ function extractDialogueFromText(text: string): string {
       setSeriesEpisodeIds(saved.episodeIds);
       setSavedSeriesId(saved.seriesId);
       setLocalJob(null);
-      toast({ title: "Serie guardada en Producción", description: "Los capítulos se filmarán y quedarán privados hasta tu aprobación final." });
+      setStudioTab("filming");
+      toast({ title: "Iniciando rodaje en ComfyUI", description: "Cambiando al Monitor de Rodaje en Vivo..." });
       await filmChapters(scenes, saved.episodeIds, probe, spokenShots.map((shots) => shots[0]), draft);
     } catch (error) {
       toast({
@@ -1249,24 +1251,65 @@ function extractDialogueFromText(text: string): string {
           </div>
         </div>
 
+        {/* Banner Flotante de Filmación Activa en ComfyUI */}
+        {(generatingVideos || (localJob && ["rendering", "queued", "video_review", "references_ready"].includes(localJob.state))) && (
+          <div className="mb-6 p-4 rounded-xl border border-primary/50 bg-gradient-to-r from-primary/15 via-background to-accent/10 shadow-lg flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-in fade-in slide-in-from-top-2">
+            <div className="flex items-center gap-3">
+              <span className="relative flex h-3.5 w-3.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-red-500"></span>
+              </span>
+              <div>
+                <p className="text-sm font-bold text-foreground flex items-center gap-2">
+                  <span>Filmación activa en ComfyUI (GPU Local)</span>
+                  <Badge variant="outline" className="text-[10px] font-mono border-primary/40 bg-primary/10">
+                    Capítulo {localJob?.current || 1} de {localJob?.total || chapterCount}
+                  </Badge>
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {videoProgress || (localJob?.state === "rendering"
+                    ? `Renderizando fotogramas del capítulo ${localJob?.current || 1} con Wan 2.1...`
+                    : localJob?.state === "references_ready"
+                      ? "Consolidando consistencia facial del protagonista..."
+                      : "Procesando tomas cinematográficas...")}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              {studioTab !== "filming" && (
+                <Button
+                  size="sm"
+                  onClick={() => setStudioTab("filming")}
+                  className="text-xs font-semibold gap-1.5 shadow bg-primary text-primary-foreground hover:bg-primary/90"
+                >
+                  <Eye className="w-3.5 h-3.5" /> Ver en Monitor de Rodaje
+                </Button>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Pestañas de Dirección de Estudio */}
         <Tabs value={studioTab} onValueChange={(v) => setStudioTab(v as any)} className="w-full space-y-6">
           <TabsList className="grid grid-cols-2 md:grid-cols-4 w-full h-auto p-1.5 bg-card/60 backdrop-blur-md border border-border/80 rounded-xl shadow-inner">
             <TabsTrigger value="script" className="flex items-center gap-2 py-2.5 text-xs font-semibold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground transition-all">
               <Sparkles className="w-4 h-4" />
-              <span>1. Guion & Storyboard</span>
-            </TabsTrigger>
-            <TabsTrigger value="elements" className="flex items-center gap-2 py-2.5 text-xs font-semibold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground transition-all">
-              <Users className="w-4 h-4" />
-              <span>2. Casting & Elementos (LTX)</span>
+              <span>1. Guion & Reparto</span>
             </TabsTrigger>
             <TabsTrigger value="filming" className="flex items-center gap-2 py-2.5 text-xs font-semibold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground transition-all">
               <Clapperboard className="w-4 h-4" />
-              <span>3. Producción & Render</span>
+              <span>2. Monitor de Rodaje en Vivo</span>
+              {(generatingVideos || (localJob && ["rendering", "queued", "video_review"].includes(localJob.state))) && (
+                <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse ml-1" />
+              )}
             </TabsTrigger>
             <TabsTrigger value="catalog" className="flex items-center gap-2 py-2.5 text-xs font-semibold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground transition-all">
               <Film className="w-4 h-4" />
-              <span>4. Mis Series ({projects?.length || 0})</span>
+              <span>3. Mis Series Producidas</span>
+            </TabsTrigger>
+            <TabsTrigger value="elements" className="flex items-center gap-2 py-2.5 text-xs font-semibold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground transition-all">
+              <Users className="w-4 h-4" />
+              <span>4. Casting Avanzado & Sets</span>
             </TabsTrigger>
           </TabsList>
 
@@ -1988,88 +2031,222 @@ function extractDialogueFromText(text: string): string {
             </div>
           </TabsContent>
 
-          {/* TAB 3: PRODUCCIÓN & RENDERIZADO */}
+          {/* TAB 2: MONITOR DE RODAJE EN VIVO */}
           <TabsContent value="filming" className="space-y-6 m-0 focus-visible:outline-none">
-            <Card className="p-6 mb-6 space-y-2">
-           <Label>Motor de video</Label>
-           <p className="text-sm font-medium">Kineva · ComfyUI en esta PC</p>
-         </Card>
-         <Card className="p-6 mb-6">
-          <h2 className="text-lg font-medium text-center mb-6">{t("studio.aiSection")}</h2>
+            {/* Header del Monitor */}
+            <div className="flex flex-wrap items-center justify-between gap-4 p-5 rounded-2xl border border-border/80 bg-gradient-to-r from-card/80 via-card/50 to-muted/20 backdrop-blur-md shadow-sm">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2.5">
+                  <span className="p-2 rounded-xl bg-primary/10 text-primary">
+                    <Clapperboard className="w-5 h-5" />
+                  </span>
+                  <div>
+                    <h2 className="text-lg font-bold tracking-tight text-foreground flex items-center gap-2">
+                      <span>Monitor de Rodaje Cinematográfico</span>
+                      {(generatingVideos || (localJob && ["rendering", "queued", "video_review"].includes(localJob.state))) && (
+                        <Badge className="bg-red-500 hover:bg-red-600 text-white font-semibold text-[10px] tracking-wide animate-pulse">
+                          ● EN VIVO (GPU)
+                        </Badge>
+                      )}
+                    </h2>
+                    <p className="text-xs text-muted-foreground">
+                      Visualiza en tiempo real cada toma procesada en tu tarjeta gráfica con Wan 2.1 y audio neural sincronizado.
+                    </p>
+                  </div>
+                </div>
+              </div>
 
-           <div className="grid grid-cols-2 gap-6">
-             <div className="space-y-2">
-              <Label>{t("studio.model")}:</Label>
-               <Select value={model} onValueChange={setModel}>
-                 <SelectTrigger>
-                   <SelectValue />
-                 </SelectTrigger>
-                 <SelectContent>
-                   {models.map((m) => (
-                     <SelectItem key={m.value} value={m.value}>
-                       {m.label}
-                     </SelectItem>
-                   ))}
-                 </SelectContent>
-               </Select>
-             </div>
+              <div className="flex items-center gap-2">
+                <Badge variant="outline" className={`text-xs py-1 px-2.5 flex items-center gap-1.5 ${
+                  localHealth === "ready" ? "border-emerald-500/40 text-emerald-400 bg-emerald-500/5" : "border-amber-500/40 text-amber-300 bg-amber-500/5"
+                }`}>
+                  <span className={`w-2 h-2 rounded-full ${localHealth === "ready" ? "bg-emerald-400 animate-pulse" : "bg-amber-400"}`} />
+                  <span>{localHealth === "ready" ? "ComfyUI Conectado (127.0.0.1:8188)" : "Modo Cloud"}</span>
+                </Badge>
+                <Button variant="outline" size="sm" onClick={() => setStudioTab("script")} className="text-xs gap-1.5 h-8">
+                  <Sparkles className="w-3.5 h-3.5" /> Nuevo Guion
+                </Button>
+              </div>
+            </div>
 
-             <div className="space-y-2">
-              <Label>{t("studio.creativity")}:</Label>
-               <Select value={creativity} onValueChange={setCreativity}>
-                 <SelectTrigger>
-                   <SelectValue />
-                 </SelectTrigger>
-                 <SelectContent>
-                   {creativityLevels.map((c) => (
-                     <SelectItem key={c.value} value={c.value}>
-                       {c.label}
-                     </SelectItem>
-                   ))}
-                 </SelectContent>
-               </Select>
-             </div>
-           </div>
-         </Card>
-            {localJob && (
-          <Card className="p-6 mb-6 space-y-4">
-            <h2 className="text-lg font-medium">Video en esta PC</h2>
-            <p role="status">
-              {localJob.state === "queued" ? "En cola…"
-                : localJob.state === "references_ready" ? "Preparando referencias…"
-                : localJob.state === "video_review" ? "Finalizando una toma…"
-                : localJob.state === "rendering" ? `Creando video ${localJob.current} de ${localJob.total}…`
-                : localJob.state === "failed" ? `Error: ${localJob.error || "Kineva no pudo crear el video."}`
-                : "Capítulos generados. Puedes reproducirlos o descargarlos."}
-            </p>
-            {localJob.references && localJob.state === "references_ready" && (
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                {Object.entries(localJob.references).map(([key, url]) => (
-                  <figure key={key}><img src={localVideoSrc(url)} alt={key} className="w-full rounded-md" />
-                    <figcaption className="text-xs mt-1">{key === "primary" ? "Personaje principal" : key === "secondary" ? "Segundo personaje" : "Lugar"}</figcaption>
-                  </figure>
-                ))}
+            {/* Panel Principal: Rodaje Activo o Tarjeta de Estado */}
+            {localJob ? (
+              <div className="space-y-6">
+                {/* Tarjeta de Control y Progreso Activo */}
+                <Card className="p-6 border-primary/30 bg-card/70 backdrop-blur-md shadow-md space-y-5">
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 pb-4">
+                    <div>
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-primary">
+                        {localJob.state === "completed" ? "Filmación Finalizada" : "Producción en Proceso"}
+                      </span>
+                      <h3 className="text-base font-bold text-foreground mt-0.5">
+                        {manualTitle || novel?.title || "Miniserie Insomnia"}
+                      </h3>
+                    </div>
+                    <Badge variant={localJob.state === "completed" ? "default" : "secondary"} className="text-xs font-mono">
+                      {localJob.state === "rendering" ? `Toma ${localJob.current || 1} de ${localJob.total || chapterCount}`
+                        : localJob.state === "references_ready" ? "Consistencia visual"
+                        : localJob.state === "video_review" ? "Control de calidad"
+                        : localJob.state === "failed" ? "Error"
+                        : "Completado"}
+                    </Badge>
+                  </div>
+
+                  {/* Barra de Progreso Dinámica */}
+                  {localJob.state !== "failed" && (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between text-xs font-semibold">
+                        <span className="text-muted-foreground flex items-center gap-1.5">
+                          {localJob.state === "rendering" && <Loader2 className="w-3.5 h-3.5 animate-spin text-primary" />}
+                          {localJob.state === "rendering" ? `Filmando Capítulo ${localJob.current || 1} de ${localJob.total || chapterCount} en GPU...`
+                            : localJob.state === "references_ready" ? "Generando consistencia de actores y planos..."
+                            : localJob.state === "video_review" ? "Finalizando toma y ensamblando audio..."
+                            : "¡Todos los capítulos han sido filmados!"}
+                        </span>
+                        <span className="text-primary font-mono text-sm">
+                          {localJob.state === "completed" ? "100%"
+                            : `${Math.min(95, Math.max(15, Math.round(((localJob.current ? (localJob.current - 1) + (localJob.videos?.length >= (localJob.current || 1) ? 0.9 : 0.4) : 0.2) / (localJob.total || chapterCount || 3)) * 100)))}%`}
+                        </span>
+                      </div>
+                      <div className="w-full bg-muted/60 h-3 rounded-full overflow-hidden p-0.5 border border-border/40">
+                        <div
+                          className="bg-gradient-to-r from-primary to-accent h-full rounded-full transition-all duration-500 shadow-sm"
+                          style={{
+                            width: localJob.state === "completed" ? "100%"
+                              : `${Math.min(95, Math.max(15, Math.round(((localJob.current ? (localJob.current - 1) + (localJob.videos?.length >= (localJob.current || 1) ? 0.9 : 0.4) : 0.2) / (localJob.total || chapterCount || 3)) * 100)))}%`
+                          }}
+                        />
+                      </div>
+                      <p className="text-[11px] text-muted-foreground/80 leading-relaxed pt-1">
+                        {localJob.state === "rendering"
+                          ? "ComfyUI está procesando los tensores de video cuadro por cuadro con Wan 2.1 (9:16 vertical) y sincronizando los diálogos. Los videos aparecerán automáticamente abajo apenas termine cada escena."
+                          : localJob.state === "completed"
+                            ? "Tus episodios están listos para reproducir, descargar en MP4 de alta fidelidad o publicar en el feed vertical de Shorts."
+                            : "Procesando escena con tu GPU local..."}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Fallo si ocurre */}
+                  {localJob.state === "failed" && (
+                    <div className="p-4 rounded-xl bg-destructive/10 border border-destructive/30 text-destructive space-y-2">
+                      <div className="flex items-center gap-2 font-semibold text-sm">
+                        <AlertCircle className="w-4 h-4" />
+                        <span>Kineva o ComfyUI reportaron un error</span>
+                      </div>
+                      <p className="text-xs text-destructive/90">{localJob.error || "No se pudo completar el rodaje."}</p>
+                      <Button size="sm" variant="outline" className="mt-2 text-xs" onClick={() => setStudioTab("script")}>
+                        Volver a Guion y Reintentar
+                      </Button>
+                    </div>
+                  )}
+
+                  {/* Referencias visuales cuando se procesan */}
+                  {localJob.references && localJob.state === "references_ready" && (
+                    <div className="pt-2">
+                      <span className="text-xs font-semibold text-muted-foreground mb-2 block">Consistencia de personajes y escenario fijada:</span>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        {Object.entries(localJob.references).map(([key, url]) => (
+                          <figure key={key} className="rounded-xl border border-border/80 overflow-hidden bg-background p-1.5 space-y-1.5">
+                            <img src={localVideoSrc(url)} alt={key} className="w-full h-32 object-cover rounded-lg" />
+                            <figcaption className="text-[11px] font-medium text-center text-muted-foreground capitalize">
+                              {key === "primary" ? "Protagonista" : key === "secondary" ? "Coprotagonista" : "Locación"}
+                            </figcaption>
+                          </figure>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </Card>
+
+                {/* Galería de Videos Filmados en Tiempo Real */}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-base font-bold text-foreground flex items-center gap-2">
+                      <Film className="w-4 h-4 text-primary" />
+                      <span>Capítulos Filmados ({localJob.videos?.length || 0} de {localJob.total || chapterCount})</span>
+                    </h3>
+                    {localJob.videos && localJob.videos.length > 0 && (
+                      <Button size="sm" variant="ghost" onClick={() => setStudioTab("catalog")} className="text-xs text-primary gap-1">
+                        Ver en Catálogo General <Tv className="w-3.5 h-3.5" />
+                      </Button>
+                    )}
+                  </div>
+
+                  {(!localJob.videos || localJob.videos.length === 0) ? (
+                    <div className="p-8 rounded-2xl border border-dashed border-border/80 text-center bg-card/30 space-y-3">
+                      <Loader2 className="w-8 h-8 animate-spin text-primary mx-auto opacity-70" />
+                      <p className="text-sm font-medium text-foreground">Generando el primer capítulo en ComfyUI...</p>
+                      <p className="text-xs text-muted-foreground max-w-md mx-auto">
+                        Tan pronto como tu GPU termine de renderizar la toma actual, el reproductor de video aparecerá aquí automáticamente para ver y descargar.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+                      {localJob.videos.map((video) => (
+                        <Card key={video.url} className="overflow-hidden border-border/80 bg-card/60 backdrop-blur-sm space-y-3 p-3">
+                          <div className="flex items-center justify-between pb-1">
+                            <span className="text-xs font-bold text-primary uppercase tracking-wide">
+                              Capítulo {video.episode}
+                            </span>
+                            <Badge variant="outline" className="text-[10px] text-emerald-400 border-emerald-500/30 bg-emerald-500/10">
+                              ✓ Filmado
+                            </Badge>
+                          </div>
+                          <div className="relative aspect-[9/16] max-h-[380px] bg-black rounded-xl overflow-hidden mx-auto w-full shadow-inner">
+                            <video controls className="w-full h-full object-contain" src={localVideoSrc(video.url)} />
+                          </div>
+                          <div className="flex flex-col gap-2 pt-1">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="w-full text-xs font-semibold gap-1.5"
+                              onClick={() => void downloadLocalChapter(video.url, video.episode)}
+                            >
+                              Descargar Video MP4
+                            </Button>
+                            {localJob.state === "completed" && seriesEpisodeIds[video.episode - 1] && (
+                              <Button
+                                type="button"
+                                variant="secondary"
+                                size="sm"
+                                className="w-full text-xs font-medium"
+                                onClick={() => {
+                                  setShowManualEditor(true);
+                                  setStudioTab("script");
+                                }}
+                              >
+                                Editar escena y regenerar
+                              </Button>
+                            )}
+                          </div>
+                        </Card>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
+            ) : (
+              /* Estado en Espera cuando no hay rodaje activo */
+              <Card className="p-12 text-center border-border/80 bg-card/40 backdrop-blur-md space-y-4 max-w-2xl mx-auto my-6">
+                <div className="w-16 h-16 rounded-2xl bg-primary/10 text-primary mx-auto flex items-center justify-center">
+                  <Clapperboard className="w-8 h-8" />
+                </div>
+                <h3 className="text-lg font-bold text-foreground">Monitor de Rodaje en Espera</h3>
+                <p className="text-sm text-muted-foreground leading-relaxed max-w-md mx-auto">
+                  No hay ninguna filmación en curso en este momento. Diseña el guion de tu miniserie en la pestaña anterior y pulsa <strong className="text-foreground">"Iniciar Rodaje"</strong> para ver aquí el progreso en tiempo real de tu GPU.
+                </p>
+                <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+                  <Button onClick={() => setStudioTab("script")} className="text-xs font-semibold gap-2">
+                    <Sparkles className="w-4 h-4" /> 1. Ir a Crear Guion & Reparto
+                  </Button>
+                  <Button variant="outline" onClick={() => setStudioTab("catalog")} className="text-xs gap-2">
+                    <Film className="w-4 h-4" /> Ver Mis Series Producidas
+                  </Button>
+                </div>
+              </Card>
             )}
-            {localJob.preview && localJob.state === "video_review" && (
-              <div>
-                <h3 className="text-sm font-medium">Capítulo {localJob.preview.episode}, toma {localJob.preview.shot} de {localJob.preview.total_shots}</h3>
-                <video controls className="mt-2 w-full rounded-md" src={localVideoSrc(localJob.preview.url)} />
-                <p className="text-sm text-muted-foreground">La serie continúa automáticamente tras el control técnico.</p>
-              </div>
-            )}
-            {localJob.videos?.map((video) => (
-              <div key={video.url}>
-                <h3 className="text-sm font-medium">Escena del capítulo {video.episode}</h3>
-                <video controls className="mt-2 w-full rounded-md" src={localVideoSrc(video.url)} />
-                <Button type="button" variant="outline" size="sm" className="mt-2"
-                  onClick={() => void downloadLocalChapter(video.url, video.episode)}>Descargar MP4</Button>
-                {localJob.state === "completed" && seriesEpisodeIds[video.episode - 1] && <Button type="button" variant="secondary" size="sm" className="mt-2 ml-2"
-                  onClick={() => { setShowManualEditor(true); document.getElementById("studio-editor")?.scrollIntoView({ behavior: "smooth" }); }}>Editar escena y regenerar</Button>}
-              </div>
-            ))}
-          </Card>
-        )}
           </TabsContent>
 
           {/* TAB 4: MIS SERIES (CATÁLOGO SHOWRUNNER) */}
