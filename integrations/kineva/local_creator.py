@@ -455,7 +455,7 @@ def run_job(job_id, image, ideas, cast=None, shot_plans=None):
                     if created.get("error") or not created.get("prompt_id"):
                         raise RuntimeError("ComfyUI rechazÃ³ la solicitud: " + str(created)[:400])
                     video = wait_for_render(
-                        COMFY, created["prompt_id"], export_node, interval=5, timeout=7200)
+                        COMFY, created["prompt_id"], export_node, interval=5, timeout=43200)
                     filename = video["filename"]
                     subfolder = Path(video.get("subfolder") or "")
                     if (video.get("type") != "output" or Path(filename).name != filename
