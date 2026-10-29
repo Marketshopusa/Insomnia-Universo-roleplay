@@ -143,16 +143,30 @@ export default async function handler(req, res) {
   };
 
   try {
-    // 1. Si hay reacciones acústicas marcadas (*gime*, *se ríe*, *suspira*, *llora*), inyectar muestras acústicas hiperrealistas
+    // 1. Si hay reacciones acústicas marcadas (*gime*, *se ríe*, *suspira*, *llora*), inyectar muestras acústicas hiperrealistas y streamear de inmediato
     if (expression?.reactions?.length) {
       try {
+        let streamedChunks = 0;
         const scene = await synthesizeExpressiveScene(expression, req.body.voice, req.body.language, {
           performance,
           region,
           resolvedVoice: previewVoice(req.body.voice),
           samples: (v, lang, event, dir) => vocalSample(v, lang, event, dir) || vocalSample("Aoede", "es", event, dir),
           synthesize: synthesizePieceWithRetry,
+          deadlineMs: 18_000,
+          onAudio: (pcmChunk) => {
+            if (!opened) {
+              opened = true;
+              openSpeech(res, provider, startedAt);
+            }
+            writePcmChunks(res, pcmChunk);
+            streamedChunks += 1;
+          },
         });
+        if (streamedChunks > 0) {
+          finishSpeech(res, provider, startedAt);
+          return;
+        }
         if (scene.status === 200 && scene.pcm?.length) {
           writePcm(res, scene.pcm, provider, startedAt);
           return;
@@ -162,7 +176,34 @@ export default async function handler(req, res) {
       }
     }
 
-    // 2. Sintetizar la escena completa como un solo track continuo para que el relato, respiración y diálogo fluyan sin pausas mecánicas
+    // 2. Si se solicitó streaming progresivo y no hay reacciones complejas, emitir deltas de audio de inmediato
+    if (req.body?.stream && !opened) {
+      let streamedAny = false;
+      try {
+        const streamResult = await streamGeminiSpeech(text, req.body.voice, req.body.language, {
+          performance,
+          region,
+          expression,
+          firstAudioMs: 7000,
+          onAudio: (pcmChunk) => {
+            if (!opened) {
+              opened = true;
+              openSpeech(res, provider, startedAt);
+            }
+            writePcmChunks(res, pcmChunk);
+            streamedAny = true;
+          },
+        });
+        if (streamedAny) {
+          finishSpeech(res, provider, startedAt);
+          return;
+        }
+      } catch (streamErr) {
+        console.warn("streamGeminiSpeech error, falling back to unary:", streamErr?.message || streamErr);
+      }
+    }
+
+    // 3. Sintetizar la escena completa como un solo track continuo para que el relato, respiración y diálogo fluyan sin pausas mecánicas
     const expressive = await synthesizePieceWithRetry(text, req.body.voice, req.body.language, { performance, region, expression });
     if (expressive.status !== 200) {
       console.warn("Insomnia speech gemini-2.5-flash-tts", expressive.status, expressive.detail || "", "after_ms", Date.now() - startedAt);
