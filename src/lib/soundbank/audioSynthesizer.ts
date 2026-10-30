@@ -492,6 +492,37 @@ export function generateSoundPcm(soundId: SoundId, sampleRate = 24000): Float32A
       break;
     }
 
+    case "oral_suction": {
+      // Succión oral húmeda y lubricada: cavidad bucal suave (160-240Hz), fricción líquida y chasquido de liberación
+      const duration = 0.72;
+      const length = Math.floor(sampleRate * duration);
+      buffer = new Float32Array(length);
+      let wetFilter = 0;
+      let breathFilter = 0;
+      for (let i = 0; i < length; i++) {
+        const t = i / sampleRate;
+        // Dos pulsos rítmicos de succión oral y liberación
+        const p1 = Math.max(0, 1 - Math.abs(t - 0.18) * 7.5);
+        const p2 = Math.max(0, 1 - Math.abs(t - 0.48) * 7.5);
+        const envelope = (p1 * 0.85 + p2 * 0.95);
+
+        // Resonancia de cavidad húmeda
+        const cavity = Math.sin(2 * Math.PI * (160 + t * 90) * t) * envelope * 0.55;
+        // Chasquidos húmedos de liberación
+        const pop1 = Math.sin(2 * Math.PI * 320 * t) * Math.exp(-Math.pow((t - 0.22) * 50, 2)) * 0.35;
+        const pop2 = Math.sin(2 * Math.PI * 360 * t) * Math.exp(-Math.pow((t - 0.52) * 50, 2)) * 0.40;
+
+        // Fricción líquida lubricada (ruido filtrado)
+        const rawNoise = (Math.random() * 2 - 1) * envelope;
+        wetFilter = wetFilter * 0.78 + rawNoise * 0.22;
+        const rawBreath = (Math.random() * 2 - 1) * Math.exp(-t * 3.5);
+        breathFilter = breathFilter * 0.92 + rawBreath * 0.08;
+
+        buffer[i] = Math.tanh((cavity + pop1 + pop2 + wetFilter * 0.32 + breathFilter * 0.2) * 1.15) * 0.8;
+      }
+      break;
+    }
+
     case "laugh_burst": {
       // Carcajada abierta
       const duration = 0.95;

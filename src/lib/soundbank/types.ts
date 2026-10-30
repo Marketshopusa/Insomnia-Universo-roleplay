@@ -14,7 +14,8 @@ export type VocalSoundId =
   | "laugh_chuckle"      // Risita pícara, baja o cómplice
   | "laugh_burst"        // Carcajada abierta, risa espontánea
   | "guttural_groan"     // Sonido gutural, quejido ronco o gruñido
-  | "kiss_wet";          // Beso apasionado, chasquido húmedo de labios
+  | "kiss_wet"
+  | "oral_suction";          // Beso apasionado, chasquido húmedo de labios
 
 export type ImpactFoleyId =
   | "wall_slam"          // Golpe contundente contra la pared / empujón sordo

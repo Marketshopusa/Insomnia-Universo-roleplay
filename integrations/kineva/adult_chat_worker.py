@@ -117,7 +117,7 @@ def limit_gesture_length(gesture):
     first_sentence = re.split(r'(?<=[.!?])\s+', gesture.strip())[0].strip()
     return first_sentence
 
-def parse_role_reply(raw_reply, character="", allow_third_person=False):
+def parse_role_reply(raw_reply, character="", allow_third_person=False, allow_nonverbal=False):
     cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw_reply.strip(), flags=re.I).strip()
     parsed = None
     try:
@@ -154,7 +154,10 @@ def parse_role_reply(raw_reply, character="", allow_third_person=False):
     dialogue = clean_dialogue_prose(str(parsed.get("dialogo") or parsed.get("dialogue") or "").strip())
     dialogue = complete_last_sentence(dialogue)
     if not dialogue:
-        raise ValueError("Incomplete dialogue")
+        if gesture and allow_nonverbal:
+            dialogue = ""
+        else:
+            raise ValueError("Incomplete dialogue")
     narration_starter = r"^(?:(?:Mis|Tus|Sus)\s+(?:manos|dedos|labios|brazos|ojos|cuerpo)|(?:Me|Te)\s+(?:acerco|deslizo|presiono|pego|siento|levanto|muevo|toco|abrazo|giro|apoyo|arrodillo)|Doy\s+un\s+paso)\b"
     if re.search(narration_starter, dialogue, re.I) and not re.search(r'["«»“”¡!¿?]', dialogue):
         if not gesture:
@@ -184,7 +187,7 @@ def parse_role_reply(raw_reply, character="", allow_third_person=False):
             if re.search(source, gesture, re.I):
                 gesture = re.sub(source, replacement, gesture, count=1, flags=re.I)
                 break
-    return "*" + gesture + "* " + dialogue
+    return ("*" + gesture + "* " + dialogue).strip() if dialogue else "*" + gesture + "*"
 
 def parse_freeform_reply(raw_reply, character="", allow_third_person=False):
     """Recover the local model's ordinary roleplay format on a retry."""
@@ -262,6 +265,14 @@ def memory_transcript(turns, player, character):
     if middle:
         chronicle += "\nDespués sucedió: " + " | ".join(middle)
     return chronicle, recent
+
+
+def silence_request(text):
+    return bool(re.search(
+        r"(?i)\b(?:c[aá]llate|callate|calla|no\s+hables|sin\s+hablar|no\s+digas\s+nada|deja\s+de\s+hablar|silencio|"
+        r"d[eé]jame\s+escuchar|dejame\s+escuchar|solo\s+escuchar|sin\s+decir\s+nada)\b",
+        text
+    ))
 
 
 def reading_request(text):
@@ -418,6 +429,7 @@ def conversation_messages(job):
     player = clip_text(story.get("player_role") or "protagonista", 220)
     latest = clip_text(job.get("userMessage") or "", 1000)
     wants_reading = reading_request(latest)
+    wants_silence = silence_request(latest)
     premise_parts = [str(value).strip() for value in (story.get("description"), story.get("story_context")) if value]
     premise = clip_text("\n".join(dict.fromkeys(premise_parts)), 2400)
     turns = clean_turns((job.get("history") or [])[-48:])
@@ -462,6 +474,12 @@ def conversation_messages(job):
     pacing_clause = pacing_and_language_rules(len(turns), spanish)
     instruction = minimal_instruction(character, player, premise, spanish, len(turns))
     parts = [instruction, pacing_clause]
+    if wants_silence:
+        parts.append(
+            "ORDEN DE SILENCIO OBLIGATORIA DEL JUGADOR: El jugador te ha exigido que calles, no hables o solo hagas los sonidos/acciones pedidos. "
+            "En tu 'gesto' ejecuta fielmente la acción física y describe los sonidos y reacciones vocales (*succionando con fuerza y rapidez, gimiendo entrecortado*). "
+            "En tu 'dialogo' ESTÁ TERMINANTEMENTE PROHIBIDO hablar oraciones completas o dar discursos. Solo emite onomatopéyicos o sonidos vocales/gemidos (ejemplo: 'Mmmm... ahh...', 'Mmgh...', 'Ah...') o déjalo vacío."
+        )
     if wants_reading:
         parts.append(
             "ORDEN DE LECTURA PRIORITARIA: El jugador te ha exigido que le leas el libro AHORA MISMO. "
@@ -487,7 +505,12 @@ def conversation_messages(job):
                         "con claridad, sin fingir duda ni agregar detalles nuevos:\n"
                         + earlier_memory) if earlier_memory else "")
     current_request += "\n\nÚltimo mensaje del jugador:\n" + latest
-    if wants_reading:
+    if wants_silence:
+        current_request += (
+            "\n\nORDEN OBLIGATORIA DEL JUGADOR: El jugador te ordenó expresamente callar, no hablar o dejar escuchar los sonidos. "
+            "NO HABLES en 'dialogo' con frases largas ni normales; solo emite gemidos/onomatopéyicos ('Mmmm... ahh...') o quédate en silencio ejecutando la acción en 'gesto'."
+        )
+    elif wants_reading:
         current_request += (
             "\n\nORDEN OBLIGATORIA DEL JUGADOR: Te ordenó que le leas el libro AHORA MISMO. "
             "En tu 'dialogo' lee en voz alta un pasaje literario original de varias oraciones (ejemplo: '«Capítulo cuatro... La noche era fría cuando...»'). "
@@ -639,6 +662,7 @@ def reply_for(job):
     latest = str(job.get("userMessage") or "")
     wants_reading = reading_request(latest)
     wants_repetition = repetition_request(latest)
+    wants_silence = silence_request(latest)
     previous_replies = [
         re.sub(r"\*[^*]*\*", "", str(turn.get("content") or "")).strip()
         for turn in (job.get("history") or [])
@@ -655,10 +679,10 @@ def reply_for(job):
             last_raw_reply = raw_reply
             structured_reply = bool(re.match(r"^\s*(?:```(?:json)?\s*)?\{", raw_reply, re.I)) or bool(re.search(r'(?im)^\s*"(?:gesto|dialogo)"\s*:', raw_reply))
             try:
-                parsed = parse_role_reply(raw_reply, character)
+                parsed = parse_role_reply(raw_reply, character, allow_nonverbal=wants_silence)
             except ValueError as error:
                 if "third person" in str(error):
-                    parsed = parse_role_reply(raw_reply, character, allow_third_person=True)
+                    parsed = parse_role_reply(raw_reply, character, allow_third_person=True, allow_nonverbal=wants_silence)
                 elif not structured_reply:
                     try:
                         parsed = parse_freeform_reply(raw_reply, character)
@@ -712,6 +736,11 @@ def reply_for(job):
                 user_match = SequenceMatcher(None, spoken, user_norm).ratio()
                 if attempt < 2 and (user_match >= 0.85 or (len(user_norm) > 40 and user_norm in spoken)):
                     raise ValueError("Echoed player message instead of answering")
+
+            if wants_silence:
+                is_pure_sound = bool(re.match(r"^\s*(?:(?:M+h*m+|A+h+|O+h+|U+f+|Mmgh)[.,!…\s]*)+$", spoken_text, re.I))
+                if not is_pure_sound and len(spoken_text) > 70 and not wants_repetition and attempt < 2:
+                    raise ValueError("Spoke long dialogue when ordered to stay quiet and make sounds")
 
             if wants_reading:
                 asks_user_about_book = bool(re.search(r"(?i)\b(?:cu[eé]ntame|dime t[uú]|qu[eé] libro|de qu[eé] trata|de qu[eé] va|cu[aá]l cap[ií]tulo)\b", spoken_text))

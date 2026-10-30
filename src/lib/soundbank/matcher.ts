@@ -98,7 +98,7 @@ const SOUND_PATTERNS: Array<[SoundId, RegExp]> = [
   ],
   [
     "moan_pleasure",
-    /(?:gemid\w*|gim\w*|gime|gimo|delicioso\s+gemido|moan)/iu,
+    /(?:m+h*m+\b|a+h+\b|o+h+\b|u+f+f*\b|gemid\w*|gim\w*|gime|gimo|delicioso\s+gemido|moan)/iu,
   ],
   [
     "moan_subtle",
@@ -123,6 +123,10 @@ const SOUND_PATTERNS: Array<[SoundId, RegExp]> = [
   [
     "kiss_wet",
     /(?:beso\w*|b[eé]same|besando\w*|chasquido\s+de\s+labios|labios\s+chocando|lenguas\s+entrelaz[aá]ndose)/iu,
+  ],
+  [
+    "oral_suction",
+    /(?:chupa\w*|succion\w*|succi[oó]n|saliva|boca\s+llena\s+de\s+saliva|humed\w*\s+con\s+la\s+lengua|lamiendo|lamer|tragar|garganta|sonido\s+h[uú]medo|boca\s+h[uú]meda)/iu,
   ],
   [
     "laugh_burst",

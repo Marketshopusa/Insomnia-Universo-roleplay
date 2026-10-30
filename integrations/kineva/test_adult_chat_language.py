@@ -84,6 +84,27 @@ class LanguageDriftTests(unittest.TestCase):
         self.assertNotIn("verga", reply)
 
 
+    def test_respects_silence_command_and_emits_sounds(self):
+        job = {
+            "language": "es",
+            "story": {"character_role": "Daniela", "player_role": "William", "description": "Encuentro intimo."},
+            "history": [{"role": "user", "content": "Hola"}],
+            "memory": [],
+            "userMessage": "solo cállate, chupa y déjame escuchar cómo lo chupas tan rico"
+        }
+        drafts = [
+            '{"gesto":"Te miro con lujuria.","dialogo":"Sí, William... Te juro que no me detendré. Quiero hablar contigo y decirte todo lo que siento porque no puedo evitarlo."}',
+            '{"gesto":"Comienzo a succionar con fuerza y rapidez, mi boca llena de saliva.","dialogo":"Mmmm... ahh..."}'
+        ]
+        with patch("adult_chat_worker.free_gpu_for_chat"), patch(
+                "adult_chat_worker.model_chat", side_effect=drafts) as model:
+            reply = reply_for(job)
+        self.assertEqual(model.call_count, 2)
+        self.assertIn("succionar con fuerza y rapidez", reply)
+        self.assertIn("Mmmm...", reply)
+        self.assertNotIn("Quiero hablar contigo", reply)
+
+
 if __name__ == "__main__":
     unittest.main()
 

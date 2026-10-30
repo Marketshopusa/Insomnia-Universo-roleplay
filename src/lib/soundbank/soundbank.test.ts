@@ -22,6 +22,15 @@ describe("Cinematic Soundbank Engine", () => {
     expect(soundIds).toContain("salon_music");
   });
 
+  it("detects oral suction, wet mouth sounds, and onomatopoeic moans", () => {
+    const oralScene = "*Comienza a chupar de nuevo, succionando con fuerza y rapidez, su boca llena de saliva* \"Mmmm... ahh...\"";
+    const events = detectSoundEvents(oralScene);
+    const soundIds = events.map((e) => e.soundId);
+
+    expect(soundIds).toContain("oral_suction");
+    expect(soundIds.some((id) => id === "moan_pleasure" || id === "moan_subtle")).toBe(true);
+  });
+
   it("never hallucinates random sounds on unrelated dialogue", () => {
     const cleanDialogue = "Hola, tío. Me alegra mucho verte hoy. ¿Cómo ha estado tu día?";
     const events = detectSoundEvents(cleanDialogue);
@@ -56,6 +65,7 @@ describe("Cinematic Soundbank Engine", () => {
       "cry_deep",
       "guttural_groan",
       "kiss_wet",
+      "oral_suction",
       "laugh_burst",
       "laugh_chuckle",
     ];
