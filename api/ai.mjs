@@ -64,6 +64,9 @@ export function enforceDialogueRatio(text, dialPct = 80, narrPct = 20) {
 import { createClient } from "@supabase/supabase-js";
 import { supabaseUrl as BASE, publishableKey as KEY } from "./config.mjs";
 import { slangInstruction, speechLocale } from "./regions.mjs";
+import { isIpRateLimited, isHeavyJobRateLimited } from "./security/rateLimiter.mjs";
+import { verifyAndDeductCredits, acquireConcurrencyLock, releaseConcurrencyLock } from "./security/creditGuard.mjs";
+import { sanitizeUserPrompt, PROMPT_LIMITS } from "./security/promptShield.mjs";
 
 // In-memory sliding window rate limiter
 const RATE_LIMIT_WINDOW_MS = 60_000;
@@ -1923,6 +1926,10 @@ export default async function handler(req, res) {
       return send(res, 200, { series, episodes });
     }
     if (action === "generate-studio-draft") {
+      const clientIp = req.headers["x-forwarded-for"] || req.socket?.remoteAddress || "unknown";
+      if (isIpRateLimited(clientIp, 30) || (userClient && isHeavyJobRateLimited(userClient.auth ? "user" : "anon", 6))) {
+        return send(res, 429, { error: "rate_limit_exceeded", message: "Demasiadas peticiones. Espera un momento." });
+      }
       const idea = String(body.description || "").trim().slice(0, 1500);
       if (idea.length < 10) return send(res, 400, { error: "description_too_short" });
       const language = body.language === "English" ? "English" : "español";

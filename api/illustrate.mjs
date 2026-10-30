@@ -1,5 +1,9 @@
 import { createClient } from "@supabase/supabase-js";
 import { supabaseUrl, publishableKey } from "./config.mjs";
+import { isIpRateLimited, isHeavyJobRateLimited } from "./security/rateLimiter.mjs";
+import { verifyAndDeductCredits, acquireConcurrencyLock, releaseConcurrencyLock } from "./security/creditGuard.mjs";
+import { sanitizeUserPrompt, PROMPT_LIMITS } from "./security/promptShield.mjs";
+import { applySyntheticMediaHeaders, SIGNED_URL_TTL_SECONDS } from "./security/biometricGuard.mjs";
 
 const bucket = "kineva-scene-images";
 const send = (res, status, data) => res.status(status).json(data);
@@ -206,7 +210,7 @@ export default async function handler(req, res) {
       if (!job) return send(res, 404, { error: "job_not_found" });
       if (job.status === "ready") {
         const { data: signed, error: signedError } = await client.storage.from(bucket)
-          .createSignedUrl(job.output_path, 3600);
+          .createSignedUrl(job.output_path, SIGNED_URL_TTL_SECONDS);
         if (signedError) throw signedError;
         return send(res, 200, { status: "ready", imageUrl: signed.signedUrl });
       }
@@ -214,7 +218,38 @@ export default async function handler(req, res) {
         ...(job.status === "failed" ? { error: "render_failed", message: job.error_message || "La imagen no se pudo crear." } : {}) });
     }
 
-    if (body.engine === "comfy") {
+    // 1. Edge Rate Limiting
+    const clientIp = req.headers["x-forwarded-for"] || req.socket?.remoteAddress || "unknown";
+    if (isIpRateLimited(clientIp, 30) || isHeavyJobRateLimited(user.id, 6)) {
+      return send(res, 429, { error: "rate_limit_exceeded", message: "Demasiadas peticiones de ilustración. Espera un momento." });
+    }
+
+    // 2. Concurrency Lock
+    const lock = acquireConcurrencyLock(user.id, "illustrate-scene");
+    if (!lock.ok) {
+      return send(res, 429, { error: lock.error, message: lock.message });
+    }
+
+    let lockId = lock.lockId;
+    try {
+      // 3. Atomic Pre-execution Credit Check & Deduction (HTTP 402)
+      const creditRes = await verifyAndDeductCredits(client, user, "illustrate-scene");
+      if (!creditRes.ok) {
+        return send(res, creditRes.status || 402, {
+          error: creditRes.error,
+          message: creditRes.message,
+          creditsRemaining: creditRes.creditsRemaining,
+        });
+      }
+
+      // 4. Prompt Sanitization & Length Bound
+      if (body.focusText) body.focusText = sanitizeUserPrompt(body.focusText, PROMPT_LIMITS.SCENE_ILLUSTRATE);
+      if (body.userAction) body.userAction = sanitizeUserPrompt(body.userAction, PROMPT_LIMITS.SCENE_ILLUSTRATE);
+
+      // 5. Apply Synthetic Media Provenance Headers
+      applySyntheticMediaHeaders(res, { provenance: "Insomnia-Kineva-Scene" });
+
+      if (body.engine === "comfy") {
       const row = sceneJobRow(user.id, body);
       const { data, error } = await client.from("kineva_scene_jobs").insert(row).select("id").single();
       if (error) throw Object.assign(new Error(error.message), { status: 500, code: "scene_queue_failed" });
@@ -224,6 +259,9 @@ export default async function handler(req, res) {
     const prompt = scenePrompt(body);
     const imageUrl = await drawScene(prompt, { coverImageUrl: body.coverImageUrl });
     return send(res, 200, { status: "ready", imageUrl });
+    } finally {
+      if (lockId) releaseConcurrencyLock(user.id, lockId);
+    }
   } catch (failure) {
     const status = Number(failure.status) >= 400 && Number(failure.status) <= 599 ? Number(failure.status) : 500;
     console.error("Scene illustration", status, failure.message);
