@@ -89,7 +89,7 @@ export function releaseConcurrencyLock(userId, lockId) {
  * Verifies that the user has sufficient credits and deducts them atomically.
  * Returns { ok: true, creditsRemaining } or { ok: false, error: "insufficient_credits", status: 402 }
  */
-export async function verifyAndDeductCredits(supabaseClient, user, action) {
+export async function verifyAndDeductCredits(supabaseClient, user, action, options = {}) {
   const isAdmin = isUserAdmin(user);
   const cost = ACTION_CREDIT_COSTS[action] || 1;
 
@@ -98,7 +98,33 @@ export async function verifyAndDeductCredits(supabaseClient, user, action) {
     return { ok: true, isAdmin: true, cost: 0, creditsRemaining: 999999 };
   }
 
-  // 1. Try atomic PostgreSQL RPC deduction function
+  // 1. Try atomic PostgreSQL RPC deduct_ai_credits (TABLE return)
+  try {
+    const { data: aiResult, error: aiError } = await supabaseClient.rpc("deduct_ai_credits", {
+      p_user_id: user.id,
+      p_amount: cost,
+      p_generation_type: action,
+      p_metadata: options.metadata || {},
+    });
+
+    const row = Array.isArray(aiResult) ? aiResult[0] : aiResult;
+    if (!aiError && row) {
+      if (row.success) {
+        return { ok: true, cost, creditsRemaining: row.credits_remaining };
+      }
+      return {
+        ok: false,
+        status: 402,
+        error: "insufficient_credits",
+        message: row.error_message || `Saldo insuficiente. Esta acción requiere ${cost} créditos.`,
+        creditsRemaining: row.credits_remaining || 0,
+      };
+    }
+  } catch (err) {
+    // continue to fallback
+  }
+
+  // 2. Try atomic PostgreSQL RPC deduct_user_credits (JSONB return)
   try {
     const { data: rpcResult, error: rpcError } = await supabaseClient.rpc("deduct_user_credits", {
       p_user_id: user.id,
@@ -119,13 +145,13 @@ export async function verifyAndDeductCredits(supabaseClient, user, action) {
       };
     }
   } catch (err) {
-    // RPC may not be migrated yet in some environments; fall back to standard atomic table update
+    // continue to fallback
   }
 
-  // 2. Fallback to direct profiles table check & deduction
+  // 3. Fallback to direct profiles table check & deduction
   const { data: profile, error: fetchErr } = await supabaseClient
     .from("profiles")
-    .select("credits, role, is_admin")
+    .select("credits, ai_credits, role, is_admin")
     .eq("user_id", user.id)
     .single();
 
@@ -137,7 +163,7 @@ export async function verifyAndDeductCredits(supabaseClient, user, action) {
     return { ok: true, isAdmin: true, cost: 0, creditsRemaining: 999999 };
   }
 
-  const currentCredits = Number(profile.credits) || 0;
+  const currentCredits = Number(profile.ai_credits ?? profile.credits) || 0;
   if (currentCredits < cost) {
     return {
       ok: false,
@@ -151,7 +177,7 @@ export async function verifyAndDeductCredits(supabaseClient, user, action) {
   const nextCredits = currentCredits - cost;
   const { error: updateErr } = await supabaseClient
     .from("profiles")
-    .update({ credits: nextCredits, updated_at: new Date().toISOString() })
+    .update({ credits: nextCredits, ai_credits: nextCredits, updated_at: new Date().toISOString() })
     .eq("user_id", user.id);
 
   if (updateErr) {
