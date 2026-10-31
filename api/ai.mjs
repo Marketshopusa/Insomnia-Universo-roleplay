@@ -1930,56 +1930,110 @@ export default async function handler(req, res) {
       if (isIpRateLimited(clientIp, 30) || (userClient && isHeavyJobRateLimited(userClient.auth ? "user" : "anon", 6))) {
         return send(res, 429, { error: "rate_limit_exceeded", message: "Demasiadas peticiones. Espera un momento." });
       }
-      const idea = String(body.description || "").trim().slice(0, 1500);
+      const idea = String(body.description || "").trim().slice(0, 2500);
       if (idea.length < 10) return send(res, 400, { error: "description_too_short" });
       const language = body.language === "English" ? "English" : "español";
-      const castNames = Array.isArray(body.cast_names) ? body.cast_names.slice(0, 20)
-        .map((name) => String(name || "").trim().slice(0, 80)).filter(Boolean) : [];
+      const genre = String(body.genre || body.category || "terror").toLowerCase();
+      const isAdult = genre === "adult" || genre === "nsfw" || body.isAdult === true || /(?:\+18|18\+|nsfw|er[oó]tic|sexual|hentai|\badult[oa]?\b)/i.test(idea);
+
+      const castNames = Array.isArray(body.cast_names) && body.cast_names.length
+        ? body.cast_names.slice(0, 10).map((name) => String(name || "").trim().slice(0, 80)).filter(Boolean)
+        : ["Protagonista", "Acompañante"];
+
+      const actor1 = castNames[0] || "Actor 1";
+      const actor2 = castNames[1] || "Actor 2";
       const locationName = String(body.location_name || "").trim().slice(0, 100);
-      const locationDesc = String(body.location_description || "").trim().slice(0, 300);
-      const props = Array.isArray(body.props) ? body.props.slice(0, 10).map((p) => String(p).trim()).filter(Boolean) : [];
-      const count = Math.min(20, Math.max(1, Number(body.chapters || body.chapterCount || 3)));
-      const prompt = `Actúa como un Showrunner y Director Cinematográfico de miniseries de alta gama (estilo ReelShort / DramaBox). `
-        + `Crea el desglose técnico y guion de rodaje cinematográfico de exactamente ${count} capítulos a partir de la idea. `
-        + `\nREGLAS FUNDAMENTALES DE FILMACIÓN CINEMATOGRÁFICA:\n`
-        + `1. 'visual' (TOMA PRINCIPAL / MASTER SHOT): NUNCA escribas un resumen seco de una sola frase. Describe la toma principal con desglose cinematográfico completo: [TIPO DE PLANO Y CÁMARA] (ej. [PLANO MEDIO INTERIOR VEHÍCULO - CÁMARA EN MANO VIBRANDO] o [PLANO GENERAL PICADO]), [ILUMINACIÓN Y ATMÓSFERA] (niebla, lluvia, contrastes, reflejos de faros o tablero) y la [SECUENCIA DE ACCIÓN Y BLOCKING COMPLETO] detallando el movimiento físico visible paso a paso.\n`
-        + `2. COBERTURA DE CÁMARA ('sub_shots'): En cada capítulo incluye un array 'sub_shots' con 1 o 2 subtomas complementarias para rodaje: Contraplano/Reacción en primer plano [PRIMER PLANO - REACCIÓN] y Plano Detalle o Acción mecánica [PLANO DETALLE / IMPACTO].\n`
-        + `3. DIÁLOGOS DE PERSONAJES: Cada capítulo debe tener su diálogo hablado directo por el actor en 'dialogue' (máximo 15 palabras, con carga dramática real) y el nombre exacto del actor en 'speaker'. Nunca atribuyas voces de hombres a mujeres.\n`
-        + `4. CERO METADATOS TÉCNICOS: Nunca incluyas '9:16', 'Capítulo X de Y', ni palabras como 'Ilustrar' en el texto narrativo ni en el diálogo.\n`
-        + (locationName ? `5. LOCACIÓN FIJA: Desarrolla las escenas en el set: "${locationName}"${locationDesc ? ` (${locationDesc})` : ""}. Mantén este set e iluminación en todas las tomas.
-` : "")
-        + (props.length ? `6. OBJETOS / PROPS CLAVE: Incorpora activamente estos objetos en las acciones físicas de los personajes: ${props.join(", ")}.
-` : "")
-        + `Devuelve solo JSON con esta estructura:\n`
-        + JSON.stringify({
-          title: "Título dramático de la miniserie",
-          cast_roles: [{ name: "Nombre del actor", role: "Papel dramático exacto" }],
-          chapters: Array.from({ length: Math.min(count, 3) }, () => ({
-            visual: "[PLANO MEDIO DINÁMICO] Iluminación cinematográfica. Acción corporal física detallada paso a paso...",
-            dialogue: "Línea hablada real del personaje",
-            speaker: "Nombre exacto del actor",
-            sub_shots: [
-              { visual: "[PRIMER PLANO - REACCIÓN] Rostro...", dialogue: "", speaker: "" },
-              { visual: "[PLANO DETALLE / IMPACTO] Acción mecánica...", dialogue: "", speaker: "" }
-            ]
-          }))
-        })
-        + `.
-Obligatorio: exactamente ${count} capítulos en el array chapters. Cada capítulo DEBE tener 'visual' cinematográfico completo, 'dialogue', 'speaker' y 'sub_shots'. Idioma: ${language}. Elenco disponible: `
-        + JSON.stringify(castNames) + `. Idea: ${idea}`;
+      const count = Math.min(10, Math.max(1, Number(body.chapters || body.chapterCount || 3)));
+
+      let genreInstructions = "";
+      if (isAdult) {
+        genreInstructions = `ESTILO: CANDY SHORTS (ADULTO / NSFW / EROTIC THRILLER).
+- Atmósfera íntima y sensorial: claroscuro, iluminación tenue (velas, penumbra, neón), planos detalle de labios, cuello y manos, proximidad corporal intensa.
+- Diálogos susurrados, pausas jadeadas, respiraciones perceptibles, frases sugerentes y provocaciones cargadas de doble sentido.
+- Foley: roce de telas, sábanas, respiración acelerada en primer plano, latidos rítmicos.`;
+      } else if (genre.includes("terror") || genre.includes("suspenso") || genre.includes("horror")) {
+        genreInstructions = `ESTILO: REELSHORT TERROR / SUSPENSO (JAMES WAN / MIKE FLANAGAN).
+- Pánico visceral y tensión constante: cámara en mano vibrante (Handheld Dynamic Shake), contrastes de sombras, primeros planos de ojos dilatados, huidas desesperadas.
+- Diálogos rápidos y urgentes entre ${actor1} y ${actor2} (<12 palabras por réplica). Nunca monólogos solos.
+- Foley: ramas secas quebrándose, crujidos guturales, jadeos ahogados, viento frío, pisadas desesperadas.`;
+      } else if (genre.includes("romance") || genre.includes("drama")) {
+        genreInstructions = `ESTILO: DRAMABOX MELODRAMA / ROMANCE.
+- Tensión emocional intensa: profundidad de campo con bokeh suave, miradas fijas directas a los ojos, primeros planos expresivos.
+- Diálogos de impacto emocional: secretos revelados, reproches, confesiones apasionadas.
+- Foley: piano sutil melancólico, suspiros, ecos suaves.`;
+      } else if (genre.includes("accion") || genre.includes("action")) {
+        genreInstructions = `ESTILO: SHORTMAX ACCIÓN / THRILLER (JOHN WICK).
+- Adrenalina y cinética pura: planos dinámicos en ángulo bajo, movimientos rápidos de seguimiento lateral, impactos físicos directos.
+- Diálogos tácticos, directos y cortantes bajo adrenalina.
+- Foley: metal, derrapes, golpes secos, percusión acelerada.`;
+      } else {
+        genreInstructions = `ESTILO: COMEDIA VERTICAL / SITCOM.
+- Timing cómico rápido, ironía situacional y miradas de complicidad.
+- Diálogos punzantes con réplicas cómicas rápidas.`;
+      }
+
+      const prompt = `Actúa como un Showrunner y Director Cinematográfico de Élite para miniseries verticales (9:16) en formato ReelShort, Candy Shorts y DramaBox.
+Debes crear el desglose técnico y guion de rodaje cinematográfico de exactamente ${count} capítulos basados ESTRICTAMENTE en la idea del usuario.
+
+${genreInstructions}
+
+REGLAS DE ORO OBLIGATORIAS:
+1. CONTINUIDAD CAUSAL Y PROGRESIÓN (ARCO NARRATIVO DE 3 ACTOS):
+   - Capítulo 1 (The Hook / Detonante): Comienza IN MEDIAS RES directamente en el lugar y situación que describe la idea. CERO explicaciones lentas.
+   - Capítulo 2 (The Escalation / Escalada): La situación empeora o la tensión se duplica. La amenaza o la emoción alcanza su punto álgido.
+   - Capítulo 3 (The Climax / Cliffhanger): Resolución al límite o giro explosivo que deja al espectador al borde del asiento.
+2. FIDELIDAD ABSOLUTA A LA IDEA:
+   - PROHIBIDO inventar vehículos, coches, ciudades o elementos que la idea NO mencione. Si la historia es en un bosque a pie, se filma en un bosque a pie.
+3. DIÁLOGOS CRUZADOS INTERACTIVOS:
+   - En cada capítulo, ${actor1} y ${actor2} DEBEN interactuar y hablar entre sí. Cada réplica debe tener menos de 15 palabras.
+4. EFECTOS DE SONIDO (SFX) Y FOLEY OBLIGATORIOS:
+   - Cada capítulo debe incluir 'sfx' con el diseño de sonido exacto para sumergir al espectador.
+
+Elenco disponible: ${actor1} y ${actor2}.
+${locationName ? `Locación principal fijada: "${locationName}".` : ""}
+Idea del creador: "${idea}"
+
+Devuelve EXCLUSIVAMENTE un JSON válido con esta estructura:
+{
+  "title": "Título impactante de la miniserie",
+  "chapters": [
+    {
+      "chapter_number": 1,
+      "visual": "[TIPO DE PLANO Y MOVIMIENTO] Descripción cinematográfica detallada del movimiento, iluminación y acciones físicas paso a paso.",
+      "dialogue": "${actor1}: \"Línea de diálogo corta.\" | ${actor2}: \"Respuesta inmediata de diálogo.\"",
+      "speaker": "${actor1}",
+      "sfx": "[SFX: Descripción de efectos de sonido y foley ambiental]"
+    }
+  ]
+}
+Nota: Exactamente ${count} capítulos dentro del array 'chapters'.`;
+
       let raw;
-      try {
-        raw = await generate("gemini-3.5-flash-lite", [{ text: prompt }],
-          { responseMimeType: "application/json", maxOutputTokens: Math.max(2500, count * 650), temperature: 0.5 },
-          { fallbackModels: ["gemini-3.1-flash-lite", "gemini-3.8-flash"], retryBadRequest: true });
-      } catch (err) {
-        // Fallback robusto para miniseries de adultos o si Gemini bloquea
-        const local = await generateLocalLlama([{ role: "user", content: prompt + "\nResponde exclusivamente en JSON válido." }], { maxTokens: Math.max(2500, count * 650) });
-        if (local) raw = local;
-        else {
-          const cloud = await generateOpenRouter([{ role: "user", content: prompt + "\nResponde exclusivamente en JSON válido." }], { maxTokens: Math.max(2500, count * 650) });
-          if (cloud) raw = cloud;
-          else throw err;
+      if (isAdult) {
+        // En contenido adulto/NSFW, usar prioritariamente motor sin censura (Local Magnum v4 u OpenRouter)
+        try {
+          raw = await generateLocalLlama([{ role: "user", content: prompt + "\nResponde exclusivamente en JSON válido." }], { maxTokens: Math.max(2500, count * 700), temperature: 0.65 });
+        } catch { /* fallback */ }
+        if (!raw) {
+          try {
+            raw = await generateOpenRouter([{ role: "user", content: prompt + "\nResponde exclusivamente en JSON válido." }], { maxTokens: Math.max(2500, count * 700), temperature: 0.65 });
+          } catch { /* fallback */ }
+        }
+      }
+
+      if (!raw) {
+        try {
+          raw = await generate("gemini-2.5-flash", [{ text: prompt }],
+            { responseMimeType: "application/json", maxOutputTokens: Math.max(2500, count * 700), temperature: 0.55 },
+            { fallbackModels: ["gemini-3.5-flash-lite", "gemini-3.8-flash"], retryBadRequest: true });
+        } catch (err) {
+          const local = await generateLocalLlama([{ role: "user", content: prompt + "\nResponde exclusivamente en JSON válido." }], { maxTokens: Math.max(2500, count * 700) });
+          if (local) raw = local;
+          else {
+            const cloud = await generateOpenRouter([{ role: "user", content: prompt + "\nResponde exclusivamente en JSON válido." }], { maxTokens: Math.max(2500, count * 700) });
+            if (cloud) raw = cloud;
+            else throw err;
+          }
         }
       }
       const draft = JSON.parse(raw);
