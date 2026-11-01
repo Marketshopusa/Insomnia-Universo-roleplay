@@ -1,8 +1,8 @@
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { geminiStreamPlan, getGeminiAccessToken, quotaProjectId } from "./geminiTts.mjs";
-import { TTS_STREAM_PROTO } from "./ttsStreamProto.mjs";
+import { geminiStreamPlan, getGeminiAccessToken, quotaProjectId } from "./_geminiTts.mjs";
+import { TTS_STREAM_PROTO } from "./_ttsStreamProto.mjs";
 
 let cachedService;
 

@@ -1,6 +1,6 @@
 import { ExternalAccountClient, GoogleAuth } from "google-auth-library";
 import { getVercelOidcToken } from "@vercel/oidc";
-import { accentHint } from "./regions.mjs";
+import { accentHint } from "./_regions.mjs";
 
 const GEMINI_VOICES = [
   "Aoede", "Zephyr", "Leda", "Kore", "Achernar", "Autonoe", "Callirrhoe",

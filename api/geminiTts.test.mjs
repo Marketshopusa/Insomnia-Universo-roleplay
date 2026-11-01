@@ -1,7 +1,7 @@
 import { prepareExpressiveSpeech } from "../src/lib/expressiveSpeech.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { cloudGeminiVoiceFor, decodeLinear16, explainGeminiFailure, geminiSpeechDirection, geminiStreamBody, pcmFromSseLine, removePerformanceCues, streamGeminiSpeech, synthesizeGemini, splitSentences } from "./geminiTts.mjs";
+import { cloudGeminiVoiceFor, decodeLinear16, explainGeminiFailure, geminiSpeechDirection, geminiStreamBody, pcmFromSseLine, removePerformanceCues, streamGeminiSpeech, synthesizeGemini, splitSentences } from "./_geminiTts.mjs";
 
 function sampleWav() {
   const pcm = Buffer.alloc(48_000, 1);

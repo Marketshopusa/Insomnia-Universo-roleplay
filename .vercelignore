@@ -1,0 +1,9 @@
+*.test.mjs
+*.test.ts
+*.test.js
+api/**/*.test.mjs
+tests/
+integrations/kineva/
+.git
+.github
+docs/

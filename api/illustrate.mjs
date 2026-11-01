@@ -1,9 +1,9 @@
 import { createClient } from "@supabase/supabase-js";
-import { supabaseUrl, publishableKey } from "./config.mjs";
-import { isIpRateLimited, isHeavyJobRateLimited } from "./security/rateLimiter.mjs";
-import { verifyAndDeductCredits, acquireConcurrencyLock, releaseConcurrencyLock } from "./security/creditGuard.mjs";
-import { sanitizeUserPrompt, PROMPT_LIMITS } from "./security/promptShield.mjs";
-import { applySyntheticMediaHeaders, SIGNED_URL_TTL_SECONDS } from "./security/biometricGuard.mjs";
+import { supabaseUrl, publishableKey } from "./_config.mjs";
+import { isIpRateLimited, isHeavyJobRateLimited } from "./_security/rateLimiter.mjs";
+import { verifyAndDeductCredits, acquireConcurrencyLock, releaseConcurrencyLock } from "./_security/creditGuard.mjs";
+import { sanitizeUserPrompt, PROMPT_LIMITS } from "./_security/promptShield.mjs";
+import { applySyntheticMediaHeaders, SIGNED_URL_TTL_SECONDS } from "./_security/biometricGuard.mjs";
 
 const bucket = "kineva-scene-images";
 const send = (res, status, data) => res.status(status).json(data);

@@ -2,8 +2,8 @@ import { synthesizeExpressiveScene } from "../src/lib/expressiveAudio.mjs";
 import { prepareExpressiveSpeech, hasVocalCue } from "../src/lib/expressiveSpeech.mjs";
 import { vocalSample } from "../src/lib/vocalSamples.mjs";
 import { createClient } from "@supabase/supabase-js";
-import { supabaseUrl, publishableKey } from "./config.mjs";
-import { explainGeminiFailure, isGeminiConfigured, streamGeminiSpeech, synthesizeGemini, removePerformanceCues, previewVoice, splitSentences } from "./geminiTts.mjs";
+import { supabaseUrl, publishableKey } from "./_config.mjs";
+import { explainGeminiFailure, isGeminiConfigured, streamGeminiSpeech, synthesizeGemini, removePerformanceCues, previewVoice, splitSentences } from "./_geminiTts.mjs";
 
 export const maxDuration = 60;
 

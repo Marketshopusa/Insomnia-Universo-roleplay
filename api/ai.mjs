@@ -62,11 +62,11 @@ export function enforceDialogueRatio(text, dialPct = 80, narrPct = 20) {
 }
 
 import { createClient } from "@supabase/supabase-js";
-import { supabaseUrl as BASE, publishableKey as KEY } from "./config.mjs";
-import { slangInstruction, speechLocale } from "./regions.mjs";
-import { isIpRateLimited, isHeavyJobRateLimited } from "./security/rateLimiter.mjs";
-import { verifyAndDeductCredits, acquireConcurrencyLock, releaseConcurrencyLock } from "./security/creditGuard.mjs";
-import { sanitizeUserPrompt, PROMPT_LIMITS } from "./security/promptShield.mjs";
+import { supabaseUrl as BASE, publishableKey as KEY } from "./_config.mjs";
+import { slangInstruction, speechLocale } from "./_regions.mjs";
+import { isIpRateLimited, isHeavyJobRateLimited } from "./_security/rateLimiter.mjs";
+import { verifyAndDeductCredits, acquireConcurrencyLock, releaseConcurrencyLock } from "./_security/creditGuard.mjs";
+import { sanitizeUserPrompt, PROMPT_LIMITS } from "./_security/promptShield.mjs";
 
 // In-memory sliding window rate limiter
 const RATE_LIMIT_WINDOW_MS = 60_000;

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { geminiStreamPlan } from "./geminiTts.mjs";
+import { geminiStreamPlan } from "./_geminiTts.mjs";
 import { streamGeminiSpeech, ttsStreamClientReady } from "./geminiStream.mjs";
 
 const line = "Ella [moaning] gimió con fuerza y [shouting] gritó de placer, y después dijo que el video sí lo había enviado ella.";

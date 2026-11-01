@@ -1,6 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
-import { supabaseUrl, publishableKey } from "../config.mjs";
-import { verifyStripeSignature, processStripeEvent } from "../security/stripeWebhook.mjs";
+import { supabaseUrl, publishableKey } from "../_config.mjs";
+import { verifyStripeSignature, processStripeEvent } from "../_security/stripeWebhook.mjs";
 
 const send = (res, status, data) => res.status(status).json(data);
 
