@@ -876,6 +876,96 @@ export function roleplayPacingAndLanguageRules(historyLength, spanish, targetTok
   ];
 }
 
+export function parseStudioDraftJson(raw, count = 3, defaultSpeaker = "Protagonista") {
+  if (!raw || typeof raw !== "string") {
+    throw Object.assign(new Error("Respuesta vacía del generador de guion."), { status: 502 });
+  }
+
+  // 1. Quitar markdown code fences
+  let cleaned = raw.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+
+  // 2. Extraer límites de JSON { ... }
+  const firstBrace = cleaned.indexOf("{");
+  const lastBrace = cleaned.lastIndexOf("}");
+  if (firstBrace !== -1 && lastBrace > firstBrace) {
+    cleaned = cleaned.slice(firstBrace, lastBrace + 1);
+  }
+
+  // 3. Intento estándar de JSON.parse
+  try {
+    const parsed = JSON.parse(cleaned);
+    if (parsed && typeof parsed === "object" && Array.isArray(parsed.chapters) && parsed.chapters.length >= 1) {
+      return {
+        title: String(parsed.title || "Miniserie").trim().slice(0, 120),
+        chapters: parsed.chapters.map((ch, idx) => ({
+          chapter_number: Number(ch.chapter_number) || (idx + 1),
+          visual: String(ch.visual || "").trim(),
+          dialogue: String(ch.dialogue || "").trim(),
+          speaker: String(ch.speaker || defaultSpeaker).trim(),
+          sfx: String(ch.sfx || "").trim(),
+        })).filter((ch) => ch.visual.length > 5)
+      };
+    }
+  } catch (err) {
+    console.warn("Standard JSON.parse failed, attempting sanitized recovery:", err.message);
+  }
+
+  // 4. Limpieza de errores comunes de LLMs (comas finales, saltos de línea sin escapar dentro de strings)
+  try {
+    const sanitized = cleaned
+      .replace(/,\s*([\]}])/g, "$1")
+      .replace(/[\u0000-\u001F]+/g, (match) => (match.includes("\n") || match.includes("\r") ? " " : ""));
+    const parsed = JSON.parse(sanitized);
+    if (parsed && Array.isArray(parsed.chapters) && parsed.chapters.length >= 1) {
+      return {
+        title: String(parsed.title || "Miniserie").trim().slice(0, 120),
+        chapters: parsed.chapters.map((ch, idx) => ({
+          chapter_number: Number(ch.chapter_number) || (idx + 1),
+          visual: String(ch.visual || "").trim(),
+          dialogue: String(ch.dialogue || "").trim(),
+          speaker: String(ch.speaker || defaultSpeaker).trim(),
+          sfx: String(ch.sfx || "").trim(),
+        })).filter((ch) => ch.visual.length > 5)
+      };
+    }
+  } catch (err2) {
+    console.warn("Sanitized JSON.parse failed, proceeding to regex field recovery:", err2.message);
+  }
+
+  // 5. Extractor por Regex tolerante a comillas internas sin escapar
+  const titleMatch = cleaned.match(/"title"\s*:\s*"([^"\r\n]+)"/i);
+  const title = titleMatch ? titleMatch[1].trim() : "Miniserie";
+
+  const chapterChunks = cleaned.split(/(?=\{\s*"chapter_number"|\{\s*"visual")/i).slice(1);
+  const recoveredChapters = [];
+
+  for (let i = 0; i < chapterChunks.length; i++) {
+    const chunk = chapterChunks[i];
+    const numMatch = chunk.match(/"chapter_number"\s*:\s*(\d+)/i);
+    const visMatch = chunk.match(/"visual"\s*:\s*"([\s\S]*?)(?=",\s*"(?:dialogue|speaker|sfx|chapter_number)|\"\s*\})/i);
+    const diaMatch = chunk.match(/"dialogue"\s*:\s*"([\s\S]*?)(?=",\s*"(?:speaker|sfx|chapter_number|visual)|\"\s*\})/i);
+    const spkMatch = chunk.match(/"speaker"\s*:\s*"([^"\r\n]+)"/i);
+    const sfxMatch = chunk.match(/"sfx"\s*:\s*"([\s\S]*?)(?=",\s*"(?:chapter_number|visual|dialogue|speaker)|\"\s*\})/i);
+
+    const visual = visMatch ? visMatch[1].replace(/\\"/g, '"').trim() : "";
+    if (visual.length > 3) {
+      recoveredChapters.push({
+        chapter_number: numMatch ? parseInt(numMatch[1], 10) : (i + 1),
+        visual,
+        dialogue: diaMatch ? diaMatch[1].replace(/\\"/g, '"').trim() : "",
+        speaker: spkMatch ? spkMatch[1].trim() : defaultSpeaker,
+        sfx: sfxMatch ? sfxMatch[1].replace(/\\"/g, '"').trim() : "",
+      });
+    }
+  }
+
+  if (recoveredChapters.length >= 1) {
+    return { title, chapters: recoveredChapters };
+  }
+
+  throw Object.assign(new Error("Error al procesar el guion del modelo. Por favor genera de nuevo."), { status: 502 });
+}
+
 export default async function handler(req, res) {
   if (req.method !== "POST") return send(res, 405, { error: "method_not_allowed" });
   const clientIp = String(req.headers["x-forwarded-for"] || "").split(",")[0]?.trim() || req.socket?.remoteAddress || "client";
@@ -1997,6 +2087,8 @@ REGLAS DE ORO OBLIGATORIAS:
    - En cada capítulo, ${actor1} y ${actor2} DEBEN interactuar y hablar entre sí. Cada réplica debe tener menos de 15 palabras.
 4. EFECTOS DE SONIDO (SFX) Y FOLEY OBLIGATORIOS:
    - Cada capítulo debe incluir 'sfx' con el diseño de sonido exacto para sumergir al espectador.
+5. REGLA ESTRICTA DE JSON:
+   - NUNCA uses comillas dobles (") dentro de los textos de visual, dialogue ni sfx. Usa comillas simples (') o guiones para citas, JAMÁS comillas dobles internas.
 
 Elenco disponible: ${actor1} y ${actor2}.
 ${locationName ? `Locación principal fijada: "${locationName}".` : ""}
@@ -2009,7 +2101,7 @@ Devuelve EXCLUSIVAMENTE un JSON válido con esta estructura:
     {
       "chapter_number": 1,
       "visual": "[TIPO DE PLANO Y MOVIMIENTO] Descripción cinematográfica detallada del movimiento, iluminación y acciones físicas paso a paso.",
-      "dialogue": "${actor1}: \"Línea de diálogo corta.\" | ${actor2}: \"Respuesta inmediata de diálogo.\"",
+      "dialogue": "${actor1}: Línea de diálogo corta. | ${actor2}: Respuesta inmediata de diálogo.",
       "speaker": "${actor1}",
       "sfx": "[SFX: Descripción de efectos de sonido y foley ambiental]"
     }
@@ -2045,7 +2137,7 @@ Nota: Exactamente ${count} capítulos dentro del array 'chapters'.`;
           }
         }
       }
-      const draft = JSON.parse(raw);
+      const draft = parseStudioDraftJson(raw, count, actor1);
       if (!draft.title || !Array.isArray(draft.chapters) || draft.chapters.length < 1
           || draft.chapters.some((chapter) => String(chapter.visual || "").trim().length < 5)) {
         throw Object.assign(new Error(`El guion no trajo escenas completas.`), { status: 502 });
