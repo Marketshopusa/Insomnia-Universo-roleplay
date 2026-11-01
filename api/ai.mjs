@@ -1927,7 +1927,16 @@ export default async function handler(req, res) {
     }
     if (action === "generate-studio-draft") {
       const clientIp = req.headers["x-forwarded-for"] || req.socket?.remoteAddress || "unknown";
-      if (isIpRateLimited(clientIp, 30) || (userClient && isHeavyJobRateLimited(userClient.auth ? "user" : "anon", 6))) {
+      const token = String(req.headers?.authorization || "").replace(/^Bearer\s+/i, "").trim();
+      let userId = null;
+      if (token && KEY) {
+        try {
+          const authClient = createClient(BASE, KEY, { auth: { persistSession: false } });
+          const { data } = await authClient.auth.getUser(token);
+          userId = data?.user?.id || null;
+        } catch {}
+      }
+      if (isIpRateLimited(clientIp, 30) || (userId && isHeavyJobRateLimited(userId, 6))) {
         return send(res, 429, { error: "rate_limit_exceeded", message: "Demasiadas peticiones. Espera un momento." });
       }
       const idea = String(body.description || "").trim().slice(0, 2500);
