@@ -378,7 +378,8 @@ export async function generate(model, parts, settings = {}, options = {}) {
     throw Object.assign(new Error("Gemini no está configurado en Insomnia (Vercel)."), { status: 503, code: "gemini_not_configured" });
   }
   const fetchImpl = options.fetchImpl || fetch;
-  const choices = [...new Set([model, ...(options.fallbackModels || ["gemini-flash-latest", "gemini-2.5-pro", "gemini-pro-latest"])])];
+  const defaultFallbacks = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-2.0-flash-lite", "gemini-1.5-flash-8b", "gemini-flash-latest", "gemini-2.5-flash"];
+  const choices = [...new Set([model, ...(options.fallbackModels || defaultFallbacks)])];
   let lastError;
 
   let gcpTokenPromise = null;
@@ -415,7 +416,7 @@ export async function generate(model, parts, settings = {}, options = {}) {
 
         let response = null;
 
-        if (directKey && !options._directKeyExhausted) {
+        if (directKey) {
           try {
             response = await fetchImpl("https://generativelanguage.googleapis.com/v1beta/models/" + candidate + ":generateContent", {
               method: "POST",
@@ -424,8 +425,8 @@ export async function generate(model, parts, settings = {}, options = {}) {
               signal: AbortSignal.timeout(options.timeoutMs || 25000),
             });
             if (response.status === 429) {
-              options._directKeyExhausted = true;
-              response = null; // Clear exhausted direct key so Vertex AI takes over cleanly
+              console.warn(`Direct key 429 on ${candidate}, attempting GCP/Vertex or fallback...`);
+              response = null;
             }
           } catch (e) {
             if (e.name === "TimeoutError") throw e;
@@ -1811,7 +1812,7 @@ export default async function handler(req, res) {
               geminiContents.unshift({ role: "user", parts: [{ text: "Continúa la escena." }] });
             }
             content = await generate(
-              "gemini-2.5-flash",
+              "gemini-2.0-flash",
               [],
               { maxOutputTokens: Math.max(220, targetTokens), temperature: 0.8 },
               {
@@ -1819,8 +1820,8 @@ export default async function handler(req, res) {
                 systemInstruction,
                 adultMode: false,
                 apiKey: geminiApiKey || undefined,
-                timeoutMs: 16000,
-                fallbackModels: ["gemini-flash-latest", "gemini-2.5-pro"],
+                timeoutMs: 12000,
+                fallbackModels: ["gemini-1.5-flash", "gemini-2.0-flash-lite", "gemini-1.5-flash-8b", "gemini-flash-latest", "gemini-2.5-flash"],
                 fastReply: true,
                 validate: (reply) => !isOffRole(reply)
               },
@@ -1938,7 +1939,7 @@ export default async function handler(req, res) {
             geminiContents.unshift({ role: "user", parts: [{ text: "Continúa la escena." }] });
           }
           content = await generate(
-            "gemini-2.5-flash",
+            "gemini-1.5-flash",
             [],
             { maxOutputTokens: Math.max(200, targetTokens), temperature: 0.8 },
             {
@@ -1946,7 +1947,8 @@ export default async function handler(req, res) {
               systemInstruction,
               adultMode: false,
               apiKey: geminiApiKey || undefined,
-              timeoutMs: 14000,
+              timeoutMs: 10000,
+              fallbackModels: ["gemini-2.0-flash-lite", "gemini-1.5-flash-8b"],
               fastReply: true,
               validate: (reply) => !isOffRole(reply)
             },
@@ -2116,12 +2118,32 @@ export default async function handler(req, res) {
       }
 
       if (!content) {
-        // Fallback conversacional contextual fiel al rol (cero respuestas eróticas genéricas)
         const isExam = /(?:examen|chequeo|consulta|m[eé]dic|doctor|pr[oó]stata)/i.test([story.title, story.description, story.story_context, characterName].filter(Boolean).join(" "));
+        const userSpoken = latest.replace(/\*[^*]*\*/g, "").replace(/\s+/g, " ").trim();
+        const turnCount = history.length;
+        const lastTurn = history.slice(-1)[0]?.text || "";
+
         if (isExam) {
-          content = `*Te observo con serenidad y una sonrisa amable desde mi escritorio, dejando tu expediente a un lado para transmitirte tranquilidad.* Pasa, ${playerName || "toma asiento"}, ponte cómodo con total confianza. Sé muy bien que para cualquiera un chequeo de rutina o una revisión preventiva puede resultar incómodo o dar algo de pena, pero ante todo eres mi paciente y estamos en un espacio médico profesional. Cuéntame con calma, ¿has sentido alguna molestia o molestia últimamente, o venimos a hacer la revisión preventiva completa?`;
+          if (turnCount <= 1 || /(?:hola|buenas|entr|llegu|vengo)/i.test(userSpoken)) {
+            content = `*Te observo con serenidad y una sonrisa amable desde mi escritorio, dejando tu expediente a un lado para transmitirte tranquilidad.* Pasa, ${playerName || "William"}, toma asiento con total confianza. Sé muy bien que para cualquiera un chequeo de rutina o una revisión preventiva puede resultar incómodo o dar algo de pena, pero ante todo eres mi paciente y estamos en un espacio médico profesional. Cuéntame con calma, ¿has sentido alguna molestia últimamente, o venimos a hacer la revisión preventiva completa?`;
+          } else if (/(?:s[ií]ntoma|ning[uú]n|44|cuidar|edad|rutina|preventiv)/i.test(userSpoken)) {
+            content = `*Asiento comprensiva mientras tomo nota en tu historial clínico, mirándote con calidez y calma profesional.* Me parece una excelente decisión, ${playerName || "William"}. A los 44 años la prevención es fundamental y haces muy bien en hacerte el chequeo aunque no sientas molestias. Quédate tranquilo, el procedimiento es rápido y te iré explicando cada paso. Pasa detrás del biombo cuando gustes para prepararte y te indico cómo colocarte en la camilla.`;
+          } else if (/(?:miedo|nervio|pena|verg[uü]enza|inc[oó]mod|amig[ao]|pap[aá]|mam[aá])/i.test(userSpoken)) {
+            content = `*Sonrío con ternura y comprensión profesional, apoyando las manos sobre el escritorio para darte seguridad.* Es completamente normal sentir algo de pena o nervios, especialmente conociéndonos desde antes. Pero quiero que recuerdes que en esta sala no soy la niña que conociste, sino tu doctora, y mi único objetivo es cuidar tu salud con el máximo respeto y delicadeza. Respira hondo, tómate tu tiempo y avísame cuando te sientas listo para pasar a la camilla.`;
+          } else if (/(?:listo|preparad|biombo|camilla|pantal[oó]n|ropa|desvest|bajar)/i.test(userSpoken)) {
+            content = `*Me coloco los guantes de látex con movimientos serenos y precisos, cuidando en todo momento tu privacidad y confort.* Muy bien, recuéstate sobre la camilla de lado, flexionando suavemente las rodillas hacia el pecho. Mantén la respiración tranquila y el cuerpo relajado; te aseguro que durará apenas unos segundos. Cualquier molestia que sientas me avisas de inmediato.`;
+          } else {
+            content = `*Te escucho con absoluta atención profesional y un gesto afable, asintiendo a tus palabras.* Te entiendo perfectamente, ${playerName || "William"}. Cada detalle que me comentas es importante para tu expediente. Quédate muy tranquilo, estás en las mejores manos y vamos a llevar la consulta paso a paso con total confianza y delicadeza.`;
+          }
         } else {
-          content = `*Te miro a los ojos con atención y una leve sonrisa, escuchando cada detalle.* Te escucho con total atención, ${playerName || ""}. Cuéntame, continúa diciéndome lo que estabas comentando.`.trim();
+          content = `*Te miro a los ojos con atención y una leve sonrisa, prestando atención a cada una de tus palabras.* Te escucho con total atención, ${playerName || ""}. Cuéntame, continúa con lo que me estabas comentando.`.trim();
+        }
+
+        // GARANTÍA ESTRICTA CONTRA REPETICIÓN: Si por cualquier motivo la frase coincide con el turno anterior, variar de inmediato
+        if (lastTurn && content.slice(0, 50).toLowerCase() === lastTurn.slice(0, 50).toLowerCase()) {
+          content = isExam
+            ? `*Dejo la pluma a un lado y te miro con calidez profesional.* Por supuesto, ${playerName || "William"}. Tómate todo el tiempo que necesites, respira tranquilo y cuando quieras pasamos al área de examen.`
+            : `*Asiento con suavidad sin apartar la mirada.* Entendido, sigue contándome, te sigo con total atención.`;
         }
       }
       return send(res, 200, { content });
