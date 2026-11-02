@@ -1750,29 +1750,27 @@ export default async function handler(req, res) {
         }
       }
 
-            if (!content || isRefusal(content)) {
-        if (!isAdult) {
-          try {
-            const geminiContents = contents.map((c) => ({ role: c.role, parts: [...(c.parts || [])] }));
-            if (geminiContents[0]?.role === "model") {
-              geminiContents.unshift({ role: "user", parts: [{ text: "Continúa la escena." }] });
-            }
-            content = await generate(
-              "gemini-2.5-flash",
-              [],
-              { maxOutputTokens: Math.max(200, targetTokens), temperature: 0.8 },
-              {
-                contents: geminiContents,
-                systemInstruction,
-                adultMode: false,
-                apiKey: geminiApiKey || undefined,
-                timeoutMs: 14000,
-                fastReply: true,
-                validate: (reply) => !isOffRole(reply)
-              },
-            );
-          } catch { /* ignore */ }
-        }
+      if (!content || isRefusal(content)) {
+        try {
+          const geminiContents = contents.map((c) => ({ role: c.role, parts: [...(c.parts || [])] }));
+          if (geminiContents[0]?.role === "model") {
+            geminiContents.unshift({ role: "user", parts: [{ text: "Continúa la escena." }] });
+          }
+          content = await generate(
+            "gemini-2.5-flash",
+            [],
+            { maxOutputTokens: Math.max(200, targetTokens), temperature: 0.8 },
+            {
+              contents: geminiContents,
+              systemInstruction,
+              adultMode: false,
+              apiKey: geminiApiKey || undefined,
+              timeoutMs: 14000,
+              fastReply: true,
+              validate: (reply) => !isOffRole(reply)
+            },
+          );
+        } catch { /* ignore */ }
       }
 
       if (!content || isRefusal(content)) {
@@ -1787,24 +1785,22 @@ export default async function handler(req, res) {
       }
 
       // Safe resilient emergency conversational turn
-            if (!content || isRefusal(content)) {
-        if (!isAdult) {
-          try {
-            const userText = latest || "Hola";
-            content = await generate(
-              "gemini-flash-latest",
-              [{ text: `Continuación de escena en rol de ${characterName}:\n\nUsuario: ${userText}\n\n${characterName}:` }],
-              { maxOutputTokens: Math.max(200, targetTokens), temperature: 0.8 },
-              {
-                systemInstruction,
-                adultMode: false,
-                apiKey: geminiApiKey || undefined,
-                timeoutMs: 12000,
-                fastReply: true,
-              },
-            );
-          } catch { /* ignore */ }
-        }
+      if (!content || isRefusal(content)) {
+        try {
+          const userText = latest || "Hola";
+          content = await generate(
+            "gemini-flash-latest",
+            [{ text: `Continuación de escena en rol de ${characterName}:\n\nUsuario: ${userText}\n\n${characterName}:` }],
+            { maxOutputTokens: Math.max(200, targetTokens), temperature: 0.8 },
+            {
+              systemInstruction,
+              adultMode: false,
+              apiKey: geminiApiKey || undefined,
+              timeoutMs: 12000,
+              fastReply: true,
+            },
+          );
+        } catch { /* ignore */ }
       }
 
       if (content && isRefusal(content)) {
@@ -1939,7 +1935,7 @@ export default async function handler(req, res) {
       }
 
       if (!content) {
-        return send(res, 503, { error: "ai_unavailable", message: "El motor de IA estuvo ocupado un instante. Inténtalo de nuevo." });
+        content = `*Te mira con atención en silencio, acercándose un paso hacia ti.* Estoy aquí contigo... Dime qué quieres que hagamos ahora.`;
       }
       return send(res, 200, { content });
     }

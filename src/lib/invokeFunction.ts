@@ -780,7 +780,7 @@ export async function invokeFunctionWithRetry<T>(name: string, body: unknown): P
 
         error: {
 
-          message: "El motor de contenido adulto (Magnum v4) esta ocupado en la GPU. Intentalo de nuevo en unos segundos.",
+          message: "No se pudo conectar con el motor de IA. Inténtalo de nuevo en unos segundos.",
 
           context: new Response(null, { status: 503 })
 

@@ -4,6 +4,7 @@ import binascii
 import copy
 import json
 import os
+import random
 import re
 import subprocess
 import threading
@@ -82,6 +83,21 @@ def decode_optional_image(encoded, label):
     if not data or len(data) > MAX_IMAGE:
         raise ValueError(label + ": la foto debe pesar hasta 10 MB.")
     image_extension(data)
+    return data
+def fit_to_portrait_canvas(data, width=768, height=1344):
+    if not data:
+        return data
+    try:
+        from PIL import Image as PILImage, ImageOps as PILOps
+        import io
+        img = PILImage.open(io.BytesIO(data)).convert("RGB")
+        if img.size != (width, height):
+            img = PILOps.fit(img, (width, height), method=PILImage.Resampling.LANCZOS, centering=(0.5, 0.35))
+            buf = io.BytesIO()
+            img.save(buf, format="PNG")
+            return buf.getvalue()
+    except Exception as err:
+        print(f"[Kineva] Warning fitting canvas: {err}", flush=True)
     return data
 def cast_spec(body):
     source = body.get("cast") or {}
@@ -353,15 +369,23 @@ def build_graph(template, image_name, manifest_path, idea, job_id, episode, tota
         qc_node["inputs"]["video"] = [create_video_id, 0]
         ksampler_id, ksampler_node = find_node(graph, "KSampler")
         if ksampler_node:
+            ksampler_node["inputs"]["cfg"] = 1.2
+            ksampler_node["inputs"]["steps"] = 20
+            ksampler_node["inputs"]["seed"] = random.randint(1, 2**31 - 1)
             pos_ref = ksampler_node["inputs"].get("positive")
             if pos_ref and str(pos_ref[0]) in graph:
                 graph[str(pos_ref[0])]["inputs"]["text"] = story
             neg_ref = ksampler_node["inputs"].get("negative")
             if neg_ref and str(neg_ref[0]) in graph:
                 existing_neg = graph[str(neg_ref[0])]["inputs"].get("text", "")
-                motion_neg = "static image, frozen frame, lifeless, motionless slide show, mannequin, freeze frame"
+                motion_neg = "static image, frozen frame, lifeless, motionless slide show, mannequin, freeze frame, deformed face, mutated limbs, melting, plastic skin"
                 if motion_neg not in existing_neg:
                     graph[str(neg_ref[0])]["inputs"]["text"] = f"{existing_neg}, {motion_neg}".strip(", ")
+
+        wan_id, wan_node = find_node(graph, "Wan22ImageToVideoLatent")
+        if wan_node:
+            wan_node["inputs"]["width"] = 768
+            wan_node["inputs"]["height"] = 1344
 
 
 
@@ -515,20 +539,28 @@ def create_shot_reference(job_id, episode, shot_index, visual, cast, source_name
     anchor = resolve_setting_anchor(cast, visual)
     is_creature = bool(re.search(r"\b(figura oscura|monstruo|criatura|sombra|ente|bestia|demonio|espectro|aparici[oó]n|cad[aá]ver)\b", visual, re.IGNORECASE))
     is_detail = bool(re.search(r"\b(plano detalle|detalle|manos|fuego|fogata|objeto|marshmallows)\b", visual, re.IGNORECASE))
+    is_establishing = bool(re.search(r"\b(plano general|bosque|carretera|paisaje|arboles|árboles|ático|atico|casa|exterior|entorno|ambiente)\b", visual, re.IGNORECASE))
+    has_character = bool(re.search(r"\b(elena|diego|ella|él|rostro|cara|habla|dice|mira|sostiene)\b", visual, re.IGNORECASE)) or bool(dialogue)
 
     if is_creature and not source_names:
         prompt = (
-            f"{anchor} Terrifying photorealistic cinematic film frame: A horrific twisted humanoid shadow figure, "
-            f"sinister monstrous creature emerging from between dark pine trees into the faint rim of firelight. "
-            f"Inhuman nightmarish anatomy, deformed silhouette, pure horror cinematography. No human actor face."
+            f"{anchor} Cinematic horror atmosphere, 35mm film still: A mysterious shadowy silhouetted figure standing among dark foggy trees. "
+            f"Dramatic moonlight rim light, dense mist, eerie cinematic lighting, photorealistic 8k composition. No deformed faces."
+        )
+        init_image = None
+        denoise = 1.0
+    elif is_establishing and not has_character:
+        prompt = (
+            f"{anchor} Cinematic vertical 9:16 establishing film still: {visual.strip()}. "
+            f"Atmospheric cinematic lighting, ultra-realistic texture, 35mm film grain, 8k resolution, photorealistic environment, no people in frame."
         )
         init_image = None
         denoise = 1.0
     else:
         prompt = (
-            f"{anchor} One coherent photorealistic cinematic film frame, one instant in one location. "
+            f"{anchor} One coherent photorealistic cinematic vertical 9:16 film frame, one instant in one location. "
             f"Depict this visible action exactly: {visual[:1000]}. "
-            f"Image 1 identifies the primary character {cast.get('primary_name', '')}; preserve that person's exact face, age, hair and build. "
+            f"Natural human anatomy, realistic skin pores, photorealistic film lighting, crisp focus, expressive eyes. "
         )
         if dialogue:
             prompt += "Frame the speaking person in a medium close-up with a sharply visible face and natural mouth articulation. "
@@ -540,7 +572,7 @@ def create_shot_reference(job_id, episode, shot_index, visual, cast, source_name
         else:
             prompt += "Single individual in frame only. Anatomically complete human body, exactly one head, two arms, two hands, no extra limbs. "
         prompt += "Distinct anatomically complete people. No duplicates, collage, captions or extra limbs."
-        init_image = source_names[0] if (source_names and not is_detail) else None
+        init_image = source_names[0] if (source_names and not is_detail and has_character) else None
         denoise = 0.58 if init_image else 1.0
 
     seed_id = str(uuid.uuid5(uuid.UUID(job_id), f"shot-{episode}-{shot_index}"))
@@ -572,6 +604,20 @@ def create_shot_reference(job_id, episode, shot_index, visual, cast, source_name
         image = last_candidate
     if image is None:
         raise RuntimeError("No se pudo generar la imagen para esta toma en ComfyUI.")
+
+    # Guaranteed 9:16 vertical fit (768x1344) without stretching
+    try:
+        from PIL import Image as PILImage, ImageOps as PILOps
+        import io
+        pil_img = PILImage.open(io.BytesIO(image)).convert("RGB")
+        if pil_img.size != (768, 1344):
+            pil_img = PILOps.fit(pil_img, (768, 1344), method=PILImage.Resampling.LANCZOS, centering=(0.5, 0.35))
+            buf = io.BytesIO()
+            pil_img.save(buf, format="PNG")
+            image = buf.getvalue()
+    except Exception as fit_err:
+        print(f"[Kineva] Warning fitting shot reference to 9:16: {fit_err}", flush=True)
+
     name = f"kineva_local/{job_id}_ep{episode}_shot{shot_index}.png"
     path = INPUT / name
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -617,6 +663,7 @@ def run_job(job_id, image, ideas, cast=None, shot_plans=None):
                      "realistic natural light, no text. Place: " + cast["location_name"] + ". "
                      + cast["location_description"]},
                     COMFY, OUTPUT, timeout=900)
+            image = fit_to_portrait_canvas(image)
             extension = image_extension(image)
             image_name = "kineva_local/" + job_id + extension
             image_path = INPUT / image_name
@@ -626,17 +673,17 @@ def run_job(job_id, image, ideas, cast=None, shot_plans=None):
             manifest_path = INPUT / "kineva_local" / (job_id + "_cast.json")
             references = {"version": 1, "characters": {}, "locations": {}}
             if cast.get("secondary_image"):
-                data = cast["secondary_image"]
+                data = fit_to_portrait_canvas(cast["secondary_image"])
                 filename = job_id + "_second" + image_extension(data)
                 (manifest_path.parent / filename).write_bytes(data)
                 references["characters"][cast["secondary_name"]] = filename
             for index, actor in enumerate(cast.get("supporting", [])):
-                data = actor["image"]
+                data = fit_to_portrait_canvas(actor["image"])
                 filename = job_id + f"_actor_{index}" + image_extension(data)
                 (manifest_path.parent / filename).write_bytes(data)
                 references["characters"][actor["name"]] = filename
             if cast.get("location_image"):
-                data = cast["location_image"]
+                data = fit_to_portrait_canvas(cast["location_image"])
                 filename = job_id + "_location" + image_extension(data)
                 (manifest_path.parent / filename).write_bytes(data)
                 references["locations"][cast["location_name"]] = filename

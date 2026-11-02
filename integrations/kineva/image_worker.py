@@ -79,7 +79,7 @@ def graph_for(job, attempt=0):
         "3": {"class_type": "VAELoader", "inputs": {"vae_name": VAE}},
         "4": {"class_type": "CLIPTextEncode", "inputs": {"text": job["prompt"], "clip": ["2", 0]}},
         "5": {"class_type": "CLIPTextEncode", "inputs": {"text": neg_text, "clip": ["2", 0]}},
-        "6": {"class_type": "EmptyFlux2LatentImage", "inputs": {"width": 768, "height": 1024, "batch_size": 1}},
+        "6": {"class_type": "EmptyFlux2LatentImage", "inputs": {"width": 768, "height": 1344, "batch_size": 1}},
         "7": {"class_type": "KSampler", "inputs": {"model": ["1", 0],
             "seed": int(job["id"].replace("-", "")[:12], 16) + attempt, "steps": steps, "cfg": 1,
             "sampler_name": "euler", "scheduler": "simple", "positive": ["4", 0],
