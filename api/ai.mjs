@@ -1966,13 +1966,7 @@ export default async function handler(req, res) {
       }
 
       if (!content) {
-        const isDoc = /(?:doctor|m[eé]dic|consulta|cl[ií]nic|paciente|examin|bata|banquito)/i.test([story.title, story.description, story.character_role, latest].join(" "));
-        const isIntim = /(?:huevo|pene|verga|bata|desnud|tocar|mano|boca|chupar|piernas|cama|mesa)/i.test(latest);
-        content = isDoc
-          ? `*Aclaro mi garganta tratando de disimular el nerviosismo evidente en mis manos al sentirte así, acomodando mi postura sobre el banquito frente a ti.* Quédate quieto un momento, por favor... Necesito examinarte con cuidado antes de continuar.`
-          : isIntim
-          ? `*Trago saliva con la respiración entrecortada, mis ojos fijos en ti mientras mis dedos tiemblan ligeramente por la sorpresa y el contacto.* Tranquilo... déjame asimilar esto un segundo. No te muevas.`
-          : `*Te miro fijamente a los ojos, sintiendo la tensión en el aire mientras mantengo la compostura.* Te escucho... continúa, no me dejes con la duda.`;
+        return send(res, 503, { error: "ai_upstream_unavailable", message: "El modelo no pudo generar respuesta en este momento. Inténtalo de nuevo." });
       }
       return send(res, 200, { content });
     }

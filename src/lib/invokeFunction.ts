@@ -384,7 +384,7 @@ ${playerName} te pidió explícitamente seguir con la acción oral y escuchar c�
 
           }),
 
-          signal: AbortSignal.timeout(7000),
+          signal: AbortSignal.timeout(28000),
 
         });
 
@@ -432,7 +432,7 @@ ${playerName} te pidió explícitamente seguir con la acción oral y escuchar c�
 
             }),
 
-            signal: AbortSignal.timeout(4000),
+            signal: AbortSignal.timeout(10000),
 
           });
 
@@ -754,18 +754,16 @@ export async function invokeFunctionWithRetry<T>(name: string, body: unknown): P
         return cloudResult;
       }
 
-      const userMsgLower = String(b?.userMessage || "").toLowerCase();
-      const isDoctorScene = /(?:doctor|m[eé]dic|consulta|cl[ií]nic|paciente|examin|bata|banquito)/i.test(userMsgLower + " " + String(b?.story?.character_role || "") + " " + String(b?.story?.title || ""));
-      const isIntimateScene = /(?:huevo|pene|verga|bata|desnud|tocar|mano|boca|chupar|piernas|cama|mesa)/i.test(userMsgLower);
-      const defaultRoleReply = isDoctorScene
-        ? `*Aclaro mi garganta tratando de disimular el nerviosismo evidente en mis manos al sentirte así, acomodando mi postura sobre el banquito frente a ti.* Quédate quieto un momento, por favor... Necesito examinarte con cuidado antes de continuar.`
-        : isIntimateScene
-        ? `*Trago saliva con la respiración entrecortada, mis ojos fijos en ti mientras mis dedos tiemblan ligeramente por la sorpresa y el contacto.* Tranquilo... déjame asimilar esto un segundo. No te muevas.`
-        : `*Te miro fijamente a los ojos, sintiendo la tensión en el aire mientras mantengo la compostura.* Te escucho... continúa, no me dejes con la duda.`;
-      const fallbackReply = (cloudResult.data as any)?.content || defaultRoleReply;
+      if (cloudResult.data && firstContent) {
+        return cloudResult;
+      }
+
       return {
-        data: { content: fallbackReply } as T,
-        error: null,
+        data: null,
+        error: {
+          message: cloudResult.error?.message || "El motor de IA tardó demasiado en responder. Por favor, intenta de nuevo.",
+          context: new Response(null, { status: 504 })
+        }
       };
 
     }
