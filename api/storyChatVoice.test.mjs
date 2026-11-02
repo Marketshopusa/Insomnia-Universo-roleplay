@@ -314,3 +314,49 @@ test("generateOpenRouter includes uncensored models by default", async () => {
     else process.env.OPENROUTER_API_KEY = previous;
   }
 });
+
+
+test("generate seamlessly recovers from AI Studio 429 via GCP Workload Identity / Vertex AI", async () => {
+  const previousKey = process.env.GEMINI_API_KEY;
+  const prevProject = process.env.GCP_PROJECT_NUMBER;
+  const prevAccount = process.env.GCP_SERVICE_ACCOUNT_EMAIL;
+  const prevPool = process.env.GCP_WORKLOAD_IDENTITY_POOL_ID;
+  const prevProvider = process.env.GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID;
+
+  process.env.GEMINI_API_KEY = "exhausted-free-tier-key";
+  process.env.GCP_PROJECT_NUMBER = "28149907863";
+  process.env.GCP_SERVICE_ACCOUNT_EMAIL = "insomnia-chirp-tts@project-92a5eaa1-857a-4011-a86.iam.gserviceaccount.com";
+  process.env.GCP_WORKLOAD_IDENTITY_POOL_ID = "insomnia-vercel";
+  process.env.GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID = "vercel";
+
+  const calledUrls = [];
+
+  try {
+    const text = await generate("gemini-2.5-flash", [{ text: "Hola" }], {}, {
+      tokenProvider: async () => "gcp-mock-access-token",
+      fetchImpl: async (url, init) => {
+        calledUrls.push(url);
+        if (init?.headers?.["x-goog-api-key"]) {
+          return new Response(JSON.stringify({ error: { message: "Quota exceeded for free tier requests", status: "RESOURCE_EXHAUSTED" } }), { status: 429 });
+        }
+        if (init?.headers?.Authorization?.startsWith("Bearer ")) {
+          assert.equal(init.headers["x-goog-user-project"], "project-92a5eaa1-857a-4011-a86");
+          return new Response(JSON.stringify({
+            candidates: [{ content: { parts: [{ text: "Respuesta desde Google Cloud Vertex AI" }] } }]
+          }), { status: 200 });
+        }
+        return new Response("Not found", { status: 404 });
+      }
+    });
+
+    assert.equal(text, "Respuesta desde Google Cloud Vertex AI");
+    assert.equal(calledUrls.some((u) => u.includes("generativelanguage.googleapis.com")), true);
+    assert.equal(calledUrls.some((u) => u.includes("aiplatform.googleapis.com")), true);
+  } finally {
+    process.env.GEMINI_API_KEY = previousKey;
+    process.env.GCP_PROJECT_NUMBER = prevProject;
+    process.env.GCP_SERVICE_ACCOUNT_EMAIL = prevAccount;
+    process.env.GCP_WORKLOAD_IDENTITY_POOL_ID = prevPool;
+    process.env.GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID = prevProvider;
+  }
+});

@@ -64,6 +64,7 @@ export function enforceDialogueRatio(text, dialPct = 80, narrPct = 20) {
 import { createClient } from "@supabase/supabase-js";
 import { supabaseUrl as BASE, publishableKey as KEY } from "./_config.mjs";
 import { slangInstruction, speechLocale } from "./_regions.mjs";
+import { isGeminiConfigured, getGeminiAccessToken, quotaProjectId } from "./_geminiTts.mjs";
 import { isIpRateLimited, isHeavyJobRateLimited } from "./_security/rateLimiter.mjs";
 import { verifyAndDeductCredits, acquireConcurrencyLock, releaseConcurrencyLock } from "./_security/creditGuard.mjs";
 import { sanitizeUserPrompt, PROMPT_LIMITS } from "./_security/promptShield.mjs";
@@ -299,7 +300,11 @@ export async function generateOpenRouter(messages, options = {}) {
 export async function generateNvidia(messages, options = {}) {
   const apiKey = (typeof options.apiKey === "string" && options.apiKey.trim()) || process.env.NVIDIA_API_KEY;
   if (!apiKey) return null;
-  const models = options.models || ["meta/llama-3.2-11b-vision-instruct"];
+  const models = options.models || [
+    "meta/llama-3.3-70b-instruct",
+    "meta/llama-3.1-8b-instruct",
+    "meta/llama-3.2-11b-vision-instruct",
+  ];
   const fetchImpl = options.fetchImpl || fetch;
   let fallbackCandidate = null;
   let anyCandidate = null;
@@ -356,12 +361,38 @@ export async function generateNvidia(messages, options = {}) {
   return fallbackCandidate || anyCandidate;
 }
 
+export function isGeminiAvailable(customApiKey) {
+  if (typeof customApiKey === "string" && customApiKey.trim()) return true;
+  if (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== "[SENSITIVE]") return true;
+  if (process.env.GOOGLE_API_KEY && process.env.GOOGLE_API_KEY !== "[SENSITIVE]") return true;
+  return isGeminiConfigured();
+}
+
 export async function generate(model, parts, settings = {}, options = {}) {
-  const key = (typeof options.apiKey === "string" && options.apiKey.trim()) || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
-  if (!key || key === "[SENSITIVE]") throw Object.assign(new Error("Gemini no está configurado en Insomnia (Vercel)."), { status: 503, code: "gemini_not_configured" });
+  const directKey = (typeof options.apiKey === "string" && options.apiKey.trim())
+    || (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== "[SENSITIVE]" ? process.env.GEMINI_API_KEY : null)
+    || (process.env.GOOGLE_API_KEY && process.env.GOOGLE_API_KEY !== "[SENSITIVE]" ? process.env.GOOGLE_API_KEY : null);
+
+  const hasGcp = isGeminiConfigured();
+  if (!directKey && !hasGcp) {
+    throw Object.assign(new Error("Gemini no está configurado en Insomnia (Vercel)."), { status: 503, code: "gemini_not_configured" });
+  }
   const fetchImpl = options.fetchImpl || fetch;
   const choices = [...new Set([model, ...(options.fallbackModels || ["gemini-flash-latest", "gemini-2.5-pro", "gemini-pro-latest"])])];
   let lastError;
+
+  let gcpTokenPromise = null;
+  const getGcpToken = () => {
+    if (typeof options.tokenProvider === "function") return options.tokenProvider();
+    if (!hasGcp) return Promise.resolve(null);
+    if (!gcpTokenPromise) {
+      gcpTokenPromise = getGeminiAccessToken().catch((err) => {
+        console.warn("Could not acquire Google Cloud access token for AI:", err.message);
+        return null;
+      });
+    }
+    return gcpTokenPromise;
+  };
   for (const candidate of choices) {
     let allowThinking = true;
     let allowSafety = true;
@@ -374,17 +405,76 @@ export async function generate(model, parts, settings = {}, options = {}) {
           { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
           { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" },
         ];
-        const response = await fetchImpl("https://generativelanguage.googleapis.com/v1beta/models/" + candidate + ":generateContent", {
-          method: "POST",
-          headers: { "x-goog-api-key": key, "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: options.contents || [{ role: "user", parts }],
-            ...(options.systemInstruction ? { systemInstruction: { parts: [{ text: options.systemInstruction }] } } : {}),
-            ...(options.adultMode && allowSafety ? { safetySettings } : {}),
-            generationConfig,
-          }),
-          signal: AbortSignal.timeout(options.timeoutMs || 25000),
-        });
+        const requestPayload = {
+          contents: options.contents || [{ role: "user", parts }],
+          ...(options.systemInstruction ? { systemInstruction: { parts: [{ text: options.systemInstruction }] } } : {}),
+          ...(options.adultMode && allowSafety ? { safetySettings } : {}),
+          generationConfig,
+        };
+        const requestJson = JSON.stringify(requestPayload);
+
+        let response = null;
+
+        if (directKey) {
+          try {
+            response = await fetchImpl("https://generativelanguage.googleapis.com/v1beta/models/" + candidate + ":generateContent", {
+              method: "POST",
+              headers: { "x-goog-api-key": directKey, "Content-Type": "application/json" },
+              body: requestJson,
+              signal: AbortSignal.timeout(options.timeoutMs || 25000),
+            });
+          } catch (e) {
+            if (e.name === "TimeoutError") throw e;
+            console.warn("Direct key call failed, checking GCP credentials:", e.message);
+          }
+        }
+
+        if (!response || (!response.ok && (response.status === 429 || response.status === 403 || !directKey))) {
+          const token = await getGcpToken();
+          const projectId = quotaProjectId();
+          if (token && projectId) {
+            const vertexCandidate = candidate === "gemini-flash-latest" ? "gemini-2.5-flash" : candidate === "gemini-pro-latest" ? "gemini-2.5-pro" : candidate;
+            const vertexUrl = `https://aiplatform.googleapis.com/v1beta1/projects/${encodeURIComponent(projectId)}/locations/global/publishers/google/models/${vertexCandidate}:generateContent`;
+            try {
+              const gcpRes = await fetchImpl(vertexUrl, {
+                method: "POST",
+                headers: {
+                  Authorization: "Bearer " + token,
+                  "x-goog-user-project": projectId,
+                  "Content-Type": "application/json",
+                },
+                body: requestJson,
+                signal: AbortSignal.timeout(options.timeoutMs || 25000),
+              });
+              if (gcpRes.ok) {
+                response = gcpRes;
+              } else if (gcpRes.status === 404 || gcpRes.status === 400) {
+                const genLangRes = await fetchImpl("https://generativelanguage.googleapis.com/v1beta/models/" + candidate + ":generateContent", {
+                  method: "POST",
+                  headers: {
+                    Authorization: "Bearer " + token,
+                    "x-goog-user-project": projectId,
+                    "Content-Type": "application/json",
+                  },
+                  body: requestJson,
+                  signal: AbortSignal.timeout(options.timeoutMs || 25000),
+                });
+                if (genLangRes.ok || !response) {
+                  response = genLangRes;
+                }
+              } else {
+                response = gcpRes;
+              }
+            } catch (gcpErr) {
+              if (gcpErr.name === "TimeoutError") throw gcpErr;
+              console.warn("GCP Vertex/OAuth call error:", gcpErr.message);
+            }
+          }
+        }
+
+        if (!response) {
+          throw Object.assign(new Error("Gemini no pudo conectar con el proveedor upstream."), { status: 503, code: "upstream_connect_failed" });
+        }
         const data = await response.json();
         if (!response.ok) {
           console.warn("Insomnia AI upstream", candidate, response.status, data?.error?.status);
@@ -521,8 +611,11 @@ export async function transcribeAudio(body, options = {}) {
   if (typeof body.audio !== "string" || body.audio.length < 64 || body.audio.length > 12000000) {
     throw Object.assign(new Error("El audio de la llamada no llegó completo."), { status: 400, code: "invalid_audio" });
   }
-  const key = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
-  if (!key || key === "[SENSITIVE]") {
+  const key = (typeof options.apiKey === "string" && options.apiKey.trim())
+    || (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== "[SENSITIVE]" ? process.env.GEMINI_API_KEY : null)
+    || (process.env.GOOGLE_API_KEY && process.env.GOOGLE_API_KEY !== "[SENSITIVE]" ? process.env.GOOGLE_API_KEY : null);
+  const hasGcp = isGeminiConfigured();
+  if (!key && !hasGcp) {
     throw Object.assign(new Error("Gemini no está configurado para oír la llamada."), { status: 503, code: "gemini_not_configured" });
   }
   const fetchImpl = options.fetchImpl || fetch;
@@ -1558,7 +1651,7 @@ export default async function handler(req, res) {
             }
           }
         } else {
-          const canTryGemini = Boolean(geminiApiKey || (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== "[SENSITIVE]"));
+          const canTryGemini = isGeminiAvailable(geminiApiKey);
           if (canTryGemini) {
             try {
               const geminiContents = contents.map((c) => ({ role: c.role, parts: [...(c.parts || [])] }));
@@ -1671,7 +1764,7 @@ export default async function handler(req, res) {
         }
       } else {
         // Insomnia Flash para rol seguro / no adulto (Ultra-rápido ~1.2s en Gemini)
-        const canTryGemini = !isAdult && Boolean(geminiApiKey || (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== "[SENSITIVE]"));
+        const canTryGemini = !isAdult && isGeminiAvailable(geminiApiKey);
         if (canTryGemini) {
           try {
             const geminiContents = contents.map((c) => ({ role: c.role, parts: [...(c.parts || [])] }));
