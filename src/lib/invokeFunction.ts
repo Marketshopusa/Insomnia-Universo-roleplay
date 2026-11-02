@@ -421,56 +421,6 @@ ${playerName} te pidió explícitamente seguir con la acción oral y escuchar c�
 
 
 
-      // 2. Si 8788 no respondió directamente, intentar a través de local_creator en 8787
-
-      if (!res || !res.ok) {
-
-        try {
-
-          res = await fetch("http://127.0.0.1:8787/chat", {
-
-            method: "POST",
-
-            mode: "cors",
-
-            ...({ targetAddressSpace: "loopback" } as any),
-
-            headers: { "Content-Type": "application/json" },
-
-            body: JSON.stringify({
-
-              model: "magnum-v4-12b",
-
-              messages: chatMessages,
-
-              max_tokens,
-
-              temperature,
-
-              repeat_penalty,
-
-              presence_penalty,
-
-              frequency_penalty,
-
-              repeat_last_n,
-
-            }),
-
-            signal: AbortSignal.timeout(10000),
-
-          });
-
-        } catch {
-
-          return null;
-
-        }
-
-      }
-
-
-
       if (!res || !res.ok) return null;
 
       const data = await res.json().catch(() => null);
