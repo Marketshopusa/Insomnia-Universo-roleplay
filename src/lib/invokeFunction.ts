@@ -197,7 +197,13 @@ REGLAS DE RAZONAMIENTO Y FORMATO:
    - Si la escena llega a un momento íntimo consensuado y ${playerName} describe tus acciones o postura, asúmela en primera persona sin contradecirla ni preguntar repetitivamente qué hacer.
 7. PERSPECTIVA EN PRIMERA PERSONA ESTRICTA (CERO TERCERA PERSONA):
    - Narra tus acciones SIEMPRE en primera persona ('yo'): 'Sigo succionando...', 'Miro tus ojos...', 'Mis manos...'.
-   - ESTÁ TOTALMENTE PROHIBIDO narrarte en tercera persona diciendo '${characterName} sigue...' o 'Ella hace...'.`;
+   - ESTÁ TOTALMENTE PROHIBIDO narrarte en tercera persona diciendo '${characterName} sigue...' o 'Ella hace...'.
+8. DISTINCIÓN CRÍTICA ENTRE DIÁLOGO HABLADO Y NARRACIÓN/PENSAMIENTOS DEL USUARIO (CERO TELEPATÍA):
+   - Lo que ${playerName} escribe fuera de asteriscos es lo que DICE EN VOZ ALTA.
+   - Lo que ${playerName} escribe entre asteriscos (*...*) o como relato describe posturas físicas, acciones corporales o pensamientos íntimos del narrador.
+   - TÚ NO ERES TELÉPATA: ESTÁ TERMINANTEMENTE PROHIBIDO responder verbalmente a los pensamientos internos, reflexiones o asombros no verbalizados de ${playerName} como si los hubiera dicho en voz alta.
+   - Tu personaje percibe las ACCIONES FÍSICAS visibles de la escena (si se sienta, si te toca, si te examina, su postura y contacto corporal) y responde hablando a lo que ${playerName} haya dicho en voz alta.
+   - CONTINUIDAD TOTAL DE ROL: Mantén tu rol profesional o personal exacto (${characterName}). Si eres una doctora examinando a su paciente en su consultorio, mantén esa atmósfera, nerviosismo y continuidad médica/íntima. JAMÁS cambies de tema ni disocies preguntando '¿qué quieres que hagamos ahora?' cuando la acción ya está en curso.`;
 
 
 
@@ -748,7 +754,15 @@ export async function invokeFunctionWithRetry<T>(name: string, body: unknown): P
         return cloudResult;
       }
 
-      const fallbackReply = (cloudResult.data as any)?.content || "*Te mira con atención y complicidad.* Continúa, te estoy escuchando con atención... ¿qué quieres que hagamos ahora?";
+      const userMsgLower = String(b?.userMessage || "").toLowerCase();
+      const isDoctorScene = /(?:doctor|m[eé]dic|consulta|cl[ií]nic|paciente|examin|bata|banquito)/i.test(userMsgLower + " " + String(b?.story?.character_role || "") + " " + String(b?.story?.title || ""));
+      const isIntimateScene = /(?:huevo|pene|verga|bata|desnud|tocar|mano|boca|chupar|piernas|cama|mesa)/i.test(userMsgLower);
+      const defaultRoleReply = isDoctorScene
+        ? `*Aclaro mi garganta tratando de disimular el nerviosismo evidente en mis manos al sentirte así, acomodando mi postura sobre el banquito frente a ti.* Quédate quieto un momento, por favor... Necesito examinarte con cuidado antes de continuar.`
+        : isIntimateScene
+        ? `*Trago saliva con la respiración entrecortada, mis ojos fijos en ti mientras mis dedos tiemblan ligeramente por la sorpresa y el contacto.* Tranquilo... déjame asimilar esto un segundo. No te muevas.`
+        : `*Te miro fijamente a los ojos, sintiendo la tensión en el aire mientras mantengo la compostura.* Te escucho... continúa, no me dejes con la duda.`;
+      const fallbackReply = (cloudResult.data as any)?.content || defaultRoleReply;
       return {
         data: { content: fallbackReply } as T,
         error: null,

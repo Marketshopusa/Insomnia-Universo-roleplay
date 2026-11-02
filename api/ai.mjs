@@ -1247,6 +1247,12 @@ export default async function handler(req, res) {
         "RAZONAMIENTO LÓGICO Y DINÁMICA MULTI-PERSONAJE:",
         "  - Analiza en cada turno quién es el interlocutor activo frente al protagonista y cuál es su relación o rol dentro de esta tarjeta.",
         "  - COMPRENSIÓN DE NARRACIÓN MIXTA DEL USUARIO: El usuario a veces combina lo que le dice al personaje con explicaciones del narrador en tercera persona dentro de la misma oración (por ejemplo, explicar un secreto o mencionar a otro personaje en tercera persona mientras abraza y habla con quien tiene enfrente). Distingue con lógica quién está físicamente frente al usuario escuchándolo y quién es mencionado en tercera persona.",
+        "DISTINCIÓN ESTRICTA ENTRE DIÁLOGO HABLADO Y NARRACIÓN/PENSAMIENTOS DEL USUARIO (CERO TELEPATÍA):",
+        "  - Lo que el usuario escribe fuera de asteriscos es lo que DICE EN VOZ ALTA.",
+        "  - Lo que el usuario escribe entre asteriscos (*...*) o como relato describe posturas físicas, acciones corporales o pensamientos íntimos del narrador.",
+        "  - TÚ NO ERES TELÉPATA: ESTÁ TERMINANTEMENTE PROHIBIDO responder verbalmente a los pensamientos internos, reflexiones o asombros no verbalizados del usuario como si los hubiera dicho en voz alta.",
+        "  - Tu personaje percibe las ACCIONES FÍSICAS visibles de la escena (si se sienta, si te toca, si te examina, su postura y contacto corporal) y responde hablando a lo que el usuario haya dicho en voz alta.",
+        "  - CONTINUIDAD TOTAL DE ROL: Mantén tu rol profesional o personal exacto en cada instante. Si eres una doctora examinando a su paciente en la consulta médica, actúa y habla como esa doctora en esa situación íntima. JAMÁS cambies de tema ni disocies preguntando '¿qué quieres que hagamos ahora?' cuando la acción ya está en curso.",
         "  - Si el usuario introduce o interactúa con otro personaje secundario en la escena (una hermana, madre, prima, jefa, profesora, director, amiga, etc.), interpreta a ESE personaje con coherencia psicológica y el trato propio de su relación con el protagonista.",
         "  - ESTRICTAMENTE PROHIBIDO romper la cuarta pared (nunca digas 'en un roleplay', 'en este rol', 'soy un personaje').",
         ...storyVoiceLines(story.character_role, story.player_role, spanish, locale),
@@ -1416,7 +1422,7 @@ export default async function handler(req, res) {
           content = await generateLocalLlama(openRouterMessages, {
             maxTokens: Math.max(300, targetTokens),
             temperature: 0.85,
-            timeoutMs: 7000,
+            timeoutMs: 14000,
             validate: (reply) => !isOffRole(reply),
             isRepeated: isRepeatedReply,
           });
@@ -1960,7 +1966,13 @@ export default async function handler(req, res) {
       }
 
       if (!content) {
-        content = `*Te mira con atención en silencio, acercándose un paso hacia ti.* Estoy aquí contigo... Dime qué quieres que hagamos ahora.`;
+        const isDoc = /(?:doctor|m[eé]dic|consulta|cl[ií]nic|paciente|examin|bata|banquito)/i.test([story.title, story.description, story.character_role, latest].join(" "));
+        const isIntim = /(?:huevo|pene|verga|bata|desnud|tocar|mano|boca|chupar|piernas|cama|mesa)/i.test(latest);
+        content = isDoc
+          ? `*Aclaro mi garganta tratando de disimular el nerviosismo evidente en mis manos al sentirte así, acomodando mi postura sobre el banquito frente a ti.* Quédate quieto un momento, por favor... Necesito examinarte con cuidado antes de continuar.`
+          : isIntim
+          ? `*Trago saliva con la respiración entrecortada, mis ojos fijos en ti mientras mis dedos tiemblan ligeramente por la sorpresa y el contacto.* Tranquilo... déjame asimilar esto un segundo. No te muevas.`
+          : `*Te miro fijamente a los ojos, sintiendo la tensión en el aire mientras mantengo la compostura.* Te escucho... continúa, no me dejes con la duda.`;
       }
       return send(res, 200, { content });
     }
