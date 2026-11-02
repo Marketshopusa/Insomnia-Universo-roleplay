@@ -200,7 +200,7 @@ export async function generateLocalLlama(messages, options = {}) {
         frequency_penalty: 0.0,
         repeat_last_n: 256,
       }),
-      signal: AbortSignal.timeout(options.timeoutMs || 30000),
+      signal: AbortSignal.timeout(options.timeoutMs || 8000),
     });
     if (!response.ok) return null;
     const data = await response.json();
@@ -1416,7 +1416,7 @@ export default async function handler(req, res) {
           content = await generateLocalLlama(openRouterMessages, {
             maxTokens: Math.max(300, targetTokens),
             temperature: 0.85,
-            timeoutMs: 30000,
+            timeoutMs: 7000,
             validate: (reply) => !isOffRole(reply),
             isRepeated: isRepeatedReply,
           });
@@ -1435,7 +1435,7 @@ export default async function handler(req, res) {
               ],
               maxTokens: targetTokens,
               temperature: 0.82,
-              timeoutMs: 8000,
+              timeoutMs: 5000,
               apiKey: openRouterApiKey || undefined,
               validate: (reply) => !isOffRole(reply),
               isRepeated: isRepeatedReply,
@@ -1451,13 +1451,38 @@ export default async function handler(req, res) {
               models: ["meta/llama-3.2-11b-vision-instruct", "minimaxai/minimax-m3.1-flash"],
               maxTokens: targetTokens,
               temperature: 0.82,
-              timeoutMs: 5000,
+              timeoutMs: 4000,
               apiKey: nvidiaApiKey || undefined,
               validate: (reply) => !isOffRole(reply),
               isRepeated: isRepeatedReply,
             });
           } catch (err) {
             console.warn("Nvidia Magnum fallback failed:", err.message);
+          }
+        }
+        // 4. Gemini Flash emergencia rápida (< 5s)
+        if (!content) {
+          try {
+            const geminiContents = contents.map((c) => ({ role: c.role, parts: [...(c.parts || [])] }));
+            if (geminiContents[0]?.role === "model") {
+              geminiContents.unshift({ role: "user", parts: [{ text: "Continúa la escena." }] });
+            }
+            content = await generate(
+              "gemini-2.5-flash",
+              [],
+              { maxOutputTokens: Math.max(200, targetTokens), temperature: 0.8 },
+              {
+                contents: geminiContents,
+                systemInstruction,
+                adultMode: false,
+                apiKey: geminiApiKey || undefined,
+                timeoutMs: 6000,
+                fastReply: true,
+                validate: (reply) => !isOffRole(reply)
+              },
+            );
+          } catch (err) {
+            console.warn("Gemini immediate adult fallback failed:", err.message);
           }
         }
       } else if (isLiveCall) {
