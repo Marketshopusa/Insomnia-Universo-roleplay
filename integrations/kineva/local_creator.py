@@ -363,36 +363,7 @@ def build_graph(template, image_name, manifest_path, idea, job_id, episode, tota
                 if motion_neg not in existing_neg:
                     graph[str(neg_ref[0])]["inputs"]["text"] = f"{existing_neg}, {motion_neg}".strip(", ")
 
-            if audio_filename:
-                wan_latent_id, wan_latent_node = find_node(graph, "Wan22ImageToVideoLatent")
-                vae_ref = wan_latent_node["inputs"].get("vae") if wan_latent_node else ["3", 0]
-                graph["98_load_audio"] = {
-                    "class_type": "LoadAudio",
-                    "inputs": {"audio": audio_filename}
-                }
-                graph["99_dancer_audio"] = {
-                    "class_type": "WanDancerEncodeAudio",
-                    "inputs": {"audio": ["98_load_audio", 0], "video_frames": 81, "audio_inject_scale": 1.2}
-                }
-                graph["7_sound_latent"] = {
-                    "class_type": "WanSoundImageToVideo",
-                    "inputs": {
-                        "positive": pos_ref,
-                        "negative": neg_ref,
-                        "vae": vae_ref,
-                        "ref_image": [load_img_id or "6", 0],
-                        "audio_encoder_output": ["99_dancer_audio", 0],
-                        "width": 768,
-                        "height": 1344,
-                        "length": 81,
-                        "batch_size": 1,
-                    }
-                }
-                ksampler_node["inputs"]["positive"] = ["7_sound_latent", 0]
-                ksampler_node["inputs"]["negative"] = ["7_sound_latent", 1]
-                ksampler_node["inputs"]["latent_image"] = ["7_sound_latent", 2]
-                if wan_latent_id and wan_latent_id in graph:
-                    del graph[wan_latent_id]
+
 
     graph = {key: node for key, node in graph.items()
              if node["class_type"] not in (

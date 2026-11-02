@@ -138,7 +138,17 @@ def wait_for_render(comfy, prompt_id, export_node, heartbeat=None,
         if history:
             status = history.get("status", {})
             if status.get("status_str") != "success":
-                raise RuntimeError("ComfyUI failed: " + str(status.get("messages", []))[-1500:])
+                messages = status.get("messages", [])
+                err_text = ""
+                for msg in messages:
+                    if isinstance(msg, list) and len(msg) > 1 and isinstance(msg[1], dict):
+                        d = msg[1]
+                        if "exception_message" in d:
+                            err_text = f"{d.get('node_type', 'Node')}: {d.get('exception_message', '')}"
+                            break
+                if not err_text:
+                    err_text = str(messages)[-500:]
+                raise RuntimeError("ComfyUI failed: " + err_text)
             output = history.get("outputs", {}).get(export_node, {})
             videos = output.get("images", [])
             if not videos:
