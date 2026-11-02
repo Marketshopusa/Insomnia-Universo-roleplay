@@ -425,6 +425,7 @@ export async function generate(model, parts, settings = {}, options = {}) {
             });
             if (response.status === 429) {
               options._directKeyExhausted = true;
+              response = null; // Clear exhausted direct key so Vertex AI takes over cleanly
             }
           } catch (e) {
             if (e.name === "TimeoutError") throw e;
@@ -435,47 +436,68 @@ export async function generate(model, parts, settings = {}, options = {}) {
         if (!response || (!response.ok && (response.status === 429 || response.status === 403 || !directKey))) {
           const token = await getGcpToken();
           const projectId = quotaProjectId();
-          if (token && projectId) {
+          const projectNum = process.env.GCP_PROJECT_NUMBER;
+          const targetProjects = [...new Set([projectId, projectNum].filter(Boolean))];
+          if (token && targetProjects.length > 0) {
+            // Clean payload for Vertex AI protobuf REST (remove unsupported thinkingConfig)
+            const vertexPayload = {
+              contents: options.contents || [{ role: "user", parts }],
+              ...(options.systemInstruction ? { systemInstruction: { parts: [{ text: options.systemInstruction }] } } : {}),
+              ...(options.adultMode && allowSafety ? { safetySettings } : {}),
+              generationConfig: {
+                temperature: generationConfig.temperature ?? 0.8,
+                maxOutputTokens: generationConfig.maxOutputTokens || 450,
+                topP: generationConfig.topP ?? 0.95,
+              },
+            };
+            const vertexJson = JSON.stringify(vertexPayload);
             const vertexCandidates = [
               candidate === "gemini-flash-latest" ? "gemini-2.0-flash" : candidate === "gemini-pro-latest" ? "gemini-1.5-pro" : candidate,
               "gemini-2.0-flash",
+              "gemini-1.5-flash-002",
               "gemini-1.5-flash",
               "gemini-2.5-flash",
             ];
-            for (const vModel of vertexCandidates) {
-              const vertexEndpoints = [
-                `https://us-central1-aiplatform.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/locations/us-central1/publishers/google/models/${vModel}:generateContent`,
-                `https://aiplatform.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/locations/us-central1/publishers/google/models/${vModel}:generateContent`,
-                `https://aiplatform.googleapis.com/v1beta1/projects/${encodeURIComponent(projectId)}/locations/global/publishers/google/models/${vModel}:generateContent`,
-              ];
-              for (const vUrl of vertexEndpoints) {
-                try {
-                  const gcpRes = await fetchImpl(vUrl, {
-                    method: "POST",
-                    headers: {
-                      Authorization: "Bearer " + token,
-                      "x-goog-user-project": projectId,
-                      "Content-Type": "application/json",
-                    },
-                    body: requestJson,
-                    signal: AbortSignal.timeout(options.timeoutMs || 25000),
-                  });
-                  if (gcpRes.ok) {
-                    response = gcpRes;
-                    break;
-                  }
-                  if (gcpRes.status === 403) {
-                    // Try auto-enabling aiplatform.googleapis.com once
-                    await fetchImpl(`https://serviceusage.googleapis.com/v1/projects/${projectId}/services/aiplatform.googleapis.com:enable`, {
+            for (const pId of targetProjects) {
+              for (const vModel of vertexCandidates) {
+                const vertexEndpoints = [
+                  `https://us-central1-aiplatform.googleapis.com/v1beta1/projects/${encodeURIComponent(pId)}/locations/us-central1/publishers/google/models/${vModel}:generateContent`,
+                  `https://us-central1-aiplatform.googleapis.com/v1/projects/${encodeURIComponent(pId)}/locations/us-central1/publishers/google/models/${vModel}:generateContent`,
+                  `https://aiplatform.googleapis.com/v1beta1/projects/${encodeURIComponent(pId)}/locations/global/publishers/google/models/${vModel}:generateContent`,
+                ];
+                for (const vUrl of vertexEndpoints) {
+                  try {
+                    const gcpRes = await fetchImpl(vUrl, {
                       method: "POST",
-                      headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
-                      body: "{}",
-                      signal: AbortSignal.timeout(10000),
-                    }).catch(() => {});
+                      headers: {
+                        Authorization: "Bearer " + token,
+                        "x-goog-user-project": pId,
+                        "Content-Type": "application/json",
+                      },
+                      body: vertexJson,
+                      signal: AbortSignal.timeout(options.timeoutMs || 20000),
+                    });
+                    if (gcpRes.ok) {
+                      response = gcpRes;
+                      break;
+                    } else {
+                      const errTxt = await gcpRes.text().catch(() => "");
+                      console.warn(`Vertex attempt [${vModel}] at ${vUrl} returned ${gcpRes.status}: ${errTxt.slice(0, 150)}`);
+                    }
+                    if (gcpRes.status === 403) {
+                      await fetchImpl(`https://serviceusage.googleapis.com/v1/projects/${pId}/services/aiplatform.googleapis.com:enable`, {
+                        method: "POST",
+                        headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+                        body: "{}",
+                        signal: AbortSignal.timeout(10000),
+                      }).catch(() => {});
+                    }
+                  } catch (gcpErr) {
+                    if (gcpErr.name === "TimeoutError") throw gcpErr;
+                    console.warn(`Vertex network error on ${vUrl}:`, gcpErr.message);
                   }
-                } catch (gcpErr) {
-                  if (gcpErr.name === "TimeoutError") throw gcpErr;
                 }
+                if (response && response.ok) break;
               }
               if (response && response.ok) break;
             }
@@ -888,6 +910,13 @@ export function storyVoiceLines(character, player, spanish, locale) {
     "   - Prohibido contradecir la postura o acción física dictada por el usuario (ej: inventar que estás en otra posición o sobre él si te indicó otra acción).",
     "   - Prohibido preguntar '¿qué quieres que haga?' o 'dime qué quieres ahora' si el usuario ya te lo acaba de indicar o narrar: actúa de inmediato con entrega.",
     "   - Si tu boca está ocupada o te pide silencio, responde con acotaciones físicas y gemidos o palabras entrecortadas, nunca monólogos largos.",
+    "9. CERO TELEPATÍA (PRIVACIDAD DE PENSAMIENTOS Y NARRACIÓN INTERNA DEL USUARIO):",
+    "   - El texto que " + other + " escribe entre asteriscos (*...*) representa sus pensamientos privados, sensaciones internas o relato ambiental.",
+    "   - TÚ NO TIENES TELEPATÍA Y NO PUEDES LEER SU MENTE. Está TERMINANTEMENTE PROHIBIDO responder o aludir a lo que el usuario solo pensó en silencio.",
+    "   - Responde EXCLUSIVAMENTE a lo que " + other + " dice en voz alta con sus palabras, o a acciones físicas exteriores que sean visibles.",
+    "10. COHERENCIA DE PROFESIÓN Y CONTEXTO MÉDICO/CLÍNICO:",
+    "   - Si tu papel es una doctora o profesional de la salud en una consulta/chequeo médico (como un examen prostático o rutina), MANTÉN en todo momento tu compostura profesional y empatía médica.",
+    "   - No inventes delirios pornográficos ni cambies repentinamente de tema; acompaña al paciente con respeto, naturalidad y calidez profesional.",
   ];
 }
 
@@ -2087,15 +2116,12 @@ export default async function handler(req, res) {
       }
 
       if (!content) {
-        // Fallback conversacional contextual para mantener la inmersión del rol y evitar el error 503
-        const isExam = /(?:examen|chequeo|consulta|m[eé]dic|doctor)/i.test([story.title, story.description, story.story_context, characterName].filter(Boolean).join(" "));
-        const isIntimate = /(?:chup|bes|toc|cuerpo|desnud|gem|placer|sex)/i.test(latest);
-        if (isExam && !isIntimate) {
-          content = `*Te miro con una sonrisa profesional y tranquila desde el escritorio, acomodando el expediente mientras te indico que tomes asiento.* Hola. Pasa con calma, ponte cómodo y cuéntame qué molestias has tenido o qué chequeo rutinario vamos a realizar hoy.`;
-        } else if (isIntimate) {
-          content = `*Siento tu cercanía y mi respiración se agita suavemente mientras mis ojos buscan los tuyos.* Sigue... no te detengas, dime qué más quieres que hagamos.`;
+        // Fallback conversacional contextual fiel al rol (cero respuestas eróticas genéricas)
+        const isExam = /(?:examen|chequeo|consulta|m[eé]dic|doctor|pr[oó]stata)/i.test([story.title, story.description, story.story_context, characterName].filter(Boolean).join(" "));
+        if (isExam) {
+          content = `*Te observo con serenidad y una sonrisa amable desde mi escritorio, dejando tu expediente a un lado para transmitirte tranquilidad.* Pasa, ${playerName || "toma asiento"}, ponte cómodo con total confianza. Sé muy bien que para cualquiera un chequeo de rutina o una revisión preventiva puede resultar incómodo o dar algo de pena, pero ante todo eres mi paciente y estamos en un espacio médico profesional. Cuéntame con calma, ¿has sentido alguna molestia o molestia últimamente, o venimos a hacer la revisión preventiva completa?`;
         } else {
-          content = `*Te observo con atención y una leve sonrisa, prestando atención a cada una de tus palabras.* Dime, estoy escuchándote... ¿qué es lo siguiente que quieres que pase?`;
+          content = `*Te miro a los ojos con atención y una leve sonrisa, escuchando cada detalle.* Te escucho con total atención, ${playerName || ""}. Cuéntame, continúa diciéndome lo que estabas comentando.`.trim();
         }
       }
       return send(res, 200, { content });

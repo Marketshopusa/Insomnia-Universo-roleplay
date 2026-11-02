@@ -42,6 +42,7 @@ import {
   ShieldAlert
 } from "lucide-react";
 import { STORY_VOICES, normalizeStoryVoice, setStoryVoice } from "@/lib/voices";
+import { STORY_REGIONS, getStoryRegion, setStoryRegion, getStoryAccent, setStoryAccent, spokenRegion } from "@/lib/regions";
 import { streamSpeech, type SpeechStream } from "@/lib/ttsStream";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useAuth } from "@/contexts/AuthContext";
@@ -107,16 +108,19 @@ export function isMediaVideo(url: string | null | undefined): boolean {
 export function playGuaranteedVoice(
   text: string,
   voiceName = "Aoede",
-  onEnd?: () => void
+  onEnd?: () => void,
+  region = "mx",
+  accentEnabled = true
 ) {
   if (typeof window === "undefined") {
     onEnd?.();
     return null;
   }
 
-  // 1. Intentar streamSpeech de Insomnia
+  // 1. Intentar streamSpeech de Insomnia con acento regional configurado
   try {
-    const stream = streamSpeech(text, voiceName, "es", true, "mx");
+    const effectiveRegion = spokenRegion(region, accentEnabled);
+    const stream = streamSpeech(text, voiceName, "es", true, effectiveRegion);
     stream.done.then(() => onEnd?.()).catch(() => {
       fallbackFemaleSpeech(text, onEnd);
     });
@@ -282,6 +286,8 @@ export const ChatCharacterConfigDialog: React.FC<ChatCharacterConfigDialogProps>
   const [bio, setBio] = useState("");
   const [starterMessage, setStarterMessage] = useState("");
   const [voiceName, setVoiceName] = useState("Aoede");
+  const [region, setRegion] = useState(() => getStoryRegion(character?.id));
+  const [accentEnabled, setAccentEnabled] = useState(() => getStoryAccent(character?.id));
   const [avatar, setAvatar] = useState("");
   const [gallery, setGallery] = useState<string[]>([]);
   const [newPhotoUrl, setNewPhotoUrl] = useState("");
@@ -326,6 +332,8 @@ export const ChatCharacterConfigDialog: React.FC<ChatCharacterConfigDialogProps>
           : (character.starterMessageEn || character.starterMessage || "")
       );
       setVoiceName(normalizeStoryVoice(character.voiceName || "Aoede"));
+      setRegion(getStoryRegion(character.id));
+      setAccentEnabled(getStoryAccent(character.id));
       setAvatar(character.avatar || "");
       setGallery(character.gallery && character.gallery.length > 0 ? [...character.gallery] : [character.avatar || ""]);
       
@@ -351,6 +359,8 @@ export const ChatCharacterConfigDialog: React.FC<ChatCharacterConfigDialogProps>
           : "Hey there... I'm so glad to have you here with me. What would you like to do today?"
       );
       setVoiceName("Aoede");
+      setRegion("mx");
+      setAccentEnabled(true);
       setAvatar("https://media.talkiemate.com/app/uploads/growtype-ai-uploads/models/6e8f818f9b187d2ebdf4e1d77521e051/3545853885239688145_69992903230.jpg");
       setGallery([
         "https://media.talkiemate.com/app/uploads/growtype-ai-uploads/models/6e8f818f9b187d2ebdf4e1d77521e051/3545853885239688145_69992903230.jpg"
@@ -386,7 +396,7 @@ export const ChatCharacterConfigDialog: React.FC<ChatCharacterConfigDialogProps>
     const stream = playGuaranteedVoice(samplePhrase, voiceName, () => {
       setIsPlayingVoice(false);
       voiceStreamRef.current = null;
-    });
+    }, region, accentEnabled);
 
     if (stream) {
       voiceStreamRef.current = stream;
@@ -617,6 +627,8 @@ export const ChatCharacterConfigDialog: React.FC<ChatCharacterConfigDialogProps>
 
     // Sync with Insomnia's voice preference helper
     setStoryVoice(charId, voiceName);
+    setStoryRegion(charId, region);
+    setStoryAccent(charId, accentEnabled);
 
     // Sync with Insomnia's AI settings helper (bind Magnum v4 & adultMode)
     const currentAi = getStoryAiSettings(charId);
@@ -1157,6 +1169,55 @@ export const ChatCharacterConfigDialog: React.FC<ChatCharacterConfigDialogProps>
                   <span className="text-[#ff8c00] font-bold">
                     {voiceName} ({isEs ? (STORY_VOICES.find((v) => v.value === voiceName)?.descriptionEs || "Femenina") : (STORY_VOICES.find((v) => v.value === voiceName)?.descriptionEn || "Female")})
                   </span>
+                </div>
+
+                {/* Controles de Acento Regional Neuronal */}
+                <div className="p-4 rounded-2xl bg-[#0c0c0c] border border-[#222222] space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <Label className="text-xs font-bold text-zinc-200">
+                        {isEs ? "Acento Regional Auténtico" : "Authentic Regional Accent"}
+                      </Label>
+                      <p className="text-[11px] text-zinc-500">
+                        {isEs
+                          ? "Aplica entonación y modismos fonéticos nativos del país seleccionado"
+                          : "Applies native intonation and phonetic delivery for the chosen country"}
+                      </p>
+                    </div>
+                    <Switch
+                      checked={accentEnabled}
+                      onCheckedChange={(checked) => {
+                        setAccentEnabled(checked);
+                        stopVoicePreview();
+                      }}
+                    />
+                  </div>
+
+                  {accentEnabled && (
+                    <div className="space-y-1.5 pt-1">
+                      <Label className="text-[11px] font-semibold text-zinc-400">
+                        {isEs ? "País / Acento Fonético:" : "Country / Phonetic Accent:"}
+                      </Label>
+                      <Select
+                        value={region}
+                        onValueChange={(val) => {
+                          setRegion(val);
+                          stopVoicePreview();
+                        }}
+                      >
+                        <SelectTrigger className="bg-[#181818] border-[#2c2c2c] text-xs text-white">
+                          <SelectValue placeholder={isEs ? "Seleccionar acento" : "Select accent"} />
+                        </SelectTrigger>
+                        <SelectContent className="bg-[#141414] border-[#2c2c2c] text-white">
+                          {STORY_REGIONS.map((r) => (
+                            <SelectItem key={r.id} value={r.id} className="text-xs">
+                              {r.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
                 </div>
               </div>
             </TabsContent>
