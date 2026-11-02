@@ -66,6 +66,15 @@ export function CharacterModal({
           if (parsedName.includes("_")) {
             const parts = parsedName.split("_");
             parsedName = parts.slice(3).join(" ") || parts[1] || parsedName;
+            if (/^[A-Za-z0-9+/=_-]{12,}$/.test(parsedName)) {
+              try {
+                const dec = atob(parsedName.replace(/-/g, "+").replace(/_/g, "/"));
+                parsedName = dec && !/captura|screenshot|img_/i.test(dec) ? dec : "Actor";
+              } catch { parsedName = "Actor"; }
+            }
+            if (/captura|screenshot|img_|\.png|\.jpg/i.test(parsedName) || /^[0-9a-f-]{36}$/i.test(parsedName)) {
+              parsedName = "Actor";
+            }
           }
 
           return {
@@ -100,8 +109,9 @@ export function CharacterModal({
       if (error || !data) throw error || new Error("No se pudo obtener la imagen.");
 
       const file = new File([data], `${member.name}.jpg`, { type: data.type || "image/jpeg" });
-      onSelectCharacter(file, member.name, member.url);
-      toast({ title: `✓ ${member.name} asignado como ${roleTitle}` });
+      const chosenName = member.name && member.name !== "Actor" && member.name !== "Actor Guardado" ? member.name : (currentName || roleTitle);
+      onSelectCharacter(file, chosenName, member.url);
+      toast({ title: `✓ ${chosenName} asignado como ${roleTitle}` });
       onOpenChange(false);
     } catch (err: any) {
       toast({ title: "Error al seleccionar actor", description: err.message, variant: "destructive" });

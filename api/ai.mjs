@@ -2039,8 +2039,28 @@ export default async function handler(req, res) {
         ? body.cast_names.slice(0, 10).map((name) => String(name || "").trim().slice(0, 80)).filter(Boolean)
         : ["Protagonista", "Acompañante"];
 
-      const actor1 = castNames[0] || "Actor 1";
-      const actor2 = castNames[1] || "Actor 2";
+      function cleanCharacterName(raw, fallback) {
+        let name = String(raw || "").trim();
+        if (/^[A-Za-z0-9+/=_-]{12,}$/.test(name)) {
+          try {
+            const decoded = Buffer.from(name.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8");
+            if (decoded && !/captura|screenshot|img_|\.png|\.jpg/i.test(decoded)) {
+              name = decoded;
+            } else {
+              return fallback;
+            }
+          } catch {
+            return fallback;
+          }
+        }
+        if (/captura|screenshot|img_|\.png|\.jpg|\.jpeg|untitled|sin t[ií]tulo/i.test(name) || /^[0-9a-f-]{36}$/i.test(name) || name.length > 30) {
+          return fallback;
+        }
+        name = name.replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
+        return name || fallback;
+      }
+      const actor1 = cleanCharacterName(castNames[0], "Protagonista");
+      const actor2 = cleanCharacterName(castNames[1], "Acompañante");
       const locationName = String(body.location_name || "").trim().slice(0, 100);
       const count = Math.min(10, Math.max(1, Number(body.chapters || body.chapterCount || 3)));
 

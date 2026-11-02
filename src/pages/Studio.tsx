@@ -484,7 +484,16 @@ Mantén estricta coherencia y ritmo para el género ${selectedGenre}.`,
                           </span>
                         )}
                       </div>
-                      <h4 className="text-sm font-bold text-white truncate mt-1">{primaryName}</h4>
+                      <div className="mt-1" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="text"
+                          value={primaryName}
+                          onChange={(e) => setPrimaryName(e.target.value)}
+                          placeholder="Nombre del Protagonista"
+                          className="w-full bg-black/50 border border-neutral-700/80 focus:border-amber-500 rounded px-2 py-0.5 text-xs font-bold text-white outline-none"
+                          maxLength={30}
+                        />
+                      </div>
                       <p className="text-[11px] text-neutral-400 flex items-center gap-1 mt-0.5">
                         <Volume2 className="w-3 h-3 text-amber-400" /> Voz: {primaryVoice}
                       </p>
@@ -520,7 +529,16 @@ Mantén estricta coherencia y ritmo para el género ${selectedGenre}.`,
                           </span>
                         )}
                       </div>
-                      <h4 className="text-sm font-bold text-white truncate mt-1">{secondaryName}</h4>
+                      <div className="mt-1" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="text"
+                          value={secondaryName}
+                          onChange={(e) => setSecondaryName(e.target.value)}
+                          placeholder="Nombre de la Co-Estrella"
+                          className="w-full bg-black/50 border border-neutral-700/80 focus:border-amber-500 rounded px-2 py-0.5 text-xs font-bold text-white outline-none"
+                          maxLength={30}
+                        />
+                      </div>
                       <p className="text-[11px] text-neutral-400 flex items-center gap-1 mt-0.5">
                         <Volume2 className="w-3 h-3 text-amber-400" /> Voz: {secondaryVoice}
                       </p>
@@ -927,11 +945,11 @@ Mantén estricta coherencia y ritmo para el género ${selectedGenre}.`,
             onSelectCharacter={(file, name, preview) => {
               if (modalRole === "primary") {
                 setPrimaryImageFile(file);
-                setPrimaryName(name);
+                if (name && name !== "Actor" && name !== "Actor Guardado") setPrimaryName(name);
                 if (preview) setPrimaryPreviewUrl(preview);
               } else {
                 setSecondaryImageFile(file);
-                setSecondaryName(name);
+                if (name && name !== "Actor" && name !== "Actor Guardado") setSecondaryName(name);
                 if (preview) setSecondaryPreviewUrl(preview);
               }
               setModalRole(null);
