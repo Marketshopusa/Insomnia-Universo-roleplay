@@ -136,15 +136,16 @@ export interface LocalCastInput {
 }
 
 export async function createLocalJob(
-  input: { idea?: string; chapters?: string[]; dialogues?: string[]; shot_plans?: { visual: string; dialogue: string; speaker?: string }[][]; image?: string | null; cast?: LocalCastInput; episodes?: number },
+  input: { idea?: string; description?: string; title?: string; chapters?: string[]; dialogues?: string[]; shot_plans?: { visual: string; dialogue: string; speaker?: string }[][]; image?: string | null; cast?: LocalCastInput; episodes?: number; bible?: any; referenceImage?: File | null },
   fetchImpl: FetchLike = fetch,
 ): Promise<LocalJob> {
-  const chapters = (input.chapters || [])
+  const rawList = input.chapters || (Array.isArray(input.bible?.chapters) ? input.bible.chapters.map((c: any) => c.visual || "") : []);
+  const chapters = rawList
     .map((item) => item.trim().slice(0, 4000))
     .filter((item) => item.length >= 5);
   if (chapters.length > MAX_LOCAL_CHAPTERS) throw new Error("Kineva admite hasta 12 capítulos por proyecto local.");
-  const idea = (input.idea || chapters[0] || "").trim().slice(0, 1500);
-  if (idea.length < 5) throw new Error("Escribe una idea breve de 5 a 1500 caracteres.");
+  const idea = (input.idea || input.description || chapters[0] || input.title || "Miniserie").trim().slice(0, 1500);
+  if (idea.length < 3) throw new Error("Escribe una idea breve o genera los capítulos antes de rodar.");
   let response: Response;
   try {
     response = await fetchImpl(`${LOCAL_KINEVA_URL}/jobs`, loopbackInit({

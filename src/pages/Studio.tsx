@@ -36,6 +36,7 @@ import { invokeFunctionWithRetry } from "@/lib/invokeFunction";
 import {
   probeLocalKineva,
   createLocalJob,
+  encodeLocalImage,
   fetchLocalJob,
   localVideoSrc,
   type LocalProbe,
@@ -310,7 +311,32 @@ Mantén estricta coherencia y ritmo para el género ${selectedGenre}.`,
     setRenderedVideos({});
 
     try {
+      let primaryEncoded: string | null = null;
+      if (primaryImageFile) {
+        try {
+          primaryEncoded = await encodeLocalImage(primaryImageFile);
+        } catch { /* ignore */ }
+      }
+
+      let secondaryEncoded: string | null = null;
+      if (secondaryImageFile) {
+        try {
+          secondaryEncoded = await encodeLocalImage(secondaryImageFile);
+        } catch { /* ignore */ }
+      }
+
       const job = await createLocalJob({
+        image: primaryEncoded,
+        cast: {
+          primary_name: primaryName,
+          secondary_name: secondaryName,
+          secondary_image: secondaryEncoded,
+          location_name: locationName,
+        },
+        idea: (premise.trim() || chapters[0]?.visual || seriesTitle || "Miniserie").slice(0, 1500),
+        chapters: chapters.map((c) => c.visual.trim()),
+        dialogues: chapters.map((c) => c.dialogue.trim()),
+        shot_plans: chapters.map((c) => [{ visual: c.visual.trim(), dialogue: c.dialogue.trim(), speaker: c.speaker || primaryName }]),
         title: seriesTitle,
         description: premise,
         referenceImage: primaryImageFile,
