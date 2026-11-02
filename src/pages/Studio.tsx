@@ -29,6 +29,7 @@ import {
   ShieldCheck,
   Eye,
   Trash2,
+  AlertCircle,
 } from "lucide-react";
 import { CharacterModal } from "@/components/studio/CharacterModal";
 import { StudioProduction, type ProductionSeries } from "@/components/studio/StudioProduction";
@@ -161,16 +162,24 @@ export default function Studio() {
   // Audio stream playback
   const audioContextRef = useRef<AudioContext | null>(null);
 
-  // Probe local Kineva ComfyUI worker on mount
+  // Refresh local Kineva ComfyUI worker status
+  const refreshEngineProbe = async () => {
+    try {
+      const probe = await probeLocalKineva();
+      setLocalProbe(probe);
+      return probe;
+    } catch {
+      setLocalProbe(null);
+      return null;
+    }
+  };
+
   useEffect(() => {
-    void (async () => {
-      try {
-        const probe = await probeLocalKineva();
-        setLocalProbe(probe);
-      } catch {
-        setLocalProbe(null);
-      }
-    })();
+    void refreshEngineProbe();
+    const interval = setInterval(() => {
+      void refreshEngineProbe();
+    }, 8000);
+    return () => clearInterval(interval);
   }, []);
 
   // Cleanup polling timer
@@ -304,6 +313,26 @@ Mantén estricta coherencia y ritmo para el género ${selectedGenre}.`,
     if (!chapters.length) {
       toast({ title: "Genera el guion primero", variant: "destructive" });
       return;
+    }
+
+    const probe = await refreshEngineProbe();
+    if (!probe || !probe.ready) {
+      if (probe?.status === "missing-comfy" || !probe?.comfy) {
+        toast({
+          title: "ComfyUI está apagado",
+          description: "Abre Comfy Desktop en tu computadora para que la tarjeta gráfica (GPU) pueda renderizar el video.",
+          variant: "destructive",
+        });
+        return;
+      }
+      if (probe?.status === "missing-worker") {
+        toast({
+          title: "Worker local Kineva apagado",
+          description: "Inicia el servicio Kineva en el puerto 8787 para procesar los videos.",
+          variant: "destructive",
+        });
+        return;
+      }
     }
 
     setIsFilming(true);
@@ -856,6 +885,46 @@ Mantén estricta coherencia y ritmo para el género ${selectedGenre}.`,
 
                     {/* BIG FILM & RENDER BUTTON */}
                     <div className="pt-4 border-t border-neutral-800 space-y-4">
+                      {/* GPU ENGINE STATUS BANNER */}
+                      {localProbe?.status === "ready" ? (
+                        <div className="flex items-center justify-between p-3.5 rounded-xl bg-emerald-950/40 border border-emerald-500/30 text-xs text-emerald-400">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shadow-sm shadow-emerald-500" />
+                            <span className="font-bold text-white">Motor GPU Conectado:</span>
+                            <span className="text-neutral-300">ComfyUI + Wan2.1 Activo en GeForce RTX 4060 Ti</span>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => void refreshEngineProbe()}
+                            className="h-6 text-[11px] text-emerald-400 hover:text-white px-2 hover:bg-emerald-900/40"
+                          >
+                            Verificar
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between p-3.5 rounded-xl bg-amber-950/40 border border-amber-500/40 text-xs text-amber-300 gap-3">
+                          <div className="flex items-center gap-2.5">
+                            <AlertCircle className="w-5 h-5 text-amber-400 shrink-0" />
+                            <div>
+                              <span className="font-bold block text-white">ComfyUI / Kineva está apagado</span>
+                              <span className="text-neutral-400 text-[11px]">
+                                Abre <strong>Comfy Desktop</strong> en tu equipo para renderizar las escenas con la tarjeta gráfica.
+                              </span>
+                            </div>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => void refreshEngineProbe()}
+                            className="h-7 text-xs border-amber-500/50 text-amber-300 hover:bg-amber-900/40 shrink-0"
+                          >
+                            Comprobar Conexión
+                          </Button>
+                        </div>
+                      )}
                       {isFilming ? (
                         <div className="p-6 rounded-2xl border border-amber-500/50 bg-amber-950/20 text-center space-y-3">
                           <Loader2 className="w-8 h-8 animate-spin mx-auto text-amber-400" />
