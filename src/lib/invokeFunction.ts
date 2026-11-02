@@ -201,9 +201,13 @@ REGLAS DE RAZONAMIENTO Y FORMATO:
 8. DISTINCIÓN CRÍTICA ENTRE DIÁLOGO HABLADO Y NARRACIÓN/PENSAMIENTOS DEL USUARIO (CERO TELEPATÍA):
    - Lo que ${playerName} escribe fuera de asteriscos es lo que DICE EN VOZ ALTA.
    - Lo que ${playerName} escribe entre asteriscos (*...*) o como relato describe posturas físicas, acciones corporales o pensamientos íntimos del narrador.
-   - TÚ NO ERES TELÉPATA: ESTÁ TERMINANTEMENTE PROHIBIDO responder verbalmente a los pensamientos internos, reflexiones o asombros no verbalizados de ${playerName} como si los hubiera dicho en voz alta.
-   - Tu personaje percibe las ACCIONES FÍSICAS visibles de la escena (si se sienta, si te toca, si te examina, su postura y contacto corporal) y responde hablando a lo que ${playerName} haya dicho en voz alta.
-   - CONTINUIDAD TOTAL DE ROL: Mantén tu rol profesional o personal exacto (${characterName}). Si eres una doctora examinando a su paciente en su consultorio, mantén esa atmósfera, nerviosismo y continuidad médica/íntima. JAMÁS cambies de tema ni disocies preguntando '¿qué quieres que hagamos ahora?' cuando la acción ya está en curso.`;
+   - TÚ NO ERES TELÉPATA: ESTÁ TERMINANTEMENTE PROHIBIDO responder verbalmente a los pensamientos internos, reflexiones o asombros no verbalizados de ${playerName} como si los hubiera dicho en voz alta. Jamás digas "tienes razón", "como piensas" ni dialogues contra un pensamiento mudo.
+   - CUANDO ${playerName} SOLO ESCRIBA PENSAMIENTOS O ACCIONES ENTRE ASTERISCOS: ${playerName} está en silencio o tenso. Reacciona a su presencia física en la habitación y TOMA LA INICIATIVA según tu rol y la situación (salúdalo cara a cara, invítalo a pasar o tomar asiento, y continúa el procedimiento con profesionalismo).
+   - CONTINUIDAD TOTAL DE ROL: Mantén tu rol profesional o personal exacto (${characterName}). Si eres una doctora examinando a su paciente en su consultorio, mantén esa atmósfera, nerviosismo y continuidad médica/íntima. JAMÁS cambies de tema ni disocies preguntando '¿qué quieres que hagamos ahora?' cuando la acción ya está en curso.
+9. JERARQUÍA DE EDADES, PARENTESCO Y RELACIÓN FAMILIAR/PROFESIONAL:
+   - Respeta escrupulosamente quién es mayor y quién es más joven según el contexto de la tarjeta.
+   - Si ${characterName} es más joven (ej. 25 años) y ${playerName} es un adulto mayor (ej. 44 años, amigo de su madre que la conoció de niña), ${characterName} NUNCA debe invertir los roles ni llamar a ${playerName} 'niño', 'pequeño' o fingir que ella lo cuidaba a él.
+   - Mantén la memoria de la situación: si vino a una consulta médica de rutina por su edad, tú ya sabes el motivo de consulta; guíalo con pudor, calidez y profesionalismo.`;
 
 
 
@@ -232,7 +236,28 @@ ${playerName} te pidió explícitamente seguir con la acción oral y escuchar c�
 - Describe en PRIMERA PERSONA entre asteriscos la acción física, la succión húmeda, la saliva y los sonidos (*Sigo succionando con fuerza y rapidez, mis ojos clavados en los tuyos...*).
 - En diálogo hablado, ÚNICAMENTE emite gemidos u onomatopéyicos breves ("Mmmm... ahh...", "Mmgh..."). CERO discursos hablados.`
       : "";
-    const systemPrompt = baseSystemPrompt + activeSceneRule + noRepeatRule + oralSilenceDirective;
+    const isProstateOrExam = /(?:examen\s+de\s+pr[oó]stata|prost[aá]tic[oa]|doctora|m[eé]dica)/i.test(premise);
+    const charIsDoctor = /(?:doctora|m[eé]dica|reci[eé]n\s+graduada)/i.test(premise) && !/willian\s+es\s+(?:el\s+)?doctor/i.test(premise);
+    const medicalRoleRule = (isProstateOrExam && charIsDoctor) ? [
+      "",
+      "ASIGNACIÓN INEQUÍVOCA DE ROLES EN LA CONSULTA MÉDICA:",
+      `- TÚ (${characterName}) eres la DOCTORA / MÉDICA en su consultorio. Eres una profesional recién graduada (25 años).`,
+      `- El usuario (${activeChar.playerFirstName}) es el PACIENTE hombre (44 años) que viene a su examen de próstata.`,
+      `- PROHIBIDO INVERTIR LOS ROLES: Bajo ninguna circunstancia llames a ${activeChar.playerFirstName} "doctor" ni te pongas tú como la paciente. Tú eres quien lo examina y lo atiende a él.`,
+      ""
+    ].join("\n") : "";
+
+    const isHijaDeAmiga = /\bhija\s+de\b/i.test(rawChar) || /\bamig[ao]\s+de\b/i.test(premise);
+    const familyRule = isHijaDeAmiga ? [
+      "",
+      "COHERENCIA DE VÍNCULO FAMILIAR / CONOCIDOS:",
+      `- Tú eres ${characterName}, la hija de la mejor amiga de ${activeChar.playerFirstName}.`,
+      `- ${activeChar.playerFirstName} es el amigo de tu mamá, un hombre mayor (44 años) que te conoció a ti cuando tú eras una niña.`,
+      `- CERO INVERSIÓN: JAMÁS trates a ${activeChar.playerFirstName} como si fuera un niño o menor que tú. Él es el adulto maduro y amigo de tu madre.`,
+      ""
+    ].join("\n") : "";
+
+    const systemPrompt = baseSystemPrompt + activeSceneRule + noRepeatRule + oralSilenceDirective + medicalRoleRule + familyRule;
 
 
 
@@ -348,7 +373,7 @@ ${playerName} te pidió explícitamente seguir con la acción oral y escuchar c�
 
       const repeat_last_n = 256;
 
-      const max_tokens = 450;
+      const max_tokens = 380;
 
 
 
@@ -384,7 +409,7 @@ ${playerName} te pidió explícitamente seguir con la acción oral y escuchar c�
 
           }),
 
-          signal: AbortSignal.timeout(28000),
+          signal: AbortSignal.timeout(35000),
 
         });
 

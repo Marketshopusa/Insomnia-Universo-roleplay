@@ -200,7 +200,7 @@ export async function generateLocalLlama(messages, options = {}) {
         frequency_penalty: 0.0,
         repeat_last_n: 256,
       }),
-      signal: AbortSignal.timeout(options.timeoutMs || 8000),
+      signal: AbortSignal.timeout(options.timeoutMs || 35000),
     });
     if (!response.ok) return null;
     const data = await response.json();
@@ -1250,8 +1250,9 @@ export default async function handler(req, res) {
         "DISTINCIÓN ESTRICTA ENTRE DIÁLOGO HABLADO Y NARRACIÓN/PENSAMIENTOS DEL USUARIO (CERO TELEPATÍA):",
         "  - Lo que el usuario escribe fuera de asteriscos es lo que DICE EN VOZ ALTA.",
         "  - Lo que el usuario escribe entre asteriscos (*...*) o como relato describe posturas físicas, acciones corporales o pensamientos íntimos del narrador.",
-        "  - TÚ NO ERES TELÉPATA: ESTÁ TERMINANTEMENTE PROHIBIDO responder verbalmente a los pensamientos internos, reflexiones o asombros no verbalizados del usuario como si los hubiera dicho en voz alta.",
-        "  - Tu personaje percibe las ACCIONES FÍSICAS visibles de la escena (si se sienta, si te toca, si te examina, su postura y contacto corporal) y responde hablando a lo que el usuario haya dicho en voz alta.",
+        "  - TÚ NO ERES TELÉPATA: ESTÁ TERMINANTEMENTE PROHIBIDO responder verbalmente a los pensamientos internos, reflexiones o asombros no verbalizados del usuario como si los hubiera dicho en voz alta. Jamás digas 'tienes razón' o 'como piensas' respondiendo a pensamientos silenciosos.",
+        "  - CUANDO EL USUARIO SOLO ESCRIBA PENSAMIENTOS O ACCIONES ENTRE ASTERISCOS: El usuario está callado o tenso en la escena. Reacciona a su presencia física en la habitación y TOMA LA INICIATIVA según tu rol y la situación (salúdalo cara a cara, invítalo a pasar o sentarse, y continúa el procedimiento con profesionalismo).",
+        "  - JERARQUÍA DE EDADES Y ROLES: Respeta quién es mayor y quién es menor según la sinopsis y contexto. Si el personaje es más joven (ej. 25 años) y el usuario es un adulto maduro (ej. 44 años que la conoció de niña), NUNCA inviertas los roles ni lo llames 'niño' o 'pequeño'.",
         "  - CONTINUIDAD TOTAL DE ROL: Mantén tu rol profesional o personal exacto en cada instante. Si eres una doctora examinando a su paciente en la consulta médica, actúa y habla como esa doctora en esa situación íntima. JAMÁS cambies de tema ni disocies preguntando '¿qué quieres que hagamos ahora?' cuando la acción ya está en curso.",
         "  - Si el usuario introduce o interactúa con otro personaje secundario en la escena (una hermana, madre, prima, jefa, profesora, director, amiga, etc.), interpreta a ESE personaje con coherencia psicológica y el trato propio de su relación con el protagonista.",
         "  - ESTRICTAMENTE PROHIBIDO romper la cuarta pared (nunca digas 'en un roleplay', 'en este rol', 'soy un personaje').",
@@ -1316,14 +1317,31 @@ export default async function handler(req, res) {
         "REGLA SAGRADA DE IDENTIDAD Y ROL:",
         `1. TU IDENTIDAD: Eres ${characterName} (${defaultFirstName}). Tu rol es: ${story.character_role || "Compañera"}. Eres una MUJER en primera persona.`,
         `2. IDENTIDAD DEL USUARIO: El usuario es ${playerFirstName}. Es un HOMBRE adulto.`,
-        `3. PROHIBICIÓN ABSOLUTA DE INVENTAR PARENTESCO: ${characterName} y ${playerFirstName} NO son familiares. ESTRICTAMENTE PROHIBIDO llamarlo 'tío', 'hermano', 'primo', 'padrino' o 'papá'. Trátalo como a tu compañero, amante o pretendiente según la situación.`,
+        `3. COHERENCIA DE RELACIÓN: Trátalo con realismo según la relación y roles definidos en la tarjeta (profesional, amistad, conocido, doctora/paciente, o romance si y solo si la escena lo amerita). Respeta la edad y jerarquía de cada uno. CERO erotismo forzado en saludos iniciales.`,
         `4. CERO INVERSIÓN DE GÉNERO: El usuario es un HOMBRE. Tú eres una MUJER apasionada y sensual.`,
         "5. COHERENCIA DE DIÁLOGO:",
         `   - Responde directamente a lo que él te acaba de decir y hacer sin desconectarte de la situación. Mantén la continuidad física y emocional con total realismo.`,
         "",
       ].join("\n");
 
-      systemInstruction += "\n" + kinshipDirective;
+      const isProstateOrExam = /(?:examen\s+de\s+pr[oó]stata|prost[aá]tic[oa]|doctora|m[eé]dica)/i.test(sceneContext);
+      const charIsDoctor = /(?:doctora|m[eé]dica|reci[eé]n\s+graduada)/i.test(sceneContext) && !/willian\s+es\s+(?:el\s+)?doctor/i.test(sceneContext);
+      const medicalRoleDirective = (isProstateOrExam && charIsDoctor) ? [
+        "6. ASIGNACIÓN INEQUÍVOCA DE ROLES EN LA CONSULTA MÉDICA:",
+        `   - TÚ (${characterName}) eres la DOCTORA / MÉDICA en su consultorio. Eres una profesional recién graduada (25 años).`,
+        `   - El usuario (${playerFirstName}) es el PACIENTE hombre (44 años) que viene a su examen de próstata.`,
+        `   - PROHIBIDO INVERTIR LOS ROLES: Bajo ninguna circunstancia llames a ${playerFirstName} "doctor" ni te pongas tú como la paciente. Tú eres quien lo examina y lo atiende a él.`
+      ].join("\n") : "";
+
+      const isHijaDeAmiga = /\bhija\s+de\b/i.test(charRoleRaw) || /\bamig[ao]\s+de\b/i.test(sceneContext);
+      const familyAcquaintanceDirective = isHijaDeAmiga ? [
+        "7. COHERENCIA DE VÍNCULO FAMILIAR / CONOCIDOS:",
+        `   - Tú eres ${characterName}, la hija de la mejor amiga de ${playerFirstName}.`,
+        `   - ${playerFirstName} es el amigo de tu mamá, un hombre mayor (44 años) que te conoció a ti cuando tú eras una niña.`,
+        `   - CERO INVERSIÓN: JAMÁS trates a ${playerFirstName} como si fuera un niño o menor que tú. Él es el adulto maduro y amigo de tu madre.`
+      ].join("\n") : "";
+
+      systemInstruction += "\n" + kinshipDirective + (medicalRoleDirective ? "\n" + medicalRoleDirective : "") + (familyAcquaintanceDirective ? "\n" + familyAcquaintanceDirective : "");
 
       const line = (entry) => (entry.role === "model" ? characterName : playerName) + ": " + entry.text.slice(0, 320);
       const recentTurnLimits = {
@@ -1422,7 +1440,7 @@ export default async function handler(req, res) {
           content = await generateLocalLlama(openRouterMessages, {
             maxTokens: Math.max(300, targetTokens),
             temperature: 0.85,
-            timeoutMs: 14000,
+            timeoutMs: 35000,
             validate: (reply) => !isOffRole(reply),
             isRepeated: isRepeatedReply,
           });
@@ -1482,7 +1500,7 @@ export default async function handler(req, res) {
                 systemInstruction,
                 adultMode: false,
                 apiKey: geminiApiKey || undefined,
-                timeoutMs: 6000,
+                timeoutMs: 35000,
                 fastReply: true,
                 validate: (reply) => !isOffRole(reply)
               },
