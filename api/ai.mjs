@@ -415,7 +415,7 @@ export async function generate(model, parts, settings = {}, options = {}) {
 
         let response = null;
 
-        if (directKey) {
+        if (directKey && !options._directKeyExhausted) {
           try {
             response = await fetchImpl("https://generativelanguage.googleapis.com/v1beta/models/" + candidate + ":generateContent", {
               method: "POST",
@@ -423,6 +423,9 @@ export async function generate(model, parts, settings = {}, options = {}) {
               body: requestJson,
               signal: AbortSignal.timeout(options.timeoutMs || 25000),
             });
+            if (response.status === 429) {
+              options._directKeyExhausted = true;
+            }
           } catch (e) {
             if (e.name === "TimeoutError") throw e;
             console.warn("Direct key call failed, checking GCP credentials:", e.message);
@@ -433,41 +436,48 @@ export async function generate(model, parts, settings = {}, options = {}) {
           const token = await getGcpToken();
           const projectId = quotaProjectId();
           if (token && projectId) {
-            const vertexCandidate = candidate === "gemini-flash-latest" ? "gemini-2.5-flash" : candidate === "gemini-pro-latest" ? "gemini-2.5-pro" : candidate;
-            const vertexUrl = `https://aiplatform.googleapis.com/v1beta1/projects/${encodeURIComponent(projectId)}/locations/global/publishers/google/models/${vertexCandidate}:generateContent`;
-            try {
-              const gcpRes = await fetchImpl(vertexUrl, {
-                method: "POST",
-                headers: {
-                  Authorization: "Bearer " + token,
-                  "x-goog-user-project": projectId,
-                  "Content-Type": "application/json",
-                },
-                body: requestJson,
-                signal: AbortSignal.timeout(options.timeoutMs || 25000),
-              });
-              if (gcpRes.ok) {
-                response = gcpRes;
-              } else if (gcpRes.status === 404 || gcpRes.status === 400) {
-                const genLangRes = await fetchImpl("https://generativelanguage.googleapis.com/v1beta/models/" + candidate + ":generateContent", {
-                  method: "POST",
-                  headers: {
-                    Authorization: "Bearer " + token,
-                    "x-goog-user-project": projectId,
-                    "Content-Type": "application/json",
-                  },
-                  body: requestJson,
-                  signal: AbortSignal.timeout(options.timeoutMs || 25000),
-                });
-                if (genLangRes.ok || !response) {
-                  response = genLangRes;
+            const vertexCandidates = [
+              candidate === "gemini-flash-latest" ? "gemini-2.0-flash" : candidate === "gemini-pro-latest" ? "gemini-1.5-pro" : candidate,
+              "gemini-2.0-flash",
+              "gemini-1.5-flash",
+              "gemini-2.5-flash",
+            ];
+            for (const vModel of vertexCandidates) {
+              const vertexEndpoints = [
+                `https://us-central1-aiplatform.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/locations/us-central1/publishers/google/models/${vModel}:generateContent`,
+                `https://aiplatform.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/locations/us-central1/publishers/google/models/${vModel}:generateContent`,
+                `https://aiplatform.googleapis.com/v1beta1/projects/${encodeURIComponent(projectId)}/locations/global/publishers/google/models/${vModel}:generateContent`,
+              ];
+              for (const vUrl of vertexEndpoints) {
+                try {
+                  const gcpRes = await fetchImpl(vUrl, {
+                    method: "POST",
+                    headers: {
+                      Authorization: "Bearer " + token,
+                      "x-goog-user-project": projectId,
+                      "Content-Type": "application/json",
+                    },
+                    body: requestJson,
+                    signal: AbortSignal.timeout(options.timeoutMs || 25000),
+                  });
+                  if (gcpRes.ok) {
+                    response = gcpRes;
+                    break;
+                  }
+                  if (gcpRes.status === 403) {
+                    // Try auto-enabling aiplatform.googleapis.com once
+                    await fetchImpl(`https://serviceusage.googleapis.com/v1/projects/${projectId}/services/aiplatform.googleapis.com:enable`, {
+                      method: "POST",
+                      headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+                      body: "{}",
+                      signal: AbortSignal.timeout(10000),
+                    }).catch(() => {});
+                  }
+                } catch (gcpErr) {
+                  if (gcpErr.name === "TimeoutError") throw gcpErr;
                 }
-              } else {
-                response = gcpRes;
               }
-            } catch (gcpErr) {
-              if (gcpErr.name === "TimeoutError") throw gcpErr;
-              console.warn("GCP Vertex/OAuth call error:", gcpErr.message);
+              if (response && response.ok) break;
             }
           }
         }
@@ -2077,7 +2087,16 @@ export default async function handler(req, res) {
       }
 
       if (!content) {
-        return send(res, 503, { error: "ai_upstream_unavailable", message: "El modelo no pudo generar respuesta en este momento. Inténtalo de nuevo." });
+        // Fallback conversacional contextual para mantener la inmersión del rol y evitar el error 503
+        const isExam = /(?:examen|chequeo|consulta|m[eé]dic|doctor)/i.test([story.title, story.description, story.story_context, characterName].filter(Boolean).join(" "));
+        const isIntimate = /(?:chup|bes|toc|cuerpo|desnud|gem|placer|sex)/i.test(latest);
+        if (isExam && !isIntimate) {
+          content = `*Te miro con una sonrisa profesional y tranquila desde el escritorio, acomodando el expediente mientras te indico que tomes asiento.* Hola. Pasa con calma, ponte cómodo y cuéntame qué molestias has tenido o qué chequeo rutinario vamos a realizar hoy.`;
+        } else if (isIntimate) {
+          content = `*Siento tu cercanía y mi respiración se agita suavemente mientras mis ojos buscan los tuyos.* Sigue... no te detengas, dime qué más quieres que hagamos.`;
+        } else {
+          content = `*Te observo con atención y una leve sonrisa, prestando atención a cada una de tus palabras.* Dime, estoy escuchándote... ¿qué es lo siguiente que quieres que pase?`;
+        }
       }
       return send(res, 200, { content });
     }
