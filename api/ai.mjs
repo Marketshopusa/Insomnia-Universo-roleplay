@@ -876,6 +876,40 @@ export function roleplayPacingAndLanguageRules(historyLength, spanish, targetTok
   ];
 }
 
+export function buildDefaultShots(visual, dialogue, speaker, loc) {
+  const locRef = loc ? ` en ${loc}` : "";
+  return [
+    {
+      shot_number: 1,
+      camera: "Plano General",
+      visual: `Plano general cinematográfico vertical 9:16 de establecimiento${locRef}. Encuadre amplio con atmósfera dramática. ${visual.slice(0, 160)}.`,
+      dialogue: "",
+      speaker: ""
+    },
+    {
+      shot_number: 2,
+      camera: "Plano Medio",
+      visual: `Plano medio de ${speaker || "el protagonista"}${locRef}. Acción física clara y expresión facial intensa con iluminación cinematográfica.`,
+      dialogue: dialogue || "",
+      speaker: speaker || "Protagonista"
+    },
+    {
+      shot_number: 3,
+      camera: "Plano Detalle",
+      visual: `Plano detalle de las manos, miradas y la tensión dramática del momento${locRef}. Movimiento sutil, 24fps.`,
+      dialogue: "",
+      speaker: ""
+    },
+    {
+      shot_number: 4,
+      camera: "Contraplano / Reacción",
+      visual: `Contraplano cinematográfico capturando la reacción del segundo personaje y la conclusión de la escena${locRef}.`,
+      dialogue: "",
+      speaker: ""
+    }
+  ];
+}
+
 export function parseStudioDraftJson(raw, count = 3, defaultSpeaker = "Protagonista") {
   if (!raw || typeof raw !== "string") {
     throw Object.assign(new Error("Respuesta vacía del generador de guion."), { status: 502 });
@@ -895,15 +929,30 @@ export function parseStudioDraftJson(raw, count = 3, defaultSpeaker = "Protagoni
   try {
     const parsed = JSON.parse(cleaned);
     if (parsed && typeof parsed === "object" && Array.isArray(parsed.chapters) && parsed.chapters.length >= 1) {
+      const loc = String(parsed.location_detected || "").trim().slice(0, 100);
       return {
         title: String(parsed.title || "Miniserie").trim().slice(0, 120),
-        chapters: parsed.chapters.map((ch, idx) => ({
-          chapter_number: Number(ch.chapter_number) || (idx + 1),
-          visual: String(ch.visual || "").trim(),
-          dialogue: String(ch.dialogue || "").trim(),
-          speaker: String(ch.speaker || defaultSpeaker).trim(),
-          sfx: String(ch.sfx || "").trim(),
-        })).filter((ch) => ch.visual.length > 5)
+        location_detected: loc,
+        chapters: parsed.chapters.map((ch, idx) => {
+          const vis = String(ch.visual || "").trim();
+          const dia = String(ch.dialogue || "").trim();
+          const spk = String(ch.speaker || defaultSpeaker).trim();
+          const parsedShots = Array.isArray(ch.shots) && ch.shots.length > 0 ? ch.shots.map((sh, sidx) => ({
+            shot_number: Number(sh.shot_number) || (sidx + 1),
+            camera: String(sh.camera || "Plano Cinematográfico").trim(),
+            visual: String(sh.visual || "").trim(),
+            dialogue: String(sh.dialogue || "").trim(),
+            speaker: String(sh.speaker || spk).trim(),
+          })).filter(sh => sh.visual.length > 3) : [];
+          return {
+            chapter_number: Number(ch.chapter_number) || (idx + 1),
+            visual: vis,
+            dialogue: dia,
+            speaker: spk,
+            sfx: String(ch.sfx || "").trim(),
+            shots: parsedShots.length > 0 ? parsedShots : buildDefaultShots(vis, dia, spk, loc)
+          };
+        }).filter((ch) => ch.visual.length > 5)
       };
     }
   } catch (err) {
@@ -917,15 +966,30 @@ export function parseStudioDraftJson(raw, count = 3, defaultSpeaker = "Protagoni
       .replace(/[\u0000-\u001F]+/g, (match) => (match.includes("\n") || match.includes("\r") ? " " : ""));
     const parsed = JSON.parse(sanitized);
     if (parsed && Array.isArray(parsed.chapters) && parsed.chapters.length >= 1) {
+      const loc = String(parsed.location_detected || "").trim().slice(0, 100);
       return {
         title: String(parsed.title || "Miniserie").trim().slice(0, 120),
-        chapters: parsed.chapters.map((ch, idx) => ({
-          chapter_number: Number(ch.chapter_number) || (idx + 1),
-          visual: String(ch.visual || "").trim(),
-          dialogue: String(ch.dialogue || "").trim(),
-          speaker: String(ch.speaker || defaultSpeaker).trim(),
-          sfx: String(ch.sfx || "").trim(),
-        })).filter((ch) => ch.visual.length > 5)
+        location_detected: loc,
+        chapters: parsed.chapters.map((ch, idx) => {
+          const vis = String(ch.visual || "").trim();
+          const dia = String(ch.dialogue || "").trim();
+          const spk = String(ch.speaker || defaultSpeaker).trim();
+          const parsedShots = Array.isArray(ch.shots) && ch.shots.length > 0 ? ch.shots.map((sh, sidx) => ({
+            shot_number: Number(sh.shot_number) || (sidx + 1),
+            camera: String(sh.camera || "Plano Cinematográfico").trim(),
+            visual: String(sh.visual || "").trim(),
+            dialogue: String(sh.dialogue || "").trim(),
+            speaker: String(sh.speaker || spk).trim(),
+          })).filter(sh => sh.visual.length > 3) : [];
+          return {
+            chapter_number: Number(ch.chapter_number) || (idx + 1),
+            visual: vis,
+            dialogue: dia,
+            speaker: spk,
+            sfx: String(ch.sfx || "").trim(),
+            shots: parsedShots.length > 0 ? parsedShots : buildDefaultShots(vis, dia, spk, loc)
+          };
+        }).filter((ch) => ch.visual.length > 5)
       };
     }
   } catch (err2) {
@@ -935,6 +999,8 @@ export function parseStudioDraftJson(raw, count = 3, defaultSpeaker = "Protagoni
   // 5. Extractor por Regex tolerante a comillas internas sin escapar
   const titleMatch = cleaned.match(/"title"\s*:\s*"([^"\r\n]+)"/i);
   const title = titleMatch ? titleMatch[1].trim() : "Miniserie";
+  const locMatch = cleaned.match(/"location_detected"\s*:\s*"([^"\r\n]+)"/i);
+  const location_detected = locMatch ? locMatch[1].trim() : "";
 
   const chapterChunks = cleaned.split(/(?=\{\s*"chapter_number"|\{\s*"visual")/i).slice(1);
   const recoveredChapters = [];
@@ -949,18 +1015,21 @@ export function parseStudioDraftJson(raw, count = 3, defaultSpeaker = "Protagoni
 
     const visual = visMatch ? visMatch[1].replace(/\\"/g, '"').trim() : "";
     if (visual.length > 3) {
+      const dia = diaMatch ? diaMatch[1].replace(/\\"/g, '"').trim() : "";
+      const spk = spkMatch ? spkMatch[1].trim() : defaultSpeaker;
       recoveredChapters.push({
         chapter_number: numMatch ? parseInt(numMatch[1], 10) : (i + 1),
         visual,
-        dialogue: diaMatch ? diaMatch[1].replace(/\\"/g, '"').trim() : "",
-        speaker: spkMatch ? spkMatch[1].trim() : defaultSpeaker,
+        dialogue: dia,
+        speaker: spk,
         sfx: sfxMatch ? sfxMatch[1].replace(/\\"/g, '"').trim() : "",
+        shots: buildDefaultShots(visual, dia, spk, location_detected)
       });
     }
   }
 
   if (recoveredChapters.length >= 1) {
-    return { title, chapters: recoveredChapters };
+    return { title, location_detected, chapters: recoveredChapters };
   }
 
   throw Object.assign(new Error("Error al procesar el guion del modelo. Por favor genera de nuevo."), { status: 502 });
@@ -2117,17 +2186,48 @@ Idea del creador: "${idea}"
 Devuelve EXCLUSIVAMENTE un JSON válido con esta estructura:
 {
   "title": "Título impactante de la miniserie",
+  "location_detected": "Locación principal coherente extraída de la idea (ej: Ático polvoriento bajo la tormenta)",
   "chapters": [
     {
       "chapter_number": 1,
-      "visual": "[TIPO DE PLANO Y MOVIMIENTO] Descripción cinematográfica detallada del movimiento, iluminación y acciones físicas paso a paso.",
-      "dialogue": "${actor1}: Línea de diálogo corta. | ${actor2}: Respuesta inmediata de diálogo.",
+      "visual": "Descripción visual cinematográfica principal del capítulo.",
+      "dialogue": "${actor1}: Línea de diálogo corta. | ${actor2}: Respuesta inmediata.",
       "speaker": "${actor1}",
-      "sfx": "[SFX: Descripción de efectos de sonido y foley ambiental]"
+      "sfx": "[SFX: Descripción de efectos de sonido y foley ambiental]",
+      "shots": [
+        {
+          "shot_number": 1,
+          "camera": "Plano General",
+          "visual": "Encuadre vertical 9:16 de establecimiento de la locación y atmósfera.",
+          "dialogue": "",
+          "speaker": ""
+        },
+        {
+          "shot_number": 2,
+          "camera": "Plano Medio",
+          "visual": "Acción física y expresión facial clara de ${actor1} al hablar.",
+          "dialogue": "${actor1}: Línea de diálogo corta.",
+          "speaker": "${actor1}"
+        },
+        {
+          "shot_number": 3,
+          "camera": "Plano Detalle",
+          "visual": "Detalle dramático de manos o miradas en alta tensión.",
+          "dialogue": "",
+          "speaker": ""
+        },
+        {
+          "shot_number": 4,
+          "camera": "Contraplano / Reacción",
+          "visual": "Reacción física y mirada intensa de ${actor2} al responder.",
+          "dialogue": "${actor2}: Respuesta inmediata de diálogo.",
+          "speaker": "${actor2}"
+        }
+      ]
     }
   ]
 }
-Nota: Exactamente ${count} capítulos dentro del array 'chapters'.`;
+Nota: Exactamente ${count} capítulos dentro del array 'chapters', cada uno con 4 tomas cinematográficas individuales en 'shots'.`;
 
       let raw;
       if (isAdult) {

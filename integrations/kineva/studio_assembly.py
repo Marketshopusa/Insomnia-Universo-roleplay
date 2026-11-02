@@ -60,7 +60,7 @@ def assemble_episode(clips, destination):
         filter_parts = []
         for i, p in enumerate(paths):
             inputs.extend(["-i", str(p)])
-            filter_parts.append(f"[{i}:v]scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=24[v{i}];[{i}:a]aformat=sample_rates=48000:channel_layouts=stereo[a{i}];")
+            filter_parts.append(f"[{i}:v]scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=24[v{i}];[{i}:a]aformat=sample_rates=48000:channel_layouts=stereo[a{i}];")
         concat_filter = "".join(filter_parts) + "".join(f"[v{i}][a{i}]" for i in range(len(paths))) + f"concat=n={len(paths)}:v=1:a=1[outv][outa]"
         cmd = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", *inputs, "-filter_complex", concat_filter, "-map", "[outv]", "-map", "[outa]", "-c:v", "libx264", "-preset", "fast", "-crf", "19", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", str(temporary)]
         subprocess.run(cmd, check=True, capture_output=True, timeout=360)

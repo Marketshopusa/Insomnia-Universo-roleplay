@@ -48,12 +48,21 @@ import { STORY_VOICES } from "@/lib/voices";
 
 export type StudioGenre = "terror" | "adult" | "romance" | "action" | "comedy";
 
-interface ChapterDraft {
+export interface ShotDraft {
+  shot_number: number;
+  camera: string;
+  visual: string;
+  dialogue?: string;
+  speaker?: string;
+}
+
+export interface ChapterDraft {
   chapter_number: number;
   visual: string;
   dialogue: string;
   speaker: string;
   sfx: string;
+  shots?: ShotDraft[];
 }
 
 const GENRE_CONFIG: Record<
@@ -233,6 +242,9 @@ export default function Studio() {
       }
 
       if (draft.title) setSeriesTitle(draft.title);
+      if (draft.location_detected && draft.location_detected.length > 2) {
+        setLocationName(draft.location_detected);
+      }
       setChapters(draft.chapters);
       toast({
         title: `✓ Guion de ${draft.chapters.length} capítulos listo`,
@@ -365,7 +377,21 @@ Mantén estricta coherencia y ritmo para el género ${selectedGenre}.`,
         idea: (premise.trim() || chapters[0]?.visual || seriesTitle || "Miniserie").slice(0, 1500),
         chapters: chapters.map((c) => c.visual.trim()),
         dialogues: chapters.map((c) => c.dialogue.trim()),
-        shot_plans: chapters.map((c) => [{ visual: c.visual.trim(), dialogue: c.dialogue.trim(), speaker: c.speaker || primaryName }]),
+        shot_plans: chapters.map((c) => {
+          if (Array.isArray(c.shots) && c.shots.length > 0) {
+            return c.shots.map((s) => ({
+              visual: s.visual.trim(),
+              dialogue: (s.dialogue || "").trim(),
+              speaker: s.speaker || primaryName,
+            }));
+          }
+          return [
+            { visual: `Plano general vertical 9:16 de establecimiento en ${locationName}. ${c.visual.slice(0, 160)}. Iluminación cinematográfica y atmósfera envolvente.`, dialogue: "", speaker: "" },
+            { visual: `Plano medio de ${c.speaker || primaryName} en ${locationName}. Acción física clara, expresión facial intensa y diálogo hablado.`, dialogue: c.dialogue, speaker: c.speaker || primaryName },
+            { visual: `Plano detalle de las manos, miradas y la tensión dramática del momento en ${locationName}. 24fps.`, dialogue: "", speaker: "" },
+            { visual: `Contraplano dramático capturando la reacción del segundo personaje y la conclusión de la escena en ${locationName}.`, dialogue: "", speaker: "" },
+          ];
+        }),
         title: seriesTitle,
         description: premise,
         referenceImage: primaryImageFile,
@@ -876,6 +902,28 @@ Mantén estricta coherencia y ritmo para el género ${selectedGenre}.`,
                             {chap.sfx && (
                               <div className="text-[11px] text-neutral-400 italic bg-neutral-900/40 px-3 py-1.5 rounded-lg border border-neutral-850">
                                 {chap.sfx}
+                              </div>
+                            )}
+
+                            {/* MULTI-SHOT CINEMATIC BREAKDOWN (REELSHORT / DRAMABOX) */}
+                            {Array.isArray(chap.shots) && chap.shots.length > 0 && (
+                              <div className="pt-2 border-t border-neutral-850 space-y-1.5">
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-400 flex items-center gap-1.5">
+                                  <Film className="w-3 h-3 text-amber-400" />
+                                  Desglose Cinematográfico ({chap.shots.length} tomas encadenadas | ~20-25s):
+                                </span>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                                  {chap.shots.map((sh, sidx) => (
+                                    <div key={sidx} className="bg-neutral-900/60 border border-neutral-800 rounded-lg p-2 text-[11px] space-y-0.5">
+                                      <div className="flex items-center justify-between text-amber-400 font-bold text-[10px]">
+                                        <span>Toma {sh.shot_number}: {sh.camera}</span>
+                                        {sh.speaker && <Badge variant="outline" className="text-[9px] h-4 px-1 border-neutral-700 text-neutral-300">{sh.speaker}</Badge>}
+                                      </div>
+                                      <p className="text-neutral-300 line-clamp-2">{sh.visual}</p>
+                                      {sh.dialogue && <p className="text-white italic text-[10px]">"{sh.dialogue}"</p>}
+                                    </div>
+                                  ))}
+                                </div>
                               </div>
                             )}
                           </div>
