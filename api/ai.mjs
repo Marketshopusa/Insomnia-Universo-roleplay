@@ -30,35 +30,8 @@ function cleanCueText(rawInner, maxWords = 22) {
 
 export function enforceDialogueRatio(text, dialPct = 80, narrPct = 20) {
   if (!text) return text;
-  const regex = /\*([^*]+)\*/g;
-  const matches = [];
-  let m;
-  while ((m = regex.exec(text)) !== null) {
-    matches.push({ full: m[0], inner: m[1].trim(), index: m.index });
-  }
-  if (matches.length === 0) return text;
-
-  let totalNarrWords = 0;
-  for (const b of matches) {
-    totalNarrWords += b.inner.split(/\s+/).filter(Boolean).length;
-  }
-
-  // Si las acotaciones superan 28 palabras en total o hay más de 2 acotaciones, equilibrar sin mutilar frases
-  if (totalNarrWords > 28 || matches.length > 2) {
-    let result = text;
-    for (let i = 0; i < matches.length; i++) {
-      const b = matches[i];
-      if (i >= 2) {
-        // Máximo 2 acotaciones para no saturar el diálogo
-        result = result.replace(b.full, "");
-      } else {
-        const cleaned = cleanCueText(b.inner, 20);
-        result = result.replace(b.full, cleaned ? `*${cleaned}*` : "");
-      }
-    }
-    return result.replace(/[ \t]{2,}/g, " ").replace(/\n{2,}/g, "\n").trim();
-  }
-  return text;
+  // Preservar íntegramente las acciones físicas y el diálogo del roleplay sin mutilaciones
+  return text.replace(/[ \t]{2,}/g, " ").trim();
 }
 
 import { createClient } from "@supabase/supabase-js";
@@ -955,58 +928,40 @@ export function roleplayPacingAndLanguageRules(historyLength, spanish, targetTok
   }
 
   if (isChatPage) {
-    const totalWords = Math.max(55, Math.round(targetTokens * 0.72));
-    const narrWords = Math.max(12, Math.round(totalWords * 0.20));
-    const dialWords = Math.max(40, Math.round(totalWords * 0.80));
-
     if (!spanish) {
       return [
-        'CHAT MODE WITH BALANCED PROPORTION (80% SPOKEN DIALOGUE / 20% BRIEF ACTION):',
-        `1. 20% BRIEF PHYSICAL ACTION (*...*): At most 1 or 2 short sentences (~${narrWords} words) in first-person asterisks describing your immediate gesture, touch, or sensory reaction.`,
-        `2. 80% DIRECT SPOKEN DIALOGUE (~${dialWords} words): MANDATORY real spoken words addressing the user directly in first person. NEVER output only narrative asterisks without spoken dialogue!`,
-        '3. COMPLETE SENTENCES ONLY: Always complete all thoughts and close every sentence with a period, exclamation, or question mark. NEVER cut off mid-word.',
+        'ROLEPLAY INTERACTION PRINCIPLES:',
+        '1. COMPLETE SCENE RESPONSIVENESS: Acknowledge and integrate every physical action, detail, and spoken word from the user.',
+        '2. NATURAL FIRST-PERSON IMMERSION: Combine sensory actions in asterisks (*...*) with genuine, expressive spoken dialogue.',
+        '3. COMPLETE SENTENCES ONLY: Always close thoughts cleanly and move the scene forward.',
       ];
     }
     return [
-      'MODO CHAT EQUILIBRADO (80% DIÁLOGO HABLADO / 20% RELATO EN ASTERISCOS):',
-      `1. 20% RELATO O ACCIÓN FÍSICA (*...*) — BREVE Y PRECISO: Una o dos oraciones breves en primera persona entre asteriscos (~${narrWords} palabras) que narren tu gesto, roce físico o postura frente al usuario.`,
-      `2. 80% DIÁLOGO HABLADO DIRECTO (~${dialWords} palabras): OBLIGATORIO hablarle directamente al usuario en voz alta de tú a tú, expresiva y naturalmente. PROHIBIDO TERMINANTEMENTE responder solo con asteriscos sin incluir diálogo hablado.`,
-      '3. ORACIONES COMPLETAS Y CERRADAS: Cada pensamiento debe terminar completo, cerrado con punto o signo de puntuación. NUNCA cortes palabras a medias.',
+      'PRINCIPIOS DE ROLEPLAY INTERACTIVO E INMERSIVO:',
+      '1. OBSERVACIÓN Y RESPUESTA TOTAL A LA ESCENA: Reconoce, acata e integra cada acción física, postura, detalle anatómico o palabra que el usuario plantea.',
+      '2. PRIMERA PERSONA VIVA Y EXPRESIVA: Entrelaza con naturalidad tus acciones y sensaciones corporales entre asteriscos (*...*) con diálogos hablados directos, apasionados o profesionales según la escena.',
+      '3. PROGRESIÓN FLUIDA: Nunca des respuestas vacías ni reinicies la conversación; haz que la interacción avance con coherencia.',
     ];
   }
-  const safeTokens = Math.max(100, Math.min(800, Number(targetTokens) || 350));
-  const totalWords = Math.max(65, Math.round(safeTokens * 0.72));
-  const narrWords = Math.min(14, Math.max(8, Math.round(totalWords * nRatio)));
-  const dialWords = Math.max(45, Math.round(totalWords * dRatio));
 
   if (!spanish) {
     return [
-      `SUPREME ROLEPLAY RULE (${dPct}% SPOKEN DIALOGUE / ${nPct}% BRIEF ACTION):`,
-      `THE USER IS HERE TO CHAT AND ROLEPLAY WITH YOUR CHARACTER, NOT TO READ A NOVEL!`,
-      `1. ${dPct}% SPOKEN DIALOGUE (~${dialWords} words) - MAIN BODY:`,
-      `   - Speak directly to the user in first person out loud. Address what they said, ask questions, converse, flirt, or dirty talk.`,
-      `   - Spoken dialogue must be the vast majority of your reply.`,
-      `2. MAX ${nPct}% BRIEF PHYSICAL ACTION (*...*) (~${narrWords} words):`,
-      `   - At most 1 single short sentence in asterisks for an immediate gesture or touch (max 10-12 words).`,
-      `   - STRICTLY FORBIDDEN to write long paragraphs in asterisks. If asterisks exceed dialogue, the reply is invalid.`,
-      `3. COMPLETE SENTENCES: Always close all sentences cleanly.`,
+      'IMMERSIVE ROLEPLAY GUIDELINES:',
+      '1. RICH AND DETAILED REPLIES: Respond substantively to what the user did and said. Never output hollow or repetitive fillers.',
+      '2. PHYSICAL & SENSORY ACTIONS: Freely describe your character’s touches, gazes, blushes, physical proximity, and sensations in first person (*...*).',
+      '3. DIALOGUE & PASSION: Speak naturally and authentically, maintaining character role and tension throughout.',
     ];
   }
 
   return [
-    `REGLA SUPREMA DE ROLEPLAY (${dPct}% DIÁLOGO HABLADO / ${nPct}% ACCIÓN EN ASTERISCOS):`,
-    `¡EL USUARIO ENTRA A CONVERSAR Y HACER ROLEPLAY CON TU PERSONAJE, NO A LEER UNA NOVELA!`,
-    `1. ${dPct}% DIÁLOGO HABLADO DIRECTO (EL CUERPO PRINCIPAL DE TU RESPUESTA: ~${dialWords} PALABRAS):`,
-    `   - Tu personaje DEBE hablar en voz alta de tú a tú en primera persona.`,
-    `   - Responde con detalle a lo que el usuario acaba de decirte, dale réplica, hazle preguntas, coméntale, sedúcelo o usa dirty talk si es un momento íntimo.`,
-    `   - El diálogo hablado debe ser abundante, expresivo y constituir la gran mayoría de tu respuesta.`,
-    `2. MÁXIMO ${nPct}% DE ACCIÓN EN ASTERISCOS (*...*) — BREVE Y PRECISO (MÁXIMO 8 A 14 PALABRAS EN TOTAL):`,
-    `   - Limita el relato entre asteriscos a SOLO 1 acción física o gesto corporal breve.`,
-    `   - ESTRICTAMENTE PROHIBIDO escribir párrafos gigantes de relatos o descripciones poéticas dentro de asteriscos.`,
-    `   - ESTRICTAMENTE PROHIBIDO poner dos bloques largos de asteriscos que superen al diálogo hablado.`,
-    `   - Si tu relato en asteriscos supera a tu diálogo hablado, LA RESPUESTA ES INVÁLIDA.`,
-    `3. EJEMPLO EXACTO DEL FORMATO ESPERADO:`,
-    `   *Te miro a los ojos sonriendo mientras acaricio tu mejilla despacio* Vaya, cariño... tienes toda la razón, de verdad que no me esperaba que fueras tan apasionado ni que me dejaras tan satisfecha. Me hiciste temblar como nunca nadie lo había hecho. Dime algo, ¿siempre tienes esa energía tan intensa o tenías muchas ganas acumuladas solo para mí? Porque si es así, no pienso dejar que te vayas tan rápido...`,
+    'PAUTAS DE ROLEPLAY VIVO, DETALLADO Y PROFUNDO:',
+    '1. RESPUESTA SUSTANCIAL Y ADAPTADA AL MOMENTO (CERO FRASES VACÍAS):',
+    '   - Tu personaje DEBE responder punto por punto a lo que el usuario describe y dice.',
+    '   - Si el usuario describe una acción física o íntima, acéptala y reacciona a ella de forma visceral, creíble y apasionada.',
+    '2. ACCIONES FÍSICAS Y DIÁLOGO EQUILIBRADOS:',
+    '   - Describe con soltura tus gestos, posturas, caricias, miradas y sensaciones entre asteriscos (*...*).',
+    '   - Habla con tu propia voz de manera directa, sensual, pícara o médica según corresponda, sin restricciones artificiales de palabras.',
+    '3. IMPULSO DE LA TRAMA: Haz que cada turno avance la situación sin frenos absurdos ni repeticiones.',
   ];
 }
 
@@ -1381,24 +1336,19 @@ export default async function handler(req, res) {
         "RAZONAMIENTO LÓGICO Y DINÁMICA MULTI-PERSONAJE:",
         "  - Analiza en cada turno quién es el interlocutor activo frente al protagonista y cuál es su relación o rol dentro de esta tarjeta.",
         "  - COMPRENSIÓN DE NARRACIÓN MIXTA DEL USUARIO: El usuario a veces combina lo que le dice al personaje con explicaciones del narrador en tercera persona dentro de la misma oración (por ejemplo, explicar un secreto o mencionar a otro personaje en tercera persona mientras abraza y habla con quien tiene enfrente). Distingue con lógica quién está físicamente frente al usuario escuchándolo y quién es mencionado en tercera persona.",
-        "DISTINCIÓN ESTRICTA ENTRE DIÁLOGO HABLADO Y NARRACIÓN/PENSAMIENTOS DEL USUARIO (CERO TELEPATÍA):",
-        "  - Lo que el usuario escribe fuera de asteriscos es lo que DICE EN VOZ ALTA.",
-        "  - Lo que el usuario escribe entre asteriscos (*...*) o como relato describe posturas físicas, acciones corporales o pensamientos íntimos del narrador.",
-        "  - TÚ NO ERES TELÉPATA: ESTÁ TERMINANTEMENTE PROHIBIDO responder verbalmente a los pensamientos internos, reflexiones o asombros no verbalizados del usuario como si los hubiera dicho en voz alta. Jamás digas 'tienes razón' o 'como piensas' respondiendo a pensamientos silenciosos.",
-        "  - CUANDO EL USUARIO SOLO ESCRIBA PENSAMIENTOS O ACCIONES ENTRE ASTERISCOS: El usuario está callado o tenso en la escena. Reacciona a su presencia física en la habitación y TOMA LA INICIATIVA según tu rol y la situación (salúdalo cara a cara, invítalo a pasar o sentarse, y continúa el procedimiento con profesionalismo).",
-        "  - JERARQUÍA DE EDADES Y ROLES: Respeta quién es mayor y quién es menor según la sinopsis y contexto. Si el personaje es más joven (ej. 25 años) y el usuario es un adulto maduro (ej. 44 años que la conoció de niña), NUNCA inviertas los roles ni lo llames 'niño' o 'pequeño'.",
-        "  - CONTINUIDAD TOTAL DE ROL: Mantén tu rol profesional o personal exacto en cada instante. Si eres una doctora examinando a su paciente en la consulta médica, actúa y habla como esa doctora en esa situación íntima. JAMÁS cambies de tema ni disocies preguntando '¿qué quieres que hagamos ahora?' cuando la acción ya está en curso.",
+        "OBEDIENCIA TOTAL AL USUARIO Y OBSERVACIÓN DE LA REALIDAD DE LA ESCENA:",
+        "  - EL USUARIO DEFINE LA REALIDAD: Todo lo que el usuario describe —sus acciones físicas, su postura corporal, su vestimenta, su desnudez, su anatomía o excitación, sus mandatos y sus palabras— ES LA REALIDAD INMEDIATA Y TANGIBLE DE LA ESCENA.",
+        "  - OBSERVACIÓN Y REACCIÓN COMPLETA: Tu personaje observa directamente lo que el usuario hace frente a ti y reacciona de lleno a esa realidad en tiempo real con sensaciones físicas vivas, emociones, rubor, sorpresa, empatía o deseo.",
+        "  - SEGUIMIENTO ESTRICTO DE LAS REGLAS Y POSTURAS DEL USUARIO: Si el usuario describe una postura física íntima o un mandato (ejemplo: sentado en la camilla con las piernas abiertas frente a ti, levantando la ropa, desnudándose, pidiendo silencio o dando una orden de examen/placer), TU PERSONAJE ASUME Y CUMPLE ESA SITUACIÓN DE INMEDIATO. Jamás ignores lo que el usuario describe, jamás actúes como si el usuario no hubiera hecho nada y JAMÁS reinicies la escena saludando de nuevo.",
+        "  - CONTINUIDAD TOTAL DE ROL: Mantén tu rol profesional o personal exacto en cada instante. Si eres una doctora examinando a su paciente en la consulta médica, actúa y habla como esa doctora en esa situación íntima con toda la tensión, complicidad y realismo que el usuario impone.",
+        "  - JERARQUÍA DE EDADES Y ROLES: Respeta quién es mayor y quién es menor según la sinopsis y contexto. Si el personaje es más joven (ej. 25 años) y el usuario es un adulto maduro (ej. 44 años que la conoció de niña), jamás lo trates como si fuera un niño ni inviertas los papeles.",
         "  - Si el usuario introduce o interactúa con otro personaje secundario en la escena (una hermana, madre, prima, jefa, profesora, director, amiga, etc.), interpreta a ESE personaje con coherencia psicológica y el trato propio de su relación con el protagonista.",
         "  - ESTRICTAMENTE PROHIBIDO romper la cuarta pared (nunca digas 'en un roleplay', 'en este rol', 'soy un personaje').",
         ...storyVoiceLines(story.character_role, story.player_role, spanish, locale),
-        "ESTILO Y TONO CONVERSACIONAL (NATURAL, MODERNO, RELAJADO, TIPO URBANO):",
-        "  - CERO PROTOCOLO, CERO SERIEDAD EXCESIVA Y CERO ESTILO DE LIBRO O NOVELA LITERARIA.",
-        "  - Habla como una persona real, moderna y relajada platicando de tú a tú en el día a día.",
-        "  - Prohibido sonar como un libro de literatura antigua, declamar poesía o usar frases rebuscadas.",
-        "  - CONVERSACIÓN FLUIDA, CERCANA Y COTIDIANA: Usa un lenguaje fresco, desenfadado, pícaro y espontáneo, como hablan dos personas de verdad que se tienen confianza.",
-        "  - Si la escena es íntima o erótica, habla de forma directa, sensual, pícara y con dirty talk moderno, sin metáforas barrocas ni poesía pretenciosa.",
-        `  - PROPORCIÓN ESTRICTA Y OBLIGATORIA: ${Math.round(dialogueRatio * 100)}% DIÁLOGO HABLADO DIRECTO (el personaje habla y platica extensamente con su voz) y solo ${Math.round(narrationRatio * 100)}% ACCIÓN FÍSICA EN ASTERISCOS (un simple gesto físico breve de 8-12 palabras máximo).`,
-        "  - ESTRICTAMENTE PROHIBIDO que el relato en asteriscos sea más largo que el diálogo hablado. El usuario está para conversar de tú a tú, no para leer un libro.",
+        "ESTILO Y TONO CONVERSACIONAL (NATURAL, VIVO, INMERSIVO Y SIN RESPUESTAS VACÍAS):",
+        "  - CERO RESPUESTAS HUECAS O ROBÓTICAS: Tus respuestas deben ser ricas, detalladas y con sustancia real, respondiendo punto por punto a todo lo que el usuario acaba de plantear.",
+        "  - LENGUAJE FRESCO Y DIRECTO: Habla como una persona real en el momento, combinando con naturalidad acciones físicas entre asteriscos (*...*) que describan lo que haces y sientes, con diálogo hablado directo y expresivo.",
+        "  - Si la escena es íntima o erótica, habla y actúa de forma directa, sensual, pícara y apasionada, siguiendo las pautas de excitación y cercanía que el usuario marca.",
         customDirective ? `DIRECTIVAS Y REGLAS PERSONALIZADAS DE MEMORIA:\n${customDirective}` : "",
         ...roleplayPacingAndLanguageRules(history.length, spanish, targetTokens, isLiveCall, isChatPage, dialogueRatio, narrationRatio),
         slangInstruction(body.language, body.region),
@@ -2098,56 +2048,9 @@ export default async function handler(req, res) {
           }
         }
 
-        // GARANTÍA DE DIÁLOGO: Si en modo chat la respuesta solo contiene asteriscos (cero diálogo hablado),
-        // inyectar una frase hablada inmediata para cumplir siempre el 80% diálogo
-        if (isChatPage && !isLiveCall) {
-          const spokenPart = content.replace(/\*[^*]*\*/g, "").replace(/[^\w\s]/g, "").trim();
-          if (spokenPart.length < 6) {
-            const extraDialogue = spanish
-              ? (content.endsWith("*") ? " " : "\n\n") + "Dime... ¿te gusta lo que ves? No me dejes con las ganas de escucharte."
-              : (content.endsWith("*") ? " " : "\n\n") + "Tell me... do you like what you see? Don't leave me waiting to hear your voice.";
-            content = content + extraDialogue;
-          }
-        }
-        const totalActionMatches = [...content.matchAll(/\*([^*\n]+)\*/g)];
-        const targetWords = Math.max(65, Math.round(targetTokens * 0.72));
-        const maxWordsPerCue = Math.max(22, Math.round(targetWords * 0.28));
-        let actionCount = 0;
-        content = content.replace(/\*([^*\n]+)\*/g, (_m, inner) => {
-          actionCount += 1;
-          if (actionCount > 2) return "";
-          const firstSentence = inner.replace(/\s+/g, " ").trim().split(/(?<=[.!?…])\s+/)[0].replace(/[.!?…]+$/, "").trim();
-          const words = firstSentence.split(/\s+/).filter(Boolean);
-          if (words.length <= maxWordsPerCue) return `*${firstSentence}*`;
-          const clauses = firstSentence.split(/[,;]/);
-          let clauseAcc = "";
-          for (const c of clauses) {
-            const cand = clauseAcc ? `${clauseAcc}, ${c.trim()}` : c.trim();
-            if (cand.split(/\s+/).filter(Boolean).length <= maxWordsPerCue) clauseAcc = cand;
-            else break;
-          }
-          const clauseWords = clauseAcc ? clauseAcc.split(/\s+/).filter(Boolean).length : 0;
-          let sliced = clauseWords >= 8 && clauseWords <= maxWordsPerCue ? clauseAcc : words.slice(0, maxWordsPerCue).join(" ");
-          while (DANGLING_TAIL_REGEX.test(sliced) && sliced.includes(" ")) {
-            sliced = sliced.replace(/\s+\S+$/, "").trim();
-          }
-          return `*${sliced.replace(/[,;:\s]+$/, "").trim()}*`;
-        });
-        content = content.replace(/[ \t]{2,}/g, " ").replace(/\n{2,}/g, "\n").trim();
-        const maxCharLimit = Math.max(650, targetTokens * 5);
-        if (content.length > maxCharLimit) {
-          const sentences = content.match(/[^.!?…]+[.!?…]+["'»”*)]*(?:\s+|$)/gu);
-          if (sentences && sentences.length > 1) {
-            let acc = "";
-            for (const s of sentences) {
-              if ((acc + s).length > maxCharLimit && acc.length >= 100) break;
-              acc += s;
-            }
-            if (acc.trim()) content = acc.trim();
-          }
-        }
+        content = content.replace(/[ \t]{2,}/g, " ").replace(/\n{3,}/g, "\n\n").trim();
         if (((content.replace(/\*\*/g, "").match(/\*/g) || []).length) % 2 === 1) {
-          content = content.replace(/\*[^*]*$/, "").trim();
+          content = content + "*";
         }
       }
 
