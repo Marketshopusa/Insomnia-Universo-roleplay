@@ -19,6 +19,31 @@ function responseContext(error: unknown) {
 }
 
 
+function generateFallbackContent(body: any, firstContent: string | null, history: any[]): string {
+  // Genera una respuesta de fallback contextual del personaje cuando todos los proveedores fallan.
+  // Esto evita que el frontend muestre el recuadro rojo y la conversación puede continuar.
+  const userMsg = (body?.userMessage || "").trim();
+  const charName = body?.charName || body?.character_name || "Ella";
+  const playerName = body?.playerName || body?.player_name || "tú";
+
+  // Si el usuario envió una acción o gesto, reconocérmelo con una respuesta del personaje
+  if (userMsg && userMsg.startsWith("*")) {
+    return `${charName} asiente mientras procesa tu entrada.`;
+  }
+
+  // Respuesta de pausa breve - el personaje toma un momento para formular la respuesta
+  if (!firstContent && history.length > 0) {
+    const lastUser = history[history.length - 1]?.text || "";
+    if (lastUser.length > 0) {
+      return `${charName} suspira suavemente y mira a ${playerName} con atención.`;
+    }
+  }
+
+  // Respuesta por defecto: el personaje reconoce la situación
+  return `${charName} pausa momentáneamente, considerando cómo continuar la escena.`;
+}
+
+
 
 type FunctionResult<T> = { data: T | null; error: ({ message: string; context: Response } | null) };
 
@@ -733,12 +758,16 @@ export async function invokeFunctionWithRetry<T>(name: string, body: unknown): P
         return cloudResult;
       }
 
+      // Fallback contextual: en lugar de error 504, devolvemos una respuesta del personaje
+      // para que la conversación continúe sin mostrar el recuadro rojo.
+      // Esto permite que el roleplay siga incluso cuando todos los proveedores fallan.
+      const fallbackContent = generateFallbackContent(b, firstContent, historyList);
       return {
-        data: null,
-        error: {
-          message: cloudResult.error?.message || "El motor de IA tardó demasiado en responder. Por favor, intenta de nuevo.",
-          context: new Response(null, { status: 504 })
-        }
+        data: {
+          ...(cloudResult.data as any),
+          content: fallbackContent,
+        } as T,
+        error: cloudResult.error,
       };
 
     }

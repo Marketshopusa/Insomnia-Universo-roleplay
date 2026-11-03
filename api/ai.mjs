@@ -502,7 +502,9 @@ export async function generate(model, parts, settings = {}, options = {}) {
           lastError = Object.assign(new Error(message || "Gemini no respondió."), {
             status: response.status, code: response.status === 429 ? "rate_limited" : "ai_unavailable",
           });
-          const retryAnotherModel = [400, 404, 429, 500, 502, 503, 504].includes(response.status)
+          // NO reintentamos en 404: significa que el modelo/no está disponible en ese proyecto
+          // y seguir intentando solo añade latencia innecesaria (30+ segundos).
+          const retryAnotherModel = [400, 429, 500, 502, 503, 504].includes(response.status)
             || ((options.allowEmpty || options.retryBadRequest) && response.status === 400);
           if (retryAnotherModel) break;
           throw lastError;
