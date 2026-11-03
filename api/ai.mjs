@@ -1233,7 +1233,7 @@ export default async function handler(req, res) {
             for (let i = 0; i <= cw.length - 3; i++) {
               if (pset.has(cw.slice(i, i + 3).join(" "))) hits++;
             }
-            if (hits / (cw.length - 2) >= 0.35) return true;
+            if (hits / (cw.length - 2) >= 0.25) return true;
           }
         }
         return false;
@@ -1269,8 +1269,8 @@ export default async function handler(req, res) {
         if (!isOccupiedMouthScene) {
           // Rechazar solo si la respuesta carece de contenido real o es un corte abrupto de menos de 8 palabras
           const totalWords = reply.split(/\s+/).filter(Boolean).length;
-          if (totalWords < 8) return true;
-          if (dialWordCount < 4) return true;
+          if (totalWords < 4) return true;
+          if (dialWordCount < 2) return true;
         }
 
         // Rechazar contradicciones de postura física directa o evasivas cuando el usuario ya ordenó o narró la acción
