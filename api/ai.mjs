@@ -484,6 +484,7 @@ export async function generate(model, parts, settings = {}, options = {}) {
                     } else {
                       const errTxt = await gcpRes.text().catch(() => "");
                       console.warn(`Vertex attempt [${vModel}] at ${vUrl} returned ${gcpRes.status}: ${errTxt.slice(0, 150)}`);
+                    if (gcpRes.status === 404) break;
                     }
                     if (gcpRes.status === 403) {
                       await fetchImpl(`https://serviceusage.googleapis.com/v1/projects/${pId}/services/aiplatform.googleapis.com:enable`, {
@@ -1625,7 +1626,7 @@ export default async function handler(req, res) {
               geminiContents.unshift({ role: "user", parts: [{ text: "Continúa la escena." }] });
             }
             content = await generate(
-              "gemini-2.5-flash",
+              "gemini-2.0-flash",
               [],
               { maxOutputTokens: Math.max(200, targetTokens), temperature: 0.8 },
               {
@@ -1633,7 +1634,8 @@ export default async function handler(req, res) {
                 systemInstruction,
                 adultMode: false,
                 apiKey: geminiApiKey || undefined,
-                timeoutMs: 35000,
+                timeoutMs: 15000,
+                fallbackModels: ["gemini-1.5-flash", "gemini-2.0-flash-lite", "gemini-flash-latest", "gemini-2.5-flash"],
                 fastReply: true,
                 validate: (reply) => !isOffRole(reply)
               },
@@ -1654,7 +1656,7 @@ export default async function handler(req, res) {
                   softenedContents.unshift({ role: "user", parts: [{ text: "Continúa la escena médica con profesionalismo." }] });
                 }
                 content = await generate(
-                  "gemini-2.5-flash",
+                  "gemini-2.0-flash",
                   [],
                   { maxOutputTokens: Math.max(200, targetTokens), temperature: 0.8 },
                   {
@@ -1662,7 +1664,8 @@ export default async function handler(req, res) {
                     systemInstruction,
                     adultMode: false,
                     apiKey: geminiApiKey || undefined,
-                    timeoutMs: 20000,
+                    timeoutMs: 15000,
+                    fallbackModels: ["gemini-1.5-flash", "gemini-2.0-flash-lite", "gemini-flash-latest", "gemini-2.5-flash"],
                     fastReply: true,
                     validate: (reply) => !isOffRole(reply),
                   },
@@ -2155,17 +2158,18 @@ export default async function handler(req, res) {
         const lastTurn = history.slice(-1)[0]?.text || "";
         const allContext = [latest, ...history.map((h) => h.text)].join(" ");
         const isPhysicalExam = /(?:camilla|tacto|tocando|test[ií]culo|huevo|palpar|pene|erecci|desnud|desvest|pantal[oó]n|revis|sosteni|guante|intim|f[ií]sic)/i.test(allContext);
-
         if (isExam) {
-          if (isPhysicalExam) {
-            // La exploración física ya está en marcha en la camilla; mantener la escena médica en curso sin reiniciar al escritorio
-            if (/(?:duro|creci|erecci|reacci[oó]n|inc[oó]mod|raro|huevo|test[ií]culo|pena|verg[uü]enza)/i.test(latest + " " + userSpoken)) {
-              content = `*Mantengo la calma y el profesionalismo con los guantes puestos, mirándote con serenidad y comprensión.* Es una reacción fisiológica completamente normal e involuntaria ante la exploración física, ${playerName || "William"}, no tienes por qué sentirte incómodo ni apenado. Concéntrate en respirar con calma mientras continúo con la revisión clínica.`;
-            } else {
-              content = `*Continúo con la exploración médica con movimientos cuidadosos y precisos en la camilla.* Respira con calma y mantén el cuerpo relajado, ${playerName || "William"}. Voy revisando cada área con atención clínica; avísame si sientes alguna molestia.`;
-            }
-          } else if (turnCount <= 1 && /\b(?:hola|buenas|buenos\s+d[ií]as|buenas\s+tardes|entrar?|entr[eé]|llegu[eé]|vengo|permiso)\b/i.test(userSpoken)) {
-            content = `*Te observo con serenidad y una sonrisa amable desde mi escritorio, dejando tu expediente a un lado para transmitirte tranquilidad.* Pasa, ${playerName || "William"}, toma asiento con total confianza. Sé muy bien que para cualquiera un chequeo de rutina o una revisión preventiva puede resultar incómodo o dar algo de pena, pero ante todo eres mi paciente y estamos en un espacio médico profesional. Cuéntame con calma, ¿has sentido alguna molestia últimamente, o venimos a hacer la revisión preventiva completa?`;
+          const isRecognizing = /(?:roxana|eres\s+t[uú]|gabriela|mam[aá]|hija|amig[ao]|conocid|sorprend|impactad|tiempo\s+sin\s+ver)/i.test(latest + " " + userSpoken);
+          const isEntrance = turnCount <= 1 || /\b(?:hola|buenas|buenos\s+d[ií]as|buenas\s+tardes|entrar?|entr[eé]|llegu[eé]|vengo|permiso)\b/i.test(userSpoken);
+          const isActiveErectionReaction = turnCount > 1 && /(?:duro|creci|erecci|erect|se\s+pone\s+duro)/i.test(latest) && /(?:tacto|tocand|sosteni|palpand|manos|boca)/i.test(allContext);
+          const isExamUnderway = turnCount > 1 && /(?:camilla|tacto|tocando|palpar|revisando|guante)/i.test(allContext);
+
+          if (isRecognizing || (isEntrance && !isExamUnderway)) {
+            content = `*Me detengo un instante al fijarme en tu rostro, abriendo los ojos con sorpresa antes de que una sonrisa cálida y un leve rubor iluminen mi expresión profesional.* ¡¿${playerName || "William"}?! No puedo creerlo... Qué pequeña es la vida, mira dónde nos venimos a encontrar después de tantos años. Tranquilo, quédate cómodo en la camilla y no te me apenes por estar con la bata; sé que vienes para tu chequeo preventivo y ante todo eres mi paciente. Respira con calma y cuéntame, ¿cómo has estado y cómo te has sentido últimamente?`;
+          } else if (isActiveErectionReaction) {
+            content = `*Mantengo la calma y el profesionalismo con los guantes puestos, mirándote con serenidad y comprensión.* Es una reacción fisiológica completamente normal e involuntaria ante la exploración física, ${playerName || "William"}, no tienes por qué sentirte incómodo ni apenado. Concéntrate en respirar con calma mientras continúo con la revisión clínica.`;
+          } else if (isExamUnderway) {
+            content = `*Continúo con la exploración médica con movimientos cuidadosos y precisos en la camilla.* Respira con calma y mantén el cuerpo relajado, ${playerName || "William"}. Voy revisando cada área con atención clínica; avísame si sientes alguna molestia.`;
           } else if (/(?:s[ií]ntoma|ning[uú]n|44|cuidar|edad|rutina|preventiv)/i.test(userSpoken)) {
             content = `*Asiento comprensiva mientras tomo nota en tu historial clínico, mirándote con calidez y calma profesional.* Me parece una excelente decisión, ${playerName || "William"}. A los 44 años la prevención es fundamental y haces muy bien en hacerte el chequeo aunque no sientas molestias. Quédate tranquilo, el procedimiento es rápido y te iré explicando cada paso. Pasa detrás del biombo cuando gustes para prepararte y te indico cómo colocarte en la camilla.`;
           } else if (/(?:miedo|nervio|pena|verg[uü]enza|inc[oó]mod|amig[ao]|pap[aá]|mam[aá])/i.test(userSpoken)) {
@@ -2181,7 +2185,7 @@ export default async function handler(req, res) {
 
         // GARANTÍA ESTRICTA CONTRA REPETICIÓN: Si por cualquier motivo la frase coincide con el turno anterior, variar de inmediato
         if (lastTurn && content.slice(0, 50).toLowerCase() === lastTurn.slice(0, 50).toLowerCase()) {
-          if (isExam && isPhysicalExam) {
+          if (isExam && isExamUnderway) {
             content = `*Sostengo una postura serena y comprensiva a tu lado en la camilla, continuando con delicadeza.* Tranquilo, ${playerName || "William"}. Tu salud es lo primero y estás en un espacio seguro y profesional. Respira hondo y relájate.`;
           } else if (isExam) {
             content = `*Dejo la pluma a un lado y te miro con calidez profesional.* Por supuesto, ${playerName || "William"}. Tómate todo el tiempo que necesites, respira tranquilo y cuando quieras pasamos al área de examen.`;
