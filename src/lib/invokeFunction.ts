@@ -729,7 +729,7 @@ export async function invokeFunctionWithRetry<T>(name: string, body: unknown): P
         return cloudResult;
       }
 
-      if (cloudResult.data && firstContent) {
+      if (cloudResult.data && firstContent && !isRepeatedAssistantReply(firstContent, historyList)) {
         return cloudResult;
       }
 

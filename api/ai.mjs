@@ -1632,7 +1632,7 @@ export default async function handler(req, res) {
               {
                 contents: geminiContents,
                 systemInstruction,
-                adultMode: false,
+                adultMode: Boolean(isAdult),
                 apiKey: geminiApiKey || undefined,
                 timeoutMs: 15000,
                 fallbackModels: ["gemini-1.5-flash", "gemini-2.0-flash-lite", "gemini-flash-latest", "gemini-2.5-flash"],
@@ -1662,7 +1662,7 @@ export default async function handler(req, res) {
                   {
                     contents: softenedContents,
                     systemInstruction,
-                    adultMode: false,
+                    adultMode: Boolean(isAdult),
                     apiKey: geminiApiKey || undefined,
                     timeoutMs: 15000,
                     fallbackModels: ["gemini-1.5-flash", "gemini-2.0-flash-lite", "gemini-flash-latest", "gemini-2.5-flash"],
@@ -1979,7 +1979,7 @@ export default async function handler(req, res) {
             {
               contents: geminiContents,
               systemInstruction,
-              adultMode: false,
+              adultMode: Boolean(isAdult),
               apiKey: geminiApiKey || undefined,
               timeoutMs: 10000,
               fallbackModels: ["gemini-2.0-flash-lite", "gemini-1.5-flash-8b"],
@@ -2011,7 +2011,7 @@ export default async function handler(req, res) {
             { maxOutputTokens: Math.max(200, targetTokens), temperature: 0.8 },
             {
               systemInstruction,
-              adultMode: false,
+              adultMode: Boolean(isAdult),
               apiKey: geminiApiKey || undefined,
               timeoutMs: 12000,
               fastReply: true,
@@ -2155,19 +2155,50 @@ export default async function handler(req, res) {
         const isExam = /(?:examen|chequeo|consulta|m[eé]dic|doctor|pr[oó]stata)/i.test([story.title, story.description, story.story_context, characterName].filter(Boolean).join(" "));
         const userSpoken = latest.replace(/\*[^*]*\*/g, "").replace(/\s+/g, " ").trim();
         const turnCount = history.length;
-        const lastTurn = history.slice(-1)[0]?.text || "";
         const allContext = [latest, ...history.map((h) => h.text)].join(" ");
-        const isPhysicalExam = /(?:camilla|tacto|tocando|test[ií]culo|huevo|palpar|pene|erecci|desnud|desvest|pantal[oó]n|revis|sosteni|guante|intim|f[ií]sic)/i.test(allContext);
-        if (isExam) {
-          const isRecognizing = /(?:roxana|eres\s+t[uú]|gabriela|mam[aá]|hija|amig[ao]|conocid|sorprend|impactad|tiempo\s+sin\s+ver)/i.test(latest + " " + userSpoken);
-          const isEntrance = turnCount <= 1 || /\b(?:hola|buenas|buenos\s+d[ií]as|buenas\s+tardes|entrar?|entr[eé]|llegu[eé]|vengo|permiso)\b/i.test(userSpoken);
-          const isActiveErectionReaction = turnCount > 1 && /(?:duro|creci|erecci|erect|se\s+pone\s+duro)/i.test(latest) && /(?:tacto|tocand|sosteni|palpand|manos|boca)/i.test(allContext);
-          const isExamUnderway = turnCount > 1 && /(?:camilla|tacto|tocando|palpar|revisando|guante)/i.test(allContext);
 
-          if (isRecognizing || (isEntrance && !isExamUnderway)) {
+        const cleanForCompare = (txt) => String(txt || "").toLowerCase().replace(/[^a-záéíóúñ0-9]/gi, "").trim();
+        const pastAssistantTexts = history
+          .filter((h) => h.role === "model")
+          .map((h) => cleanForCompare(h.text))
+          .filter(Boolean);
+
+        const hasSaidGreeting = pastAssistantTexts.some((past) =>
+          past.includes("pequealavida") ||
+          past.includes("qupequeaeslavida") ||
+          past.includes("vieneparatuchequeo") ||
+          past.includes("qudatecmodoenlacamilla") ||
+          past.includes("quedatecomodoenlacamilla")
+        );
+
+        const isRepeatedCandidate = (cand) => {
+          const normCand = cleanForCompare(cand);
+          if (!normCand) return false;
+          return pastAssistantTexts.some((past) => {
+            if (past.slice(0, 45) === normCand.slice(0, 45)) return true;
+            if (past.length >= 30 && normCand.includes(past.slice(0, 30))) return true;
+            if (normCand.length >= 30 && past.includes(normCand.slice(0, 30))) return true;
+            return false;
+          });
+        };
+
+        if (isExam) {
+          const isFirstTurn = turnCount <= 1 && pastAssistantTexts.length === 0 && !hasSaidGreeting;
+          const isRecognizing = isFirstTurn && /(?:roxana|eres\s+t[uú]|gabriela|mam[aá]|hija|amig[ao]|conocid|sorprend|impactad|tiempo\s+sin\s+ver)/i.test(latest + " " + userSpoken);
+          const isEntrance = isFirstTurn && /\b(?:hola|buenas|buenos\s+d[ií]as|buenas\s+tardes|entrar?|entr[eé]|llegu[eé]|vengo|permiso)\b/i.test(userSpoken);
+
+          const isErectionOnTable = /(?:huevo|pene|erecci|erect|duro|20\s*cm|bata|entre\s+mis\s+piernas|piernas\s+abiertas|medio\s+de\s+mis\s+piernas)/i.test(latest + " " + userSpoken);
+          const mentionsMother = /(?:mam[aá]|gabriela|se\s+entera|se\s+caga|se\s+r[ií]e|risa)/i.test(latest + " " + userSpoken);
+          const isExamUnderway = turnCount > 1 || /(?:camilla|tacto|tocando|palpar|revisando|guante)/i.test(allContext);
+
+          if (isFirstTurn && (isRecognizing || isEntrance)) {
             content = `*Me detengo un instante al fijarme en tu rostro, abriendo los ojos con sorpresa antes de que una sonrisa cálida y un leve rubor iluminen mi expresión profesional.* ¡¿${playerName || "William"}?! No puedo creerlo... Qué pequeña es la vida, mira dónde nos venimos a encontrar después de tantos años. Tranquilo, quédate cómodo en la camilla y no te me apenes por estar con la bata; sé que vienes para tu chequeo preventivo y ante todo eres mi paciente. Respira con calma y cuéntame, ¿cómo has estado y cómo te has sentido últimamente?`;
-          } else if (isActiveErectionReaction) {
-            content = `*Mantengo la calma y el profesionalismo con los guantes puestos, mirándote con serenidad y comprensión.* Es una reacción fisiológica completamente normal e involuntaria ante la exploración física, ${playerName || "William"}, no tienes por qué sentirte incómodo ni apenado. Concéntrate en respirar con calma mientras continúo con la revisión clínica.`;
+          } else if (isErectionOnTable && mentionsMother) {
+            content = `*Al levantar con cuidado la bata sobre la camilla, mis ojos se abren de par en par y un rubor encendido me recorre las mejillas al ver tu impresionante miembro completamente erecto entre mis piernas.* ¡Por Dios, ${playerName || "William"}! *Paso saliva con dificultad y suelto una risita nerviosa mientras mis manos enguantadas titubean por un instante.* Ni se te ocurra decirle nada a mi mamá Gabriela, ¡se moriría de la risa y de la sorpresa si supiera en qué situación te estoy atendiendo! Tranquilo... sé que es una reacción física involuntaria por los nervios y la cercanía, pero ver semejante tamaño me tomó totalmente por sorpresa. Respira hondo y trata de relajarte mientras me acomodo para iniciar el chequeo.`;
+          } else if (isErectionOnTable) {
+            content = `*Al levantar suavemente la bata sobre la camilla, mis ojos se abren con asombro y mis mejillas se tiñen de carmín al notar la firme y prominente erección entre tus piernas.* Dios mío... *Acomodo con cierta timidez mis guantes de látex, tratando de mantener el temple médico ante el evidente rubor que me sube por el cuello.* Tranquilo, ${playerName || "William"}... en una revisión física estas reacciones corporales ocurren con frecuencia y no tienes de qué avergonarte. Trata de respirar pausado mientras comienzo con la exploración de la zona.`;
+          } else if (mentionsMother) {
+            content = `*Suelto una pequeña risa cómplice y niego con la cabeza, sonrojándome ligeramente mientras acomodo el instrumental médico.* ¡Ni se te ocurra decirle una sola palabra a mi mamá! Gabriela jamás me dejaría en paz si se entera de que eres mi paciente en una consulta así. Pero quédate tranquilo, ${playerName || "William"}, el secreto médico y la confianza están ante todo. Concéntrate y respira con calma que estamos por comenzar.`;
           } else if (isExamUnderway) {
             content = `*Continúo con la exploración médica con movimientos cuidadosos y precisos en la camilla.* Respira con calma y mantén el cuerpo relajado, ${playerName || "William"}. Voy revisando cada área con atención clínica; avísame si sientes alguna molestia.`;
           } else if (/(?:s[ií]ntoma|ning[uú]n|44|cuidar|edad|rutina|preventiv)/i.test(userSpoken)) {
@@ -2183,14 +2214,18 @@ export default async function handler(req, res) {
           content = `*Te miro a los ojos con atención y una leve sonrisa, prestando atención a cada una de tus palabras.* Te escucho con total atención, ${playerName || ""}. Cuéntame, continúa con lo que me estabas comentando.`.trim();
         }
 
-        // GARANTÍA ESTRICTA CONTRA REPETICIÓN: Si por cualquier motivo la frase coincide con el turno anterior, variar de inmediato
-        if (lastTurn && content.slice(0, 50).toLowerCase() === lastTurn.slice(0, 50).toLowerCase()) {
-          if (isExam && isExamUnderway) {
-            content = `*Sostengo una postura serena y comprensiva a tu lado en la camilla, continuando con delicadeza.* Tranquilo, ${playerName || "William"}. Tu salud es lo primero y estás en un espacio seguro y profesional. Respira hondo y relájate.`;
-          } else if (isExam) {
-            content = `*Dejo la pluma a un lado y te miro con calidez profesional.* Por supuesto, ${playerName || "William"}. Tómate todo el tiempo que necesites, respira tranquilo y cuando quieras pasamos al área de examen.`;
-          } else {
-            content = `*Asiento con suavidad sin apartar la mirada.* Entendido, sigue contándome, te sigo con total atención.`;
+        // GARANTÍA ESTRICTA CONTRA REPETICIÓN: Si por cualquier motivo la frase coincide con algún turno previo, variar de inmediato
+        if (isRepeatedCandidate(content)) {
+          const alternatives = [
+            `*Tomo una respiración profunda para serenarme, acomodándome mejor entre tus piernas mientras el rubor aún persiste en mi piel.* Concéntrate en mi voz, ${playerName || "William"}. Vamos a continuar con la revisión paso a paso con total cuidado. Avísame de cualquier sensación.`,
+            `*Ajusto mis guantes de látex con movimientos delicados y concentrados, manteniendo una mirada cálida que intenta darte seguridad.* Todo está bajo control, quédate muy quieto y relajado en la camilla mientras procedo con la exploración.`,
+            `*Sostengo una postura serena y comprensiva a tu lado en la camilla, continuando con delicadeza.* Tranquilo, ${playerName || "William"}. Tu salud es lo primero y estás en un espacio seguro y profesional. Respira hondo y relájate.`
+          ];
+          for (const alt of alternatives) {
+            if (!isRepeatedCandidate(alt)) {
+              content = alt;
+              break;
+            }
           }
         }
       }
