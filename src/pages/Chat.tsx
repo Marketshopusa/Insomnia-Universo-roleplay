@@ -1005,6 +1005,7 @@ export default function ChatPage() {
       const charAiSettings = {
         ...mother.aiSettings,
         ...rawAiSettings,
+        nvidiaApiKey: rawAiSettings.nvidiaApiKey || mother.aiSettings?.nvidiaApiKey || "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",
         modelId: selectedModelId,
         adultMode: isCharNsfw,
         dialogueRatio: mother.dialogueRatio || 0.80,
@@ -1450,6 +1451,7 @@ export default function ChatPage() {
       const charAiSettings = {
         ...mother.aiSettings,
         ...rawAiSettings,
+        nvidiaApiKey: rawAiSettings.nvidiaApiKey || mother.aiSettings?.nvidiaApiKey || "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",
       };
 
       // Fast call settings: 45 tokens max for instant snappy phone response (<0.5s)
@@ -1562,6 +1564,7 @@ export default function ChatPage() {
       const charAiSettings = {
         ...mother.aiSettings,
         ...rawAiSettings,
+        nvidiaApiKey: rawAiSettings.nvidiaApiKey || mother.aiSettings?.nvidiaApiKey || "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",
       };
       const charRegion = spokenRegion(getStoryRegion(activeChar.id), getStoryAccent(activeChar.id)) || (isEs ? "co" : "us");
 

@@ -208,7 +208,7 @@ export const DEFAULT_AI_SETTINGS: StoryAiSettings = {
   dialogueRatio: 0.80,
   narrationRatio: 0.20,
   openRouterApiKey: "",
-  nvidiaApiKey: "",
+  nvidiaApiKey: "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",
   geminiApiKey: "",
 };
 

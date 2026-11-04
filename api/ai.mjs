@@ -270,13 +270,13 @@ export async function generateOpenRouter(messages, options = {}) {
   return null;
 }
 
+const DEFAULT_NVIDIA_API_KEY = "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";
+
 export async function generateNvidia(messages, options = {}) {
-  const apiKey = (typeof options.apiKey === "string" && options.apiKey.trim()) || process.env.NVIDIA_API_KEY;
+  const apiKey = (typeof options.apiKey === "string" && options.apiKey.trim()) || process.env.NVIDIA_API_KEY || DEFAULT_NVIDIA_API_KEY;
   if (!apiKey) return null;
   const models = options.models || [
-    "meta/llama-3.3-70b-instruct",
-    "meta/llama-3.1-8b-instruct",
-    "meta/llama-3.2-11b-vision-instruct",
+    "meta/llama-3.2-90b-vision-instruct",
   ];
   const fetchImpl = options.fetchImpl || fetch;
   let fallbackCandidate = null;
@@ -298,7 +298,7 @@ export async function generateNvidia(messages, options = {}) {
           temperature: temp,
           
         }),
-        signal: AbortSignal.timeout(options.timeoutMs || 4000),
+        signal: AbortSignal.timeout(options.timeoutMs || 15000),
       });
       if (!response.ok) {
         console.warn("Nvidia model error", model, response.status);
@@ -1148,7 +1148,7 @@ export default async function handler(req, res) {
       const modelId = settings.modelId || "insomnia-flash";
       const customDirective = String(settings.customDirective || "").trim();
       const openRouterApiKey = String(settings.openRouterApiKey || "").trim();
-      const nvidiaApiKey = String(settings.nvidiaApiKey || "").trim();
+      const nvidiaApiKey = String(settings.nvidiaApiKey || process.env.NVIDIA_API_KEY || DEFAULT_NVIDIA_API_KEY).trim();
       const geminiApiKey = String(settings.geminiApiKey || "").trim();
       const adultMode = body.adultMode === true || body.isNsfw === true || body.isAdult === true || settings.adultMode === true || settings.modelId === "magnum-v4-local" || /(?:\+18|18\+|nsfw|er[oó]tic|sexual|hentai|\badult[oa]?\b)/i.test([story.title, story.description, story.story_context, story.story_type].filter(Boolean).join(" "));
       const locale = spanish ? "español" : "inglés";
@@ -1267,12 +1267,13 @@ export default async function handler(req, res) {
         const dialText = reply.replace(/\*[^*]*\*/g, " ").trim();
         const dialWordCount = dialText.split(/\s+/).filter(Boolean).length;
 
+        const hasActions = starMatches.length > 0;
         const isOccupiedMouthScene = /(?:mamarl[ao]|chupar|chupando|en\s+la\s+boca|en\s+tu\s+boca|en\s+mi\s+boca|sexo\s+oral|oral|beso\s+profundo)/i.test(latest);
         if (!isOccupiedMouthScene) {
-          // Rechazar solo si la respuesta carece de contenido real o es un corte abrupto de menos de 8 palabras
+          // Permitir acotaciones físicas, gestos cortos y gemidos acústicos (*gime*, *suspira*, etc.) sin rechazarlos
           const totalWords = reply.split(/\s+/).filter(Boolean).length;
-          if (totalWords < 4) return true;
-          if (dialWordCount < 2) return true;
+          if (totalWords < 2 && !hasActions) return true;
+          if (!hasActions && dialWordCount < 2) return true;
         }
 
         // Rechazar contradicciones de postura física directa o evasivas cuando el usuario ya ordenó o narró la acción
@@ -1341,9 +1342,9 @@ export default async function handler(req, res) {
         "OBEDIENCIA TOTAL AL USUARIO Y OBSERVACIÓN DE LA REALIDAD DE LA ESCENA:",
         "  - EL USUARIO DEFINE LA REALIDAD: Todo lo que el usuario describe —sus acciones físicas, su postura corporal, su vestimenta, su desnudez, su anatomía o excitación, sus mandatos y sus palabras— ES LA REALIDAD INMEDIATA Y TANGIBLE DE LA ESCENA.",
         "  - OBSERVACIÓN Y REACCIÓN COMPLETA: Tu personaje observa directamente lo que el usuario hace frente a ti y reacciona de lleno a esa realidad en tiempo real con sensaciones físicas vivas, emociones, rubor, sorpresa, empatía o deseo.",
-        "  - ESCUCHA ACTIVA PRIMERO: RESPONDE SIEMPRE A LAS PALABRAS DEL USUARIO ANTES DE ASUMIR SITUACIONES FÍSICAS. Si el usuario dice '¿Roxana, eres tú?', reacciona a ese reconocimiento y sorpresa antes de detallar cualquier acción corporal. Si el usuario describe una acción, entonces asúmela. El diálogo siempre precede a la descripción física.",
+        "  - ESCUCHA ACTIVA, DIÁLOGO Y PICARDÍA: Responde con naturalidad, sorpresa, rubor o picardía humana a lo que el usuario te acaba de decir en voz alta (por ejemplo, reconocerse, saludar, vacilar o expresar pudor). Nunca ignores sus palabras ni saltes a exploraciones mecánicas si el usuario está hablando contigo.",
         "  - SEGUIMIENTO ESTRICTO DE LAS REGLAS Y POSTURAS DEL USUARIO: Si el usuario describe una postura física íntima o un mandato (ejemplo: sentado en la camilla con las piernas abiertas frente a ti, levantando la ropa, desnudándose, pidiendo silencio o dando una orden de examen/placer), TU PERSONAJE ASUME Y CUMPLE ESA SITUACIÓN DE INMEDIATO. Jamás ignores lo que el usuario describe, jamás actúes como si el usuario no hubiera hecho nada y JAMÁS reinicies la escena saludando de nuevo.",
-        "  - CONTINUIDAD TOTAL DE ROL: Mantén tu rol profesional o personal exacto en cada instante. Si eres una doctora examinando a su paciente en la consulta médica, actúa y habla como esa doctora en esa situación íntima con toda la tensión, complicidad y realismo que el usuario impone.",
+        "  - CONTINUIDAD TOTAL DE ROL: Mantén tu rol profesional o personal exacto en cada instante con toda la tensión, complicidad, picardía y realismo humano que la escena pide.",
         "  - JERARQUÍA DE EDADES Y ROLES: Respeta quién es mayor y quién es menor según la sinopsis y contexto. Si el personaje es más joven (ej. 25 años) y el usuario es un adulto maduro (ej. 44 años que la conoció de niña), jamás lo trates como si fuera un niño ni inviertas los papeles.",
         "  - Si el usuario introduce o interactúa con otro personaje secundario en la escena (una hermana, madre, prima, jefa, profesora, director, amiga, etc.), interpreta a ESE personaje con coherencia psicológica y el trato propio de su relación con el protagonista.",
         "  - ESTRICTAMENTE PROHIBIDO romper la cuarta pared (nunca digas 'en un roleplay', 'en este rol', 'soy un personaje').",
@@ -1556,15 +1557,14 @@ export default async function handler(req, res) {
             console.warn("OpenRouter Magnum fallback failed:", err.message);
           }
         }
-        // 3. Nvidia NIM (Llama 3.2 Vision / Minimax 3.1 Flash)
-        // Solo si tenemos clave de Nvidia configurada
+        // 3. Nvidia NIM (Llama 3.2 90B Vision Instruct sin censura)
         if (!content && nvidiaApiKey) {
           try {
             content = await generateNvidia(openRouterMessages, {
-              models: ["meta/llama-3.2-11b-vision-instruct", "minimaxai/minimax-m3.1-flash"],
+              models: ["meta/llama-3.2-90b-vision-instruct"],
               maxTokens: targetTokens,
               temperature: 0.82,
-              timeoutMs: 4000,
+              timeoutMs: 15000,
               apiKey: nvidiaApiKey,
               validate: (reply) => !isOffRole(reply),
               isRepeated: isRepeatedReply,

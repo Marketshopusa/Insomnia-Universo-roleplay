@@ -350,10 +350,7 @@ export function compactRoleplayReply(input: string): string {
 
     actionCount += 1;
 
-    // Allow all action cues for scene continuity.
-    // Removed the hard "actionCount > 2 return """ that was destroying
-    // scene continuity by making the character ignore user actions
-    // after turn 2. Each cue is trimmed to maxWordsPerCue for proportion balance.
+    if (actionCount > 2) return "";
 
     const shortCue = trimActionCue(inner, maxWordsPerCue);
 

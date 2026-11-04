@@ -426,26 +426,32 @@ export async function synthesizeGemini(text, preset, language, { performance = "
   const attempt = async () => {
     let failure = { status: 502, detail: "" };
     for (const languageCode of [cloudGeminiVoiceFor(preset, language, region).languageCode]) {
-      const response = await request({
-        languageCode,
-        name: speaker,
-        modelName: MODEL,
-        model_name: MODEL,
-      }, true);
-      if (response.ok) {
-        const payload = await response.json();
-        if (typeof payload.audioContent !== "string") throw new Error("gemini_no_audio");
-        return { status: 200, pcm: decodeLinear16(payload.audioContent) };
+      for (const relaxSafety of [true, false]) {
+        const response = await request({
+          languageCode,
+          name: speaker,
+          modelName: MODEL,
+          model_name: MODEL,
+        }, relaxSafety);
+        if (response.ok) {
+          const payload = await response.json();
+          if (typeof payload.audioContent !== "string") throw new Error("gemini_no_audio");
+          return { status: 200, pcm: decodeLinear16(payload.audioContent) };
+        }
+        failure = {
+          status: response.status,
+          detail: (await response.text().catch(() => "")).replace(/\s+/g, " ").slice(0, 240),
+        };
+        if (![400, 404].includes(response.status)) return failure;
       }
-      failure = {
-        status: response.status,
-        detail: (await response.text().catch(() => "")).replace(/\s+/g, " ").slice(0, 240),
-      };
-      if (response.status === 403) return failure;
     }
     return failure;
   };
   let result = await attempt();
+  if (result.status === 403 && agentPlatformDisabled(result.detail) && await enableAgentPlatform(token, fetchImpl)) {
+    await sleep(5000);
+    result = await attempt();
+  }
   return result;
 }
 
