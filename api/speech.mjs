@@ -184,7 +184,7 @@ export default async function handler(req, res) {
           performance,
           region,
           expression,
-          firstAudioMs: 7000,
+          firstAudioMs: 1200,
           onAudio: (pcmChunk) => {
             if (!opened) {
               opened = true;
@@ -203,7 +203,31 @@ export default async function handler(req, res) {
       }
     }
 
-    // 3. Sintetizar la escena completa como un solo track continuo para que el relato, respiración y diálogo fluyan sin pausas mecánicas
+    // 3. Si el cliente solicita streaming y el texto es largo, sintetizar el primer fragmento de inmediato para first_audio < 1s
+    if (req.body?.stream && !opened) {
+      const chunks = splitSentences(text);
+      if (chunks.length > 1) {
+        try {
+          const firstChunk = await synthesizePieceWithRetry(chunks[0], req.body.voice, req.body.language, { performance, region, expression });
+          if (firstChunk.status === 200 && firstChunk.pcm?.length) {
+            opened = true;
+            openSpeech(res, provider, startedAt);
+            writePcmChunks(res, firstChunk.pcm);
+            const remainingText = chunks.slice(1).join(" ");
+            const secondChunk = await synthesizePieceWithRetry(remainingText, req.body.voice, req.body.language, { performance, region, expression });
+            if (secondChunk.status === 200 && secondChunk.pcm?.length) {
+              writePcmChunks(res, secondChunk.pcm);
+            }
+            finishSpeech(res, provider, startedAt);
+            return;
+          }
+        } catch (chunkErr) {
+          console.warn("Chunked synthesis fallback to full track:", chunkErr);
+        }
+      }
+    }
+
+    // 4. Sintetizar la escena completa como un solo track continuo para que el relato, respiración y diálogo fluyan sin pausas mecánicas
     const expressive = await synthesizePieceWithRetry(text, req.body.voice, req.body.language, { performance, region, expression });
     if (expressive.status !== 200) {
       console.warn("Insomnia speech gemini-2.5-flash-tts", expressive.status, expressive.detail || "", "after_ms", Date.now() - startedAt);

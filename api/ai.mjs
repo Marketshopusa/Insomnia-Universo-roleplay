@@ -276,6 +276,8 @@ export async function generateNvidia(messages, options = {}) {
   const apiKey = (typeof options.apiKey === "string" && options.apiKey.trim()) || process.env.NVIDIA_API_KEY || DEFAULT_NVIDIA_API_KEY;
   if (!apiKey) return null;
   const models = options.models || [
+    "google/diffusiongemma-26b-a4b-it",
+    "minimaxai/minimax-m3.1-flash",
     "meta/llama-3.2-90b-vision-instruct",
   ];
   const fetchImpl = options.fetchImpl || fetch;
@@ -308,9 +310,9 @@ export async function generateNvidia(messages, options = {}) {
       const msg = data?.choices?.[0]?.message;
       let content = msg?.content?.trim();
       if (!content && typeof msg?.reasoning_content === "string") {
-        const reasoning = msg.reasoning_content.trim();
+        const reasoning = msg.reasoning_content.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
         const match = reasoning.match(/(?:Respuesta|Output|Spanish|Scarlett|Personaje):\s*([\s\S]+)$/i);
-        if (match && match[1]?.trim()) content = match[1].trim();
+        content = (match && match[1]?.trim()) || (reasoning.length > 20 && !/^(?:Here|The user|I need|This is)/i.test(reasoning) ? reasoning : "");
       }
       if (content && content.length > 5 && !isRefusal(content)) {
         if (options.isRepeated && options.isRepeated(content)) {
@@ -1492,9 +1494,9 @@ export default async function handler(req, res) {
       }
 
       let nvidiaModels = [
-        "nvidia/nemotron-3-super-120b-a12b",
         "google/diffusiongemma-26b-a4b-it",
-        "meta/llama-3.2-11b-vision-instruct",
+        "minimaxai/minimax-m3.1-flash",
+        "meta/llama-3.2-90b-vision-instruct",
       ];
       let openRouterModels = [
         "anthracite-org/magnum-v4-72b",
@@ -1557,14 +1559,18 @@ export default async function handler(req, res) {
             console.warn("OpenRouter Magnum fallback failed:", err.message);
           }
         }
-        // 3. Nvidia NIM (Llama 3.2 90B Vision Instruct sin censura)
+        // 3. Nvidia NIM (Ultra-rápido ~1-3s y sin censura)
         if (!content && nvidiaApiKey) {
           try {
             content = await generateNvidia(openRouterMessages, {
-              models: ["meta/llama-3.2-90b-vision-instruct"],
+              models: [
+                "google/diffusiongemma-26b-a4b-it",
+                "minimaxai/minimax-m3.1-flash",
+                "meta/llama-3.2-90b-vision-instruct",
+              ],
               maxTokens: targetTokens,
               temperature: 0.82,
-              timeoutMs: 28000,
+              timeoutMs: 6500,
               apiKey: nvidiaApiKey,
               validate: (reply) => !isOffRole(reply),
               isRepeated: isRepeatedReply,
@@ -1868,7 +1874,7 @@ export default async function handler(req, res) {
         }
       }
 
-      if (!content || isRefusal(content)) {
+      if ((!content || isRefusal(content)) && !isAdult) {
         try {
           const geminiContents = contents.map((c) => ({ role: c.role, parts: [...(c.parts || [])] }));
           if (geminiContents[0]?.role === "model") {
@@ -1903,8 +1909,8 @@ export default async function handler(req, res) {
         } catch { /* ignore */ }
       }
 
-      // Safe resilient emergency conversational turn
-      if (!content || isRefusal(content)) {
+      // Safe resilient emergency conversational turn (solo no-adulto; Gemini bloquea +18)
+      if ((!content || isRefusal(content)) && !isAdult) {
         try {
           const userText = latest || "Hola";
           content = await generate(
