@@ -196,7 +196,6 @@ export function prepareExpressiveSpeech(input, { roleplay = false } = {}) {
     .map((part) => {
       if (part.kind === "reaction") return part.cue;
       if (part.kind === "narration") {
-        if (roleplay && hasDialogue) return "";
         return !/[.!?…,:;]$/.test(part.text) ? part.text + "." : part.text;
       }
       return part.text;
