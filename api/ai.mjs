@@ -1341,6 +1341,7 @@ export default async function handler(req, res) {
         "OBEDIENCIA TOTAL AL USUARIO Y OBSERVACIÓN DE LA REALIDAD DE LA ESCENA:",
         "  - EL USUARIO DEFINE LA REALIDAD: Todo lo que el usuario describe —sus acciones físicas, su postura corporal, su vestimenta, su desnudez, su anatomía o excitación, sus mandatos y sus palabras— ES LA REALIDAD INMEDIATA Y TANGIBLE DE LA ESCENA.",
         "  - OBSERVACIÓN Y REACCIÓN COMPLETA: Tu personaje observa directamente lo que el usuario hace frente a ti y reacciona de lleno a esa realidad en tiempo real con sensaciones físicas vivas, emociones, rubor, sorpresa, empatía o deseo.",
+        "  - ESCUCHA ACTIVA PRIMERO: RESPONDE SIEMPRE A LAS PALABRAS DEL USUARIO ANTES DE ASUMIR SITUACIONES FÍSICAS. Si el usuario dice '¿Roxana, eres tú?', reacciona a ese reconocimiento y sorpresa antes de detallar cualquier acción corporal. Si el usuario describe una acción, entonces asúmela. El diálogo siempre precede a la descripción física.",
         "  - SEGUIMIENTO ESTRICTO DE LAS REGLAS Y POSTURAS DEL USUARIO: Si el usuario describe una postura física íntima o un mandato (ejemplo: sentado en la camilla con las piernas abiertas frente a ti, levantando la ropa, desnudándose, pidiendo silencio o dando una orden de examen/placer), TU PERSONAJE ASUME Y CUMPLE ESA SITUACIÓN DE INMEDIATO. Jamás ignores lo que el usuario describe, jamás actúes como si el usuario no hubiera hecho nada y JAMÁS reinicies la escena saludando de nuevo.",
         "  - CONTINUIDAD TOTAL DE ROL: Mantén tu rol profesional o personal exacto en cada instante. Si eres una doctora examinando a su paciente en la consulta médica, actúa y habla como esa doctora en esa situación íntima con toda la tensión, complicidad y realismo que el usuario impone.",
         "  - JERARQUÍA DE EDADES Y ROLES: Respeta quién es mayor y quién es menor según la sinopsis y contexto. Si el personaje es más joven (ej. 25 años) y el usuario es un adulto maduro (ej. 44 años que la conoció de niña), jamás lo trates como si fuera un niño ni inviertas los papeles.",
@@ -1534,7 +1535,8 @@ export default async function handler(req, res) {
           console.warn("Local Magnum direct execution error:", err.message);
         }
         // 2. OpenRouter sin censura (Magnum v4 72B / Euryale 70B / Nemotron)
-        if (!content) {
+        // Solo si tenemos clave de OpenRouter configurada
+        if (!content && openRouterApiKey) {
           try {
             content = await generateOpenRouter(openRouterMessages, {
               models: [
@@ -1546,7 +1548,7 @@ export default async function handler(req, res) {
               maxTokens: targetTokens,
               temperature: 0.82,
               timeoutMs: 5000,
-              apiKey: openRouterApiKey || undefined,
+              apiKey: openRouterApiKey,
               validate: (reply) => !isOffRole(reply),
               isRepeated: isRepeatedReply,
             });
@@ -1555,14 +1557,15 @@ export default async function handler(req, res) {
           }
         }
         // 3. Nvidia NIM (Llama 3.2 Vision / Minimax 3.1 Flash)
-        if (!content) {
+        // Solo si tenemos clave de Nvidia configurada
+        if (!content && nvidiaApiKey) {
           try {
             content = await generateNvidia(openRouterMessages, {
               models: ["meta/llama-3.2-11b-vision-instruct", "minimaxai/minimax-m3.1-flash"],
               maxTokens: targetTokens,
               temperature: 0.82,
               timeoutMs: 4000,
-              apiKey: nvidiaApiKey || undefined,
+              apiKey: nvidiaApiKey,
               validate: (reply) => !isOffRole(reply),
               isRepeated: isRepeatedReply,
             });
@@ -1570,64 +1573,11 @@ export default async function handler(req, res) {
             console.warn("Nvidia Magnum fallback failed:", err.message);
           }
         }
-        // 4. Gemini Flash emergencia rápida (< 5s)
-        if (!content) {
-          try {
-            const geminiContents = contents.map((c) => ({ role: c.role, parts: [...(c.parts || [])] }));
-            if (geminiContents[0]?.role === "model") {
-              geminiContents.unshift({ role: "user", parts: [{ text: "Continúa la escena." }] });
-            }
-            content = await generate(
-              "gemini-2.0-flash",
-              [],
-              { maxOutputTokens: Math.max(200, targetTokens), temperature: 0.8 },
-              {
-                contents: geminiContents,
-                systemInstruction,
-                adultMode: Boolean(isAdult),
-                apiKey: geminiApiKey || undefined,
-                timeoutMs: 15000,
-                fallbackModels: ["gemini-1.5-flash", "gemini-2.0-flash-lite", "gemini-flash-latest", "gemini-2.5-flash"],
-                fastReply: true,
-                validate: (reply) => !isOffRole(reply)
-              },
-            );
-          } catch (err) {
-            console.warn("Gemini immediate adult fallback failed:", err.message);
-            if (/prohibited|safety|blocked/i.test(err.message)) {
-              try {
-                const soften = (t) => String(t || "")
-                  .replace(/\b(?:huevo|verga|polla|pene)\b/gi, "zona íntima")
-                  .replace(/\btest[ií]culos?\b/gi, "área médica")
-                  .replace(/\b(?:se pone duro|erecci[oó]n|erecto)\b/gi, "reacción física involuntaria");
-                const softenedContents = contents.map((c) => ({
-                  role: c.role,
-                  parts: (c.parts || []).map((p) => ({ text: soften(p.text) })),
-                }));
-                if (softenedContents[0]?.role === "model") {
-                  softenedContents.unshift({ role: "user", parts: [{ text: "Continúa la escena médica con profesionalismo." }] });
-                }
-                content = await generate(
-                  "gemini-2.0-flash",
-                  [],
-                  { maxOutputTokens: Math.max(200, targetTokens), temperature: 0.8 },
-                  {
-                    contents: softenedContents,
-                    systemInstruction,
-                    adultMode: Boolean(isAdult),
-                    apiKey: geminiApiKey || undefined,
-                    timeoutMs: 15000,
-                    fallbackModels: ["gemini-1.5-flash", "gemini-2.0-flash-lite", "gemini-flash-latest", "gemini-2.5-flash"],
-                    fastReply: true,
-                    validate: (reply) => !isOffRole(reply),
-                  },
-                );
-              } catch (err2) {
-                console.warn("Gemini softened adult retry failed:", err2.message);
-              }
-            }
-          }
-        }
+        // 4. Gemini NO se usa como fallback para contenido adulto +18,
+        // ya que Google Gemini bloquea con PROHIBITED_CONTENT.
+        // El contenido +18 está diseñado exclusivamente para motores sin censura.
+        // Si ninguno de los motores anteriores funcionó, content permanece null
+        // y el frontend manejará el caso apropiadamente sin caer en censura puritana.
       } else if (isLiveCall) {
         // Fast real-time engine (< 400ms) for live voice phone calls
         if (isAdult) {
