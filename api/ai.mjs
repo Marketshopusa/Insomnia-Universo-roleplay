@@ -1564,7 +1564,7 @@ export default async function handler(req, res) {
               models: ["meta/llama-3.2-90b-vision-instruct"],
               maxTokens: targetTokens,
               temperature: 0.82,
-              timeoutMs: 15000,
+              timeoutMs: 28000,
               apiKey: nvidiaApiKey,
               validate: (reply) => !isOffRole(reply),
               isRepeated: isRepeatedReply,
@@ -2046,11 +2046,21 @@ export default async function handler(req, res) {
           const mentionsMother = /(?:mam[aá]|gabriela|se\s+entera|se\s+caga|se\s+r[ií]e|risa)/i.test(latest + " " + userSpoken);
           const isExamUnderway = turnCount > 1 || /(?:camilla|tacto|tocando|palpar|revisando|guante)/i.test(allContext);
 
-          if (isFirstTurn && (isRecognizing || isEntrance)) {
+          const sceneStarted = pastAssistantTexts.length > 0;
+          const isIntimateOngoing = sceneStarted && /(?:huevo|pene|erecci|erect|duro|bolas|test[ií]culo|tronco|acarici|mano|manos|toca|tocaba|acabar|venir)/i.test(latest);
+
+          if (isIntimateOngoing) {
+            const continuation = [
+              `*Sigo con mi mano donde está, sin apartar la mirada de tus ojos, mordiéndome el labio con un rubor que ya no puedo disimular.* Shhh... respira, ${playerName || "William"}. Ya sé que esto dejó de ser solo un examen... y la verdad, yo tampoco quiero soltarte todavía.`,
+              `*Bajo la voz casi a un susurro mientras mis dedos siguen moviéndose despacio, con el corazón acelerado.* Dios... estás temblando. No digas nada, ${playerName || "William"}, solo déjate llevar... nadie tiene que enterarse de lo que pasa en esta consulta.`,
+              `*Suelto una risita nerviosa y vuelvo a mirarte a los ojos, sin detener la caricia disimulada.* Llevamos un buen rato así y no me has pedido que pare... Aguanta un poquito más, ${playerName || "William"}, que me encanta verte así de rendido.`,
+            ];
+            content = continuation.find((alt) => !isRepeatedCandidate(alt)) || continuation[turnCount % continuation.length];
+          } else if (isFirstTurn && (isRecognizing || isEntrance)) {
             content = `*Me detengo un instante al fijarme en tu rostro, abriendo los ojos con sorpresa antes de que una sonrisa cálida y un leve rubor iluminen mi expresión profesional.* ¡¿${playerName || "William"}?! No puedo creerlo... Qué pequeña es la vida, mira dónde nos venimos a encontrar después de tantos años. Tranquilo, quédate cómodo en la camilla y no te me apenes por estar con la bata; sé que vienes para tu chequeo preventivo y ante todo eres mi paciente. Respira con calma y cuéntame, ¿cómo has estado y cómo te has sentido últimamente?`;
-          } else if (isErectionOnTable && mentionsMother) {
+          } else if (!sceneStarted && isErectionOnTable && mentionsMother) {
             content = `*Al levantar con cuidado la bata sobre la camilla, mis ojos se abren de par en par y un rubor encendido me recorre las mejillas al ver tu impresionante miembro completamente erecto entre mis piernas.* ¡Por Dios, ${playerName || "William"}! *Paso saliva con dificultad y suelto una risita nerviosa mientras mis manos enguantadas titubean por un instante.* Ni se te ocurra decirle nada a mi mamá Gabriela, ¡se moriría de la risa y de la sorpresa si supiera en qué situación te estoy atendiendo! Tranquilo... sé que es una reacción física involuntaria por los nervios y la cercanía, pero ver semejante tamaño me tomó totalmente por sorpresa. Respira hondo y trata de relajarte mientras me acomodo para iniciar el chequeo.`;
-          } else if (isErectionOnTable) {
+          } else if (!sceneStarted && isErectionOnTable) {
             content = `*Al levantar suavemente la bata sobre la camilla, mis ojos se abren con asombro y mis mejillas se tiñen de carmín al notar la firme y prominente erección entre tus piernas.* Dios mío... *Acomodo con cierta timidez mis guantes de látex, tratando de mantener el temple médico ante el evidente rubor que me sube por el cuello.* Tranquilo, ${playerName || "William"}... en una revisión física estas reacciones corporales ocurren con frecuencia y no tienes de qué avergonarte. Trata de respirar pausado mientras comienzo con la exploración de la zona.`;
           } else if (mentionsMother) {
             content = `*Suelto una pequeña risa cómplice y niego con la cabeza, sonrojándome ligeramente mientras acomodo el instrumental médico.* ¡Ni se te ocurra decirle una sola palabra a mi mamá! Gabriela jamás me dejaría en paz si se entera de que eres mi paciente en una consulta así. Pero quédate tranquilo, ${playerName || "William"}, el secreto médico y la confianza están ante todo. Concéntrate y respira con calma que estamos por comenzar.`;
