@@ -1,3 +1,4 @@
+import { isRepeatedTurn } from "./conversationReply.mjs";
 const ENGLISH_PATTERNS = [
 
   /\b(?:again\s+after\s+so\s+long|after\s+so\s+long)\b/i,
@@ -861,114 +862,12 @@ export function resolveActiveCharacter(
 
 
 export function isRepeatedAssistantReply(
-
   candidate: string,
-
   history: { role: string; content?: string; text?: string }[] = [],
-
+  latest = "",
 ): boolean {
-
-  const rawCand = String(candidate || "").trim();
-
-  if (!rawCand) return true;
-
-  const norm = (s: string) =>
-
-    s
-
-      .toLowerCase()
-
-      .normalize("NFD")
-
-      .replace(/[\u0300-\u036f]/g, "")
-
-      .replace(/[^\w\s]/g, " ")
-
-      .replace(/\s+/g, " ")
-
-      .trim();
-
-  const stripAct = (s: string) => s.replace(/\*[^*]*\*/g, " ").trim();
-
-
-
-  const candFull = norm(rawCand);
-
-  const candDial = norm(stripAct(rawCand));
-
-  const candFirstAct = norm((rawCand.match(/\*([^*]+)\*/)?.[1]) || "");
-
-
-
-  const assistantTurns = history
-
-    .filter((h) => h.role === "assistant" || h.role === "model")
-
-    .map((h) => String(h.content || h.text || "").trim())
-
-    .filter(Boolean)
-
-    .slice(-6);
-
-
-
-  for (const prev of assistantTurns) {
-
-    const prevFull = norm(prev);
-
-    const prevDial = norm(stripAct(prev));
-
-    const prevFirstAct = norm((prev.match(/\*([^*]+)\*/)?.[1]) || "");
-
-
-
-    if (candFull === prevFull) return true;
-
-    if (candDial.length >= 20 && candDial === prevDial) return true;
-
-    if (candDial.length >= 30 && prevDial.length >= 30 && candDial.slice(0, 32) === prevDial.slice(0, 32)) return true;
-
-    if (candFirstAct.length >= 18 && candFirstAct === prevFirstAct && candDial.slice(0, 20) === prevDial.slice(0, 20)) return true;
-
-
-
-    // Check 4-gram overlap on spoken dialogue
-
-    const candWords = candDial.split(" ").filter(Boolean);
-
-    const prevWords = prevDial.split(" ").filter(Boolean);
-
-    if (candWords.length >= 8 && prevWords.length >= 8) {
-
-      const prevNgrams = new Set<string>();
-
-      for (let i = 0; i <= prevWords.length - 4; i++) {
-
-        prevNgrams.add(prevWords.slice(i, i + 4).join(" "));
-
-      }
-
-      let hits = 0;
-
-      const total = candWords.length - 3;
-
-      for (let i = 0; i <= candWords.length - 4; i++) {
-
-        if (prevNgrams.has(candWords.slice(i, i + 4).join(" "))) hits++;
-
-      }
-
-      if (hits / total >= 0.4) return true;
-
-    }
-
-  }
-
-  return false;
-
+  return isRepeatedTurn(candidate, history, latest);
 }
-
-
 
 export function sanitizeSwitchedReply(reply: string, info: ActiveCharacterInfo): string {
 
@@ -1044,4 +943,3 @@ export function cleanOralOrSilenceDialogue(text: string, isOralOrSilence: boolea
   cleaned = cleaned.replace(/(?:"[MmhAaOoUuFf.,!…\s]+"[\s]*){2,}/gi, '"Mmmm... ahh..." ');
   return cleaned.trim();
 }
-

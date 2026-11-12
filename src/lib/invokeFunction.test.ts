@@ -46,6 +46,25 @@ it("keeps a scene without adult mode on Gemini", async () => {
   fetchMock.mockRestore();
 });
 
+it("does not run the entire provider chain twice after a terminal AI failure", async () => {
+  const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+    new Response(JSON.stringify({ error: "ai_timeout", message: "Turn timed out" }), { status: 504 }),
+  );
+  const result = await invokeFunctionWithRetry("story-chat", { userMessage: "Hola", story: { id: "a" } });
+  expect(result.error?.context.status).toBe(504);
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+  fetchMock.mockRestore();
+});
+
+it("does not retry a validation rejection from the server", async () => {
+  const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+    new Response(JSON.stringify({ error: "invalid_request" }), { status: 422 }),
+  );
+  await invokeFunctionWithRetry("story-chat", { userMessage: "Hola", story: { id: "a" } });
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+  fetchMock.mockRestore();
+});
+
 it("rejects candidate reply if it repeats previous assistant turn and returns the retried non-repeated reply", async () => {
   const fetchMock = vi.spyOn(globalThis, "fetch")
     .mockResolvedValueOnce(new Response(JSON.stringify({ content: "Mensaje idéntico anterior." }), { status: 200 }))

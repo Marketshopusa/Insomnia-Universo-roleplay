@@ -28,6 +28,8 @@ type FunctionResult<T> = { data: T | null; error: ({ message: string; context: R
 const ownAi = new Set(["story-chat", "translate", "speech-to-text", "generate-narrative", "generate-novel", "generate-studio-draft", "generate-shorts-series", "illustrate-scene"]);
 
 async function callOwnAi<T>(name: string, body: unknown): Promise<FunctionResult<T>> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  let controller: AbortController | undefined;
 
   try {
 
@@ -45,6 +47,10 @@ async function callOwnAi<T>(name: string, body: unknown): Promise<FunctionResult
 
     }
 
+    if (name === "story-chat") {
+      controller = new AbortController();
+      timeoutId = setTimeout(() => controller?.abort(), (body as { isLiveCall?: boolean })?.isLiveCall ? 15000 : 30000);
+    }
     const response = await fetch(name === "illustrate-scene" ? "/api/illustrate" : "/api/ai", {
 
       method: "POST",
@@ -58,6 +64,8 @@ async function callOwnAi<T>(name: string, body: unknown): Promise<FunctionResult
       },
 
       body: JSON.stringify({ action: name, body }),
+
+      ...(controller ? { signal: controller.signal } : {}),
 
     });
 
@@ -87,7 +95,13 @@ async function callOwnAi<T>(name: string, body: unknown): Promise<FunctionResult
 
     const message = err instanceof Error ? err.message : "Error de conexión con el servicio de IA.";
 
-    return { data: null, error: { message, context: new Response(null, { status: 503 }) } };
+    return {
+      data: controller?.signal.aborted ? { error: "ai_timeout", message } as T : null,
+      error: { message, context: new Response(null, { status: controller?.signal.aborted ? 504 : 503 }) },
+    };
+
+  } finally {
+    clearTimeout(timeoutId);
 
   }
 
@@ -494,7 +508,7 @@ ${playerName} te pidió explícitamente seguir con la acción oral y escuchar c�
 
     // Si la respuesta es una repetición idéntica del turno anterior, reintentar con penalización reforzada y advertencia explícita
 
-    if (content && isRepeatedAssistantReply(content, historyList)) {
+    if (content && isRepeatedAssistantReply(content, historyList, input.userMessage || "")) {
 
       const antiRepeatMessages = [
 
@@ -518,7 +532,7 @@ ${playerName} te pidió explícitamente seguir con la acción oral y escuchar c�
 
 
 
-    if (content && !isRepeatedAssistantReply(content, historyList)) {
+    if (content && !isRepeatedAssistantReply(content, historyList, input.userMessage || "")) {
 
       return { data: { content } as T, error: null };
 
@@ -710,7 +724,7 @@ export async function invokeFunctionWithRetry<T>(name: string, body: unknown): P
 
         const localContent = (local?.data as any)?.content;
 
-        if (local?.data && !isClientRefusal(localContent) && !isRepeatedAssistantReply(localContent, historyList)) {
+        if (local?.data && !isClientRefusal(localContent) && !isRepeatedAssistantReply(localContent, historyList, b?.userMessage || "")) {
           const uText = String(b?.userMessage || "").toLowerCase();
           const isOral = /(?:c[aá]llate|callate|calla|no\s+hables|sin\s+hablar|no\s+digas|deja\s+de\s+hablar|silencio|d[eé]jame\s+escuchar|dejame\s+escuchar|escuchar\s+c[oó]mo|c[oó]mo\s+lo\s+chupas|sigue\s+chupando|chupa|mama|succion|lamiendo|lamer|boca\s+ocupada)/i.test(uText);
           const sanitizedContent = cleanOralOrSilenceDialogue(enforceFirstPersonNarrative(localContent, b?.story?.character_role), isOral);
@@ -727,11 +741,11 @@ export async function invokeFunctionWithRetry<T>(name: string, body: unknown): P
 
       const cloudResult = await callOwnAi<T>(name, { ...b, adultMode: true, isNsfw: true });
       const firstContent = (cloudResult.data as any)?.content;
-      if (!cloudResult.error && firstContent && !isClientRefusal(firstContent) && !isRepeatedAssistantReply(firstContent, historyList)) {
+      if (!cloudResult.error && firstContent && !isClientRefusal(firstContent) && !isRepeatedAssistantReply(firstContent, historyList, b?.userMessage || "")) {
         return cloudResult;
       }
 
-      if (cloudResult.data && firstContent && !isRepeatedAssistantReply(firstContent, historyList)) {
+      if (cloudResult.data && firstContent && !isRepeatedAssistantReply(firstContent, historyList, b?.userMessage || "")) {
         return cloudResult;
       }
 
@@ -757,7 +771,7 @@ export async function invokeFunctionWithRetry<T>(name: string, body: unknown): P
 
     const isRefused = name === "story-chat" && isClientRefusal(firstContent);
 
-    const isRepeated = name === "story-chat" && isRepeatedAssistantReply(firstContent, historyList);
+    const isRepeated = name === "story-chat" && isRepeatedAssistantReply(firstContent, historyList, b?.userMessage || "");
 
 
 
@@ -767,9 +781,10 @@ export async function invokeFunctionWithRetry<T>(name: string, body: unknown): P
 
 
 
-    const firstStatus = cloudResult.error?.context?.status ?? 503;
+    const firstStatus = cloudResult.error?.context?.status ?? (cloudResult.error ? 503 : 200);
 
-    if (firstStatus !== 404 && firstStatus !== 401 && firstStatus !== 402 && !isRefused) {
+    const terminalFailure = ["ai_unavailable", "ai_timeout", "off_role"].includes((cloudResult.data as { error?: string } | null)?.error || "");
+    if (!isRefused && !terminalFailure && ((isRepeated && !cloudResult.error) || firstStatus === 429 || firstStatus >= 500)) {
 
       await wait(300);
 
@@ -779,7 +794,7 @@ export async function invokeFunctionWithRetry<T>(name: string, body: unknown): P
 
       const retryRefused = name === "story-chat" && isClientRefusal(retryContent);
 
-      const retryRepeated = name === "story-chat" && isRepeatedAssistantReply(retryContent, historyList);
+      const retryRepeated = name === "story-chat" && isRepeatedAssistantReply(retryContent, historyList, b?.userMessage || "");
 
       const okRetry = !retryCloud.error && !retryRefused && !retryRepeated && (needsContent ? Boolean(retryContent) : Boolean(retryCloud.data));
 
@@ -801,7 +816,7 @@ export async function invokeFunctionWithRetry<T>(name: string, body: unknown): P
 
         const localContent = (local?.data as any)?.content;
 
-        if (local?.data && !isClientRefusal(localContent) && !isRepeatedAssistantReply(localContent, historyList)) {
+        if (local?.data && !isClientRefusal(localContent) && !isRepeatedAssistantReply(localContent, historyList, b?.userMessage || "")) {
 
           return local;
 
@@ -840,4 +855,3 @@ export async function invokeFunctionWithRetry<T>(name: string, body: unknown): P
   return result as FunctionResult<T>;
 
 }
-

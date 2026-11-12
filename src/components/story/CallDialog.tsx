@@ -10,6 +10,8 @@ import { browserSpeechLocale } from "@/lib/regions";
 import { invokeFunctionWithRetry } from "@/lib/invokeFunction";
 import { normalizeAssistantReply } from "@/lib/roleReply";
 import { selectStoryMemory } from "@/lib/storyMemory";
+import { getMotherCardConfig } from "@/lib/roleplayBase";
+import { getStoryAiSettings } from "@/lib/storyAiSettings";
 
 type CallState = "idle" | "listening" | "thinking" | "speaking";
 
@@ -122,6 +124,8 @@ export const CallDialog = ({
   };
 
   const askCharacter = async (userText: string, priorHistory: Turn[]) => {
+    const mother = getMotherCardConfig();
+    const cardSettings = getStoryAiSettings(story?.id);
     const { data, error } = await invokeFunctionWithRetry<{ content?: string; error?: string; message?: string }>("story-chat", {
         story: {
           id: story?.id,
@@ -134,7 +138,12 @@ export const CallDialog = ({
         },
         language,
         isLiveCall: true,
-        settings: { modelId: "insomnia-flash", messageLength: 45 },
+        settings: {
+          ...mother.aiSettings,
+          ...cardSettings,
+          customDirective: cardSettings.customDirective || mother.masterDirective,
+          messageLength: 45,
+        },
         history: priorHistory.slice(-48),
         memory: selectStoryMemory(priorHistory, userText),
         userMessage: userText,

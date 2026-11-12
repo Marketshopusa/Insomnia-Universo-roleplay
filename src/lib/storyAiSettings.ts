@@ -231,16 +231,16 @@ export function getStoryAiSettings(storyId?: string | null): StoryAiSettings {
   const base: StoryAiSettings = { ...DEFAULT_AI_SETTINGS, ...motherAi };
   if (typeof window === "undefined") return base;
   try {
+    const globalStored = localStorage.getItem(`${STORAGE_KEY_PREFIX}defaults_v2`);
+    const defaults: StoryAiSettings = globalStored ? { ...base, ...JSON.parse(globalStored) } : base;
     if (storyId) {
       const stored = localStorage.getItem(`${STORAGE_KEY_PREFIX}${storyId}`);
       if (stored) {
-        return { ...base, ...JSON.parse(stored) };
+        return { ...defaults, ...JSON.parse(stored) };
       }
     }
-    const globalStored = localStorage.getItem(`${STORAGE_KEY_PREFIX}global`);
-    if (globalStored) {
-      return { ...base, ...JSON.parse(globalStored) };
-    }
+    // The legacy global key was also written by per-card saves. Its origin is ambiguous.
+    return defaults;
   } catch (e) {
     console.warn("Could not read story AI settings from localStorage", e);
   }
@@ -253,8 +253,9 @@ export function setStoryAiSettings(storyId: string | null | undefined, settings:
     const serialized = JSON.stringify(settings);
     if (storyId) {
       localStorage.setItem(`${STORAGE_KEY_PREFIX}${storyId}`, serialized);
+    } else {
+      localStorage.setItem(`${STORAGE_KEY_PREFIX}defaults_v2`, serialized);
     }
-    localStorage.setItem(`${STORAGE_KEY_PREFIX}global`, serialized);
   } catch (e) {
     console.warn("Could not save story AI settings to localStorage", e);
   }
