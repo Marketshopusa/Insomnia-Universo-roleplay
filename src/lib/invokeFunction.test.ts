@@ -3,7 +3,7 @@ import { beforeEach, expect, it, vi } from "vitest";
 const { invoke } = vi.hoisted(() => ({ invoke: vi.fn() }));
 vi.mock("@/integrations/supabase/client", () => ({
   supabase: {
-    auth: { getSession: () => Promise.resolve({ data: { session: { user: { id: "test-user" } } } }) },
+    auth: { getSession: () => Promise.resolve({ data: { session: { access_token: "test-token", user: { id: "test-user" } } } }) },
     functions: { invoke },
   },
 }));

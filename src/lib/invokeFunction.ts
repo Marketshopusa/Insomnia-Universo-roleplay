@@ -1,3 +1,4 @@
+import { authenticatedFetch } from "./authenticatedFetch";
 import { supabase } from "@/integrations/supabase/client";
 
 
@@ -33,25 +34,11 @@ async function callOwnAi<T>(name: string, body: unknown): Promise<FunctionResult
 
   try {
 
-    let { data: { session } } = await supabase.auth.getSession();
-
-    if (!session?.access_token) {
-
-      try {
-
-        const { data: refreshed } = await supabase.auth.refreshSession();
-
-        if (refreshed?.session) session = refreshed.session;
-
-      } catch { /* session unauthenticated */ }
-
-    }
-
     if (name === "story-chat") {
       controller = new AbortController();
       timeoutId = setTimeout(() => controller?.abort(), (body as { isLiveCall?: boolean })?.isLiveCall ? 15000 : 30000);
     }
-    const response = await fetch(name === "illustrate-scene" ? "/api/illustrate" : "/api/ai", {
+    const response = await authenticatedFetch(name === "illustrate-scene" ? "/api/illustrate" : "/api/ai", {
 
       method: "POST",
 
@@ -59,7 +46,6 @@ async function callOwnAi<T>(name: string, body: unknown): Promise<FunctionResult
 
         "Content-Type": "application/json",
 
-        ...(session?.access_token ? { Authorization: "Bearer " + session.access_token } : {}),
 
       },
 
@@ -67,7 +53,7 @@ async function callOwnAi<T>(name: string, body: unknown): Promise<FunctionResult
 
       ...(controller ? { signal: controller.signal } : {}),
 
-    });
+    }, name === "translate");
 
     const isOk = response.ok;
 

@@ -1,3 +1,4 @@
+import { authenticatedFetch } from "./authenticatedFetch";
 import { prepareExpressiveSpeech } from "./expressiveSpeech.mjs";
 import { scheduleFoleyForMessage } from "./foleyStudio";
 import { supabase } from "@/integrations/supabase/client";
@@ -23,12 +24,10 @@ const wait = (milliseconds: number) =>
 type Performance = "neutral" | "warm" | "surprised" | "amused" | "sad" | "pain" | "pleasure" | "scream" | "soft" | "angry" | "afraid" | "disgusted" | "tired";
 
 async function requestSpeech(text: string, voice: string, language: string, region: string, performance: Performance, roleplay: boolean, signal: AbortSignal) {
-  const { data: { session } } = await supabase.auth.getSession();
-  return fetch(FUNCTIONS_URL, {
+  return authenticatedFetch(FUNCTIONS_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      ...(session?.access_token ? { Authorization: "Bearer " + session.access_token } : {}),
     },
     body: JSON.stringify({ text, voice, language, region, performance, roleplay, stream: true }),
     signal,

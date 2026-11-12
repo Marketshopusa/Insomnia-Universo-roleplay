@@ -1,8 +1,7 @@
+import { authenticationFailure } from "./_auth.mjs";
 import { synthesizeExpressiveScene } from "../src/lib/expressiveAudio.mjs";
 import { prepareExpressiveSpeech, hasVocalCue } from "../src/lib/expressiveSpeech.mjs";
 import { vocalSample } from "../src/lib/vocalSamples.mjs";
-import { createClient } from "@supabase/supabase-js";
-import { supabaseUrl, publishableKey } from "./_config.mjs";
 import { explainGeminiFailure, isGeminiConfigured, streamGeminiSpeech, synthesizeGemini, removePerformanceCues, previewVoice, splitSentences } from "./_geminiTts.mjs";
 
 export const maxDuration = 60;
@@ -72,16 +71,8 @@ export default async function handler(req, res) {
     return res.status(429).json({ error: "rate_limited", message: "Demasiadas solicitudes de audio simultáneas. Espera unos segundos." });
   }
 
-  const isDev = process.env.NODE_ENV !== "production" && !process.env.VERCEL;
-  const jwt = String(req.headers.authorization || "").replace(/^Bearer\s+/i, "").trim();
-  let isAuthenticated = isDev;
-  if (!isAuthenticated && jwt) {
-    try {
-      const { data, error } = await createClient(supabaseUrl, publishableKey, { auth: { persistSession: false } }).auth.getUser(jwt);
-      if (!error && data?.user) isAuthenticated = true;
-    } catch {}
-  }
-  if (!isAuthenticated) return res.status(401).json({ error: "login_required" });
+  const failure = await authenticationFailure(req);
+  if (failure) return res.status(failure.status).json({ error: failure.error, message: failure.message });
   if (req.body?.metric === "first_playback") {
     const elapsed = Number(req.body.elapsedMs);
     if (!Number.isFinite(elapsed) || elapsed < 0 || elapsed > 120_000) {

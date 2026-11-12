@@ -83,6 +83,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     supabase.auth.getSession().then(({ data: { session: s } }) => apply(s));
 
+    const requireLogin = () => {
+      signedOutRef.current = true;
+      apply(null);
+    };
+    window.addEventListener("insomnia:auth-required", requireLogin);
+
     // Mobile browsers suspend timers when the app goes to the background, so the
     // token refresh can be missed. Re-hydrate / refresh when coming back.
     const revive = async () => {
@@ -102,6 +108,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     return () => {
       subscription.unsubscribe();
+      window.removeEventListener("insomnia:auth-required", requireLogin);
       document.removeEventListener("visibilitychange", revive);
       window.removeEventListener("focus", revive);
       window.removeEventListener("online", revive);

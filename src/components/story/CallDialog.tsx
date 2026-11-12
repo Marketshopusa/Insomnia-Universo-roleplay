@@ -152,6 +152,9 @@ export const CallDialog = ({
     });
     if (error || !data?.content) {
       const status = (error as { context?: Response } | null)?.context?.status;
+      if (status === 401 || data?.error === "login_required") {
+        return { content: "", error: "login_required", message: data?.message || error?.message };
+      }
       if (status === 402 || data?.error === "credits_exhausted") {
         return {
           content: "", error: "credits_exhausted",
@@ -160,7 +163,7 @@ export const CallDialog = ({
             : "The AI provider has no credits to respond.",
         };
       }
-      return { content: "", error: data?.error, message: data?.message };
+      return { content: "", error: data?.error, message: data?.message || error?.message };
     }
     return { content: normalizeAssistantReply(data.content) || data.content, error: undefined, message: undefined };
   };
@@ -173,6 +176,15 @@ export const CallDialog = ({
       variant: "destructive",
     });
     void listen();
+  };
+
+  const requireLogin = () => {
+    hangUp();
+    toast({
+      title: es ? "Tu sesión ha caducado" : "Your session has expired",
+      description: es ? "Vuelve a iniciar sesión para continuar la llamada. Tu conversación se conserva." : "Sign in again to continue the call. Your conversation is preserved.",
+      variant: "destructive",
+    });
   };
 
   const listen = async () => {
@@ -325,6 +337,10 @@ export const CallDialog = ({
       if (!activeRef.current || sessionCountRef.current !== turnSession) return;
 
       if (error || data?.error) {
+        if (error?.context?.status === 401 || data?.error === "login_required") {
+          requireLogin();
+          return;
+        }
         toast({
           title: t("call.cantTranscribe"),
           description: data?.message || error?.message || t("call.noVoice"),
@@ -347,6 +363,10 @@ export const CallDialog = ({
     if (!activeRef.current || sessionCountRef.current !== turnSession) return;
     const reply = replyResult.content;
     if (!reply) {
+      if (replyResult.error === "login_required") {
+        requireLogin();
+        return;
+      }
       historyRef.current = [...priorHistory, { role: "user", content: userText }];
       toast({
         title: replyResult.error === "credits_exhausted"

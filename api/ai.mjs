@@ -1,3 +1,4 @@
+import { authenticationFailure } from "./_auth.mjs";
 import { isRepeatedTurn } from "../src/lib/conversationReply.mjs";
 const DANGLING_TAIL_REGEX = /\b(?:de|del|al|a|en|con|por|para|sin|sobre|entre|hacia|hasta|como|mientras|cuando|que|y|e|o|u|ni|pero|un|una|unos|unas|el|la|los|las|su|sus|mi|mis|tu|tus|me|te|se|nos|le|les|lo)\s*$/iu;
 
@@ -70,20 +71,6 @@ export function isRateLimited(identifier) {
 
 export const maxDuration = 60;
 const send = (res, status, value) => res.status(status).json(value);
-async function authenticated(req) {
-  const isDev = process.env.NODE_ENV !== "production" && !process.env.VERCEL;
-  if (isDev) return true;
-  const jwt = String(req.headers?.authorization || "").replace(/^Bearer\s+/i, "").trim();
-  if (!jwt || !KEY) return false;
-  try {
-    const client = createClient(BASE, KEY, { auth: { persistSession: false } });
-    const { data, error } = await client.auth.getUser(jwt);
-    if (!error && data?.user) return true;
-  } catch {
-    // Supabase auth connection error
-  }
-  return false;
-}
 export function generationConfigFor(candidate, settings, options = {}, thinking = true) {
   if (!thinking || !options.fastReply) return settings;
   if (candidate.startsWith("gemini-3.")) return { ...settings, thinkingConfig: { thinkingLevel: "low" } };
@@ -365,9 +352,9 @@ export function isGeminiAvailable(customApiKey) {
 }
 
 export async function generate(model, parts, settings = {}, options = {}) {
-  const directKey = (typeof options.apiKey === "string" && options.apiKey.trim())
+  const directKey = !options.federatedOnly && ((typeof options.apiKey === "string" && options.apiKey.trim())
     || (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== "[SENSITIVE]" ? process.env.GEMINI_API_KEY : null)
-    || (process.env.GOOGLE_API_KEY && process.env.GOOGLE_API_KEY !== "[SENSITIVE]" ? process.env.GOOGLE_API_KEY : null);
+    || (process.env.GOOGLE_API_KEY && process.env.GOOGLE_API_KEY !== "[SENSITIVE]" ? process.env.GOOGLE_API_KEY : null));
 
   const hasGcp = isGeminiConfigured();
   if (!directKey && !hasGcp) {
@@ -662,6 +649,16 @@ export async function transcribeAudio(body, options = {}) {
   const remainingTime = () => Math.max(1000, totalDeadlineMs - (Date.now() - startTime));
   const attemptErrors = [];
 
+  const transcribeOnVertex = async () => ({ text: cleanTranscript(await generate(
+    "gemini-2.5-flash",
+    [{ inlineData: { mimeType, data: body.audio } }, { text: "Transcribe the spoken audio verbatim in " + locale + ". Output only the transcription. For silence, output empty." }],
+    { temperature: 0.1, maxOutputTokens: 1024 },
+    { federatedOnly: true, allowEmpty: true, fallbackModels: [], fetchImpl,
+      tokenProvider: options.tokenProvider, timeoutMs: remainingTime(), deadlineMs: startTime + totalDeadlineMs },
+  )) });
+  // A configured federated identity must actually be used when there is no API key.
+  if (!key && hasGcp) return transcribeOnVertex();
+
   // 1. Primary: gemini-3.5-transcribe via Interactions API (POST /v1beta/interactions)
   try {
     const interactionPayload = interactionsTranscriptionBody(body.audio, mimeType, locale);
@@ -715,13 +712,17 @@ export async function transcribeAudio(body, options = {}) {
     }
   }
 
+  if (hasGcp && remainingTime() > 2000 && !options.noFallback) {
+    try { return await transcribeOnVertex(); }
+    catch (error) { attemptErrors.push({ strategy: "vertex:gemini-2.5-flash", status: error.status || 502, message: error.message }); }
+  }
   const allDetails = attemptErrors.map((e) => `[${e.strategy}: ${e.status} ${e.message}]`).join("; ");
   console.error("Insomnia STT all attempts failed:", allDetails);
   const last = attemptErrors[attemptErrors.length - 1] || {};
   throw Object.assign(
     new Error(last.message || "No se pudo transcribir el micrófono."),
     {
-      status: last.status || 500,
+      status: [401, 403].includes(last.status) ? 502 : last.status || 500,
       code: "stt_failed",
       attempts: attemptErrors,
       details: allDetails,
@@ -1142,7 +1143,10 @@ export default async function handler(req, res) {
     return send(res, 429, { error: "too_many_requests", message: "Demasiadas solicitudes simultáneas. Por favor espera unos segundos antes de reenviar." });
   }
   const { action, body = {} } = req.body || {};
-  if (action !== "translate" && !(await authenticated(req))) return send(res, 401, { error: "login_required" });
+  if (action !== "translate") {
+    const failure = await authenticationFailure(req);
+    if (failure) return send(res, failure.status, { error: failure.error, message: failure.message });
+  }
   try {
     if (action === "story-chat") {
       const story = body.story || {};
