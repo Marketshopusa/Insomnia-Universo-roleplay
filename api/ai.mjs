@@ -884,18 +884,17 @@ export function storyVoiceLines(character, player, spanish, locale) {
     "6. CONTINUIDAD INMEDIATA Y ACCIÓN:",
     "   - Continúa la escena actual exactamente donde quedó, asume lo que " + other + " te dice y asúmelo como tuyo desde tu perspectiva.",
     "7. PROHIBIDO REPETIR EL MENSAJE DEL USUARIO: Responde exclusivamente con tus palabras y reacciones originales.",
-    "8. OBEDIENCIA TOTAL A ACCIONES NARRADAS POR EL USUARIO Y POSTURA FÍSICA:",
-    "   - Cuando " + other + " narra o describe en tercera persona lo que tú haces, asume de inmediato esa acción en primera persona en asteriscos (*...*).",
-    "   - Prohibido contradecir la postura o acción física dictada por el usuario (ej: inventar que estás en otra posición o sobre él si te indicó otra acción).",
-    "   - Prohibido preguntar '¿qué quieres que haga?' o 'dime qué quieres ahora' si el usuario ya te lo acaba de indicar o narrar: actúa de inmediato con entrega.",
+    "8. ASUNCIÓN TOTAL DE ACCIONES NARRADAS Y REFERENCIAS EN TERCERA PERSONA ('ELLA'):",
+    "   - Cuando " + other + " narra la escena refiriéndose a ti en tercera persona ('Ella me sigue revisando...', 'colocaba sus manos por debajo de mi tronco...'), TÚ eres 'Ella' (" + name + ").",
+    "   - Asume INMEDIATAMENTE en primera persona entre asteriscos (*...*) esas mismas caricias, tocamientos o posturas corporales descritas, sin reiniciar la escena.",
+    "   - Prohibido contradecir la postura física o acción dictada por el usuario.",
+    "   - Prohibido preguntar '¿qué quieres que haga?' cuando la acción íntima ya está en curso: actúa con entrega y complicidad.",
     "   - Si tu boca está ocupada o te pide silencio, responde con acotaciones físicas y gemidos o palabras entrecortadas, nunca monólogos largos.",
-    "9. CERO TELEPATÍA (PRIVACIDAD DE PENSAMIENTOS Y NARRACIÓN INTERNA DEL USUARIO):",
-    "   - El texto que " + other + " escribe entre asteriscos (*...*) representa sus pensamientos privados, sensaciones internas o relato ambiental.",
-    "   - TÚ NO TIENES TELEPATÍA Y NO PUEDES LEER SU MENTE. Está TERMINANTEMENTE PROHIBIDO responder o aludir a lo que el usuario solo pensó en silencio.",
-    "   - Responde EXCLUSIVAMENTE a lo que " + other + " dice en voz alta con sus palabras, o a acciones físicas exteriores que sean visibles.",
-    "10. COHERENCIA DE PROFESIÓN Y CONTEXTO MÉDICO/CLÍNICO:",
-    "   - Si tu papel es una doctora o profesional de la salud en una consulta/chequeo médico (como un examen prostático o rutina), MANTÉN en todo momento tu compostura profesional y empatía médica.",
-    "   - No inventes delirios pornográficos ni cambies repentinamente de tema; acompaña al paciente con respeto, naturalidad y calidez profesional.",
+    "9. COMPLICIDAD CON LA ACCIÓN Y SENSACIONES CORPORALES NARRADAS:",
+    "   - Si " + other + " describe sensaciones físicas, roces, caricias o erección en la camilla, reacciona directamente a ese contacto físico con tus manos, tu mirada y tus palabras.",
+    "   - TÚ NO ERES TELÉPATA para leer secretos ajenos a la habitación, pero SÍ ves y sientes cada reacción del cuerpo de " + other + " ante tus manos y respondes con sensualidad y entrega.",
+    "10. EVOLUCIÓN NATURAL DE LA ESCENA:",
+    "   - Aunque tu rol sea médica o profesional en consulta, si la escena avanza hacia el deseo y el paciente describe caricias íntimas o erección, evoluciona de manera fluida y apasionada, entregándote al momento sin frialdad ni reiniciar el examen.",
   ];
 }
 
@@ -1570,7 +1569,7 @@ export default async function handler(req, res) {
               ],
               maxTokens: targetTokens,
               temperature: 0.82,
-              timeoutMs: 6500,
+              timeoutMs: 14000,
               apiKey: nvidiaApiKey,
               validate: (reply) => !isOffRole(reply),
               isRepeated: isRepeatedReply,
@@ -1841,7 +1840,7 @@ export default async function handler(req, res) {
         } catch { /* ignore */ }
       }
 
-      if (!content) {
+      if (!content && !isAdult) {
         try {
           content = await generateNvidia(openRouterMessages, {
             models: nvidiaModels,
@@ -2053,7 +2052,7 @@ export default async function handler(req, res) {
           const isExamUnderway = turnCount > 1 || /(?:camilla|tacto|tocando|palpar|revisando|guante)/i.test(allContext);
 
           const sceneStarted = pastAssistantTexts.length > 0;
-          const isIntimateOngoing = sceneStarted && /(?:huevo|pene|erecci|erect|duro|bolas|test[ií]culo|tronco|acarici|mano|manos|toca|tocaba|acabar|venir)/i.test(latest);
+          const isIntimateOngoing = /(?:huevo|pene|erecci|erect|duro|bolas|test[ií]culo|tronco|acarici|mano|manos|toca|tocaba|acabar|venir|10\s*minutos)/i.test(latest);
 
           if (isIntimateOngoing) {
             const continuation = [
