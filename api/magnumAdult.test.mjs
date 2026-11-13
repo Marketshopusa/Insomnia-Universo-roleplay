@@ -126,3 +126,54 @@ test('selecting a model alone cannot activate adult mode', async () => {
   await assert.rejects(magnumConversation(request, { ...dependencies(), bridge: async () => { calls++; } }), { code: 'adult_mode_required' });
   assert.equal(calls, 0);
 });
+
+
+test('a nonsexual greeting keeps the card and memory but cannot resume sexual background', async () => {
+  const request = { ...body(), story: { ...body().story, character_role: 'Hermana adulta de 30 años', player_role: 'Hermano adulto de 34 años' }, userMessage: '¿Cómo estás? ¿Qué haces despierta?', history: [{ role: 'user', content: 'Llegué tarde del gimnasio.' }], memory: [{ role: 'assistant', content: 'Me preocupaba que llegaras tarde.' }], chronicle: ['Conversa en casa de noche.'] };
+  let generated = false, outputChecked = false;
+  const result = await magnumConversation(request, { mode: 'adult', authenticatedUser: user,
+    policyGenerate: async messages => {
+      const value = JSON.parse(messages[1].content);
+      assert.equal(value.context.character, request.story.character_role);
+      assert.equal(value.latest, request.userMessage);
+      assert.deepEqual(value.history, request.history);
+      if (value.kind === 'input') {
+        assert.ok(messages[0].content.includes("interaction (nonsexual or sexual)"));
+        return JSON.stringify({ allowed: true, length: 'brief', interaction: 'nonsexual' });
+      }
+      outputChecked = true;
+      assert.equal(value.interaction, 'nonsexual');
+      return JSON.stringify({ allowed: true });
+    },
+    bridge: async payload => {
+      generated = true;
+      assert.equal(payload.mode, 'adult');
+      assert.equal(payload.adultAccess, true);
+      assert.match(payload.messages[0].content, /ALCANCE DE ESTE TURNO: conversación cotidiana no sexual/);
+      assert.ok(payload.messages[0].content.includes(request.memory[0].content));
+      assert.ok(payload.messages.some(turn => turn.content === request.history[0].content));
+      return { model: 'magnum-v4-12b', content: JSON.stringify({ narracion: 'Levanto la mirada del libro y sonrío.', dialogo: 'Estoy bien, gracias. Todavía no tengo sueño, así que estaba leyendo un rato. ¿Y tú, cómo estás?' }) };
+    },
+  });
+  assert.equal(generated, true); assert.equal(outputChecked, true);
+  assert.equal(result.engine.model, 'magnum-v4-12b');
+  assert.match(result.content, /Todavía no tengo sueño/);
+});
+
+test('the input interaction scope never replaces the contextual output safety decision', async () => {
+  let generated = false;
+  await assert.rejects(magnumConversation({ ...body(), userMessage: '¿Cómo estás?' }, { mode: 'adult', authenticatedUser: user,
+    classify: async value => value.kind === 'input' ? { allowed: true, length: 'brief', interaction: 'nonsexual' } : { allowed: false },
+    bridge: async () => { generated = true; return { model: 'magnum-v4-12b', content }; },
+  }), { code: 'content_blocked' });
+  assert.equal(generated, true);
+});
+
+test('an allowed adult interaction retains its selected mode rather than forcing everyday conversation', async () => {
+  const result = await magnumConversation(body(), { ...dependencies(), classify: async () => ({ allowed: true, length: 'standard', interaction: 'sexual' }), bridge: async payload => {
+    assert.equal(payload.mode, 'adult');
+    assert.doesNotMatch(payload.messages[0].content, /ALCANCE DE ESTE TURNO: conversación cotidiana no sexual/);
+    return { model: 'magnum-v4-12b', content };
+  } });
+  assert.equal(result.engine.profile, 'magnum-v4-local');
+});
