@@ -730,6 +730,8 @@ export async function invokeFunctionWithRetry<T>(name: string, body: unknown): P
 
 
       const cloudResult = await callOwnAi<T>(name, { ...b, adultMode: true, isNsfw: true });
+      // Preserve structured failures so the screen can distinguish content, access and service errors.
+      if (cloudResult.error) return cloudResult;
       const firstContent = (cloudResult.data as any)?.content;
       if (!cloudResult.error && firstContent && !isClientRefusal(firstContent) && !isRepeatedAssistantReply(firstContent, historyList, b?.userMessage || "")) {
         return cloudResult;
