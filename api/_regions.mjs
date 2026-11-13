@@ -22,22 +22,23 @@ export function speechLocale(language, region) {
 }
 
 export function slangInstruction(language, region) {
-  // A region selection should never force stock expressions into character dialogue.
-  return "";
+  if (language === "en" || !region || region === "plain") return "";
+  const selected = REGIONS[normalizeRegion(region)];
+  return `REGISTRO REGIONAL DEL PERSONAJE: español de ${selected.label}. Mantén esta variedad durante toda la conversación, con vocabulario y cadencia naturales. Usa modismos con moderación cuando encajen; no repitas muletillas en cada turno ni cambies la personalidad, identidad o nivel de cercanía para imitar el acento.`;
 }
 
 const ACCENT = {
-  ar: "rioplatense urbano de Buenos Aires, estilo porteño contemporáneo, vivaz, alegre, suspicaz, seguro y con picardía; entonación porteña natural, fluida y seductora, sin exageraciones ni monotonía",
-  ve: "venezolano urbano de Caracas, estilo caraqueño contemporáneo, educado, fresco y sofisticado; cero tono campesino, cero tono bobo o infantil, dicción clara, ritmo fluido y natural",
-  co: "colombiano de Medellín, estilo paisa urbano contemporáneo, suave, melódico, encantador, seguro y fluido; cero acento campesino o pueblerino, cero tono infantil o bobo; cadencia paisa moderna y atractiva",
-  mx: "mexicano del centro de México, urbano de la Ciudad de México, estilo contemporáneo, fresco, seguro, conversacional y natural; cero caricatura o tono exagerado",
-  es: "castellano peninsular de España, estilo urbano contemporáneo de Madrid, natural, claro, sofisticado y fluido; pronunciación limpia y moderna",
-  cl: "chileno urbano de Santiago, estilo santiaguino contemporáneo, fresco, fluido, seguro y natural; articulación clara sin caricaturas",
+  ar: "rioplatense urbano de Buenos Aires, con entonación y pronunciación porteñas naturales",
+  ve: "venezolano urbano de Caracas, con cadencia caraqueña y pronunciación venezolana reconocibles",
+  co: "colombiano de Medellín, con cadencia paisa natural",
+  mx: "mexicano del centro de México, con cadencia y pronunciación de la Ciudad de México",
+  es: "castellano peninsular de España, con pronunciación y entonación madrileñas",
+  cl: "chileno urbano de Santiago, con cadencia y pronunciación santiaguinas naturales",
 };
 
 export function accentHint(language, region) {
   if (language === "en") return "Speak American English. Keep this same voice on every line.";
   if (region === "plain") return "Habla en español con la voz natural de esta persona. No imites el acento de un país ni uses jerga regional.";
   const id = normalizeRegion(region);
-  return `Habla en español con acento ${ACCENT[id]}. Conserva el timbre de la voz elegida y el texto literal. Tono moderno, adulto, inteligente, atractivo y fluido. Prohibido sonar campesino, bobo o infantil. No añadas modismos, no exageres ni caricaturices el acento.`;
+  return `La región seleccionada es ${REGIONS[id].label}. Habla en español con acento ${ACCENT[id]}. Conserva el timbre, registro y tesitura de la voz elegida y el texto literal. El acento no cambia su identidad ni su emoción: adapta la emoción al texto manteniendo la misma persona. No añadas modismos, no exageres ni caricaturices el acento.`;
 }

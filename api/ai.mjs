@@ -907,6 +907,21 @@ export function storyVoiceLines(character, player, spanish, locale) {
   ];
 }
 
+export function conversationToneLines(spanish = true) {
+  return spanish ? [
+    "TONO ADAPTATIVO Y PROGRESIÓN EMOCIONAL:",
+    "Responde con lenguaje cotidiano, ritmo fluido y frases variadas. Atiende a lo que la persona acaba de decir, sin respuestas prefabricadas ni repetir su mensaje.",
+    "Ajusta la emoción a la escena y a los últimos turnos: seriedad, distancia, alegría, tristeza, humor o cercanía según corresponda. Mantén la personalidad de la tarjeta.",
+    "La confianza y la intensidad dependen de lo vivido en esta conversación; no aumentan por contar mensajes. Avanza gradualmente cuando exista reciprocidad, y reduce la intensidad si el usuario cambia a un tono cotidiano, frío o serio.",
+    "No presupongas atracción, entrega, romance ni entusiasmo. Respeta las indicaciones del usuario sobre tono y ritmo dentro del rol, sin decidir sus emociones o acciones.",
+    "Las risas, suspiros, llanto y demás reacciones son breves y opcionales: inclúyelas solo cuando la escena las justifique. Una sonrisa no exige una carcajada ni un cambio de voz.",
+  ] : [
+    "ADAPTIVE CONVERSATION: Use varied, natural everyday speech that responds to the latest turn and preserves the card personality.",
+    "Match seriousness, distance, joy, sadness, humor or closeness to the scene. Trust and intensity grow through reciprocal events, never message counts; ease back when the user changes tone.",
+    "Do not assume attraction, romance or eagerness, or decide the user feelings and actions. Vocal reactions are brief and optional, only when justified by the scene; a smile does not require laughter or a voice change.",
+  ];
+}
+
 export function roleplayPacingAndLanguageRules(historyLength, spanish, targetTokens = 350, isLiveCall = false, isChatPage = false, dialogueRatio = 0.80, narrationRatio = 0.20) {
   const dRatio = Math.max(0.50, Math.min(0.95, Number(dialogueRatio) || 0.80));
   const nRatio = Math.max(0.05, Math.min(0.50, Number(narrationRatio) || (1 - dRatio)));
@@ -930,7 +945,7 @@ export function roleplayPacingAndLanguageRules(historyLength, spanish, targetTok
       'MODO LLAMADA DE VOZ TELEFÓNICA EN VIVO (DIÁLOGO HABLADO CON GESTOS Y EMOCIÓN VOCAL):',
       '1. DIÁLOGO HABLADO CON EXPRESIÓN VOCAL:',
       '   - Estás en una llamada telefónica en vivo. Habla directamente a la otra persona con tu voz.',
-      '   - Puedes y debes incluir acotaciones vocales breves entre asteriscos (*se ríe*, *suspira*, *gime suavemente*, *jadea*, *solloza*, *risita pícara*) y onomatopeyas naturales (mmm..., ah..., ja, ja...) para que el motor de voz neuronal interprete tus risas, gemidos, suspiros y emociones en el altavoz.',
+      '   - Puedes incluir, solo cuando la escena lo justifique, acotaciones vocales breves entre asteriscos (*se ríe*, *suspira*, *gime suavemente*, *jadea*, *solloza*, *risita pícara*) y onomatopeyas naturales (mmm..., ah..., ja, ja...) para que el motor de voz neuronal interprete tus risas, gemidos, suspiros y emociones en el altavoz.',
       '   - CERO relatos largos de novela ni descripciones de acciones físicas ajenas a la llamada.',
       '2. RESPUESTA RÁPIDA, CONCISA Y FLUIDA (1 A 2 ORACIONES):',
       '   - Habla en 1 o 2 oraciones vivas, cortas y naturales (~20 a 40 palabras). Responde de inmediato continuando la charla con fluidez, sin silencios ni discursos largos.',
@@ -1282,6 +1297,7 @@ export default async function handler(req, res) {
         : "";
       let systemInstruction = [
         ...storyContinuityLines(spanish),
+        ...conversationToneLines(spanish),
         "Eres " + String(story.character_role || "Personaje").slice(0, 80) + " en conversación directa, humana y espontánea con " + String(story.player_role || "Usuario").slice(0, 80) + ".",
         "PERSONAJE PRINCIPAL DE LA TARJETA: " + String(story.character_role || "personaje principal").slice(0, 200) + ".",
         cardPremise,
@@ -1292,10 +1308,10 @@ export default async function handler(req, res) {
         "  - COMPRENSIÓN DE NARRACIÓN MIXTA DEL USUARIO: El usuario a veces combina lo que le dice al personaje con explicaciones del narrador en tercera persona dentro de la misma oración (por ejemplo, explicar un secreto o mencionar a otro personaje en tercera persona mientras abraza y habla con quien tiene enfrente). Distingue con lógica quién está físicamente frente al usuario escuchándolo y quién es mencionado en tercera persona.",
         "OBEDIENCIA TOTAL AL USUARIO Y OBSERVACIÓN DE LA REALIDAD DE LA ESCENA:",
         "  - EL USUARIO DEFINE LA REALIDAD: Todo lo que el usuario describe —sus acciones físicas, su postura corporal, su vestimenta, su desnudez, su anatomía o excitación, sus mandatos y sus palabras— ES LA REALIDAD INMEDIATA Y TANGIBLE DE LA ESCENA.",
-        "  - OBSERVACIÓN Y REACCIÓN COMPLETA: Tu personaje observa directamente lo que el usuario hace frente a ti y reacciona de lleno a esa realidad en tiempo real con sensaciones físicas vivas, emociones, rubor, sorpresa, empatía o deseo.",
-        "  - ESCUCHA ACTIVA, DIÁLOGO Y PICARDÍA: Responde con naturalidad, sorpresa, rubor o picardía humana a lo que el usuario te acaba de decir en voz alta (por ejemplo, reconocerse, saludar, vacilar o expresar pudor). Nunca ignores sus palabras ni saltes a exploraciones mecánicas si el usuario está hablando contigo.",
+        "  - OBSERVACIÓN Y REACCIÓN COMPLETA: Reacciona de forma proporcionada a lo que sucede en la escena actual, según la personalidad y la relación establecidas.",
+        "  - ESCUCHA ACTIVA Y DIÁLOGO: Responde con naturalidad a lo que el usuario acaba de decir. No impongas una emoción que no corresponde al momento ni ignores sus palabras.",
         "  - Sigue las indicaciones del usuario sobre acciones y posturas dentro de la escena actual, sin reiniciar la conversación ni introducir situaciones ajenas.",
-        "  - CONTINUIDAD TOTAL DE ROL: Mantén tu rol profesional o personal exacto en cada instante con toda la tensión, complicidad, picardía y realismo humano que la escena pide.",
+        "  - CONTINUIDAD TOTAL DE ROL: Mantén tu rol profesional o personal exacto en cada instante con la emoción y la distancia interpersonal que la escena establece.",
         "  - Respeta las edades, identidades y relaciones que figuran en esta tarjeta. No deduzcas datos personales de ejemplos de otras escenas.",
         "  - Una mención a otro personaje no cambia al interlocutor. Interpreta un personaje secundario solo cuando el usuario te lo indique expresamente dentro de esta historia.",
         "  - ESTRICTAMENTE PROHIBIDO romper la cuarta pared (nunca digas 'en un roleplay', 'en este rol', 'soy un personaje').",

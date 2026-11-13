@@ -56,6 +56,8 @@ export const CallDialog = ({
 }: CallDialogProps) => {
   const { t } = useLanguage();
   const es = language === "es";
+  const voiceSettingsRef = useRef({ voice, language, region });
+  voiceSettingsRef.current = { voice, language, region };
   const [state, setState] = useState<CallState>("idle");
   const [liveTranscript, setLiveTranscript] = useState("");
   const recorderRef = useRef<WavRecorder | null>(null);
@@ -111,7 +113,8 @@ export const CallDialog = ({
 
   const speak = async (text: string) => {
     try {
-      const speech = streamSpeech(text, voice, language, true, region);
+      const current = voiceSettingsRef.current;
+      const speech = streamSpeech(text, current.voice, current.language, true, current.region);
       streamRef.current = speech;
       await speech.done;
       streamRef.current = null;
@@ -148,7 +151,7 @@ export const CallDialog = ({
         memory: selectStoryMemory(priorHistory, userText),
         userMessage: userText,
         adultMode,
-        region,
+        region: voiceSettingsRef.current.region,
     });
     if (error || !data?.content) {
       const status = (error as { context?: Response } | null)?.context?.status;
@@ -216,7 +219,7 @@ export const CallDialog = ({
       if (Recognition) {
         try {
           const recognition = new Recognition();
-          recognition.lang = browserSpeechLocale(language, region);
+          recognition.lang = browserSpeechLocale(voiceSettingsRef.current.language, voiceSettingsRef.current.region);
           recognition.continuous = true;
           recognition.interimResults = true;
           recognition.onresult = (event) => {
@@ -332,7 +335,7 @@ export const CallDialog = ({
         audio,
         mimeType: "audio/wav",
         language: es ? "es" : "en",
-        region,
+        region: voiceSettingsRef.current.region,
       });
       if (!activeRef.current || sessionCountRef.current !== turnSession) return;
 

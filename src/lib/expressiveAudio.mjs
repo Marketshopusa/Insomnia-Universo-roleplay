@@ -55,7 +55,7 @@ export async function synthesizeExpressiveScene(score, voice, language, { perfor
   let failed;
   let nextEmit = 0;
   const emitReady = () => {
-    if (typeof onAudio !== "function") return;
+    if (failed || typeof onAudio !== "function") return;
     while (nextEmit < runs.length && results[nextEmit]) {
       onAudio(results[nextEmit]);
       nextEmit++;
@@ -67,7 +67,7 @@ export async function synthesizeExpressiveScene(score, voice, language, { perfor
       const run = runs[index];
       if (Date.now() - startedAt >= deadlineMs) { failed = { status: 504, detail: "expressive_scene_timeout" }; break; }
       if (run.reactions.length && run.segments.length === 1) {
-        const sample = samples(resolvedVoice, language, run.reactions[0].event, run.reactions[0].direction);
+        const sample = samples(resolvedVoice, language, run.reactions[0].event, run.reactions[0].direction, region);
         if (sample) {
           results[index] = briefReaction(sample, run.reactions[0].event);
           emitReady();
@@ -81,6 +81,7 @@ export async function synthesizeExpressiveScene(score, voice, language, { perfor
         continue;
       }
       const result = await synthesize(run.text, voice, language, { region, performance: run.performance || score.performance || performance, expression: run });
+      if (failed) break;
       if (result.status !== 200 || !result.pcm?.length || result.pcm.length % 2) {
         failed = result.status === 200 ? { status: 502, detail: "empty_expressive_audio" } : result;
         break;

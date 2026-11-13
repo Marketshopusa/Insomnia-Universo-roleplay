@@ -23,6 +23,8 @@ it("starts playback as soon as a PCM chunk arrives, before the stream closes", a
     speechRequests += 1;
     expect(payload.text).toBe("*Río* Hola, bienvenida a nuestra historia.");
     expect(payload.roleplay).toBe(true);
+    expect(payload.voice).toBe("Kore");
+    expect(payload.region).toBe("ve");
     return Promise.resolve(new Response(stream, { status: 200 }));
   });
   vi.spyOn(supabase.auth, "getSession").mockResolvedValue({ data: { session: { access_token: "test" } }, error: null } as any);
@@ -50,7 +52,7 @@ it("starts playback as soon as a PCM chunk arrives, before the stream closes", a
   }
   vi.stubGlobal("AudioContext", AudioContextMock);
 
-  const speech = streamSpeech("*Río* Hola, bienvenida a nuestra historia.", "scarlett-hd", "es", true);
+  const speech = streamSpeech("*Río* Hola, bienvenida a nuestra historia.", "Kore", "es", true, "ve");
   await speech.started;
   expect(speechRequests).toBe(1);
   expect(starts).toBe(1);

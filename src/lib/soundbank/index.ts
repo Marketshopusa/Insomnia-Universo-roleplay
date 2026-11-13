@@ -69,7 +69,9 @@ export function scheduleCinematicScene(
   baseTime?: number,
   masterVolume = 0.65
 ): AudioBufferSourceNode[] {
-  const events: DetectedSoundEvent[] = detectSoundEvents(messageText);
+  const vocalIds = new Set<SoundId>(["moan_pleasure", "moan_subtle", "scream_pleasure", "scream_pain", "gasp_breathless", "pant_running", "cry_deep", "laugh_chuckle", "laugh_burst", "guttural_groan", "kiss_wet", "oral_suction"]);
+  // Vocal reactions belong to the selected neural speaker in /api/speech.
+  const events: DetectedSoundEvent[] = detectSoundEvents(messageText).filter((event) => !vocalIds.has(event.soundId));
   if (!events.length) return [];
 
   const start = baseTime ?? context.currentTime;

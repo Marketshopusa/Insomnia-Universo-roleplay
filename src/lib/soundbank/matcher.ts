@@ -42,7 +42,7 @@ const SOUND_PATTERNS: Array<[SoundId, RegExp]> = [
   ],
   [
     "footsteps_normal",
-    /(?:pasos\s+(?:lentos|pesados|cautos|firmes)|camina\s+hacia|se\s+acerca\s+lentamente|se\s+aproxima\s+a\s+paso)/iu,
+    /(?:pasos\s+(?:lentos|pesados|cautos|firmes)|(?:camino|caminas?|caminando)\s+(?:hacia|hasta|por)|(?:doy|da|damos)\s+(?:unos?\s+)?pasos|se\s+acerca\s+lentamente|se\s+aproxima\s+a\s+paso)/iu,
   ],
   [
     "door_slam",
@@ -54,7 +54,7 @@ const SOUND_PATTERNS: Array<[SoundId, RegExp]> = [
   ],
   [
     "door_open_close",
-    /(?:cierra\s+la\s+puerta|empuja\s+la\s+puerta|abre\s+la\s+puerta|cerrando\s+la\s+puerta|puerta\s+se\s+cierra|puerta\s+se\s+abre)/iu,
+    /(?:cierr[oa]\s+la\s+puerta|empuja\s+la\s+puerta|abre\s+la\s+puerta|cerrando\s+la\s+puerta|puerta\s+se\s+cierra|puerta\s+se\s+abre)/iu,
   ],
   [
     "glasses_clink",

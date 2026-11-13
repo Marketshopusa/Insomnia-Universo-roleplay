@@ -1,3 +1,4 @@
+import { getStoryVoice } from "@/lib/voices";
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Header } from "@/components/layout/Header";
@@ -47,13 +48,12 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useAdultMode } from "@/contexts/AdultModeContext";
 import { invokeFunctionWithRetry } from "@/lib/invokeFunction";
 import { streamSpeech, type SpeechStream } from "@/lib/ttsStream";
-import { playSceneFoley } from "@/lib/foleyStudio";
 import { selectStoryMemory, buildPersistentChronicle } from "@/lib/storyMemory";
 import { useConversationScope } from "@/hooks/useConversationScope";
 import { startWavRecording, blobToBase64, type WavRecorder } from "@/lib/wavRecorder";
 import { browserSpeechLocale, getStoryRegion, getStoryAccent, spokenRegion } from "@/lib/regions";
 import { normalizeAssistantReply } from "@/lib/roleReply";
-import { ChatCharacterConfigDialog, fallbackFemaleSpeech, isMediaVideo } from "@/components/chat/ChatCharacterConfigDialog";
+import { ChatCharacterConfigDialog, isMediaVideo } from "@/components/chat/ChatCharacterConfigDialog";
 import { PremiumGalleryDialog } from "@/components/chat/PremiumGalleryDialog";
 import { ChatAiSettingsDialog } from "@/components/story/ChatAiSettingsDialog";
 import { getStoryAiSettings, AVAILABLE_AI_MODELS } from "@/lib/storyAiSettings";
@@ -543,6 +543,7 @@ export default function ChatPage() {
   };
 
   const handleSaveCharacter = (updated: CharacterItem) => {
+    stopAudio();
     setCharacterList((prev) => {
       const exists = prev.some((c) => c.id === updated.id);
       if (exists) {
@@ -680,8 +681,8 @@ export default function ChatPage() {
             starterMessage: `Hola... Estaba esperando a que vinieras después de ver mi serie "${seriesTitle || charName}". ¿De qué quieres hablar hoy?`,
             starterMessageEs: `Hola... Estaba esperando a que vinieras después de ver mi serie "${seriesTitle || charName}". ¿De qué quieres hablar hoy?`,
             starterMessageEn: `Hey... I was waiting for you to come by after watching my series "${seriesTitle || charName}". What should we talk about?`,
-            voiceName: "es-VE-PaolaNeural",
-            voiceEngine: "edge",
+            voiceName: getStoryVoice(cleanId),
+            voiceEngine: "gemini",
             style: "realistic",
             isSpicy: isAdultParam,
           };
@@ -883,6 +884,9 @@ export default function ChatPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCharacterId, user?.id]);
 
+  const activeCharRef = useRef(activeChar);
+  activeCharRef.current = activeChar;
+
   // Active character full media (video or photo)
   const activeMediaUrl = activeChar.gallery[activePhotoIdx] || activeChar.avatar;
   const isVideoMedia = isMediaVideo(activeMediaUrl);
@@ -1047,7 +1051,7 @@ export default function ChatPage() {
         text,
         charAiSettings.memoryTier === "32k" ? 60 : charAiSettings.memoryTier === "16k" ? 40 : 20
       );
-      const charRegion = spokenRegion(getStoryRegion(activeChar.id), getStoryAccent(activeChar.id)) || (isEs ? "co" : "us");
+      const charRegion = spokenRegion(getStoryRegion(activeCharRef.current.id), getStoryAccent(activeCharRef.current.id));
 
       const roleRelationSentence = isSobrina
         ? `Parentesco inmutable: el usuario es su ${playerRoleName} y ella es su ${resolvedCharRole}.`
@@ -1139,12 +1143,10 @@ export default function ChatPage() {
     stopAudio();
     setPlayingAudioId(messageId);
 
-    // Activar foley acústico cinematográfico (puertas, pasos, sábanas, roces, etc.)
-    playSceneFoley(text);
 
     // Voz neural con acento regional auténtico asignado al personaje
-    const voiceToUse = activeChar.voiceName || "Aoede";
-    const charRegion = spokenRegion(getStoryRegion(activeChar.id), getStoryAccent(activeChar.id)) || (language === "es" ? "co" : "us");
+    const voiceToUse = getStoryVoice(activeCharRef.current.id, activeCharRef.current.voiceName);
+    const charRegion = spokenRegion(getStoryRegion(activeCharRef.current.id), getStoryAccent(activeCharRef.current.id));
 
     try {
       const stream = streamSpeech(text, voiceToUse, language, true, charRegion);
@@ -1198,8 +1200,8 @@ export default function ChatPage() {
     setCallState("speaking");
     setCallSpeakerText(text);
     const spoken = text.trim();
-    const voiceToUse = activeChar.voiceName || "Aoede";
-    const charRegion = spokenRegion(getStoryRegion(activeChar.id), getStoryAccent(activeChar.id)) || (isEs ? "co" : "us");
+    const voiceToUse = getStoryVoice(activeCharRef.current.id, activeCharRef.current.voiceName);
+    const charRegion = spokenRegion(getStoryRegion(activeCharRef.current.id), getStoryAccent(activeCharRef.current.id));
 
     try {
       const stream = streamSpeech(spoken, voiceToUse, language, true, charRegion);
@@ -1390,7 +1392,7 @@ export default function ChatPage() {
             audio,
             mimeType: "audio/wav",
             language: isEs ? "es" : "en",
-            region: "mx"
+            region: spokenRegion(getStoryRegion(activeCharRef.current.id), getStoryAccent(activeCharRef.current.id))
           });
 
           if (!error && data?.text) {
@@ -1453,7 +1455,7 @@ export default function ChatPage() {
         adultMode: Boolean(adultEnabled || isCharNsfw),
         messageLength: 45
       };
-      const charRegion = spokenRegion(getStoryRegion(activeChar.id), getStoryAccent(activeChar.id)) || (isEs ? "co" : "us");
+      const charRegion = spokenRegion(getStoryRegion(activeCharRef.current.id), getStoryAccent(activeCharRef.current.id));
 
       const { data, error } = await invokeFunctionWithRetry<{ content?: string }>("story-chat", {
         story: {
@@ -1558,7 +1560,7 @@ export default function ChatPage() {
         ...rawAiSettings,
         nvidiaApiKey: rawAiSettings.nvidiaApiKey || mother.aiSettings?.nvidiaApiKey || "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",
       };
-      const charRegion = spokenRegion(getStoryRegion(activeChar.id), getStoryAccent(activeChar.id)) || (isEs ? "co" : "us");
+      const charRegion = spokenRegion(getStoryRegion(activeCharRef.current.id), getStoryAccent(activeCharRef.current.id));
 
       const { data, error } = await invokeFunctionWithRetry<{ content?: string }>("story-chat", {
         story: {

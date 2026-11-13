@@ -110,3 +110,17 @@ it("prevents repeated descriptions from stacking a minute of laughter before dia
  expect(result.pcm.length/48000).toBeLessThan(3.3);
  expect([...result.pcm.subarray(-2)]).toEqual([9,0]);
 });
+
+it("generates regional reactions with the chosen speaker instead of another voice's bank", async () => {
+  const calls = [];
+  const result = await render(score("*Río suavemente* Qué alegría verte."), "Kore", "es", {
+    region: "ve", cache: new Map(),
+    synthesize: async (_text, voice, language, options) => {
+      calls.push({ voice, language, region: options.region });
+      return { status: 200, pcm: Buffer.alloc(24000, 1) };
+    },
+  });
+  expect(result.status).toBe(200);
+  expect(calls.length).toBeGreaterThan(1);
+  expect(calls.every((call) => call.voice === "Kore" && call.region === "ve")).toBe(true);
+});

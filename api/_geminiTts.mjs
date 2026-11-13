@@ -198,14 +198,14 @@ export function geminiSpeechDirection(language, performance, region, expression)
 
   const mood = {
     neutral: spanish ? "Voz cinematográfica natural, expresiva, cálida y envolvente acorde a la escena." : "Natural, lively and expressive cinematic voice suited to the scene.",
-    warm: spanish ? "Tono cálido, seductor y afectuoso con una sonrisa viva (warm tone with a living smile), picardía y complicidad en la voz." : "Warm, affectionate and seductive tone with a living smile in the voice.",
+    warm: spanish ? "Tono cercano y amable con una sonrisa natural; calidez proporcional al texto, sin añadir seducción ni risas." : "Warm, friendly tone with a natural smile; match the text without adding seduction or laughter.",
     surprised: spanish ? "Tono de sorpresa real, alerta e intensa en la interpretación." : "Real, intense surprise in the dialogue.",
     amused: spanish ? "Risa viva, risitas juguetonas, picardía y encanto travieso." : "Lively, mischievous laughter.",
     sad: spanish ? "Voz quebrada y desgarrada por el llanto, sollozos reales y tristeza profunda sentida." : "Voice trembling with real crying, genuine sobs and deep sorrow.",
     pain: spanish ? "Voz y sonido con dolor físico real, quejido tenso y fuerza visceral." : "Voice and sound with real physical pain and visceral force.",
     pleasure: spanish ? "Voz intensamente apasionada, sensual y jadeante. Debe respirar con agitación y placer real, entrecortada y con gemidos suaves y ardientes entre las palabras transmitiendo deseo visceral." : "Voice charged with intense pleasure, passionate moaning, ragged breathing and ardent desire.",
     scream: spanish ? "Grito con fuerza, potencia vocal y energía desbordada." : "Loud scream with vocal power and overflowing energy.",
-    soft: spanish ? "Susurro íntimo, sensual y en voz baja, muy cerca del oído." : "Intimate, sensual whisper close to the ear.",
+    soft: spanish ? "Voz baja y suave; conserva la intención y la cercanía del texto sin añadir sensualidad." : "Soft, low voice; preserve the text intention without adding sensuality.",
     angry: spanish ? "Voz tensa, apasionada y cortante." : "Tense, sharp passionate voice.",
     afraid: spanish ? "Voz asustada, entrecortada y temblorosa." : "Frightened, trembling voice.",
     disgusted: spanish ? "Voz con desprecio y disgusto visceral." : "Visceral disgusted voice.",
@@ -224,13 +224,13 @@ export function geminiSpeechDirection(language, performance, region, expression)
         " The written vowels are a phonetic guide to this vocal reaction, not a sentence. Do not speak labels, directions, explanations or any invented dialogue. Stop after the sound.";
     }
     const radionovelaDirection = spanish
-      ? `Eres la voz estelar de una radionovela cinematográfica hiperrealista. Narra tanto el relato y las acciones como los diálogos con pasión, cadencia fluida, respiración viva y presencia humana real. ${mood} Lee las palabras de forma continua y envolvente, sin pausas robóticas ni cortes mecánicos.`
+      ? `Conserva la misma persona, timbre y acento en acciones y diálogo. Interpreta el texto con naturalidad conversacional y emoción proporcionada, sin sobreactuar. ${mood} Lee las palabras de forma continua y envolvente, sin pausas robóticas ni cortes mecánicos.`
       : `You are the lead voice in a hyper-realistic cinematic audio drama. Deliver the narrative actions, scenes, and dialogues with passion, fluid cadence, and lifelike human presence. ${mood} Deliver the text smoothly without robotic pauses.`;
     return accent + radionovelaDirection;
   }
 
   return spanish
-    ? `${accentHint(language, region)} Eres la voz protagonista y narradora de una radionovela cinematográfica inmersiva y apasionada. Narra con total fluidez tanto el relato descriptivo como los diálogos con emoción humana real. ${mood} Mantén una narración continua y cadenciosa, sin frenazos mecánicos ni pausas artificiales. Lee el texto con pasión y naturalidad.`
+    ? `${accentHint(language, region)} Conserva la misma persona, timbre y acento en acciones y diálogo. Habla con naturalidad conversacional y emoción proporcionada al texto, sin sobreactuar. ${mood} Mantén una narración continua y cadenciosa, sin frenazos mecánicos ni pausas artificiales. No añadas reacciones ni cambies la identidad de la voz.`
     : `You are the voice and narrator of an immersive, cinematic audio drama. Deliver both narrative story descriptions and dialogues with lifelike human emotion and unbroken flow. ${mood} Maintain a continuous, captivating cadence without robotic halts or unnatural pauses.`;
 }
 
@@ -480,4 +480,3 @@ export function splitSentences(text) {
 
   return part2 ? [part1, part2] : [trimmed];
 }
-

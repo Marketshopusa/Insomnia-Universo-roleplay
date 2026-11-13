@@ -13,8 +13,6 @@ import { RegionMenu } from "@/components/story/RegionMenu";
 import { getStoryVoice, setStoryVoice } from "@/lib/voices";
 import { getStoryAccent, getStoryRegion, setStoryAccent, setStoryRegion, spokenRegion } from "@/lib/regions";
 import { streamSpeech, type SpeechStream } from "@/lib/ttsStream";
-import { fallbackFemaleSpeech } from "@/components/chat/ChatCharacterConfigDialog";
-import { playSceneFoley } from "@/lib/foleyStudio";
 import { invokeFunctionWithRetry } from "@/lib/invokeFunction";
 import { generateSceneImage } from "@/lib/sceneImage";
 import { normalizeAssistantReply } from "@/lib/roleReply";
@@ -96,18 +94,27 @@ type Mode = "select" | "read" | "roleplay";
     setVoice(value);
     voiceRef.current = value;
     setStoryVoice(storyId, value);
+    streamRef.current?.stop();
+    streamRef.current = null;
+    setPlayingId(null);
     audioCacheRef.current.clear();
   };
   const changeRegion = (value: string) => {
     setRegion(value);
     regionRef.current = value;
     setStoryRegion(storyId, value);
+    streamRef.current?.stop();
+    streamRef.current = null;
+    setPlayingId(null);
     audioCacheRef.current.clear();
   };
   const changeAccent = (enabled: boolean) => {
     setAccent(enabled);
     accentRef.current = enabled;
     setStoryAccent(storyId, enabled);
+    streamRef.current?.stop();
+    streamRef.current = null;
+    setPlayingId(null);
     audioCacheRef.current.clear();
   };
   const activeRegion = () => spokenRegion(regionRef.current, accentRef.current);
@@ -554,11 +561,9 @@ type Mode = "select" | "read" | "roleplay";
       streamRef.current = null;
       setPlayingId(id);
 
-      // Activar foley acústico cinematográfico (puertas, pasos, sábanas, roces, etc.)
-      playSceneFoley(text);
 
       const activeVoice = voiceRef.current;
-      const speech = streamSpeech(text, activeVoice, language, id !== "narrative" && id !== "intro", activeRegion());
+      const speech = streamSpeech(text, activeVoice, language, true, activeRegion());
       streamRef.current = speech;
       await speech.done;
       if (streamRef.current === speech) {

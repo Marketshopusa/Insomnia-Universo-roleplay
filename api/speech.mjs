@@ -119,16 +119,13 @@ export default async function handler(req, res) {
     let resPiece = await synthesizeGemini(cleaned, v, lang, opts);
     if (resPiece.status === 200 && resPiece.pcm?.length) return resPiece;
     if (isReactionOnly) {
-      const fallbackClip = vocalSample("Aoede", "es", opts.expression.reactions[0].event, opts.expression.reactions[0].direction);
-      return { status: 200, pcm: fallbackClip || Buffer.alloc(2400) };
+      const fallbackClip = vocalSample(previewVoice(v), lang, opts.expression.reactions[0].event, opts.expression.reactions[0].direction, region);
+      return fallbackClip ? { status: 200, pcm: fallbackClip } : resPiece;
     }
     const plainPiece = removePerformanceCues(cleaned).trim();
     if (plainPiece) {
       resPiece = await synthesizeGemini(plainPiece, v, lang, { ...opts, performance: opts?.performance || performance, expression: undefined });
       if (resPiece.status === 200 && resPiece.pcm?.length) return resPiece;
-    }
-    if (opened) {
-      return { status: 200, pcm: Buffer.alloc(1920) };
     }
     return resPiece;
   };
@@ -142,7 +139,7 @@ export default async function handler(req, res) {
           performance,
           region,
           resolvedVoice: previewVoice(req.body.voice),
-          samples: (v, lang, event, dir) => vocalSample(v, lang, event, dir) || vocalSample("Aoede", "es", event, dir),
+          samples: (v, lang, event, dir) => vocalSample(v, lang, event, dir, region),
           synthesize: synthesizePieceWithRetry,
           deadlineMs: 18_000,
           onAudio: (pcmChunk) => {
@@ -155,6 +152,11 @@ export default async function handler(req, res) {
           },
         });
         if (streamedChunks > 0) {
+          if (scene.status !== 200) {
+            sendEvent(res, { type: "speech.error", message: "No se pudo completar el audio con la voz seleccionada." });
+            res.end();
+            return;
+          }
           finishSpeech(res, provider, startedAt);
           return;
         }
@@ -163,6 +165,11 @@ export default async function handler(req, res) {
           return;
         }
       } catch (sceneErr) {
+        if (opened) {
+          sendEvent(res, { type: "speech.error", message: "No se pudo completar el audio con la voz seleccionada." });
+          res.end();
+          return;
+        }
         console.warn("synthesizeExpressiveScene fallback to unified track:", sceneErr);
       }
     }
@@ -186,6 +193,11 @@ export default async function handler(req, res) {
           },
         });
         if (streamedAny) {
+          if (streamResult.partial) {
+            sendEvent(res, { type: "speech.error", message: "La reproducción de voz se interrumpió." });
+            res.end();
+            return;
+          }
           finishSpeech(res, provider, startedAt);
           return;
         }
@@ -208,6 +220,10 @@ export default async function handler(req, res) {
             const secondChunk = await synthesizePieceWithRetry(remainingText, req.body.voice, req.body.language, { performance, region, expression });
             if (secondChunk.status === 200 && secondChunk.pcm?.length) {
               writePcmChunks(res, secondChunk.pcm);
+            } else {
+              sendEvent(res, { type: "speech.error", message: "No se pudo completar la voz seleccionada." });
+              res.end();
+              return;
             }
             finishSpeech(res, provider, startedAt);
             return;
@@ -232,6 +248,11 @@ export default async function handler(req, res) {
     return;
   } catch (failure) {
     console.warn("Insomnia speech gemini failed", failure?.message || failure?.name || "Error", "after_ms", Date.now() - startedAt);
+    if (opened) {
+      sendEvent(res, { type: "speech.error", message: "La reproducción de voz se interrumpió." });
+      res.end();
+      return;
+    }
     return res.status(502).json({
       error: "tts_unavailable",
       message: "La voz no pudo reproducir esta línea.",
