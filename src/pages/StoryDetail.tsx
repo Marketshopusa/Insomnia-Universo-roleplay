@@ -15,12 +15,12 @@ import { getStoryAccent, getStoryRegion, setStoryAccent, setStoryRegion, spokenR
 import { streamSpeech, type SpeechStream } from "@/lib/ttsStream";
 import { invokeFunctionWithRetry } from "@/lib/invokeFunction";
 import { generateSceneImage } from "@/lib/sceneImage";
-import { normalizeAssistantReply } from "@/lib/roleReply";
+import { normalizeAssistantResponse, type ReplyEngine } from "@/lib/roleReply";
 import { buildPersistentChronicle, selectStoryMemory } from "@/lib/storyMemory";
 import { useConversationScope } from "@/hooks/useConversationScope";
 import { resolveStoryCover } from "@/lib/storyCover";
 import { ChatAiSettingsDialog } from "@/components/story/ChatAiSettingsDialog";
-import { getStoryAiSettings, type StoryAiSettings } from "@/lib/storyAiSettings";
+import { isMagnumConversationSelected, getStoryAiSettings, type StoryAiSettings } from "@/lib/storyAiSettings";
 import { getMotherCardConfig } from "@/lib/roleplayBase";
 import { useStoryCustomizations } from "@/hooks/useStoryCustomizations";
  import { useStory } from "@/hooks/useStories";
@@ -38,6 +38,7 @@ import { toast } from "@/hooks/use-toast";
    role: "user" | "assistant";
    content: string;
    timestamp: Date;
+   engine?: ReplyEngine;
  }
 
 type Mode = "select" | "read" | "roleplay";
@@ -305,8 +306,8 @@ type Mode = "select" | "read" | "roleplay";
       if (!error && data) {
         const raw = (data.messages as any[]) || [];
         const restored: Message[] = raw.flatMap((m: any) => {
-          const content = m.role === "assistant" ? normalizeAssistantReply(m.content) : m.content;
-          return content ? [{ id: m.id, role: m.role, content, timestamp: new Date(m.timestamp) }] : [];
+          const content = m.role === "assistant" ? normalizeAssistantResponse(m) : m.content;
+          return content ? [{ id: m.id, role: m.role, content, engine: m.engine, timestamp: new Date(m.timestamp) }] : [];
         });
         if (restored.length > 0) setMessages(restored);
         if (data.narrative) setNarrative(data.narrative);
@@ -338,6 +339,7 @@ type Mode = "select" | "read" | "roleplay";
         id: m.id,
         role: m.role,
         content: m.content,
+        ...(m.engine ? { engine: m.engine } : {}),
         timestamp: m.timestamp.toISOString(),
       }));
     const sessionRow = {
@@ -405,13 +407,13 @@ type Mode = "select" | "read" | "roleplay";
     return `*${title}*\n\n${description}\n\n${t("story.youArePlaying")}: **${playerRole}**\n${t("story.iAmPlaying")}: **${characterRole}**\n\n*${t("story.sceneSet")}*`;
    };
  
-   const generateResponse = async (userMessage: string, currentMessageId: string): Promise<string | null> => {
+   const generateResponse = async (userMessage: string, currentMessageId: string): Promise<{ content: string; engine?: ReplyEngine } | null> => {
     const request = conversationScope.capture();
     const history = messagesRef.current
       .filter((m) => m.id !== "intro" && m.id !== currentMessageId)
       .map((m) => ({ role: m.role, content: m.content }));
     const mother = getMotherCardConfig();
-    const isAdultStory = Boolean(
+    const isAdultStory = !isMagnumConversationSelected(storyId) && Boolean(
       (adultEnabled && consentGiven) ||
       story?.nsfw ||
       story?.adult_mode ||
@@ -431,7 +433,7 @@ type Mode = "select" | "read" | "roleplay";
       messageLength: Math.max(280, Number(aiSettings.messageLength || mother.targetTokens)),
     };
 
-    const { data, error } = await invokeFunctionWithRetry<{ content?: string; error?: string; message?: string }>("story-chat", {
+    const { data, error } = await invokeFunctionWithRetry<{ content?: string; engine?: ReplyEngine; error?: string; message?: string }>("story-chat", {
         story: {
           id: story?.id,
           title: localOverride?.name || story?.title || tTitle,
@@ -498,15 +500,16 @@ type Mode = "select" | "read" | "roleplay";
         description: data?.message || (language === "es" ? "Tu mensaje sigue en el cuadro para reenviarlo." : "Your message remains in the box for another attempt."),
         variant: "destructive",
       });
+      else if (String(code || "").startsWith("magnum_") || code === "non_explicit_only") toast({ title: "Magnum · conversación no explícita", description: data?.message || error?.message, variant: "destructive" });
       else toast({ title: t("mode.aiError"), variant: "destructive" });
       return null;
     }
-    const visibleReply = normalizeAssistantReply(data.content);
+    const visibleReply = normalizeAssistantResponse(data);
     if (!visibleReply) {
       toast({ title: language === "es" ? "La respuesta salió incompleta; inténtalo de nuevo" : "The reply was incomplete; try again", variant: "destructive" });
       return null;
     }
-    return visibleReply;
+    return { content: visibleReply, engine: data.engine };
    };
  
    const handleSendMessage = async () => {
@@ -530,13 +533,13 @@ type Mode = "select" | "read" | "roleplay";
          return;
        }
        const assistantMessage: Message = {
-         id: crypto.randomUUID(), role: "assistant", content: responseContent, timestamp: new Date(),
+         id: crypto.randomUUID(), role: "assistant", content: responseContent.content, engine: responseContent.engine, timestamp: new Date(),
        };
        const next = [...messagesRef.current, assistantMessage];
        messagesRef.current = next;
        setMessages(next);
        void saveSession(next, narrative || null, mode);
-       if (!isMuted) void playAudio(responseContent, assistantMessage.id);
+       if (!isMuted) void playAudio(responseContent.content, assistantMessage.id);
      } catch {
        if (!conversationScope.isCurrent(request)) return;
        messagesRef.current = messagesRef.current.filter((message) => message.id !== userMessage.id);
@@ -1143,7 +1146,7 @@ type Mode = "select" | "read" | "roleplay";
                       title={language === "es" ? "Configurar IA y Memoria (Estilo Momoo AI)" : "AI & Memory Settings"}
                     >
                       <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                      <span className="text-xs font-semibold">{aiSettings.memoryTier.toUpperCase()} • {aiSettings.messageLength}t</span>
+                      <span className="text-xs font-semibold">{aiSettings.memoryTier.toUpperCase()} • {aiSettings.modelId === "magnum-conversation" ? "90–150 palabras" : `${aiSettings.messageLength}t`}</span>
                     </Button>
                     <VoiceMenu value={voice} language={language} onChange={changeVoice} />
                     <RegionMenu value={region} accent={accent} language={language} onChange={changeRegion} onAccentChange={changeAccent} />
@@ -1159,11 +1162,11 @@ type Mode = "select" | "read" | "roleplay";
                       language={language}
                       voice={voice}
                       region={spokenRegion(region, accent)}
-                      adultMode={adultEnabled && consentGiven}
+                      adultMode={!isMagnumConversationSelected(storyId) && adultEnabled && consentGiven}
                       history={messages
                         .filter((message) => message.id !== "intro")
                         .map((message) => ({ role: message.role, content: message.content }))}
-                      onTurn={(userText, assistantText) => {
+                      onTurn={(userText, assistantText, engine) => {
                         const previous = messagesRef.current;
                         const last = previous[previous.length - 1];
                         const spoken = last?.role === "user" && last.content === userText;
@@ -1172,7 +1175,7 @@ type Mode = "select" | "read" | "roleplay";
                           { id: `${Date.now()}-u`, role: "user", content: userText, timestamp: new Date() },
                         ];
                         if (assistantText) {
-                          next.push({ id: `${Date.now()}-a`, role: "assistant", content: assistantText, timestamp: new Date() });
+                          next.push({ id: `${Date.now()}-a`, role: "assistant", content: assistantText, engine, timestamp: new Date() });
                         }
                         messagesRef.current = next;
                         setMessages(next);

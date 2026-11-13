@@ -1,3 +1,5 @@
+import { MAGNUM_PROFILE } from "./_magnumProtocol.mjs";
+import { magnumConversation } from "./_magnumConversation.mjs";
 import { authenticationFailure } from "./_auth.mjs";
 import { MAX_REPLY_CHARS, isIncompleteTurn, truncatedCompletion } from "../src/lib/replyQuality.mjs";
 import { isRepeatedTurn } from "../src/lib/conversationReply.mjs";
@@ -344,7 +346,7 @@ export async function generateNvidia(messages, options = {}) {
           console.warn("Nvidia candidate rejected by validation, trying next model:", model);
           continue;
         }
-        console.info("Insomnia AI selected model", "nvidia", model);
+        console.info(options.purpose === "non_explicit_policy" ? "Insomnia policy checker model" : "Insomnia AI selected model", "nvidia", model);
         return content;
       }
     } catch (e) {
@@ -1213,6 +1215,15 @@ export default async function handler(req, res) {
     if (failure) return send(res, failure.status, { error: failure.error, message: failure.message });
   }
   try {
+    if (action === "story-chat" && body.settings?.modelId === MAGNUM_PROFILE) {
+      const story = body.story || {};
+      const spanish = body.language !== "en";
+      const result = await magnumConversation(body, {
+        policyGenerate: generateNvidia,
+        systemLines: [...cardIdentityLines(story), ...rolePerspectiveLines(story, [], body.userMessage, spanish), ...directConversationLines(spanish), slangInstruction(body.language, body.region)],
+      });
+      return send(res, 200, result);
+    }
     if (action === "story-chat") {
       const story = body.story || {};
       const spanish = body.language === "es";

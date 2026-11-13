@@ -12,3 +12,11 @@ export function isIncompleteTurn(value) {
 }
 
 export const truncatedCompletion = (reason) => /^(?:length|max_tokens|max_output_tokens)$/i.test(String(reason || ''));
+
+/** Catch a whole answer drifting into the other supported UI language. */
+export function replyLanguageMismatch(value, language = 'es') {
+  const text = String(value || '').toLowerCase();
+  const english = (text.match(/\b(?:the|this|that|with|and|your|you|she|her|him|would|could|should|have|was|were|will|from|for|about|let|know|hear|later|today)\b/gu) || []).length;
+  const spanish = (text.match(/\b(?:el|la|los|las|de|del|que|para|con|una|por|estoy|estás|tú|yo|ella|aquí|pero|porque|quiero|cómo|qué|puedo|podemos|vamos|tarde|hoy)\b/gu) || []).length;
+  return language === 'en' ? spanish >= 4 && spanish > english : english >= 4 && english > spanish * 0.5;
+}

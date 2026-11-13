@@ -8,7 +8,7 @@ import { startWavRecording, blobToBase64, type WavRecorder } from "@/lib/wavReco
 import { streamSpeech, type SpeechStream } from "@/lib/ttsStream";
 import { browserSpeechLocale } from "@/lib/regions";
 import { invokeFunctionWithRetry } from "@/lib/invokeFunction";
-import { normalizeAssistantReply } from "@/lib/roleReply";
+import { normalizeAssistantResponse, type ReplyEngine } from "@/lib/roleReply";
 import { selectStoryMemory } from "@/lib/storyMemory";
 import { getMotherCardConfig } from "@/lib/roleplayBase";
 import { getStoryAiSettings } from "@/lib/storyAiSettings";
@@ -39,7 +39,7 @@ interface CallDialogProps {
   region: string;
   adultMode: boolean;
   history: Turn[];
-  onTurn: (userText: string, assistantText: string | null) => void;
+  onTurn: (userText: string, assistantText: string | null, engine?: ReplyEngine) => void;
 }
 
 const SILENCE_MS = 1600;
@@ -126,10 +126,10 @@ export const CallDialog = ({
     }
   };
 
-  const askCharacter = async (userText: string, priorHistory: Turn[]) => {
+  const askCharacter = async (userText: string, priorHistory: Turn[]): Promise<{ content: string; engine?: ReplyEngine; error?: string; message?: string }> => {
     const mother = getMotherCardConfig();
     const cardSettings = getStoryAiSettings(story?.id);
-    const { data, error } = await invokeFunctionWithRetry<{ content?: string; error?: string; message?: string }>("story-chat", {
+    const { data, error } = await invokeFunctionWithRetry<{ content?: string; engine?: ReplyEngine; error?: string; message?: string }>("story-chat", {
         story: {
           id: story?.id,
           title: story?.title,
@@ -144,6 +144,7 @@ export const CallDialog = ({
         settings: {
           ...mother.aiSettings,
           ...cardSettings,
+          modelId: adultMode ? "magnum-v4-local" : (cardSettings.modelId || mother.aiSettings.modelId || "magnum-conversation"),
           customDirective: cardSettings.customDirective || mother.masterDirective,
           messageLength: 45,
         },
@@ -168,7 +169,7 @@ export const CallDialog = ({
       }
       return { content: "", error: data?.error, message: data?.message || error?.message };
     }
-    return { content: normalizeAssistantReply(data.content) || data.content, error: undefined, message: undefined };
+    return { content: normalizeAssistantResponse(data) || data.content, engine: data.engine, error: undefined, message: undefined };
   };
 
   const recoverTurn = () => {
@@ -393,7 +394,7 @@ export const CallDialog = ({
       { role: "user", content: userText },
       { role: "assistant", content: reply },
     ];
-    onTurn(userText, reply);
+    onTurn(userText, reply, replyResult.engine);
     setState("speaking");
     await speak(reply);
     if (activeRef.current && sessionCountRef.current === turnSession) void listen();

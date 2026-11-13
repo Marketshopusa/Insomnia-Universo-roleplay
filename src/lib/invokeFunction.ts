@@ -36,7 +36,7 @@ async function callOwnAi<T>(name: string, body: unknown): Promise<FunctionResult
 
     if (name === "story-chat") {
       controller = new AbortController();
-      timeoutId = setTimeout(() => controller?.abort(), (body as { isLiveCall?: boolean })?.isLiveCall ? 15000 : 30000);
+      timeoutId = setTimeout(() => controller?.abort(), (body as { isLiveCall?: boolean })?.isLiveCall ? ((body as { settings?: { modelId?: string } })?.settings?.modelId === "magnum-conversation" ? 30000 : 15000) : (body as { settings?: { modelId?: string } })?.settings?.modelId === "magnum-conversation" ? 55000 : 30000);
     }
     const response = await authenticatedFetch(name === "illustrate-scene" ? "/api/illustrate" : "/api/ai", {
 

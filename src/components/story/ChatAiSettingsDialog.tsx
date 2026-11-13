@@ -70,6 +70,7 @@ export const ChatAiSettingsDialog = ({
       nvidiaApiKey: nvidiaApiKey.trim(),
       geminiApiKey: geminiApiKey.trim(),
     };
+    if (modelId === "magnum-conversation") { updated.adultMode = false; updated.nonExplicitConversation = true; }
     setStoryAiSettings(storyId, updated);
     onSettingsSaved?.(updated);
     onOpenChange(false);
@@ -296,12 +297,13 @@ export const ChatAiSettingsDialog = ({
                   </div>
                   <div className="text-sm font-bold text-amber-400 flex items-center gap-1">
                     <span className="text-xs text-neutral-400 font-normal">Valor actual:</span>
-                    <span>{messageLength}</span>
+                    <span>{modelId === "magnum-conversation" ? "90–150 palabras" : messageLength}</span>
                   </div>
                 </div>
 
                 <div className="pt-2 pb-1">
                   <Slider
+                    disabled={modelId === "magnum-conversation"}
                     value={[messageLength]}
                     onValueChange={([val]) => setMessageLength(val)}
                     min={100}

@@ -79,6 +79,14 @@ export function cleanLanguageBleed(text: string): string {
 
 /** Keep internal structured output out of the visible story and its audio. */
 
+export type ReplyEngine = { profile?: string; model?: string; provider?: string; fallback?: boolean };
+
+/** Magnum's structured response has already been validated; retain both components in full. */
+export function normalizeAssistantResponse(data: { content?: unknown; engine?: ReplyEngine }): string | null {
+  if (data.engine?.profile === "magnum-conversation" && typeof data.content === "string") return data.content.trim() || null;
+  return normalizeAssistantReply(data.content);
+}
+
 export function normalizeAssistantReply(value: unknown): string | null {
 
   if (typeof value !== "string") return null;
