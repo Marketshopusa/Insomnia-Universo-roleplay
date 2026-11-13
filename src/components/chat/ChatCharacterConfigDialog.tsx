@@ -41,7 +41,7 @@ import {
   Flame,
   ShieldAlert
 } from "lucide-react";
-import { STORY_VOICES, normalizeStoryVoice, setStoryVoice } from "@/lib/voices";
+import { STORY_VOICES, normalizeStoryVoice, getStoryVoice, setStoryVoice } from "@/lib/voices";
 import { STORY_REGIONS, getStoryRegion, setStoryRegion, getStoryAccent, setStoryAccent, spokenRegion } from "@/lib/regions";
 import { streamSpeech, type SpeechStream } from "@/lib/ttsStream";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -121,12 +121,14 @@ export function playGuaranteedVoice(
   try {
     const effectiveRegion = spokenRegion(region, accentEnabled);
     const stream = streamSpeech(text, voiceName, "es", true, effectiveRegion);
-    stream.done.then(() => onEnd?.()).catch(() => {
-      fallbackFemaleSpeech(text, onEnd);
+    stream.done.then(() => onEnd?.()).catch((error) => {
+      onEnd?.();
+      toast({ title: "No se pudo reproducir la voz seleccionada", description: error.message, variant: "destructive" });
     });
     return stream;
   } catch {
-    fallbackFemaleSpeech(text, onEnd);
+    onEnd?.();
+    toast({ title: "No se pudo reproducir la voz seleccionada", variant: "destructive" });
     return null;
   }
 }
@@ -331,7 +333,7 @@ export const ChatCharacterConfigDialog: React.FC<ChatCharacterConfigDialogProps>
           ? (character.starterMessageEs || character.starterMessage || "")
           : (character.starterMessageEn || character.starterMessage || "")
       );
-      setVoiceName(normalizeStoryVoice(character.voiceName || "Aoede"));
+      setVoiceName(getStoryVoice(character.id, character.voiceName));
       setRegion(getStoryRegion(character.id));
       setAccentEnabled(getStoryAccent(character.id));
       setAvatar(character.avatar || "");
@@ -812,8 +814,8 @@ export const ChatCharacterConfigDialog: React.FC<ChatCharacterConfigDialogProps>
                           setModelId("magnum-v4-local");
                           toast({
                             description: isEs
-                              ? "Modo +18 activado: Modelo Magnum v4 72B seleccionado automáticamente."
-                              : "+18 Mode active: Magnum v4 72B model automatically selected."
+                              ? "Modo +18 activado: Modelo Magnum v4 12B (PC) seleccionado automáticamente."
+                              : "+18 Mode active: Magnum v4 12B (PC) model automatically selected."
                           });
                         }
                       }}

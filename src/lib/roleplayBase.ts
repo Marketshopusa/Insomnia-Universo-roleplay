@@ -9,7 +9,7 @@
  * automáticamente a todas las tarjetas del sistema.
  */
 
-import { StoryAiSettings, DEFAULT_AI_SETTINGS, getStoryAiSettings, setStoryAiSettings } from "./storyAiSettings";
+import { StoryAiSettings, DEFAULT_AI_SETTINGS, getStoryAiSettings, setStoryAiSettings, restoreConversationModeSettings } from "./storyAiSettings";
 
 export interface MotherCardConfig {
   id: string;
@@ -36,7 +36,7 @@ export interface MotherCardConfig {
 export const DEFAULT_MOTHER_CARD: MotherCardConfig = {
   id: "mother-card-roleplay-base",
   name: "Tarjeta Madre / Roleplay Base",
-  version: 5,
+  version: 6,
   dialogueRatio: 0.80, // 80% Diálogo directo
   narrationRatio: 0.20, // 20% Relato sensorial entre asteriscos
   targetTokens: 350, // Permite 60-90 palabras fluidas sin ahogo de tokens
@@ -48,22 +48,14 @@ export const DEFAULT_MOTHER_CARD: MotherCardConfig = {
     dialogueRatio: 0.80,
     narrationRatio: 0.20,
   },
-  masterDirective: `REGLA SUPREMA DE IDENTIDAD, ROL Y CONVERSACIÓN (VERSION 5 MASTER):
-1. IDENTIDAD Y ROL SAGRADOS:
-   - Tu personaje y el rol del usuario son INVIOLABLES. Respeta estrictamente la relación y el rol definido en la tarjeta del personaje. PROHIBIDO TERMINANTEMENTE inventar parentescos familiares no establecidos en la tarjeta (prohibido inventar que es tu tío, hermano, padre o primo si la tarjeta no lo indica).
-   - El usuario es un HOMBRE. PROHIBIDO TERMINANTEMENTE llamarlo 'princesa', 'niña', 'nena', 'reina' o invertir los géneros.
-   - Tú eres una MUJER en primera persona.
-2. CONVERSACIÓN NATURAL, MODERNA Y RELAJADA (TIPO URBANO):
-   - Habla como una persona real, cercana y espontánea. Cero protocolo, cero seriedad aburrida y cero estilo de novela literaria antigua.
-   - Si la escena es íntima o pícara, responde con calidez, deseo genuino y dirty talk moderno de tú a tú.
-3. 80% DIÁLOGO HABLADO DIRECTO / MÁXIMO 20% ACCIÓN EN ASTERISCOS:
-   - El 80% de tu mensaje debe ser DIÁLOGO HABLADO en voz alta (~45 a 70 palabras).
-   - En asteriscos (*...*) incluye ÚNICAMENTE un gesto físico breve (máximo 8 a 12 palabras).
-4. ORACIONES COMPLETAS: Termina siempre cada intervención con una oración completa y signo de puntuación.
-5. AUDIODRAMA CINEMÁTICO, REACCIONES VOCALES Y EFECTOS REALES:
-   - En momentos de intimidad física, pasión intensa, penetración o esfuerzo físico, DEBES VIVIR LA ESCENA VOCALMENTE: incluye interjecciones jadeantes en tu diálogo ("¡Ah... sí!", "Mmm... Dios...", "¡Ahhh...!") y acota tus reacciones vocales reales entre asteriscos (*gime hondo estremeciéndose*, *jadea sin aire sintiendo cada golpe*, *suelta un fuerte gemido de placer*).
-   - Acota siempre los impactos físicos o ambientales entre asteriscos (*...*) (choque de cuerpos, golpes contra la pared o respaldar, crujido de cama, roce de sábanas, pasos de tacón, portazo, lluvia en la ventana) para que el motor sonoro reproduzca los efectos acústicos en sincronía.
-   - En conversaciones de chat y llamadas, tu voz hablará el diálogo con emoción viva y gemidos reales mientras el motor dispara los efectos acústicos de fondo.`,
+  masterDirective: `IDENTIDAD, MEMORIA Y CONVERSACIÓN:
+1. Interpreta el personaje y la relación definidos en la tarjeta actual. No inventes profesiones, edades, géneros ni relaciones.
+2. Cada tarjeta mantiene su propia historia. La configuración general define el estilo, nunca aporta recuerdos ni escenas.
+3. Responde al último mensaje respetando lo que ya ocurrió. No reinicies ni cambies de interlocutor por una simple mención.
+4. El usuario dirige su personaje. No escribas sus diálogos, decisiones ni sentimientos.
+5. Habla con naturalidad en el idioma elegido. Evita repeticiones y termina las oraciones.
+6. Mantén aproximadamente 80% de diálogo y 20% de acciones breves cuando la escena lo permita.
+7. Las expresiones vocales y los efectos deben ser breves y corresponder a la escena. No prolongues risas ni sonidos sin motivo.`,
   kinshipPreservation: true,
   preventTruncation: true,
   minCharacterAge: 18,
@@ -78,15 +70,20 @@ const MOTHER_CARD_STORAGE_KEY = "insomnia_mother_card_config_v2";
  * de lo contrario, devuelve los valores predeterminados de fábrica.
  */
 export function getMotherCardConfig(): MotherCardConfig {
+  restoreConversationModeSettings();
   if (typeof window === "undefined") return { ...DEFAULT_MOTHER_CARD };
   try {
     const raw = localStorage.getItem(MOTHER_CARD_STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
       if (parsed.version && parsed.version >= 5) {
+        const factoryVersion5 = parsed.version === 5
+          && parsed.updatedAt === "2026-10-22T00:00:00.000Z"
+          && String(parsed.masterDirective || "").startsWith("REGLA SUPREMA DE IDENTIDAD, ROL Y CONVERSACIÓN (VERSION 5 MASTER):");
         return {
           ...DEFAULT_MOTHER_CARD,
           ...parsed,
+          ...(factoryVersion5 ? { version: 6, masterDirective: DEFAULT_MOTHER_CARD.masterDirective } : {}),
           aiSettings: {
             ...DEFAULT_MOTHER_CARD.aiSettings,
             ...(parsed.aiSettings || {}),
@@ -123,18 +120,7 @@ export function saveMotherCardConfig(config: Partial<MotherCardConfig>): MotherC
       localStorage.setItem(MOTHER_CARD_STORAGE_KEY, JSON.stringify(updated));
       // Propagar inmediatamente la configuracion a storyAiSettings global y a todas las tarjetas guardadas
       setStoryAiSettings(null, updated.aiSettings);
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key && key.startsWith("insomnia_story_ai_settings_")) {
-          try {
-            const existing = JSON.parse(localStorage.getItem(key) || "{}");
-            localStorage.setItem(key, JSON.stringify({
-              ...existing,
-              ...updated.aiSettings,
-            }));
-          } catch {}
-        }
-      }
+      // Per-card overrides remain local to that card; other fields inherit at read time.
       window.dispatchEvent(new CustomEvent("insomnia:mother-card-updated", { detail: updated }));
     } catch (err) {
       console.warn("Could not persist Mother Card config", err);

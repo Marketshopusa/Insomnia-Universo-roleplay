@@ -91,7 +91,7 @@ it("caps a minute of generated laughter and preserves the entire following dialo
  synthesize:async(_text,_v,_l,{expression})=>({status:200,pcm:expression.reactions.length?longLaugh:speech})});
  expect(result.parts[0].endSample/24000).toBe(1.6);
  expect(result.pcm.readInt16LE(1.6*24000*2-2)).toBe(0);
- expect(result.pcm.subarray(1.6*24000*2)).toEqual(speech);
+ expect(Buffer.compare(result.pcm.subarray(1.6*24000*2),speech)).toBe(0);
 });
 it("caps cached and banked sounds as well as generated sounds",async()=>{
  for(const samples of [()=>Buffer.alloc(60*24000*2,1),()=>null]){
@@ -109,4 +109,37 @@ it("prevents repeated descriptions from stacking a minute of laughter before dia
  expect(result.parts.filter(p=>p.kind==="reaction")).toHaveLength(2);
  expect(result.pcm.length/48000).toBeLessThan(3.3);
  expect([...result.pcm.subarray(-2)]).toEqual([9,0]);
+});
+
+it("generates regional reactions with the chosen speaker instead of another voice's bank", async () => {
+  const calls = [];
+  const result = await render(score("*Río suavemente* Qué alegría verte."), "Kore", "es", {
+    region: "ve", cache: new Map(),
+    synthesize: async (_text, voice, language, options) => {
+      calls.push({ voice, language, region: options.region });
+      return { status: 200, pcm: Buffer.alloc(24000, 1) };
+    },
+  });
+  expect(result.status).toBe(200);
+  expect(calls.length).toBeGreaterThan(1);
+  expect(calls.every((call) => call.voice === "Kore" && call.region === "ve")).toBe(true);
+});
+
+it("emits physical narration at its own PCM boundary after the previous dialogue", async () => {
+  const emitted = [];
+  const result = await render(score('«Hola». *Camino hacia la ventana* «Mira afuera».', { roleplay: true }), "Kore", "es", {
+    samples: () => null, cache: new Map(),
+    synthesize: async () => ({ status: 200, pcm: Buffer.alloc(48000, 1) }),
+    onAudio: (_pcm, segment) => emitted.push(segment),
+  });
+  expect(result.status).toBe(200);
+  expect(emitted.map((part) => part.narration)).toEqual(["", "Camino hacia la ventana", ""]);
+  expect(emitted.every((part) => part.durationSamples === 24000)).toBe(true);
+});
+
+it("does not silently drop distinct expressions after the fourth event", async () => {
+  const result = await render(score('*Suspiro* *Toso* *Estornudo* *Carraspeo* *Inhalo profundamente*'), "Kore", "es", {
+    samples: () => null, cache: new Map(), synthesize: async () => ({ status: 200, pcm: Buffer.alloc(24000, 1) }),
+  });
+  expect(result.parts.map((part) => part.event)).toEqual(["sigh", "cough", "sneeze", "throat_clear", "inhale"]);
 });

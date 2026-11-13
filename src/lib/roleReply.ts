@@ -1,3 +1,4 @@
+import { isRepeatedTurn } from "./conversationReply.mjs";
 const ENGLISH_PATTERNS = [
 
   /\b(?:again\s+after\s+so\s+long|after\s+so\s+long)\b/i,
@@ -77,6 +78,14 @@ export function cleanLanguageBleed(text: string): string {
 
 
 /** Keep internal structured output out of the visible story and its audio. */
+
+export type ReplyEngine = { profile?: string; model?: string; provider?: string; fallback?: boolean };
+
+/** Magnum's structured response has already been validated; retain both components in full. */
+export function normalizeAssistantResponse(data: { content?: unknown; engine?: ReplyEngine }): string | null {
+  if ((data.engine?.profile === "magnum-conversation" || (data.engine?.profile === "magnum-v4-local" && data.engine.model === "magnum-v4-12b" && data.engine.fallback === false)) && typeof data.content === "string") return data.content.trim() || null;
+  return normalizeAssistantReply(data.content);
+}
 
 export function normalizeAssistantReply(value: unknown): string | null {
 
@@ -296,47 +305,13 @@ export function compactRoleplayReply(input: string): string {
 
 
 
-  // 2. Clean incomplete trailing connectors with ellipsis (e.g. "a las...", "en...", "y...")
-
-  const INCOMPLETE_TRAILING = /\b(?:a\s+las?|a\s+los?|en\s+el|en\s+la|con\s+el|con\s+la|de\s+la|de\s+los|de\s+las|de\s+un|de\s+una|y|e|o|u|ni|pero|que|como|mientras|cuando|porque|aunque|para|por|sin|sobre|hacia|hasta|en|con|de|del|al|a|el|la|los|las|un|una|unos|unas|mi|mis|tu|tus|su|sus|nuestro|nuestra|nuestros|nuestras|tan|muy|más|menos)\s*(?:\.{2,3}|…)?\s*$/iu;
-
-  if (INCOMPLETE_TRAILING.test(text)) {
-
-    text = text.replace(INCOMPLETE_TRAILING, "").trim();
-
+  // A visibly cut ellipsis may leave a dangling preposition in legacy history.
+  // Never infer truncation solely from an absent final period.
+  const trailingFragment = /\b(?:a\s+las?|a\s+los?|en\s+el|en\s+la|con\s+el|con\s+la|de\s+la|de\s+los|de\s+las|de\s+un|de\s+una|porque|aunque|mientras|pero|que|para|con|de|del|al)\s*(?:\.{2,}|…)\s*$/iu;
+  if (trailingFragment.test(text)) {
+    text = text.replace(trailingFragment, "").trim();
     if (text && !/[.!?…"”»*)\]]$/.test(text)) text += ".";
-
   }
-
-
-
-  // If text was cut off mid-sentence at max_tokens, trim back to the last complete sentence
-
-  if (text.length > 80 && !/[.!?…"”»*)\]]$/.test(text)) {
-
-    const lastPunct = Math.max(
-
-      text.lastIndexOf("."),
-
-      text.lastIndexOf("!"),
-
-      text.lastIndexOf("?"),
-
-      text.lastIndexOf("…"),
-
-      text.lastIndexOf("*"),
-
-    );
-
-    if (lastPunct >= 25) {
-
-      text = text.slice(0, lastPunct + 1).trim();
-
-    }
-
-  }
-
-
 
   // 3. Keep ~20% narration (*...*): preserve complete scenic cues (up to 22 words) without mutilating sentences
 
@@ -363,30 +338,6 @@ export function compactRoleplayReply(input: string): string {
   // 4. Collapse whitespace and cap total length to 800 chars at a clean sentence boundary
 
   text = text.replace(/[ \t]{2,}/g, " ").replace(/\n{2,}/g, "\n").trim();
-
-  if (text.length > 800) {
-
-    const sentences = text.match(/[^.!?…]+[.!?…]+["'»”*)]*(?:\s+|$)/gu);
-
-    if (sentences && sentences.length > 1) {
-
-      let acc = "";
-
-      for (const s of sentences) {
-
-        if ((acc + s).length > 800 && acc.length >= 200) break;
-
-        acc += s;
-
-      }
-
-      if (acc.trim()) text = acc.trim();
-
-    }
-
-  }
-
-
 
   // Ensure balanced asterisks after any slicing
 
@@ -861,114 +812,12 @@ export function resolveActiveCharacter(
 
 
 export function isRepeatedAssistantReply(
-
   candidate: string,
-
   history: { role: string; content?: string; text?: string }[] = [],
-
+  latest = "",
 ): boolean {
-
-  const rawCand = String(candidate || "").trim();
-
-  if (!rawCand) return true;
-
-  const norm = (s: string) =>
-
-    s
-
-      .toLowerCase()
-
-      .normalize("NFD")
-
-      .replace(/[\u0300-\u036f]/g, "")
-
-      .replace(/[^\w\s]/g, " ")
-
-      .replace(/\s+/g, " ")
-
-      .trim();
-
-  const stripAct = (s: string) => s.replace(/\*[^*]*\*/g, " ").trim();
-
-
-
-  const candFull = norm(rawCand);
-
-  const candDial = norm(stripAct(rawCand));
-
-  const candFirstAct = norm((rawCand.match(/\*([^*]+)\*/)?.[1]) || "");
-
-
-
-  const assistantTurns = history
-
-    .filter((h) => h.role === "assistant" || h.role === "model")
-
-    .map((h) => String(h.content || h.text || "").trim())
-
-    .filter(Boolean)
-
-    .slice(-6);
-
-
-
-  for (const prev of assistantTurns) {
-
-    const prevFull = norm(prev);
-
-    const prevDial = norm(stripAct(prev));
-
-    const prevFirstAct = norm((prev.match(/\*([^*]+)\*/)?.[1]) || "");
-
-
-
-    if (candFull === prevFull) return true;
-
-    if (candDial.length >= 20 && candDial === prevDial) return true;
-
-    if (candDial.length >= 30 && prevDial.length >= 30 && candDial.slice(0, 32) === prevDial.slice(0, 32)) return true;
-
-    if (candFirstAct.length >= 18 && candFirstAct === prevFirstAct && candDial.slice(0, 20) === prevDial.slice(0, 20)) return true;
-
-
-
-    // Check 4-gram overlap on spoken dialogue
-
-    const candWords = candDial.split(" ").filter(Boolean);
-
-    const prevWords = prevDial.split(" ").filter(Boolean);
-
-    if (candWords.length >= 8 && prevWords.length >= 8) {
-
-      const prevNgrams = new Set<string>();
-
-      for (let i = 0; i <= prevWords.length - 4; i++) {
-
-        prevNgrams.add(prevWords.slice(i, i + 4).join(" "));
-
-      }
-
-      let hits = 0;
-
-      const total = candWords.length - 3;
-
-      for (let i = 0; i <= candWords.length - 4; i++) {
-
-        if (prevNgrams.has(candWords.slice(i, i + 4).join(" "))) hits++;
-
-      }
-
-      if (hits / total >= 0.4) return true;
-
-    }
-
-  }
-
-  return false;
-
+  return isRepeatedTurn(candidate, history, latest);
 }
-
-
 
 export function sanitizeSwitchedReply(reply: string, info: ActiveCharacterInfo): string {
 
@@ -1044,4 +893,3 @@ export function cleanOralOrSilenceDialogue(text: string, isOralOrSilence: boolea
   cleaned = cleaned.replace(/(?:"[MmhAaOoUuFf.,!…\s]+"[\s]*){2,}/gi, '"Mmmm... ahh..." ');
   return cleaned.trim();
 }
-

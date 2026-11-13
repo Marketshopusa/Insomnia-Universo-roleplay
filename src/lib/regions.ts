@@ -49,7 +49,7 @@ export const setStoryAccent = (storyId: string | undefined, enabled: boolean) =>
   if (typeof window === "undefined") return;
   const value = enabled ? "1" : "0";
   if (storyId) window.localStorage.setItem(accentKeyFor(storyId), value);
-  window.localStorage.setItem("insomnia.accent", value);
+  else window.localStorage.setItem("insomnia.accent", value);
 };
 
 /** The country stays saved. Off means Gemini's own voice, without a regional accent. */
@@ -68,5 +68,5 @@ export const setStoryRegion = (storyId: string | undefined, value: string) => {
   if (typeof window === "undefined") return;
   const region = normalizeRegion(value);
   if (storyId) window.localStorage.setItem(keyFor(storyId), region);
-  window.localStorage.setItem("insomnia.region", region);
+  else window.localStorage.setItem("insomnia.region", region);
 };

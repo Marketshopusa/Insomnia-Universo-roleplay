@@ -114,3 +114,30 @@ it("a written laughter burst is one sound and does not make the following dialog
 it("preserves quoted phonetic words as literal dialogue",()=>{
  expect(score('«Escribí jajajaja en el mensaje»').reactions).toHaveLength(0);
 });
+
+it("performs the described deep breath and makes the subsequent dialogue smile", () => {
+  const result = score('Ella en ese momento respiró profundo y sonrió. «Me alegra verte».');
+  expect(result.reactions.map((part) => part.event)).toEqual(["deep_breath"]);
+  expect(result.segments.find((part) => part.text === '«Me alegra verte»')?.performance).toBe("warm");
+  expect(result.reactions.some((part) => part.event === "laugh")).toBe(false);
+});
+
+it("retains a vocal event inside a long compound direction with the later smile", () => {
+  const result = score('*Mientras mira la ventana y acomoda con cuidado los papeles sobre la mesa, suspira suavemente y sonríe* «Gracias».');
+  expect(result.reactions.map((part) => part.event)).toEqual(["sigh"]);
+  expect(result.text).toContain("papeles sobre la mesa");
+  expect(result.segments.find((part) => part.kind === "dialogue")?.performance).toBe("warm");
+});
+
+it.each([['*Inhala profundamente*', 'inhale'], ['*Exhaló lentamente*', 'exhale'], ['*Tomó una respiración profunda*', 'deep_breath']])
+("distinguishes the actual breathing action: %s", (text, event) => {
+  expect(score(text).reactions.map((part) => part.event)).toEqual([event]);
+});
+
+
+it("keeps unmarked physical narration available for sound timing", () => {
+  const result = score('Ella caminó hacia la ventana. «Ven a mirar».');
+  expect(result.segments[0].kind).toBe("narration");
+  expect(result.segments[0].text).toBe("Ella caminó hacia la ventana.");
+  expect(result.segments[1].kind).toBe("dialogue");
+});

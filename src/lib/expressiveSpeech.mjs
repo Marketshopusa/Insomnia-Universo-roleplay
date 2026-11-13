@@ -1,3 +1,5 @@
+import { detectPhysicalSoundEvents } from "./soundbank/matcher.mjs";
+
 /** One ordered performance score shared by story playback and neural TTS. */
 const reaction = (id, cue, performance, direction) => ({ id, cue, performance, direction });
 export const VOCAL_REACTIONS = Object.freeze({
@@ -7,6 +9,9 @@ export const VOCAL_REACTIONS = Object.freeze({
   sob: reaction("sob", "Hh... ah... hh...", "sad", "A sharp, audible sob of grief and sorrow, with an interrupted inhalation and trembling exhalation; not a sigh."),
   laugh: reaction("laugh", "[laughing] Ja, ja, ja...", "amused", "One brief natural laugh lasting at most 1.6 seconds; stop completely before speaking. The written ja syllables are a phonetic guide: make a real laugh, not separately spoken ja words."),
   chuckle: reaction("chuckle", "[laughing] Ja, ja, ja...", "amused", "One quiet chuckle lasting at most 0.8 seconds; stop completely before speaking."),
+  inhale: reaction("inhale", "[breathing] Hhh...", "neutral", "One clearly audible natural inhalation only. A real intake of breath, without speech, gasping, moaning or an extra exhalation."),
+  exhale: reaction("exhale", "[breathing] Hhh...", "neutral", "One clearly audible slow natural exhalation only. Real expelled breath, without speech, groaning, moaning or an extra inhalation."),
+  deep_breath: reaction("deep_breath", "[breathing] Hhh...", "neutral", "One calm, clearly audible deep inhalation followed by a slow exhalation, lasting about two seconds. Real breathing, not gasping, panting, a groan, a sigh of pleasure or spoken syllables. Preserve the selected speaker identity."),
   sigh: reaction("sigh", "[sigh]", "soft", "A natural audible sigh, with a clearly exhaled breath."),
   gasp: reaction("gasp", "¡Hah!", "surprised", "A sharp, dramatic, surprised intake of breath, full of shock or breathless intensity."),
   pant: reaction("pant", "Hh... hh...", "soft", "Two short, ragged, breathless gasps of intense exertion or excitement."),
@@ -24,6 +29,9 @@ export const VOCAL_REACTIONS = Object.freeze({
 });
 
 const forms = [
+  ["deep_breath", "(?:respir(?:o|a|ó|é|amos|ando))\\s+(?:muy\\s+)?(?:hondo|profundo|profundamente|lentamente)|(?:tom(?:o|a|ó|é|ando)|cog(?:e|ió)|tomo)\\s+(?:una?\\s+)?(?:respiraci[oó]n\\s+(?:honda|profunda)|aire\\s+(?:profundamente|lentamente))|deep\\s+breath|breath(?:e|es|ed|ing)\\s+deeply"],
+  ["inhale", "(?:inhal(?:o|a|ó|é|ando)|inspir(?:o|a|ó|é|ando))(?:\\s+(?:hondo|profundo|profundamente|lentamente))?|(?:tom(?:o|a|ó|é)|cog(?:e|ió))\\s+aire|inhal(?:e|es|ed|ing)"],
+  ["exhale", "exhal(?:o|a|ó|é|ando)|espir(?:o|a|ó|é|ando)|(?:suelt[oa]|solt[óé])\\s+el\\s+aire|exhal(?:e|es|ed|ing)"],
   ["scream", "grit(?:os?|a|é|ó|amos|aron|aba|ando|ar|as|an)|chill(?:o|a|é|ó|ando)|alaridos?|scream(?:s|ed|ing)?|shout(?:s|ed|ing)?"],
   ["sob", "solloz(?:os?|a|ó|ando|ar|aba)|sob(?:s|bed|bing)?"],
   ["cry", "llor(?:o|a|é|ó|ando|ar|aba|amos|aron)|llantos?|cry(?:ing|ies)?|cried"],
@@ -60,7 +68,7 @@ const contextualTail = /^(?:\s+(?:de\s+(?:dolor|placer|miedo|rabia|alegría|feli
 const pureSoundDescription = /^(?:(?:yo|ella|él|el|mi|mis|sus|su|un|una|el|la)\s+)?(?:sonidos?\s+desgarradores?|gritos?|gemidos?|sollozos?|llantos?|risas?|carcajadas?)(?:\s|[,.!;]|$)/iu;
 const styleFor = (text) => {
   if (/\b(?:no|sin|not|without)\b/iu.test(text)) return null;
-  if (/sonr(?:ío|íe|ió)|sonriendo|smil(?:e|es|ed|ing)/iu.test(text)) return "warm";
+  if (/sonr(?:ío|íe|ió|eí)|sonriendo|smil(?:e|es|ed|ing)/iu.test(text)) return "warm";
   if (/susurr(?:o|a|é|ó|ando)|whisper(?:s|ed|ing)?/iu.test(text)) return "soft";
   if (/sorprendid[ao]|sorpresa|surpris(?:e|ed)/iu.test(text)) return "surprised";
   if (/enojad[ao]|furios[ao]|molest[ao]|rabia|angry/iu.test(text)) return "angry";
@@ -88,6 +96,7 @@ function tidyNarration(text) {
 const QUOTES = /("[^"\n]*"|“[^”\n]*”|«[^»\n]*»)/gu;
 const STAGES = /(\*\*[^*\n]+\*\*|\*[^*\n]+\*|\([^()\n]+\)|\[[^\]\n]+\])/gu;
 const taggedReactions = {
+  breathing: "deep_breath", "deep breath": "deep_breath",
   laughing: "laugh", laughs: "laugh", sigh: "sigh", sighs: "sigh", crying: "cry", sobbing: "sob",
   gasping: "gasp", gasps: "gasp", panting: "pant", groaning: "groan", moaning: "groan",
   grunting: "grunt", growling: "growl", coughing: "cough", sneezing: "sneeze", hiccup: "hiccup",
@@ -100,6 +109,7 @@ export function prepareExpressiveSpeech(input, { roleplay = false } = {}) {
   const addText = (text, kind) => {
     const cleaned = kind === "narration" ? tidyNarration(text) : text.trim();
     if (!cleaned) return;
+    if (kind === "narration") delivery = styleFor(cleaned) || delivery;
     segments.push({ kind, text: cleaned, performance: kind === "dialogue" ? delivery : "neutral" });
   };
   const addReaction = (id, context = "") => {
@@ -126,13 +136,13 @@ export function prepareExpressiveSpeech(input, { roleplay = false } = {}) {
       });
       if (!matches.length) {
         if (marked && pureSoundDescription.test(sentence) && /inund|reson|llen|escuch/iu.test(sentence) && segments.at(-1)?.kind === "reaction") continue;
-        const style = marked ? styleFor(sentence) : (pleasureContext.test(sentence) ? "pleasure" : null);
+        const style = styleFor(sentence);
         if (style) delivery = style;
-        addText(sentence, marked ? "narration" : "dialogue");
+        addText(sentence, marked || detectPhysicalSoundEvents(sentence).length ? "narration" : "dialogue");
         continue;
       }
       // Unmarked dialogue mentioning somebody else's past sound stays literal.
-      const startsWithAction = /^\s*(?:(?:yo|ella|él|el|me)\s+)?(?:solt|suelto|suelta|peg|romp|estall|(?:me|se)\s+ech|dej(?:o|é|ó)\s+escapar|grit|chill|solloz|llor|gim|gem|rí|rió|reí|suspir|jade|gruñ|tos|estornud|carraspe|scream|cry|sob|laugh|sigh|gasp|groan|pant|grunt|cough|sneez)/iu.test(sentence);
+      const startsWithAction = /^\s*(?:(?:yo|ella|él|el|me)\s+)?(?:solt|suelto|suelta|peg|romp|estall|(?:me|se)\s+ech|dej(?:o|é|ó)\s+escapar|grit|chill|solloz|llor|gim|gem|rí|rió|reí|suspir|jade|gruñ|tos|estornud|carraspe|scream|cry|sob|laugh|sigh|gasp|groan|pant|grunt|cough|sneez|respir|inhal|inspir|tom(?:o|a|ó)\s+(?:una?\s+)?respiraci|breath)/iu.test(sentence);
       if (!marked && !startsWithAction && !/^\s*(?:j[aei]|h[aeo])(?:[\s,.…-]*(?:j[aei]|h[aeo])){1,}/iu.test(sentence) && !/^\s*(?:ella|él|ellos|ellas|yo)\s/iu.test(sentence) && !pureSoundDescription.test(sentence)) { addText(sentence, "dialogue"); continue; }
       if (matches.length === 1 && pureSoundDescription.test(sentence) && /inund|reson|llen|escuch|desgarrador/iu.test(sentence) && !/\b(?:y|pero|and|but)\b/iu.test(sentence)) {
         const first = matches[0];
@@ -151,15 +161,12 @@ export function prepareExpressiveSpeech(input, { roleplay = false } = {}) {
         const context = sentence.slice(cursor, nextAction);
         const prefixText = sentence.slice(cursor, match.index);
         const leavesDanglingGrammar = /\b(?:un|una|el|la|los|las|su|sus|mi|mis|tu|tus|de|del|al|entre|con|por|en|sin)\s*$/iu.test(prefixText);
-        if (leavesDanglingGrammar || (marked && sentence.length > 50)) {
-          // If it's a descriptive sentence or leaves dangling grammar, preserve the whole narration without chopping it
-          addText(sentence.slice(cursor), "narration");
-          cursor = sentence.length;
-          break;
-        } else {
-          addText(prefixText, "narration");
-          addReaction(classify(id, context), context);
-        }
+        // Keep the meaningful narration while removing a connector whose sound becomes audio.
+        const narration = leavesDanglingGrammar
+          ? prefixText.replace(/\b(?:(?:con|entre|de|en)\s+)?(?:un|una|el|la|los|las|su|sus|mi|mis|tu|tus)\s*$/iu, "")
+          : prefixText;
+        addText(narration, "narration");
+        addReaction(classify(id, context), context);
         cursor = end + tail.length;
       }
       addText(sentence.slice(cursor), marked || matches.length ? "narration" : "dialogue");
@@ -214,7 +221,7 @@ export function prepareExpressiveSpeech(input, { roleplay = false } = {}) {
 }
 
 export function hasVocalCue(text) {
-  return /\[(?:laughing|sigh|uhm|crying|sobbing|gasping|panting|groaning|moaning|grunting|growling|coughing|sneezing|hiccup|clears throat|kiss)\]/iu.test(text);
+  return /\[(?:breathing|laughing|sigh|uhm|crying|sobbing|gasping|panting|groaning|moaning|grunting|growling|coughing|sneezing|hiccup|clears throat|kiss)\]/iu.test(text);
 }
 
 /** Neural reactions are generated independently, then joined with the spoken runs. */
@@ -241,6 +248,10 @@ export function splitExpressiveScore(score, { separate = new Set(), roleplay = s
     delivery = null;
   };
   for (const part of score.segments) {
+    if (part.kind === "narration" && detectPhysicalSoundEvents(part.text).length) {
+      add(); parts.push(part); add();
+      continue;
+    }
     if (part.kind === "reaction") {
       add();
       parts.push(part);

@@ -1,3 +1,4 @@
+import { getStoryVoice } from "@/lib/voices";
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Header } from "@/components/layout/Header";
@@ -47,15 +48,15 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useAdultMode } from "@/contexts/AdultModeContext";
 import { invokeFunctionWithRetry } from "@/lib/invokeFunction";
 import { streamSpeech, type SpeechStream } from "@/lib/ttsStream";
-import { playSceneFoley } from "@/lib/foleyStudio";
 import { selectStoryMemory, buildPersistentChronicle } from "@/lib/storyMemory";
+import { useConversationScope } from "@/hooks/useConversationScope";
 import { startWavRecording, blobToBase64, type WavRecorder } from "@/lib/wavRecorder";
 import { browserSpeechLocale, getStoryRegion, getStoryAccent, spokenRegion } from "@/lib/regions";
-import { normalizeAssistantReply } from "@/lib/roleReply";
-import { ChatCharacterConfigDialog, fallbackFemaleSpeech, isMediaVideo } from "@/components/chat/ChatCharacterConfigDialog";
+import { normalizeAssistantResponse, type ReplyEngine } from "@/lib/roleReply";
+import { ChatCharacterConfigDialog, isMediaVideo } from "@/components/chat/ChatCharacterConfigDialog";
 import { PremiumGalleryDialog } from "@/components/chat/PremiumGalleryDialog";
 import { ChatAiSettingsDialog } from "@/components/story/ChatAiSettingsDialog";
-import { getStoryAiSettings, AVAILABLE_AI_MODELS } from "@/lib/storyAiSettings";
+import { resolveConversationModelId, getStoryAiSettings, AVAILABLE_AI_MODELS } from "@/lib/storyAiSettings";
 import { getMotherCardConfig } from "@/lib/roleplayBase";
 import { toast } from "@/hooks/use-toast";
 
@@ -103,6 +104,7 @@ export interface ChatMessage {
   content: string;
   timestamp: string;
   mediaUrl?: string;
+  engine?: ReplyEngine;
 }
 
 // ==========================================
@@ -466,8 +468,8 @@ export default function ChatPage() {
   const navigate = useNavigate();
   const { language } = useLanguage();
   const isEs = language === "es";
-  const { enabled: adultEnabled } = useAdultMode();
-  const { isAdmin } = useAuth();
+  const { enabled: adultEnabled, consentGiven } = useAdultMode();
+  const { isAdmin, user } = useAuth();
 
   // State: View Mode ('explore' for Catalog, 'room' for Chat Room)
   const [viewMode, setViewMode] = useState<"explore" | "room">(
@@ -476,6 +478,9 @@ export default function ChatPage() {
   const [selectedCharacterId, setSelectedCharacterId] = useState<string>(
     characterId || "olivia-adams"
   );
+
+  const conversationScope = useConversationScope(`${user?.id || "guest"}:${selectedCharacterId}`);
+  const sendPendingRef = useRef(false);
 
   // AI Settings Dialog State (Momoo AI style models, memory tiers & token lengths)
   const [isAiSettingsOpen, setIsAiSettingsOpen] = useState(false);
@@ -539,6 +544,7 @@ export default function ChatPage() {
   };
 
   const handleSaveCharacter = (updated: CharacterItem) => {
+    stopAudio();
     setCharacterList((prev) => {
       const exists = prev.some((c) => c.id === updated.id);
       if (exists) {
@@ -676,8 +682,8 @@ export default function ChatPage() {
             starterMessage: `Hola... Estaba esperando a que vinieras después de ver mi serie "${seriesTitle || charName}". ¿De qué quieres hablar hoy?`,
             starterMessageEs: `Hola... Estaba esperando a que vinieras después de ver mi serie "${seriesTitle || charName}". ¿De qué quieres hablar hoy?`,
             starterMessageEn: `Hey... I was waiting for you to come by after watching my series "${seriesTitle || charName}". What should we talk about?`,
-            voiceName: "es-VE-PaolaNeural",
-            voiceEngine: "edge",
+            voiceName: getStoryVoice(cleanId),
+            voiceEngine: "gemini",
             style: "realistic",
             isSpicy: isAdultParam,
           };
@@ -750,6 +756,10 @@ export default function ChatPage() {
   // Reset conversation for active character to original starter message
   const handleResetCurrentHistory = (customStarter?: string) => {
     if (!activeChar) return;
+    conversationScope.invalidate();
+    sendPendingRef.current = false;
+    setIsTyping(false);
+    handleEndCall();
     stopAudio();
     const greeting = (typeof customStarter === "string" && customStarter.trim()) || (isEs
       ? (activeChar.starterMessageEs || activeChar.starterMessage)
@@ -866,6 +876,18 @@ export default function ChatPage() {
     return characterList[0] || TALKIEMATE_CHARACTERS[0];
   }, [characterList, selectedCharacterId]);
 
+  useEffect(() => {
+    handleEndCall();
+    sendPendingRef.current = false;
+    setIsTyping(false);
+    setInputText("");
+    // End pending audio and recording when another card/account becomes active.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCharacterId, user?.id]);
+
+  const activeCharRef = useRef(activeChar);
+  activeCharRef.current = activeChar;
+
   // Active character full media (video or photo)
   const activeMediaUrl = activeChar.gallery[activePhotoIdx] || activeChar.avatar;
   const isVideoMedia = isMediaVideo(activeMediaUrl);
@@ -964,7 +986,9 @@ export default function ChatPage() {
   // Send message in chat room
   const handleSendMessage = async () => {
     const text = inputText.trim();
-    if (!text || isTyping) return;
+    if (!text || isTyping || sendPendingRef.current) return;
+    sendPendingRef.current = true;
+    const request = conversationScope.capture();
 
     const userMsg: ChatMessage = {
       id: `u-${Date.now()}`,
@@ -1001,7 +1025,7 @@ export default function ChatPage() {
       const mother = getMotherCardConfig();
       const rawAiSettings = getStoryAiSettings(activeChar.id);
       const isCharNsfw = Boolean(activeChar.isNsfw || rawAiSettings.adultMode || adultEnabled);
-      const selectedModelId = isCharNsfw ? "magnum-v4-local" : (rawAiSettings.modelId || activeChar.modelId || mother.aiSettings.modelId || "insomnia-flash");
+      const selectedModelId = resolveConversationModelId(isCharNsfw, rawAiSettings.modelId || activeChar.modelId, mother.aiSettings.modelId);
       const charAiSettings = {
         ...mother.aiSettings,
         ...rawAiSettings,
@@ -1016,33 +1040,32 @@ export default function ChatPage() {
 
       // Memory depth matching story cards (up to 260 turns for 32k, 140 for 16k)
       const maxTurns = charAiSettings.memoryTier === "32k" ? 260 : charAiSettings.memoryTier === "16k" ? 140 : charAiSettings.memoryTier === "4k" ? 60 : 30;
-      const historyPayload = currentHistory.slice(-maxTurns).map((m) => ({
-        role: m.role,
-        content: m.content
-      }));
+      const fullHistory = currentHistory.map((m) => ({ role: m.role, content: m.content }));
+      const historyPayload = fullHistory.slice(-maxTurns);
 
       const { playerRoleName, resolvedCharRole, isSobrina, charBio } = resolveChatKinship(activeChar, existingHistory, isEs);
       
       // Full unified persistent chronicle and memory recall
-      const chroniclePayload = buildPersistentChronicle(historyPayload, activeChar.name, playerRoleName);
+      const chroniclePayload = buildPersistentChronicle(fullHistory, activeChar.name, playerRoleName);
       const memoryPayload = selectStoryMemory(
-        historyPayload,
+        fullHistory,
         text,
         charAiSettings.memoryTier === "32k" ? 60 : charAiSettings.memoryTier === "16k" ? 40 : 20
       );
-      const charRegion = spokenRegion(getStoryRegion(activeChar.id), getStoryAccent(activeChar.id)) || (isEs ? "co" : "us");
+      const charRegion = spokenRegion(getStoryRegion(activeCharRef.current.id), getStoryAccent(activeCharRef.current.id));
 
       const roleRelationSentence = isSobrina
         ? `Parentesco inmutable: el usuario es su ${playerRoleName} y ella es su ${resolvedCharRole}.`
         : `Relación: el usuario es su ${playerRoleName} masculino (NO son familiares, estrictamente prohibido inventar que es su tío o pariente).`;
 
-      const { data, error } = await invokeFunctionWithRetry<{ content?: string }>("story-chat", {
+      const { data, error } = await invokeFunctionWithRetry<{ content?: string; engine?: ReplyEngine }>("story-chat", {
         story: {
           id: activeChar.id,
           title: activeChar.name,
           description: charBio,
           story_context: `${resolvedCharRole}. Personalidad: ${charBio}. ${roleRelationSentence}`,
           character_role: resolvedCharRole,
+          character_age: activeChar.age,
           player_role: playerRoleName,
           story_type: "chat_page"
         },
@@ -1053,57 +1076,22 @@ export default function ChatPage() {
         memory: memoryPayload,
         chronicle: chroniclePayload,
         userMessage: text,
-        adultMode: Boolean(adultEnabled || isCharNsfw),
+        adultMode: (Boolean(adultEnabled || isCharNsfw)),
+        adultConsent: consentGiven,
         isNsfw: isCharNsfw,
         region: charRegion,
         settings: charAiSettings
       });
 
-      let reply = "";
-      if (!error && data?.content) {
-        reply = data.content;
-      } else {
-        // Reintento limpio inmediato si hubo un error transitorio
-        const retryResult = await invokeFunctionWithRetry<{ content?: string }>("story-chat", {
-          story: {
-            id: activeChar.id,
-            title: activeChar.name,
-            description: charBio,
-            story_context: `${resolvedCharRole}. Personalidad: ${charBio}. ${roleRelationSentence}`,
-            character_role: resolvedCharRole,
-            player_role: playerRoleName,
-            story_type: "chat_page"
-          },
-          chatSource: "chat_page",
-          isLiveCall: false,
-          language,
-          history: historyPayload,
-          userMessage: text,
-          adultMode: Boolean(adultEnabled || isCharNsfw),
-          isNsfw: isCharNsfw,
-          region: charRegion,
-          settings: charAiSettings
-        });
-
-        if (retryResult?.data?.content) {
-          reply = retryResult.data.content;
-        } else {
-          setIsTyping(false);
-          toast({
-            title: isEs ? "Error de conexión temporal" : "Temporary connection error",
-            description: isEs
-              ? "No se pudo recibir la respuesta del personaje. Por favor pulsa enviar nuevamente."
-              : "Could not receive character reply. Please try resending your message.",
-            variant: "destructive"
-          });
-          return;
-        }
-      }
+      if (!conversationScope.isCurrent(request)) return;
+      if (error || !data?.content) throw new Error(error?.message || (isEs ? "No se pudo obtener una respuesta del personaje." : "Could not obtain a character reply."));
+      const reply = data.content;
 
       const assistantMsg: ChatMessage = {
         id: `a-${Date.now()}`,
         role: "assistant",
         content: reply,
+        engine: data.engine,
         timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
       };
 
@@ -1117,9 +1105,21 @@ export default function ChatPage() {
         void handlePlayAudio(assistantMsg.id, reply);
       }
     } catch (e) {
-      console.error(e);
+      if (!conversationScope.isCurrent(request)) return;
+      setChatHistory((prev) => ({
+        ...prev, [activeChar.id]: (prev[activeChar.id] || []).filter((message) => message.id !== userMsg.id),
+      }));
+      setInputText((current) => current || text);
+      toast({
+        title: isEs ? "No se pudo recibir la respuesta" : "Could not receive the reply",
+        description: e instanceof Error ? e.message : undefined,
+        variant: "destructive",
+      });
     } finally {
-      setIsTyping(false);
+      if (conversationScope.isCurrent(request)) {
+        sendPendingRef.current = false;
+        setIsTyping(false);
+      }
     }
   };
 
@@ -1147,12 +1147,10 @@ export default function ChatPage() {
     stopAudio();
     setPlayingAudioId(messageId);
 
-    // Activar foley acústico cinematográfico (puertas, pasos, sábanas, roces, etc.)
-    playSceneFoley(text);
 
     // Voz neural con acento regional auténtico asignado al personaje
-    const voiceToUse = activeChar.voiceName || "Aoede";
-    const charRegion = spokenRegion(getStoryRegion(activeChar.id), getStoryAccent(activeChar.id)) || (language === "es" ? "co" : "us");
+    const voiceToUse = getStoryVoice(activeCharRef.current.id, activeCharRef.current.voiceName);
+    const charRegion = spokenRegion(getStoryRegion(activeCharRef.current.id), getStoryAccent(activeCharRef.current.id));
 
     try {
       const stream = streamSpeech(text, voiceToUse, language, true, charRegion);
@@ -1206,8 +1204,8 @@ export default function ChatPage() {
     setCallState("speaking");
     setCallSpeakerText(text);
     const spoken = text.trim();
-    const voiceToUse = activeChar.voiceName || "Aoede";
-    const charRegion = spokenRegion(getStoryRegion(activeChar.id), getStoryAccent(activeChar.id)) || (isEs ? "co" : "us");
+    const voiceToUse = getStoryVoice(activeCharRef.current.id, activeCharRef.current.voiceName);
+    const charRegion = spokenRegion(getStoryRegion(activeCharRef.current.id), getStoryAccent(activeCharRef.current.id));
 
     try {
       const stream = streamSpeech(spoken, voiceToUse, language, true, charRegion);
@@ -1398,7 +1396,7 @@ export default function ChatPage() {
             audio,
             mimeType: "audio/wav",
             language: isEs ? "es" : "en",
-            region: "mx"
+            region: spokenRegion(getStoryRegion(activeCharRef.current.id), getStoryAccent(activeCharRef.current.id))
           });
 
           if (!error && data?.text) {
@@ -1447,7 +1445,7 @@ export default function ChatPage() {
       const { playerRoleName, resolvedCharRole, isSobrina, charBio } = resolveChatKinship(activeChar, chatHistory[activeChar.id] || [], isEs);
       const mother = getMotherCardConfig();
       const rawAiSettings = getStoryAiSettings(activeChar.id);
-      const isCharNsfw = Boolean(activeChar.isNsfw || rawAiSettings.adultMode || rawAiSettings.modelId === "magnum-v4-local");
+      const isCharNsfw = Boolean(activeChar.isNsfw || rawAiSettings.adultMode);
       const charAiSettings = {
         ...mother.aiSettings,
         ...rawAiSettings,
@@ -1457,19 +1455,20 @@ export default function ChatPage() {
       // Fast call settings: 45 tokens max for instant snappy phone response (<0.5s)
       const fastCallSettings = {
         ...charAiSettings,
-        modelId: isCharNsfw ? "magnum-v4-local" : "insomnia-flash",
-        adultMode: Boolean(adultEnabled || isCharNsfw),
+        modelId: resolveConversationModelId(Boolean(adultEnabled || isCharNsfw), rawAiSettings.modelId || activeChar.modelId, mother.aiSettings.modelId),
+        adultMode: (Boolean(adultEnabled || isCharNsfw)),
         messageLength: 45
       };
-      const charRegion = spokenRegion(getStoryRegion(activeChar.id), getStoryAccent(activeChar.id)) || (isEs ? "co" : "us");
+      const charRegion = spokenRegion(getStoryRegion(activeCharRef.current.id), getStoryAccent(activeCharRef.current.id));
 
-      const { data, error } = await invokeFunctionWithRetry<{ content?: string }>("story-chat", {
+      const { data, error } = await invokeFunctionWithRetry<{ content?: string; engine?: ReplyEngine }>("story-chat", {
         story: {
           id: activeChar.id,
           title: activeChar.name,
           description: charBio,
           story_context: `${resolvedCharRole}. Bio: ${charBio}. Parentesco inmutable: el usuario es su ${playerRoleName} y ella es su ${resolvedCharRole}`,
           character_role: resolvedCharRole,
+          character_age: activeChar.age,
           player_role: playerRoleName,
           story_type: "live_call"
         },
@@ -1479,29 +1478,31 @@ export default function ChatPage() {
         history: priorHistory,
         memory: selectStoryMemory(priorHistory, userText),
         userMessage: userText,
-        adultMode: Boolean(adultEnabled || isCharNsfw),
+        adultMode: (Boolean(adultEnabled || isCharNsfw)),
+        adultConsent: consentGiven,
         isNsfw: isCharNsfw,
         region: charRegion,
         settings: fastCallSettings
       });
 
-      let reply = "";
-      if (!error && data?.content) {
-        const clean = normalizeAssistantReply(data.content) || data.content;
-        reply = clean.trim();
-      } else {
-        reply = isSobrina
-          ? (isEs ? `*suspira suavemente* Te escucho tío... Dime más.` : `*sighs softly* I'm listening uncle... Tell me more.`)
-          : (isEs ? `*sonríe* Te escucho perfectamente... Cuéntame más.` : `*smiles* I hear you loud and clear... Tell me more.`);
-      }
-
       if (!callActiveRef.current || callSessionRef.current !== currentCallSession) return;
+      if (error || !data?.content) {
+        toast({
+          title: isEs ? "No se pudo recibir la respuesta" : "Could not receive the reply",
+          description: error?.message,
+          variant: "destructive",
+        });
+        void callListen();
+        return;
+      }
+      const reply = (normalizeAssistantResponse(data) || data.content).trim();
 
       // 4. Add character reply directly to chat history!
       const assistantMsg: ChatMessage = {
         id: `a-call-${Date.now()}`,
         role: "assistant",
         content: reply,
+        engine: data.engine,
         timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
       };
 
@@ -1560,21 +1561,22 @@ export default function ChatPage() {
       }));
       const mother = getMotherCardConfig();
       const rawAiSettings = getStoryAiSettings(activeChar.id);
-      const isCharNsfw = Boolean(activeChar.isNsfw || rawAiSettings.adultMode || rawAiSettings.modelId === "magnum-v4-local");
+      const isCharNsfw = Boolean(activeChar.isNsfw || rawAiSettings.adultMode);
       const charAiSettings = {
         ...mother.aiSettings,
         ...rawAiSettings,
         nvidiaApiKey: rawAiSettings.nvidiaApiKey || mother.aiSettings?.nvidiaApiKey || "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",
       };
-      const charRegion = spokenRegion(getStoryRegion(activeChar.id), getStoryAccent(activeChar.id)) || (isEs ? "co" : "us");
+      const charRegion = spokenRegion(getStoryRegion(activeCharRef.current.id), getStoryAccent(activeCharRef.current.id));
 
-      const { data, error } = await invokeFunctionWithRetry<{ content?: string }>("story-chat", {
+      const { data, error } = await invokeFunctionWithRetry<{ content?: string; engine?: ReplyEngine }>("story-chat", {
         story: {
           id: activeChar.id,
           title: activeChar.name,
           description: charBio,
           story_context: `${resolvedCharRole}. Bio: ${charBio}. Parentesco inmutable: el usuario es su ${playerRoleName} y ella es su ${resolvedCharRole}`,
           character_role: resolvedCharRole,
+          character_age: activeChar.age,
           player_role: playerRoleName,
           story_type: "live_call"
         },
@@ -1584,33 +1586,31 @@ export default function ChatPage() {
         history: historyPayload,
         memory: selectStoryMemory(historyPayload, promptContext),
         userMessage: promptContext,
-        adultMode: Boolean(adultEnabled || isCharNsfw),
+        adultMode: (Boolean(adultEnabled || isCharNsfw)),
+        adultConsent: consentGiven,
         isNsfw: isCharNsfw,
         region: charRegion,
-        settings: { ...charAiSettings, modelId: isCharNsfw ? "magnum-v4-local" : "insomnia-flash", messageLength: 45 }
+        settings: { ...charAiSettings, modelId: resolveConversationModelId(Boolean(adultEnabled || isCharNsfw), rawAiSettings.modelId || activeChar.modelId, mother.aiSettings.modelId), messageLength: 45 }
       });
 
       if (!error && data?.content) {
-        const clean = normalizeAssistantReply(data.content) || data.content;
+        const clean = normalizeAssistantResponse(data) || data.content;
         greetingText = clean.trim();
       }
     } catch (e) {
       console.warn("Failed to generate dynamic call intro:", e);
     }
 
-    if (!greetingText) {
-      if (isSobrina) {
-        greetingText = hasUserChatted
-          ? (isEs ? `*sonríe* ¡Hola tío! Sí, te escucho perfectamente... Dime, ¿en qué nos quedamos de lo que me decías?` : `*smiles* Hey uncle! Yes, I hear you loud and clear... Tell me, where were we on what you were saying?`)
-          : (isEs ? `*se ríe contenta* ¡Hola tío! Qué alegría que me llames... ¿Cómo estás? Me alegra mucho escucharte.` : `*laughs softly* Hey uncle! What a nice surprise you called... How are you doing?`);
-      } else {
-        greetingText = hasUserChatted
-          ? (isEs ? `*sonríe* ¡Hola! Sí, te escucho perfectamente... Dime, ¿en qué nos quedamos de lo que me decías?` : `*smiles* Hey! Yes, I hear you loud and clear... Tell me, where were we on what you were saying?`)
-          : (isEs ? `*sonríe* ¡Hola! Qué gusto que me llames... ¿Cómo estás? Dime, ¿en qué andas?` : `*smiles* Hey! So nice you called... How are you doing?`);
-      }
-    }
-
     if (!callActiveRef.current || callSessionRef.current !== currentSession) return;
+    if (!greetingText) {
+      handleEndCall();
+      toast({
+        title: isEs ? "No se pudo iniciar la llamada" : "Could not start the call",
+        description: isEs ? "El personaje no pudo responder. La conversación se conserva." : "The character could not respond. Your conversation is preserved.",
+        variant: "destructive",
+      });
+      return;
+    }
 
     // Add greeting to chat history so it is logged in the written chat!
     const introMsg: ChatMessage = {

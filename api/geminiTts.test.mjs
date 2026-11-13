@@ -223,7 +223,7 @@ test("local expressive prompts reach both paths without spoken script labels", a
   assert.equal(result.status, 200);
   assert.equal(removePerformanceCues("[sobbing]"), "");
   const spoken = prepareExpressiveSpeech('*Sonrío* Hola.');
-  assert.match(geminiSpeechDirection("es", "neutral", "mx", spoken), /smile/);
+  assert.match(geminiSpeechDirection("es", "neutral", "mx", spoken), /sonrisa|smile/);
   assert.doesNotMatch(geminiSpeechDirection("es", "neutral", "mx", spoken), /Narration:|Dialogue:/);
 });
 
@@ -235,4 +235,3 @@ test("splitSentences cleanly breaks paragraphs into fluent chunks for fast first
   assert.equal(chunks.join(" ").includes("Hola mi vida."), true);
   assert.equal(chunks.join(" ").includes("extrañado muchísimo"), true);
 });
-

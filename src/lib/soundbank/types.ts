@@ -26,6 +26,7 @@ export type ImpactFoleyId =
   | "zipper";            // Desabrochar o subir cremallera metálica
 
 export type ActionFoleyId =
+  | "heartbeat"
   | "footsteps_normal"   // Pasos regulares acercándose o alejándose
   | "footsteps_heels"    // Tacones resonando en piso duro
   | "footsteps_running"  // Pasos apresurados o carrera

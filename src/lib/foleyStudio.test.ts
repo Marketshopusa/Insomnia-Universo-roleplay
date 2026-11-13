@@ -97,3 +97,16 @@ describe("Foley Studio Engine", () => {
     expect(scheduled.length).toBeGreaterThanOrEqual(1);
   });
 });
+
+it("plays physical steps without adding a synthetic voice over neural laughter", () => {
+  const start = vi.fn();
+  const context: any = {
+    sampleRate: 24000, currentTime: 0, destination: {},
+    createBuffer: (_ch: number, length: number) => ({ length, copyToChannel: vi.fn() }),
+    createGain: () => ({ gain: { setValueAtTime: vi.fn() }, connect: vi.fn() }),
+    createBufferSource: () => ({ buffer: null, connect: vi.fn(), start }),
+  };
+  expect(scheduleFoleyForMessage(context, "*Me río suavemente*")).toHaveLength(0);
+  expect(scheduleFoleyForMessage(context, "*Camino hacia la ventana y me río suavemente*")).toHaveLength(1);
+  expect(start).toHaveBeenCalledTimes(1);
+});

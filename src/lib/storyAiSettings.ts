@@ -27,12 +27,12 @@ export const AVAILABLE_AI_MODELS: AiModelOption[] = [
   },
   {
     id: "magnum-v4-local",
-    name: "Magnum v4 (PC Local / 8788)",
+    name: "Magnum v4 12B (PC)",
     tier: "free",
     badge: "Local",
-    description: "Modelo LLaMA 3.x / Magnum corriendo localmente en tu propia computadora.",
-    bullet1: "Privacidad 100% local, cero censura y cero consumo de saldo en la nube.",
-    bullet2: "Usa el servidor de tu PC en http://127.0.0.1:8788 con velocidad nativa.",
+    description: "Magnum de tu PC conectado con el modo adulto de Insomnia.",
+    bullet1: "El texto se genera en tu PC; los turnos pasan por el control de seguridad.",
+    bullet2: "Requiere el PC y Magnum encendidos. Vercel usa un enlace cifrado.",
   },
   {
     id: "mistral-nemo",
@@ -214,6 +214,36 @@ export const DEFAULT_AI_SETTINGS: StoryAiSettings = {
 
 const STORAGE_KEY_PREFIX = "insomnia_story_ai_settings_";
 
+function recoverModeSettings(value: Record<string, unknown>) {
+  const { nonExplicitConversation: _retired, ...settings } = value;
+  return settings.modelId === "magnum-conversation" ? { ...settings, modelId: "insomnia-flash" } : settings;
+}
+/** Recover the withdrawn migration without guessing a previous adult-mode choice. */
+export function restoreConversationModeSettings() {
+  if (typeof window === "undefined") return;
+  try {
+    if (localStorage.getItem("insomnia_mode_priority_recovery_v1")) return;
+    for (const key of Object.keys(localStorage)) {
+      if (!key.startsWith(STORAGE_KEY_PREFIX)) continue;
+      try {
+        const value = JSON.parse(localStorage.getItem(key) || "null");
+        if (value && typeof value === "object" && !Array.isArray(value) &&
+            (value.modelId === "magnum-conversation" || "nonExplicitConversation" in value)) {
+          localStorage.setItem(key, JSON.stringify(recoverModeSettings(value)));
+        }
+      } catch { /* Preserve unreadable entries for recovery. */ }
+    }
+    const motherKey = "insomnia_mother_card_config_v2";
+    const mother = JSON.parse(localStorage.getItem(motherKey) || "null");
+    if (mother?.aiSettings && (mother.aiSettings.modelId === "magnum-conversation" || "nonExplicitConversation" in mother.aiSettings)) {
+      localStorage.setItem(motherKey, JSON.stringify({ ...mother, aiSettings: recoverModeSettings(mother.aiSettings) }));
+    }
+    localStorage.setItem("insomnia_magnum_conversation_primary_v1", "1");
+    localStorage.setItem("insomnia_mode_priority_recovery_v1", "1");
+  } catch { /* Preserve data when storage is unavailable. */ }
+}
+
+
 function getMotherCardBaseSettings(): Partial<StoryAiSettings> {
   if (typeof window === "undefined") return {};
   try {
@@ -227,20 +257,21 @@ function getMotherCardBaseSettings(): Partial<StoryAiSettings> {
 }
 
 export function getStoryAiSettings(storyId?: string | null): StoryAiSettings {
+  restoreConversationModeSettings();
   const motherAi = getMotherCardBaseSettings();
   const base: StoryAiSettings = { ...DEFAULT_AI_SETTINGS, ...motherAi };
   if (typeof window === "undefined") return base;
   try {
+    const globalStored = localStorage.getItem(`${STORAGE_KEY_PREFIX}defaults_v2`);
+    const defaults: StoryAiSettings = globalStored ? { ...base, ...JSON.parse(globalStored) } : base;
     if (storyId) {
       const stored = localStorage.getItem(`${STORAGE_KEY_PREFIX}${storyId}`);
       if (stored) {
-        return { ...base, ...JSON.parse(stored) };
+        return { ...defaults, ...JSON.parse(stored) };
       }
     }
-    const globalStored = localStorage.getItem(`${STORAGE_KEY_PREFIX}global`);
-    if (globalStored) {
-      return { ...base, ...JSON.parse(globalStored) };
-    }
+    // The legacy global key was also written by per-card saves. Its origin is ambiguous.
+    return defaults;
   } catch (e) {
     console.warn("Could not read story AI settings from localStorage", e);
   }
@@ -248,14 +279,23 @@ export function getStoryAiSettings(storyId?: string | null): StoryAiSettings {
 }
 
 export function setStoryAiSettings(storyId: string | null | undefined, settings: StoryAiSettings): void {
+  restoreConversationModeSettings();
   if (typeof window === "undefined") return;
   try {
-    const serialized = JSON.stringify(settings);
+    const serialized = JSON.stringify(recoverModeSettings({ ...settings }));
     if (storyId) {
       localStorage.setItem(`${STORAGE_KEY_PREFIX}${storyId}`, serialized);
+    } else {
+      localStorage.setItem(`${STORAGE_KEY_PREFIX}defaults_v2`, serialized);
     }
-    localStorage.setItem(`${STORAGE_KEY_PREFIX}global`, serialized);
   } catch (e) {
     console.warn("Could not save story AI settings to localStorage", e);
   }
+}
+
+/** Mode determines the runtime engine without rewriting a card's saved settings. */
+export function resolveConversationModelId(adult: boolean, selected?: string, fallback?: string): string {
+  if (adult) return "magnum-v4-local";
+  const model = selected || fallback || "insomnia-flash";
+  return model === "magnum-v4-local" || model === "magnum-conversation" ? "insomnia-flash" : model;
 }

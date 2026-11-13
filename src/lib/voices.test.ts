@@ -36,3 +36,22 @@ it("stores the story accent beside the voice and defaults to México", () => {
   expect(spokenRegion("ve", false)).toBe("plain");
   expect(spokenRegion("ve", true)).toBe("ve");
 });
+
+it("keeps voice and accent changes local to their character, including after reload", () => {
+  localStorage.clear();
+  setStoryVoice(undefined, "Charon");
+  setStoryRegion(undefined, "mx");
+  setStoryAccent(undefined, false);
+  setStoryVoice("a", "Kore");
+  setStoryRegion("a", "ve");
+  setStoryAccent("a", true);
+  setStoryVoice("b", "Puck");
+  setStoryRegion("b", "ar");
+  expect(getStoryVoice("a")).toBe("Kore");
+  expect(getStoryRegion("a")).toBe("ve");
+  expect(getStoryAccent("a")).toBe(true);
+  expect(getStoryVoice("new", "Leda")).toBe("Leda");
+  expect(getStoryVoice("new")).toBe("Charon");
+  expect(getStoryRegion("new")).toBe("mx");
+  expect(getStoryAccent("new")).toBe(false);
+});

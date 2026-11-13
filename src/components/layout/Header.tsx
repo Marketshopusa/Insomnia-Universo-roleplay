@@ -3,9 +3,10 @@ import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { LanguageSelector } from "./LanguageSelector";
+import { profileHref } from "@/lib/accountProfile";
 import { signOut } from "@/lib/auth";
 import { useState } from "react";
-import { Menu, X, ShieldAlert, ShieldCheck, Crown } from "lucide-react";
+import { Menu, X, ShieldAlert, ShieldCheck, Crown, UserRound } from "lucide-react";
 import { useAdultMode } from "@/contexts/AdultModeContext";
 import { AdultConsentDialog } from "@/components/adult/AdultConsentDialog";
 import { MotherCardDialog } from "@/components/story/MotherCardDialog";
@@ -22,7 +23,7 @@ const Logo = () => (
 export const Header = () => {
   const { user, loading, isAdmin } = useAuth();
   const location = useLocation();
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { enabled: adultEnabled, consentGiven, enable, disable, grantConsent } = useAdultMode();
   const [consentOpen, setConsentOpen] = useState(false);
@@ -73,7 +74,7 @@ export const Header = () => {
           <Logo />
           
           {/* Desktop Navigation */}
-          <nav className="hidden md:flex items-center gap-6">
+          <nav className="hidden xl:flex items-center gap-3">
             {navLinks.map((link) => (
               <Link
                 key={link.href}
@@ -129,11 +130,23 @@ export const Header = () => {
             )}
           </nav>
 
+          <div className="flex items-center gap-2">
+            {!loading && user && (
+              <Link
+                to={profileHref(location.pathname + location.search + location.hash)}
+                aria-label={language === "es" ? "Mi perfil" : "My profile"}
+                aria-current={location.pathname === "/profile" ? "page" : undefined}
+                className="inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md border border-primary/30 bg-primary/10 px-2.5 text-xs font-medium text-primary transition-colors hover:bg-primary/20"
+              >
+                <UserRound className="h-4 w-4" />
+                <span>{language === "es" ? "Mi perfil" : "My profile"}</span>
+              </Link>
+            )}
           {/* Mobile Menu Button */}
           <button
             type="button"
             aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
-            className="md:hidden p-2"
+            className="xl:hidden p-2"
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
           >
             {mobileMenuOpen ? (
@@ -142,11 +155,12 @@ export const Header = () => {
               <Menu className="h-6 w-6" />
             )}
           </button>
+          </div>
         </div>
 
         {/* Mobile Navigation */}
         {mobileMenuOpen && (
-          <nav className="md:hidden py-4 border-t border-border">
+          <nav className="xl:hidden py-4 border-t border-border">
             <div className="flex flex-col gap-4">
               {isAdmin && (
                 <button

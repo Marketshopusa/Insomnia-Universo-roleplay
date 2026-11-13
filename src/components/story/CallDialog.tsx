@@ -8,8 +8,10 @@ import { startWavRecording, blobToBase64, type WavRecorder } from "@/lib/wavReco
 import { streamSpeech, type SpeechStream } from "@/lib/ttsStream";
 import { browserSpeechLocale } from "@/lib/regions";
 import { invokeFunctionWithRetry } from "@/lib/invokeFunction";
-import { normalizeAssistantReply } from "@/lib/roleReply";
+import { normalizeAssistantResponse, type ReplyEngine } from "@/lib/roleReply";
 import { selectStoryMemory } from "@/lib/storyMemory";
+import { getMotherCardConfig } from "@/lib/roleplayBase";
+import { resolveConversationModelId, getStoryAiSettings } from "@/lib/storyAiSettings";
 
 type CallState = "idle" | "listening" | "thinking" | "speaking";
 
@@ -36,8 +38,9 @@ interface CallDialogProps {
   voice: string;
   region: string;
   adultMode: boolean;
+  adultConsent?: boolean;
   history: Turn[];
-  onTurn: (userText: string, assistantText: string | null) => void;
+  onTurn: (userText: string, assistantText: string | null, engine?: ReplyEngine) => void;
 }
 
 const SILENCE_MS = 1600;
@@ -49,11 +52,14 @@ export const CallDialog = ({
   voice,
   region,
   adultMode,
+  adultConsent = false,
   history,
   onTurn,
 }: CallDialogProps) => {
   const { t } = useLanguage();
   const es = language === "es";
+  const voiceSettingsRef = useRef({ voice, language, region });
+  voiceSettingsRef.current = { voice, language, region };
   const [state, setState] = useState<CallState>("idle");
   const [liveTranscript, setLiveTranscript] = useState("");
   const recorderRef = useRef<WavRecorder | null>(null);
@@ -109,7 +115,8 @@ export const CallDialog = ({
 
   const speak = async (text: string) => {
     try {
-      const speech = streamSpeech(text, voice, language, true, region);
+      const current = voiceSettingsRef.current;
+      const speech = streamSpeech(text, current.voice, current.language, true, current.region);
       streamRef.current = speech;
       await speech.done;
       streamRef.current = null;
@@ -121,28 +128,42 @@ export const CallDialog = ({
     }
   };
 
-  const askCharacter = async (userText: string, priorHistory: Turn[]) => {
-    const { data, error } = await invokeFunctionWithRetry<{ content?: string; error?: string; message?: string }>("story-chat", {
+  const askCharacter = async (userText: string, priorHistory: Turn[]): Promise<{ content: string; engine?: ReplyEngine; error?: string; message?: string }> => {
+    const mother = getMotherCardConfig();
+    const cardSettings = getStoryAiSettings(story?.id);
+    const { data, error } = await invokeFunctionWithRetry<{ content?: string; engine?: ReplyEngine; error?: string; message?: string }>("story-chat", {
         story: {
           id: story?.id,
           title: story?.title,
           description: story?.description,
           story_context: story?.story_context,
           character_role: story?.character_role,
+          character_age: story?.character_age,
+          player_age: story?.player_age,
           player_role: story?.player_role,
           story_type: story?.story_type,
         },
         language,
         isLiveCall: true,
-        settings: { modelId: "insomnia-flash", messageLength: 45 },
+        settings: {
+          ...mother.aiSettings,
+          ...cardSettings,
+          modelId: resolveConversationModelId(adultMode, cardSettings.modelId, mother.aiSettings.modelId),
+          customDirective: cardSettings.customDirective || mother.masterDirective,
+          messageLength: 45,
+        },
         history: priorHistory.slice(-48),
         memory: selectStoryMemory(priorHistory, userText),
         userMessage: userText,
         adultMode,
-        region,
+        adultConsent,
+        region: voiceSettingsRef.current.region,
     });
     if (error || !data?.content) {
       const status = (error as { context?: Response } | null)?.context?.status;
+      if (status === 401 || data?.error === "login_required") {
+        return { content: "", error: "login_required", message: data?.message || error?.message };
+      }
       if (status === 402 || data?.error === "credits_exhausted") {
         return {
           content: "", error: "credits_exhausted",
@@ -151,9 +172,9 @@ export const CallDialog = ({
             : "The AI provider has no credits to respond.",
         };
       }
-      return { content: "", error: data?.error, message: data?.message };
+      return { content: "", error: data?.error, message: data?.message || error?.message };
     }
-    return { content: normalizeAssistantReply(data.content) || data.content, error: undefined, message: undefined };
+    return { content: normalizeAssistantResponse(data) || data.content, engine: data.engine, error: undefined, message: undefined };
   };
 
   const recoverTurn = () => {
@@ -164,6 +185,15 @@ export const CallDialog = ({
       variant: "destructive",
     });
     void listen();
+  };
+
+  const requireLogin = () => {
+    hangUp();
+    toast({
+      title: es ? "Tu sesión ha caducado" : "Your session has expired",
+      description: es ? "Vuelve a iniciar sesión para continuar la llamada. Tu conversación se conserva." : "Sign in again to continue the call. Your conversation is preserved.",
+      variant: "destructive",
+    });
   };
 
   const listen = async () => {
@@ -195,7 +225,7 @@ export const CallDialog = ({
       if (Recognition) {
         try {
           const recognition = new Recognition();
-          recognition.lang = browserSpeechLocale(language, region);
+          recognition.lang = browserSpeechLocale(voiceSettingsRef.current.language, voiceSettingsRef.current.region);
           recognition.continuous = true;
           recognition.interimResults = true;
           recognition.onresult = (event) => {
@@ -311,11 +341,15 @@ export const CallDialog = ({
         audio,
         mimeType: "audio/wav",
         language: es ? "es" : "en",
-        region,
+        region: voiceSettingsRef.current.region,
       });
       if (!activeRef.current || sessionCountRef.current !== turnSession) return;
 
       if (error || data?.error) {
+        if (error?.context?.status === 401 || data?.error === "login_required") {
+          requireLogin();
+          return;
+        }
         toast({
           title: t("call.cantTranscribe"),
           description: data?.message || error?.message || t("call.noVoice"),
@@ -338,9 +372,14 @@ export const CallDialog = ({
     if (!activeRef.current || sessionCountRef.current !== turnSession) return;
     const reply = replyResult.content;
     if (!reply) {
+      if (replyResult.error === "login_required") {
+        requireLogin();
+        return;
+      }
+      const accessFailure = String(replyResult.error || "").startsWith("adult_");
       historyRef.current = [...priorHistory, { role: "user", content: userText }];
       toast({
-        title: replyResult.error === "credits_exhausted"
+        title: accessFailure ? (es ? "Acceso al modo adulto" : "Adult mode access") : replyResult.error === "credits_exhausted"
           ? (es ? "Se agotaron los creditos de IA" : "AI credits are exhausted")
           : replyResult.error === "content_blocked"
             ? (es ? "Esta escena no puede continuar" : "This scene cannot continue")
@@ -348,7 +387,7 @@ export const CallDialog = ({
         description: replyResult.message || t("call.savedMessage"),
         variant: "destructive",
       });
-      if (replyResult.error === "credits_exhausted" || replyResult.error === "content_blocked") {
+      if (accessFailure || replyResult.error === "credits_exhausted" || replyResult.error === "content_blocked") {
         hangUp();
       } else {
         if (activeRef.current && sessionCountRef.current === turnSession) void listen();
@@ -361,7 +400,7 @@ export const CallDialog = ({
       { role: "user", content: userText },
       { role: "assistant", content: reply },
     ];
-    onTurn(userText, reply);
+    onTurn(userText, reply, replyResult.engine);
     setState("speaking");
     await speak(reply);
     if (activeRef.current && sessionCountRef.current === turnSession) void listen();

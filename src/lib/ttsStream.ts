@@ -1,3 +1,4 @@
+import { authenticatedFetch } from "./authenticatedFetch";
 import { prepareExpressiveSpeech } from "./expressiveSpeech.mjs";
 import { scheduleFoleyForMessage } from "./foleyStudio";
 import { supabase } from "@/integrations/supabase/client";
@@ -20,15 +21,15 @@ export interface SpeechStream {
 const wait = (milliseconds: number) =>
   new Promise((resolve) => window.setTimeout(resolve, milliseconds));
 
+interface SpeechSegment { durationSamples: number; narration: string }
+
 type Performance = "neutral" | "warm" | "surprised" | "amused" | "sad" | "pain" | "pleasure" | "scream" | "soft" | "angry" | "afraid" | "disgusted" | "tired";
 
 async function requestSpeech(text: string, voice: string, language: string, region: string, performance: Performance, roleplay: boolean, signal: AbortSignal) {
-  const { data: { session } } = await supabase.auth.getSession();
-  return fetch(FUNCTIONS_URL, {
+  return authenticatedFetch(FUNCTIONS_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      ...(session?.access_token ? { Authorization: "Bearer " + session.access_token } : {}),
     },
     body: JSON.stringify({ text, voice, language, region, performance, roleplay, stream: true }),
     signal,
@@ -48,7 +49,7 @@ export function roleplayPerformance(text: string): Performance {
   return performSpeech(text).performance;
 }
 
-async function receivePcmOnce(text: string, voice: string, language: string, region: string, performance: Performance, roleplay: boolean, signal: AbortSignal, onChunk: (bytes: Uint8Array) => void) {
+async function receivePcmOnce(text: string, voice: string, language: string, region: string, performance: Performance, roleplay: boolean, signal: AbortSignal, onChunk: (bytes: Uint8Array) => void, onSegment: (segment: SpeechSegment) => void) {
   const response = await requestSpeech(text, voice, language, region, performance, roleplay, signal);
   if (!response.ok || !response.body) {
     const payload = await response.json().catch(() => null) as { message?: string; detail?: string } | null;
@@ -64,10 +65,16 @@ async function receivePcmOnce(text: string, voice: string, language: string, reg
     if (!line.startsWith("data:")) return;
     const raw = line.slice(5).trim();
     if (!raw || raw === "[DONE]") return;
-    let event: { type?: string; audio?: string; message?: string; provider?: string };
+    let event: { type?: string; audio?: string; message?: string; provider?: string; durationSamples?: number; narration?: string };
     try { event = JSON.parse(raw); } catch { return; }
     if (event.type === "speech.error") throw new Error(event.message || "tts_stream_failed");
     if (event.type === "speech.provider") return;
+    if (event.type === "speech.segment") {
+      if (typeof event.durationSamples === "number" && Number.isFinite(event.durationSamples) && event.durationSamples > 0) {
+        onSegment({ durationSamples: event.durationSamples, narration: event.narration || "" });
+      }
+      return;
+    }
     if (event.type === "speech.audio.done") {
       receivedDone = true;
       return;
@@ -101,7 +108,7 @@ async function receivePcmOnce(text: string, voice: string, language: string, reg
   if (totalBytes / 2 / PCM_SAMPLE_RATE < minDuration) throw new Error("tts_audio_too_short");
 }
 
-async function receivePcm(text: string, voice: string, language: string, region: string, performance: Performance, roleplay: boolean, signal: AbortSignal, onChunk: (bytes: Uint8Array) => void) {
+async function receivePcm(text: string, voice: string, language: string, region: string, performance: Performance, roleplay: boolean, signal: AbortSignal, onChunk: (bytes: Uint8Array) => void, onSegment: (segment: SpeechSegment) => void) {
   let lastError: unknown;
   for (let attempt = 0; attempt < 2; attempt += 1) {
     let audioStarted = false;
@@ -109,7 +116,7 @@ async function receivePcm(text: string, voice: string, language: string, region:
       return await receivePcmOnce(text, voice, language, region, performance, roleplay, signal, (bytes) => {
         audioStarted = true;
         onChunk(bytes);
-      });
+      }, onSegment);
     } catch (error) {
       // Once any PCM is audible, retrying would repeat the start of the phrase.
       if (signal.aborted || audioStarted || (error instanceof SpeechHttpError && error.status < 500)) throw error;
@@ -203,30 +210,46 @@ export function streamSpeech(text: string, voice: string, language = "es", rolep
       if (!spoken) { stop(); return; }
       let scheduledAt = context.currentTime;
 
-      // Programar los efectos acústicos y foley de la escena INMEDIATAMENTE sin esperar por la red
-      if (roleplay) {
-        try {
-          const foleySources = scheduleFoleyForMessage(context, text, context.currentTime + 0.04);
-          for (const s of foleySources) {
-            sources.add(s);
-            s.onended = () => {
-              sources.delete(s);
-              s.disconnect();
-              if (schedulingComplete && sources.size === 0) finishPlayback();
-            };
-          }
-          if (foleySources.length > 0) {
-            reportFirstPlayback();
-          }
-        } catch { /* Ignore optional foley errors */ }
-      }
+      let pendingSegment: SpeechSegment | null = null;
+      let afterEffectsAt = 0;
+      let firstAudio = true;
+      const onSegment = (segment: SpeechSegment) => {
+        // Finish the previous action's actual sound before the next spoken run.
+        scheduledAt = Math.max(scheduledAt, afterEffectsAt);
+        pendingSegment = segment;
+      };
+      const scheduleScene = (segment: SpeechSegment, spokenStartAt: number) => {
+        if (!roleplay || stopped || !context || !segment.narration) return;
+        const narrationEndsAt = spokenStartAt + segment.durationSamples / PCM_SAMPLE_RATE;
+        const foleySources = scheduleFoleyForMessage(context, segment.narration, narrationEndsAt, 0.60, (source, at, ambient) => {
+          if (!ambient) afterEffectsAt = Math.max(afterEffectsAt, at + (source.buffer?.duration || 0));
+        });
+        for (const source of foleySources) {
+          sources.add(source);
+          source.onended = () => {
+            sources.delete(source);
+            source.disconnect();
+            if (schedulingComplete && sources.size === 0) finishPlayback();
+          };
+        }
+      };
 
       const schedule = (bytes: Uint8Array) => {
         if (stopped || !context) return;
+        const startAt = Math.max(scheduledAt, context.currentTime + 0.025);
+        const beginsRun = firstAudio || pendingSegment !== null;
+        if (pendingSegment) scheduleScene(pendingSegment, startAt);
+        pendingSegment = null;
+        firstAudio = false;
         const samples = new Float32Array(bytes.byteLength / 2);
         const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
         for (let i = 0; i < bytes.byteLength; i += 2) samples[i / 2] = view.getInt16(i, true) / 32768;
         const buffer = context.createBuffer(1, samples.length, PCM_SAMPLE_RATE);
+        // A short onset fade avoids an abrupt PCM boundary becoming an audible click.
+        if (beginsRun) {
+          const edge = Math.min(samples.length, 96);
+          for (let i = 0; i < edge; i++) samples[i] *= i / edge;
+        }
         buffer.copyToChannel(samples, 0);
         const source = context.createBufferSource();
         source.buffer = buffer;
@@ -237,13 +260,12 @@ export function streamSpeech(text: string, voice: string, language = "es", rolep
           source.disconnect();
           if (schedulingComplete && sources.size === 0) finishPlayback();
         };
-        const startAt = Math.max(scheduledAt, context.currentTime + (scheduledAt === 0 ? 0.08 : 0.025));
         source.start(startAt);
         scheduledAt = startAt + buffer.duration;
 
         reportFirstPlayback();
       };
-      await receivePcm(spoken, voice, language, region, performance, roleplay, controller.signal, schedule);
+      await receivePcm(spoken, voice, language, region, performance, roleplay, controller.signal, schedule, onSegment);
       schedulingComplete = true;
       if (sources.size === 0) finishPlayback();
       await playbackEnded;

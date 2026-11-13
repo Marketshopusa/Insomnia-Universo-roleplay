@@ -1,8 +1,9 @@
+import { MAX_REPLY_CHARS } from "../src/lib/replyQuality.mjs";
+import { detectPhysicalSoundEvents } from "../src/lib/soundbank/matcher.mjs";
+import { authenticationFailure } from "./_auth.mjs";
 import { synthesizeExpressiveScene } from "../src/lib/expressiveAudio.mjs";
 import { prepareExpressiveSpeech, hasVocalCue } from "../src/lib/expressiveSpeech.mjs";
 import { vocalSample } from "../src/lib/vocalSamples.mjs";
-import { createClient } from "@supabase/supabase-js";
-import { supabaseUrl, publishableKey } from "./_config.mjs";
 import { explainGeminiFailure, isGeminiConfigured, streamGeminiSpeech, synthesizeGemini, removePerformanceCues, previewVoice, splitSentences } from "./_geminiTts.mjs";
 
 export const maxDuration = 60;
@@ -72,16 +73,8 @@ export default async function handler(req, res) {
     return res.status(429).json({ error: "rate_limited", message: "Demasiadas solicitudes de audio simultáneas. Espera unos segundos." });
   }
 
-  const isDev = process.env.NODE_ENV !== "production" && !process.env.VERCEL;
-  const jwt = String(req.headers.authorization || "").replace(/^Bearer\s+/i, "").trim();
-  let isAuthenticated = isDev;
-  if (!isAuthenticated && jwt) {
-    try {
-      const { data, error } = await createClient(supabaseUrl, publishableKey, { auth: { persistSession: false } }).auth.getUser(jwt);
-      if (!error && data?.user) isAuthenticated = true;
-    } catch {}
-  }
-  if (!isAuthenticated) return res.status(401).json({ error: "login_required" });
+  const failure = await authenticationFailure(req);
+  if (failure) return res.status(failure.status).json({ error: failure.error, message: failure.message });
   if (req.body?.metric === "first_playback") {
     const elapsed = Number(req.body.elapsedMs);
     if (!Number.isFinite(elapsed) || elapsed < 0 || elapsed > 120_000) {
@@ -104,7 +97,7 @@ export default async function handler(req, res) {
     .replace(/\b([aA]){4,}\b/gi, "Aaah")
     .replace(/\b([oO]){4,}\b/gi, "Oooh")
     .replace(/\b([eE]){4,}\b/gi, "Eeeh");
-  const limited = normalizedRaw.slice(0, 1400);
+  const limited = normalizedRaw.slice(0, MAX_REPLY_CHARS);
   // Prepare expressive speech parsing vocal reactions (*gime*, *se ríe*, *suspira*, *llora*) from original marked text
   const expression = req.body?.roleplay ? prepareExpressiveSpeech(limited, { roleplay: true }) : null;
   const text = (expression?.text && expression.text.trim()) || limited.replace(/[*_#]/g, "").replace(/\s+/g, " ").trim();
@@ -128,51 +121,63 @@ export default async function handler(req, res) {
     let resPiece = await synthesizeGemini(cleaned, v, lang, opts);
     if (resPiece.status === 200 && resPiece.pcm?.length) return resPiece;
     if (isReactionOnly) {
-      const fallbackClip = vocalSample("Aoede", "es", opts.expression.reactions[0].event, opts.expression.reactions[0].direction);
-      return { status: 200, pcm: fallbackClip || Buffer.alloc(2400) };
+      const fallbackClip = vocalSample(previewVoice(v), lang, opts.expression.reactions[0].event, opts.expression.reactions[0].direction, region);
+      return fallbackClip ? { status: 200, pcm: fallbackClip } : resPiece;
     }
     const plainPiece = removePerformanceCues(cleaned).trim();
     if (plainPiece) {
       resPiece = await synthesizeGemini(plainPiece, v, lang, { ...opts, performance: opts?.performance || performance, expression: undefined });
       if (resPiece.status === 200 && resPiece.pcm?.length) return resPiece;
     }
-    if (opened) {
-      return { status: 200, pcm: Buffer.alloc(1920) };
-    }
     return resPiece;
   };
 
   try {
     // 1. Si hay reacciones acústicas marcadas (*gime*, *se ríe*, *suspira*, *llora*), inyectar muestras acústicas hiperrealistas y streamear de inmediato
-    if (expression?.reactions?.length) {
+    if (expression && (expression.reactions.length || expression.segments.some((part) => part.kind === "narration" && detectPhysicalSoundEvents(part.text).length))) {
       try {
         let streamedChunks = 0;
         const scene = await synthesizeExpressiveScene(expression, req.body.voice, req.body.language, {
           performance,
           region,
           resolvedVoice: previewVoice(req.body.voice),
-          samples: (v, lang, event, dir) => vocalSample(v, lang, event, dir) || vocalSample("Aoede", "es", event, dir),
+          samples: (v, lang, event, dir) => vocalSample(v, lang, event, dir, region),
           synthesize: synthesizePieceWithRetry,
-          deadlineMs: 18_000,
-          onAudio: (pcmChunk) => {
+          deadlineMs: 30_000,
+          onAudio: (pcmChunk, segment) => {
             if (!opened) {
               opened = true;
               openSpeech(res, provider, startedAt);
             }
+            sendEvent(res, { type: "speech.segment", ...segment });
             writePcmChunks(res, pcmChunk);
             streamedChunks += 1;
           },
         });
         if (streamedChunks > 0) {
+          if (scene.status !== 200) {
+            sendEvent(res, { type: "speech.error", message: "No se pudo completar el audio con la voz seleccionada." });
+            res.end();
+            return;
+          }
           finishSpeech(res, provider, startedAt);
           return;
+        }
+        if (scene.status !== 200) {
+          return res.status(scene.status === 429 ? 429 : 502).json({ error: "expressive_audio_failed", message: "No se pudo completar una expresión con la voz seleccionada." });
         }
         if (scene.status === 200 && scene.pcm?.length) {
           writePcm(res, scene.pcm, provider, startedAt);
           return;
         }
       } catch (sceneErr) {
-        console.warn("synthesizeExpressiveScene fallback to unified track:", sceneErr);
+        if (opened) {
+          sendEvent(res, { type: "speech.error", message: "No se pudo completar el audio con la voz seleccionada." });
+          res.end();
+          return;
+        }
+        console.warn("synthesizeExpressiveScene failed:", sceneErr?.message);
+        return res.status(502).json({ error: "expressive_audio_failed", message: "No se pudo completar una expresión con la voz seleccionada." });
       }
     }
 
@@ -185,7 +190,7 @@ export default async function handler(req, res) {
           region,
           expression,
           firstAudioMs: 1200,
-          onAudio: (pcmChunk) => {
+          onAudio: (pcmChunk, segment) => {
             if (!opened) {
               opened = true;
               openSpeech(res, provider, startedAt);
@@ -195,6 +200,11 @@ export default async function handler(req, res) {
           },
         });
         if (streamedAny) {
+          if (streamResult.partial) {
+            sendEvent(res, { type: "speech.error", message: "La reproducción de voz se interrumpió." });
+            res.end();
+            return;
+          }
           finishSpeech(res, provider, startedAt);
           return;
         }
@@ -217,6 +227,10 @@ export default async function handler(req, res) {
             const secondChunk = await synthesizePieceWithRetry(remainingText, req.body.voice, req.body.language, { performance, region, expression });
             if (secondChunk.status === 200 && secondChunk.pcm?.length) {
               writePcmChunks(res, secondChunk.pcm);
+            } else {
+              sendEvent(res, { type: "speech.error", message: "No se pudo completar la voz seleccionada." });
+              res.end();
+              return;
             }
             finishSpeech(res, provider, startedAt);
             return;
@@ -241,6 +255,11 @@ export default async function handler(req, res) {
     return;
   } catch (failure) {
     console.warn("Insomnia speech gemini failed", failure?.message || failure?.name || "Error", "after_ms", Date.now() - startedAt);
+    if (opened) {
+      sendEvent(res, { type: "speech.error", message: "La reproducción de voz se interrumpió." });
+      res.end();
+      return;
+    }
     return res.status(502).json({
       error: "tts_unavailable",
       message: "La voz no pudo reproducir esta línea.",

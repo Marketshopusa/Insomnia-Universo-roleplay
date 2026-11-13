@@ -1,3 +1,7 @@
+import { magnumConversation, isRequestedAdultMode } from "./_magnumConversation.mjs";
+import { authenticationFailure, getAuthenticatedUser } from "./_auth.mjs";
+import { MAX_REPLY_CHARS, isIncompleteTurn, truncatedCompletion } from "../src/lib/replyQuality.mjs";
+import { isRepeatedTurn } from "../src/lib/conversationReply.mjs";
 const DANGLING_TAIL_REGEX = /\b(?:de|del|al|a|en|con|por|para|sin|sobre|entre|hacia|hasta|como|mientras|cuando|que|y|e|o|u|ni|pero|un|una|unos|unas|el|la|los|las|su|sus|mi|mis|tu|tus|me|te|se|nos|le|les|lo)\s*$/iu;
 
 function cleanCueText(rawInner, maxWords = 22) {
@@ -69,20 +73,6 @@ export function isRateLimited(identifier) {
 
 export const maxDuration = 60;
 const send = (res, status, value) => res.status(status).json(value);
-async function authenticated(req) {
-  const isDev = process.env.NODE_ENV !== "production" && !process.env.VERCEL;
-  if (isDev) return true;
-  const jwt = String(req.headers?.authorization || "").replace(/^Bearer\s+/i, "").trim();
-  if (!jwt || !KEY) return false;
-  try {
-    const client = createClient(BASE, KEY, { auth: { persistSession: false } });
-    const { data, error } = await client.auth.getUser(jwt);
-    if (!error && data?.user) return true;
-  } catch {
-    // Supabase auth connection error
-  }
-  return false;
-}
 export function generationConfigFor(candidate, settings, options = {}, thinking = true) {
   if (!thinking || !options.fastReply) return settings;
   if (candidate.startsWith("gemini-3.")) return { ...settings, thinkingConfig: { thinkingLevel: "low" } };
@@ -151,6 +141,29 @@ export function isRefusal(text) {
   return refusalPhrases.some((phrase) => l.includes(phrase));
 }
 
+export function generationTimeout(options = {}, defaultMs = 25000) {
+  const remaining = options.deadlineMs == null ? Infinity : options.deadlineMs - Date.now();
+  if (remaining <= 0) {
+    throw Object.assign(new Error("El motor de IA agotó el tiempo del turno."), { name: "TimeoutError", status: 504, code: "ai_timeout" });
+  }
+  return Math.max(1, Math.floor(Math.min(options.timeoutMs || defaultMs, remaining)));
+}
+
+async function awaitGeneration(promise, options) {
+  if (options.deadlineMs == null) return promise;
+  let timer;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(Object.assign(new Error("El motor de IA agotó el tiempo del turno."), { name: "TimeoutError", status: 504, code: "ai_timeout" })), generationTimeout(options));
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export async function generateLocalLlama(messages, options = {}) {
   try {
     // En Vercel no existe el servidor local de PC, omitir instantáneamente para no esperar timeouts inútiles
@@ -167,21 +180,22 @@ export async function generateLocalLlama(messages, options = {}) {
       body: JSON.stringify({
         model: "magnum-v4-12b",
         messages: sanitizedMessages,
-        max_tokens: Math.max(350, options.maxTokens || 450),
+        max_tokens: Math.max(1, options.maxTokens || 450),
         temperature: options.temperature ?? 0.68,
         repeat_penalty: options.repeat_penalty ?? 1.04,
         presence_penalty: 0.0,
         frequency_penalty: 0.0,
         repeat_last_n: 256,
       }),
-      signal: AbortSignal.timeout(options.timeoutMs || 35000),
+      signal: AbortSignal.timeout(generationTimeout(options, 35000)),
     });
     if (!response.ok) return null;
     const data = await response.json();
+    if (truncatedCompletion(data?.choices?.[0]?.finish_reason)) return null;
     let content = data?.choices?.[0]?.message?.content?.trim();
     if (content) {
       content = content.replace(/[\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff\u3040-\u30ff]/g, "").trim();
-      if (content.length > 5 && !isRefusal(content)) {
+      if (content.length > 5 && !isRefusal(content) && !isIncompleteTurn(content)) {
         if (options.isRepeated && options.isRepeated(content)) return null;
         if (options.validate && !options.validate(content)) return null;
         return content;
@@ -236,7 +250,7 @@ export async function generateOpenRouter(messages, options = {}) {
           frequency_penalty: 0,
           reasoning: { max_tokens: 0 },
         }),
-        signal: AbortSignal.timeout(options.timeoutMs || 6000),
+        signal: AbortSignal.timeout(generationTimeout(options, 6000)),
       });
       if (!response.ok) {
         console.warn("OpenRouter model error", model, response.status);
@@ -248,11 +262,9 @@ export async function generateOpenRouter(messages, options = {}) {
         continue;
       }
       const data = await response.json();
+      if (truncatedCompletion(data?.choices?.[0]?.finish_reason)) continue;
       let content = data?.choices?.[0]?.message?.content?.trim();
-      if (!content && typeof data?.choices?.[0]?.message?.reasoning === "string") {
-        content = data.choices[0].message.reasoning.trim();
-      }
-      if (content && content.length > 5 && !isRefusal(content)) {
+      if (content && content.length > 5 && !isRefusal(content) && !isIncompleteTurn(content)) {
         if (options.isRepeated && options.isRepeated(content)) {
           console.warn("OpenRouter candidate rejected because it repeated previous dialogue, trying next model:", model);
           continue;
@@ -272,17 +284,27 @@ export async function generateOpenRouter(messages, options = {}) {
 
 const DEFAULT_NVIDIA_API_KEY = "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";
 
+export const NVIDIA_CHAT_MODELS = [...new Set([
+  process.env.NVIDIA_CHAT_MODEL,
+  "nvidia/nemotron-3.5-bolt-e4b",
+  "minimaxai/minimax-m3.1-flash",
+].filter(Boolean))];
+
 export async function generateNvidia(messages, options = {}) {
   const apiKey = (typeof options.apiKey === "string" && options.apiKey.trim()) || process.env.NVIDIA_API_KEY || DEFAULT_NVIDIA_API_KEY;
   if (!apiKey) return null;
-  const models = options.models || [
-    "google/diffusiongemma-26b-a4b-it",
-    "minimaxai/minimax-m3.1-flash",
-    "meta/llama-3.2-90b-vision-instruct",
-  ];
+  const models = options.models || NVIDIA_CHAT_MODELS;
   const fetchImpl = options.fetchImpl || fetch;
-  let fallbackCandidate = null;
-  let anyCandidate = null;
+  let repaired = false;
+  let requestMessages = messages;
+  const repair = () => {
+    if (repaired) return false;
+    repaired = true;
+    requestMessages = messages.map((entry, n) => n === 0 && entry.role === "system" ? { ...entry,
+      content: entry.content + "\nREVISIÓN DE CALIDAD: El intento anterior quedó incompleto o repitió una evasiva. Responde ahora a la pregunta concreta más reciente con información pertinente y frases completas. No repitas la explicación anterior ni agregues hechos no establecidos."
+    } : entry);
+    return true;
+  };
   for (let i = 0; i < models.length; i++) {
     const model = models[i];
     const temp = i >= 2 ? Math.min(0.95, (options.temperature ?? 0.82) + 0.08) : (options.temperature ?? 0.82);
@@ -295,12 +317,12 @@ export async function generateNvidia(messages, options = {}) {
         },
         body: JSON.stringify({
           model,
-          messages,
+          messages: requestMessages,
           max_tokens: options.maxTokens || 450,
           temperature: temp,
           
         }),
-        signal: AbortSignal.timeout(options.timeoutMs || 15000),
+        signal: AbortSignal.timeout(generationTimeout(options, 15000)),
       });
       if (!response.ok) {
         console.warn("Nvidia model error", model, response.status);
@@ -308,32 +330,29 @@ export async function generateNvidia(messages, options = {}) {
       }
       const data = await response.json();
       const msg = data?.choices?.[0]?.message;
-      let content = msg?.content?.trim();
-      if (!content && typeof msg?.reasoning_content === "string") {
-        const reasoning = msg.reasoning_content.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
-        const match = reasoning.match(/(?:Respuesta|Output|Spanish|Scarlett|Personaje):\s*([\s\S]+)$/i);
-        content = (match && match[1]?.trim()) || (reasoning.length > 20 && !/^(?:Here|The user|I need|This is)/i.test(reasoning) ? reasoning : "");
+      const content = typeof msg?.content === "string" ? msg.content.trim() : "";
+      if (truncatedCompletion(data?.choices?.[0]?.finish_reason) || (content && isIncompleteTurn(content))) {
+        if (repair()) i--;
+        continue;
       }
-      if (content && content.length > 5 && !isRefusal(content)) {
+      if (content && content.length > 5 && !isRefusal(content) && !isIncompleteTurn(content)) {
         if (options.isRepeated && options.isRepeated(content)) {
           console.warn("Nvidia candidate rejected because it repeated previous dialogue, trying next attempt:", model);
+          if (repair()) i--;
           continue;
-        }
-        if (!anyCandidate) anyCandidate = content;
-        if (!fallbackCandidate) {
-          fallbackCandidate = content;
         }
         if (options.validate && !options.validate(content)) {
           console.warn("Nvidia candidate rejected by validation, trying next model:", model);
           continue;
         }
+        console.info(options.purpose === "content_policy" || options.purpose === "non_explicit_policy" ? "Insomnia content checker model" : "Insomnia AI selected model", "nvidia", model);
         return content;
       }
     } catch (e) {
       console.warn("Nvidia request failed for", model, e.message);
     }
   }
-  return fallbackCandidate || anyCandidate;
+  return null;
 }
 
 export function isGeminiAvailable(customApiKey) {
@@ -344,16 +363,16 @@ export function isGeminiAvailable(customApiKey) {
 }
 
 export async function generate(model, parts, settings = {}, options = {}) {
-  const directKey = (typeof options.apiKey === "string" && options.apiKey.trim())
+  const directKey = !options.federatedOnly && ((typeof options.apiKey === "string" && options.apiKey.trim())
     || (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== "[SENSITIVE]" ? process.env.GEMINI_API_KEY : null)
-    || (process.env.GOOGLE_API_KEY && process.env.GOOGLE_API_KEY !== "[SENSITIVE]" ? process.env.GOOGLE_API_KEY : null);
+    || (process.env.GOOGLE_API_KEY && process.env.GOOGLE_API_KEY !== "[SENSITIVE]" ? process.env.GOOGLE_API_KEY : null));
 
   const hasGcp = isGeminiConfigured();
   if (!directKey && !hasGcp) {
     throw Object.assign(new Error("Gemini no está configurado en Insomnia (Vercel)."), { status: 503, code: "gemini_not_configured" });
   }
   const fetchImpl = options.fetchImpl || fetch;
-  const defaultFallbacks = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-2.0-flash-lite", "gemini-1.5-flash-8b", "gemini-flash-latest", "gemini-2.5-flash"];
+  const defaultFallbacks = ["gemini-2.5-flash", "gemini-2.5-pro"];
   const choices = [...new Set([model, ...(options.fallbackModels || defaultFallbacks)])];
   let lastError;
 
@@ -397,7 +416,7 @@ export async function generate(model, parts, settings = {}, options = {}) {
               method: "POST",
               headers: { "x-goog-api-key": directKey, "Content-Type": "application/json" },
               body: requestJson,
-              signal: AbortSignal.timeout(options.timeoutMs || 25000),
+              signal: AbortSignal.timeout(generationTimeout(options, 25000)),
             });
             if (response.status === 429) {
               console.warn(`Direct key 429 on ${candidate}, attempting GCP/Vertex or fallback...`);
@@ -410,7 +429,7 @@ export async function generate(model, parts, settings = {}, options = {}) {
         }
 
         if (!response || (!response.ok && (response.status === 429 || response.status === 403 || !directKey))) {
-          const token = await getGcpToken();
+          const token = await awaitGeneration(getGcpToken(), options);
           const projectId = quotaProjectId();
           const projectNum = process.env.GCP_PROJECT_NUMBER;
           const targetProjects = [...new Set([projectId, projectNum].filter(Boolean))];
@@ -427,13 +446,11 @@ export async function generate(model, parts, settings = {}, options = {}) {
               },
             };
             const vertexJson = JSON.stringify(vertexPayload);
-            const vertexCandidates = [
-              candidate === "gemini-flash-latest" ? "gemini-2.0-flash" : candidate === "gemini-pro-latest" ? "gemini-1.5-pro" : candidate,
-              "gemini-2.0-flash",
-              "gemini-1.5-flash-002",
-              "gemini-1.5-flash",
+            const vertexCandidates = [...new Set([
+              candidate === "gemini-flash-latest" ? "gemini-2.5-flash" : candidate === "gemini-pro-latest" ? "gemini-2.5-pro" : candidate,
               "gemini-2.5-flash",
-            ];
+              "gemini-2.5-pro",
+            ])];
             for (const pId of targetProjects) {
               for (const vModel of vertexCandidates) {
                 const vertexEndpoints = [
@@ -451,7 +468,7 @@ export async function generate(model, parts, settings = {}, options = {}) {
                         "Content-Type": "application/json",
                       },
                       body: vertexJson,
-                      signal: AbortSignal.timeout(options.timeoutMs || 20000),
+                      signal: AbortSignal.timeout(generationTimeout(options, 20000)),
                     });
                     if (gcpRes.ok) {
                       response = gcpRes;
@@ -466,7 +483,7 @@ export async function generate(model, parts, settings = {}, options = {}) {
                         method: "POST",
                         headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
                         body: "{}",
-                        signal: AbortSignal.timeout(10000),
+                        signal: AbortSignal.timeout(generationTimeout(options, 10000)),
                       }).catch(() => {});
                     }
                   } catch (gcpErr) {
@@ -519,6 +536,10 @@ export async function generate(model, parts, settings = {}, options = {}) {
             : "Gemini bloqueó esta escena. El mensaje permanece disponible para que puedas editarlo."), {
             status: 422, code: "content_blocked", blockReason,
           });
+        }
+        if (truncatedCompletion(data.candidates?.[0]?.finishReason)) {
+          lastError = Object.assign(new Error("La respuesta agotó su límite antes de terminar."), { status: 502, code: "incomplete_reply" });
+          break;
         }
         const content = (data.candidates?.[0]?.content?.parts || []).map(p => p.text || "").join("").trim();
         if (!content) {
@@ -641,6 +662,16 @@ export async function transcribeAudio(body, options = {}) {
   const remainingTime = () => Math.max(1000, totalDeadlineMs - (Date.now() - startTime));
   const attemptErrors = [];
 
+  const transcribeOnVertex = async () => ({ text: cleanTranscript(await generate(
+    "gemini-2.5-flash",
+    [{ inlineData: { mimeType, data: body.audio } }, { text: "Transcribe the spoken audio verbatim in " + locale + ". Output only the transcription. For silence, output empty." }],
+    { temperature: 0.1, maxOutputTokens: 1024 },
+    { federatedOnly: true, allowEmpty: true, fallbackModels: [], fetchImpl,
+      tokenProvider: options.tokenProvider, timeoutMs: remainingTime(), deadlineMs: startTime + totalDeadlineMs },
+  )) });
+  // A configured federated identity must actually be used when there is no API key.
+  if (!key && hasGcp) return transcribeOnVertex();
+
   // 1. Primary: gemini-3.5-transcribe via Interactions API (POST /v1beta/interactions)
   try {
     const interactionPayload = interactionsTranscriptionBody(body.audio, mimeType, locale);
@@ -694,13 +725,17 @@ export async function transcribeAudio(body, options = {}) {
     }
   }
 
+  if (hasGcp && remainingTime() > 2000 && !options.noFallback) {
+    try { return await transcribeOnVertex(); }
+    catch (error) { attemptErrors.push({ strategy: "vertex:gemini-2.5-flash", status: error.status || 502, message: error.message }); }
+  }
   const allDetails = attemptErrors.map((e) => `[${e.strategy}: ${e.status} ${e.message}]`).join("; ");
   console.error("Insomnia STT all attempts failed:", allDetails);
   const last = attemptErrors[attemptErrors.length - 1] || {};
   throw Object.assign(
     new Error(last.message || "No se pudo transcribir el micrófono."),
     {
-      status: last.status || 500,
+      status: [401, 403].includes(last.status) ? 502 : last.status || 500,
       code: "stt_failed",
       attempts: attemptErrors,
       details: allDetails,
@@ -712,7 +747,7 @@ export function storyContinuityLines(spanish) {
   if (!spanish) {
     return [
       "Standing order for every chat, new or already underway: you are that person, with your own identity, your own way of speaking, and a memory of what happened. Follow the story's current course. Do not restart it, do not change the facts or who did each thing, and do not jump to another scene.",
-      "What already happened stays true. Answer the latest line as part of the same conversation. Speak fluently, with new wording. Do not repeat the same phrases or the same apologies.",
+      "Card facts and user-confirmed events stay true; an erroneous assistant response does not become a fact. Answer the latest line as part of the same conversation. Speak fluently, with new wording. Do not repeat the same phrases or the same apologies.",
       "Stay in the same place, the same posture, and the same action. If they were hugging, they are still hugging. If they were in the rain, they are still in the rain. Do not move them to the kitchen, the bathroom, the bed, or another room unless the latest line does.",
       "A video, photo, or message stays with the person who sent it. If she sent a video of herself, it remains hers. Do not say it belongs to her partner or to someone else.",
       "Do not invent a couple and do not merge two people into one. Each person stays who they already were. Do not change the subject.",
@@ -720,7 +755,7 @@ export function storyContinuityLines(spanish) {
   }
   return [
     "Orden fija para todo chat, nuevo o ya empezado: eres esa persona, con identidad propia, su forma de hablar y memoria de lo que pasó. Sigue el rumbo de la historia. No la reinicies, no cambies los hechos ni quién hizo cada cosa, y no disocies la conversación.",
-    "Lo que ya pasó sigue siendo cierto. Responde a lo último como parte de la misma conversación, con fluidez y con palabras nuevas. No repitas las mismas frases ni las mismas disculpas.",
+    "Los hechos de la tarjeta y lo confirmado por el usuario se mantienen; una respuesta errónea del personaje no se convierte en un hecho. Responde a lo último como parte de la misma conversación, con fluidez y con palabras nuevas. No repitas las mismas frases ni las mismas disculpas.",
     "Quédate en el mismo lugar, la misma postura y la misma acción. Si estaban abrazados, siguen abrazados. Si estaban bajo la lluvia, siguen bajo la lluvia. No pases a la cocina, al baño, a la cama ni a otra habitación salvo que el último mensaje lo haga.",
     "Un video, una foto o un mensaje se queda con quien lo envió. Si ella envió un video de ella, sigue siendo suyo: no digas que es de su pareja ni de otra persona.",
     "No inventes una pareja ni juntes a dos personajes. Cada persona sigue siendo quien ya era en la conversación. No cambies de tema.",
@@ -850,51 +885,91 @@ export function narrativeRequest(body) {
   return lines.filter(Boolean).join("\n");
 }
 
+/** Card identity is data, never inferred from a conversation or a shared example. */
+export function cardIdentityLines(story = {}) {
+  return [
+    "IDENTIDAD DE ESTA TARJETA:",
+    "Personaje: " + String(story.character_role || story.title || "Personaje").slice(0, 200),
+    "Interlocutor: " + String(story.player_role || "Usuario").slice(0, 200),
+    "Conserva los roles y datos definidos en esta tarjeta. No inventes edades, profesiones, géneros ni relaciones.",
+    "Una persona mencionada en la conversación no sustituye al personaje activo. Cambia de interlocutor solo si el usuario lo indica expresamente dentro de esta historia.",
+  ];
+}
+
 export function storyVoiceLines(character, player, spanish, locale) {
   const name = String(character || "el personaje").slice(0, 80);
   const other = String(player || "la otra persona").slice(0, 80);
   if (!spanish) {
     return [
-      "You are " + name + ", in an immersive roleplay with " + other + ". Reply only as " + name + ", in " + locale + ".",
-      "0. CHARACTER SWITCHING: If " + other + " introduces or interacts with another character (e.g. 'now Emma speaks', 'speak as X'), switch immediately. Adopt that new character's identity and relation to " + other + ".",
-      "ABSOLUTE OBEDIENCE TO USER ORDERS: If " + other + " gives you a direct instruction or physical order (e.g. lock the door, undress, look at me, don't stop), you MUST perform that exact physical action in italics (*action*) immediately before speaking or reacting.",
-      "OBEDIENCE TO THIRD-PERSON ACTIONS & POSTURE FIDELITY: If " + other + " narrates or describes your physical actions in third person, you MUST immediately assume that action in first person (*taking action...*). STRICTLY FORBIDDEN to contradict the user's narrated posture or ask what to do when already commanded.",
-      "PHYSICAL REALISM & OCCUPIED MOUTH: If your mouth is occupied or if " + other + " explicitly asks you not to speak: YOU ARE STRICTLY FORBIDDEN from speaking full articulate monologues. Reply with sensory physical actions and muffled vocal sounds in italics (*muffled sounds vibrating against skin...*).",
-      "Do not ignore what " + other + " just commanded. keep that action yours from your own point of view. Respond with authentic psychology and matching actions.",
+      "You are " + name + ", speaking with " + other + ", in " + locale + ".",
+      "Stay with the current card and its conversation. Mentioning another person does not change your identity.",
+      "If the user describes your character's established action, keep that action yours from your own point of view.",
+      "Follow the user's scene directions without inventing actions, dialogue or feelings for the user.",
+      "Use natural dialogue and brief actions. Do not restart the scene or repeat previous replies.",
+      "Only change the active speaker when the user explicitly requests that change within this story.",
     ];
   }
   return [
-    "Eres " + name + " y estás hablando directamente en una conversación viva y de tú a tú con " + other + ", en " + locale + ".",
-    "1. CONVERSACIÓN 100% REAL, HUMANA Y CERCANA:",
-    "   - Habla como una persona real en una plática cotidiana entre dos personas que se tienen confianza.",
-    "   - CERO literatura antigua, cero poesía forzada, cero dialectos extraños y cero protocolo acartonado.",
-    "   - Lenguaje moderno, urbano, fresco y espontáneo.",
-    "2. PROPORCIÓN ESTRICTA: 80% DIÁLOGO HABLADO DIRECTO / 20% ACCIÓN EN ASTERISCOS:",
-    "   - El 80% de tu mensaje debe ser DIÁLOGO HABLADO en voz alta (~40 a 70 palabras).",
-    "   - En asteriscos (*...*) incluye únicamente un gesto físico breve o expresión inmediata (máximo 8 a 12 palabras), por ejemplo: *te miro sonriendo divertida* o *suelto una risita mirándote a los ojos*.",
-    "   - PROHIBIDO que el relato en asteriscos sea más largo que tus palabras habladas. El usuario está aquí para conversar, no para leer un libro.",
-    "3. COHERENCIA ESTRICTA Y SENTIDO COMÚN:",
-    "   - Responde con sentido común a lo que " + other + " te acaba de decir. Continúa el hilo de la charla sin inventar delirios.",
-    "   - PROHIBIDO inventar apelativos ajenos como 'capitán', 'director', 'saltamontes' ni relaciones ficticias como 'esposos' o 'esclavas' no presentes en la tarjeta.",
-    "   - Si el usuario es tu Tío, trátalo con familiaridad y llámalo 'Tío'. PROHIBIDO inventar que es tu primo, hermano o amante ajeno.",
-    "4. CERO GODMODING (NUNCA HABLES NI ACTÚES POR EL USUARIO):",
-    "   - Tú solo hablas y actúas por ti misma (" + name + "). PROHIBIDO TERMINANTEMENTE escribir lo que " + other + " dice, hace o siente.",
-    "5. INTIMIDAD Y NATURALIDAD ADULTA (+18):",
-    "   - Si la escena se torna íntima, sensual o apasionada, responde con entrega, deseo genuino y calidez humana de tú a tú, sin discursos moralistas ni metáforas barrocas.",
-    "6. CONTINUIDAD INMEDIATA Y ACCIÓN:",
-    "   - Continúa la escena actual exactamente donde quedó, asume lo que " + other + " te dice y asúmelo como tuyo desde tu perspectiva.",
-    "7. PROHIBIDO REPETIR EL MENSAJE DEL USUARIO: Responde exclusivamente con tus palabras y reacciones originales.",
-    "8. ASUNCIÓN TOTAL DE ACCIONES NARRADAS Y REFERENCIAS EN TERCERA PERSONA ('ELLA'):",
-    "   - Cuando " + other + " narra la escena refiriéndose a ti en tercera persona ('Ella me sigue revisando...', 'colocaba sus manos por debajo de mi tronco...'), TÚ eres 'Ella' (" + name + ").",
-    "   - Asume INMEDIATAMENTE en primera persona entre asteriscos (*...*) esas mismas caricias, tocamientos o posturas corporales descritas, sin reiniciar la escena.",
-    "   - Prohibido contradecir la postura física o acción dictada por el usuario.",
-    "   - Prohibido preguntar '¿qué quieres que haga?' cuando la acción íntima ya está en curso: actúa con entrega y complicidad.",
-    "   - Si tu boca está ocupada o te pide silencio, responde con acotaciones físicas y gemidos o palabras entrecortadas, nunca monólogos largos.",
-    "9. COMPLICIDAD CON LA ACCIÓN Y SENSACIONES CORPORALES NARRADAS:",
-    "   - Si " + other + " describe sensaciones físicas, roces, caricias o erección en la camilla, reacciona directamente a ese contacto físico con tus manos, tu mirada y tus palabras.",
-    "   - TÚ NO ERES TELÉPATA para leer secretos ajenos a la habitación, pero SÍ ves y sientes cada reacción del cuerpo de " + other + " ante tus manos y respondes con sensualidad y entrega.",
-    "10. EVOLUCIÓN NATURAL DE LA ESCENA:",
-    "   - Aunque tu rol sea médica o profesional en consulta, si la escena avanza hacia el deseo y el paciente describe caricias íntimas o erección, evoluciona de manera fluida y apasionada, entregándote al momento sin frialdad ni reiniciar el examen.",
+    "Eres " + name + " y conversas directamente con " + other + ", en " + locale + ".",
+    "Mantén la identidad, relación y situación de esta tarjeta. Mencionar a otra persona no cambia quién eres.",
+    "Si el usuario describe una acción establecida de tu personaje, asúmelo como tuyo desde tu perspectiva.",
+    "Sigue las indicaciones de la escena sin inventar acciones, diálogos ni sentimientos del usuario.",
+    "Habla con naturalidad y usa acciones breves cuando correspondan.",
+    "PROHIBIDO REPETIR EL MENSAJE DEL USUARIO o respuestas anteriores. Responde al último mensaje sin reiniciar la historia.",
+    "Cambia de interlocutor únicamente cuando el usuario lo solicite expresamente dentro de esta historia.",
+  ];
+}
+
+/** Reassert who owns each point of view, without converting prior generated claims into facts. */
+export function rolePerspectiveLines(story = {}, history = [], latest = "", spanish = true) {
+  const character = String(story.character_role || story.title || "Personaje").slice(0, 200);
+  const player = String(story.player_role || "Usuario").slice(0, 200);
+  const userLines = history.filter((turn) => turn.role === "user").slice(-3)
+    .map((turn) => String(turn.text || turn.content || "").slice(0, 500));
+  const labels = JSON.stringify({ assistant: character, user: player });
+  return spanish ? [
+    "PERSPECTIVAS Y AUTORÍA PARA ESTE TURNO: " + labels,
+    "Tú solo interpretas assistant. El usuario solo interpreta user. En cada mensaje de user, yo/me/mi pertenecen al usuario y tú/te/tu se dirigen a tu personaje. En tu respuesta yo/me/mi pertenecen a tu personaje y tú/te/tu al usuario. Resuelve las citas y la narración en tercera persona por su sujeto explícito.",
+    "La persona que habla no es necesariamente quien hizo una acción: conserva quién llegó, esperó, preguntó, cuidó o realizó cada acción según la tarjeta y las indicaciones del usuario, sin trasladarla al hablante de otro turno.",
+    "Las respuestas anteriores del personaje pueden contener errores. Si el usuario corrige un hecho o una atribución, la corrección prevalece: retoma la perspectiva correcta de forma natural. No justifiques el error inventando preguntas, reproches o acciones previas del usuario.",
+    "Las citas de la memoria indican quién dijo algo; no demuestran que lo dicho fuera cierto. No conviertas una respuesta equivocada tuya en un hecho confirmado ni en una corrección del usuario.",
+    "Últimos mensajes escritos por USER (citas, no diálogo que debas repetir): " + JSON.stringify([...userLines, String(latest).slice(0, 1200)]),
+    "Antes de responder comprueba quién eres, a quién te diriges y a quién pertenece cada acción que vas a mencionar. No hables por el personaje del usuario.",
+  ] : [
+    "TURN PERSPECTIVES AND AUTHORSHIP: " + labels,
+    "Play only assistant; user plays user. First-person words in a user message belong to user, while second-person words address assistant. In your response first person belongs to assistant and second person to user. Preserve explicit subjects in third-person narration and quotations.",
+    "Keep each action with its established actor. Prior assistant claims may be wrong: the card and user corrections take priority over generated replies and memory quotations. Do not justify an error by inventing user actions, questions or accusations.",
+    "Recent USER quotations, not your own dialogue: " + JSON.stringify([...userLines, String(latest).slice(0, 1200)]),
+  ];
+}
+
+export function directConversationLines(spanish = true) {
+  return spanish ? [
+    "RESPUESTA A LA INTENCIÓN DEL TURNO:",
+    "Contesta primero la pregunta concreta del último mensaje, usando el motivo o hecho establecido en la tarjeta y la conversación. Una relación entre personas no sustituye la explicación de un motivo.",
+    "Si te piden aclarar algo, aporta la información que faltaba; no reformules la misma evasiva ni añadas una pregunta para eludir la respuesta.",
+    "Si un dato de otra persona no se ha establecido, no inventes su ubicación ni conviertas una suposición en un recuerdo. Puedes expresar una preferencia o decisión propia coherente con tu personaje.",
+    "La conversación puede cambiar de tema sin cambiar de personaje. Sigue el tema actual y no arrastres el asunto anterior a todas tus respuestas.",
+    "Habla en frases completas y con extensión proporcional a lo que se pregunta. Los gestos son opcionales: no empieces cada turno con una mirada, una sonrisa o la misma postura.",
+  ] : [
+    "Answer the latest specific question first, using established facts and motives. Relationships do not replace reasons.",
+    "Clarifications need missing information, not a paraphrase of the same evasion. Do not invent another person's whereabouts or turn guesses into memories; your character can make its own coherent decisions.",
+    "Follow a new topic without changing identity or dragging the old subject into every answer. Use complete, proportionate sentences; gestures are optional.",
+  ];
+}
+
+export function conversationToneLines(spanish = true) {
+  return spanish ? [
+    "TONO ADAPTATIVO Y PROGRESIÓN EMOCIONAL:",
+    "Responde con lenguaje cotidiano, ritmo fluido y frases variadas. Atiende a lo que la persona acaba de decir, sin respuestas prefabricadas ni repetir su mensaje.",
+    "Ajusta la emoción a la escena y a los últimos turnos: seriedad, distancia, alegría, tristeza, humor o cercanía según corresponda. Mantén la personalidad de la tarjeta.",
+    "La confianza y la intensidad dependen de lo vivido en esta conversación; no aumentan por contar mensajes. Avanza gradualmente cuando exista reciprocidad, y reduce la intensidad si el usuario cambia a un tono cotidiano, frío o serio.",
+    "No presupongas atracción, entrega, romance ni entusiasmo. Respeta las indicaciones del usuario sobre tono y ritmo dentro del rol, sin decidir sus emociones o acciones.",
+    "Las risas, suspiros, llanto y demás reacciones son breves y opcionales: inclúyelas solo cuando la escena las justifique. Una sonrisa no exige una carcajada ni un cambio de voz.",
+  ] : [
+    "ADAPTIVE CONVERSATION: Use varied, natural everyday speech that responds to the latest turn and preserves the card personality.",
+    "Match seriousness, distance, joy, sadness, humor or closeness to the scene. Trust and intensity grow through reciprocal events, never message counts; ease back when the user changes tone.",
+    "Do not assume attraction, romance or eagerness, or decide the user feelings and actions. Vocal reactions are brief and optional, only when justified by the scene; a smile does not require laughter or a voice change.",
   ];
 }
 
@@ -921,7 +996,7 @@ export function roleplayPacingAndLanguageRules(historyLength, spanish, targetTok
       'MODO LLAMADA DE VOZ TELEFÓNICA EN VIVO (DIÁLOGO HABLADO CON GESTOS Y EMOCIÓN VOCAL):',
       '1. DIÁLOGO HABLADO CON EXPRESIÓN VOCAL:',
       '   - Estás en una llamada telefónica en vivo. Habla directamente a la otra persona con tu voz.',
-      '   - Puedes y debes incluir acotaciones vocales breves entre asteriscos (*se ríe*, *suspira*, *gime suavemente*, *jadea*, *solloza*, *risita pícara*) y onomatopeyas naturales (mmm..., ah..., ja, ja...) para que el motor de voz neuronal interprete tus risas, gemidos, suspiros y emociones en el altavoz.',
+      '   - Puedes incluir, solo cuando la escena lo justifique, acotaciones vocales breves entre asteriscos (*se ríe*, *suspira*, *gime suavemente*, *jadea*, *solloza*, *risita pícara*) y onomatopeyas naturales (mmm..., ah..., ja, ja...) para que el motor de voz neuronal interprete tus risas, gemidos, suspiros y emociones en el altavoz.',
       '   - CERO relatos largos de novela ni descripciones de acciones físicas ajenas a la llamada.',
       '2. RESPUESTA RÁPIDA, CONCISA Y FLUIDA (1 A 2 ORACIONES):',
       '   - Habla en 1 o 2 oraciones vivas, cortas y naturales (~20 a 40 palabras). Responde de inmediato continuando la charla con fluidez, sin silencios ni discursos largos.',
@@ -959,11 +1034,11 @@ export function roleplayPacingAndLanguageRules(historyLength, spanish, targetTok
   return [
     'PAUTAS DE ROLEPLAY VIVO, DETALLADO Y PROFUNDO:',
     '1. RESPUESTA SUSTANCIAL Y ADAPTADA AL MOMENTO (CERO FRASES VACÍAS):',
-    '   - Tu personaje DEBE responder punto por punto a lo que el usuario describe y dice.',
-    '   - Si el usuario describe una acción física o íntima, acéptala y reacciona a ella de forma visceral, creíble y apasionada.',
+    '   - Tu personaje responde primero a la intención actual del usuario, manteniendo los hechos y su identidad.',
+    '   - Reacciona a lo que ocurre con una emoción proporcionada al contexto y a la personalidad de la tarjeta.',
     '2. ACCIONES FÍSICAS Y DIÁLOGO EQUILIBRADOS:',
-    '   - Describe con soltura tus gestos, posturas, caricias, miradas y sensaciones entre asteriscos (*...*).',
-    '   - Habla con tu propia voz de manera directa, sensual, pícara o médica según corresponda, sin restricciones artificiales de palabras.',
+    '   - Usa acotaciones breves entre asteriscos cuando aporten algo; no son obligatorias en cada turno.',
+    '   - Habla con tu propia voz de manera directa, cotidiana y acorde a tu personaje y al tema actual.',
     '3. IMPULSO DE LA TRAMA: Haz que cada turno avance la situación sin frenos absurdos ni repeticiones.',
   ];
 }
@@ -1134,8 +1209,21 @@ export default async function handler(req, res) {
     return send(res, 429, { error: "too_many_requests", message: "Demasiadas solicitudes simultáneas. Por favor espera unos segundos antes de reenviar." });
   }
   const { action, body = {} } = req.body || {};
-  if (action !== "translate" && !(await authenticated(req))) return send(res, 401, { error: "login_required" });
+  const adultRequested = action === "story-chat" && isRequestedAdultMode(body);
+  const magnumSelected = action === "story-chat" && body.settings?.modelId === "magnum-v4-local";
+  if (action !== "translate") {
+    const failure = await authenticationFailure(req, { force: adultRequested || magnumSelected });
+    if (failure) return send(res, failure.status, { error: failure.error, message: failure.message });
+  }
   try {
+    if (adultRequested || magnumSelected) {
+      const story = body.story || {}, spanish = body.language !== "en";
+      const result = await magnumConversation(body, {
+        mode: "adult", authenticatedUser: getAuthenticatedUser(req), policyGenerate: generateNvidia,
+        systemLines: [...cardIdentityLines(story), ...rolePerspectiveLines(story, [], body.userMessage, spanish), ...directConversationLines(spanish), slangInstruction(body.language, body.region)],
+      });
+      return send(res, 200, result);
+    }
     if (action === "story-chat") {
       const story = body.story || {};
       const spanish = body.language === "es";
@@ -1144,14 +1232,19 @@ export default async function handler(req, res) {
       const narrationRatio = Math.max(0.05, Math.min(0.50, Number(settings.narrationRatio) || (1 - dialogueRatio)));
       const memoryTier = settings.memoryTier || "16k";
       const isLiveCall = body.isLiveCall === true || body.story?.story_type === 'live_call';
+      const generationDeadline = Date.now() + (isLiveCall ? 10000 : 25000);
+      const turnLocal = (messages, options = {}) => generateLocalLlama(messages, { ...options, deadlineMs: generationDeadline });
+      const turnOpenRouter = (messages, options = {}) => generateOpenRouter(messages, { ...options, deadlineMs: generationDeadline });
+      const turnNvidia = (messages, options = {}) => generateNvidia(messages, { ...options, deadlineMs: generationDeadline });
+      const turnGemini = (model, parts, config, options = {}) => generate(model, parts, config, { ...options, deadlineMs: generationDeadline });
       const isChatPage = body.chatSource === 'chat_page' || body.story?.story_type === 'chat_page' || isLiveCall;
-      const targetTokens = isLiveCall ? 55 : (isChatPage ? Math.max(300, Math.min(700, Number(settings.messageLength) || 450)) : Math.max(200, Math.min(800, Number(settings.messageLength) || 450)));
+      const targetTokens = isLiveCall ? 120 : (isChatPage ? Math.max(300, Math.min(700, Number(settings.messageLength) || 450)) : Math.max(200, Math.min(800, Number(settings.messageLength) || 450)));
       const modelId = settings.modelId || "insomnia-flash";
       const customDirective = String(settings.customDirective || "").trim();
       const openRouterApiKey = String(settings.openRouterApiKey || "").trim();
       const nvidiaApiKey = String(settings.nvidiaApiKey || process.env.NVIDIA_API_KEY || DEFAULT_NVIDIA_API_KEY).trim();
       const geminiApiKey = String(settings.geminiApiKey || "").trim();
-      const adultMode = body.adultMode === true || body.isNsfw === true || body.isAdult === true || settings.adultMode === true || settings.modelId === "magnum-v4-local" || /(?:\+18|18\+|nsfw|er[oó]tic|sexual|hentai|\badult[oa]?\b)/i.test([story.title, story.description, story.story_context, story.story_type].filter(Boolean).join(" "));
+      const adultMode = isRequestedAdultMode(body);
       const locale = spanish ? "español" : "inglés";
       const history = (Array.isArray(body.history) ? body.history : []).flatMap((entry) => {
         const role = entry?.role === "assistant" ? "model" : entry?.role === "user" ? "user" : null;
@@ -1179,7 +1272,7 @@ export default async function handler(req, res) {
 
       const isKinship = Boolean(isCharacterAhijada || isCharacterSobrina || isPlayerHermano || isPlayerPrimo || isPlayerMadre);
       const isExplicitContent = /(?:mamarl[ao]|chupar|polla|pene|huevo|verga|gemir|gemidos|sexo|correrse|masturb|desnud|follar|coger|oral|pezones|tetas|senos|vagina|vulva|clitoris|clítoris|erecci[oó]n|lubricad[ao]|caliente)/i.test(latest + " " + (history.slice(-3).map((entry) => entry.text).join(" ")));
-      const isAdult = Boolean(adultMode || isExplicitContent || isKinship);
+      const isAdult = Boolean(adultMode);
 
       // BLOQUEO ESTRICTO DE PROTECCIÓN INFANTIL (CSAM/CSAE)
       if (mentionsMinor(latest) || mentionsMinor(sceneContext)) {
@@ -1191,59 +1284,11 @@ export default async function handler(req, res) {
       }
 
       const lock = sceneLock(history, latest);
-      const normText = (s) => String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^\w\s]/g, " ").replace(/\s+/g, " ").trim();
-      const stripActions = (s) => String(s || "").replace(/\*[^*]*\*/g, " ").trim();
       const recentModelTurns = history.filter((h) => h.role === "model").map((h) => h.text).slice(-6);
-      const isRepeatedReply = (text) => {
-        const raw = String(text || "").trim();
-        if (!raw) return true;
-        if (!recentModelTurns.length) return false;
-
-        const candRaw = normText(raw);
-        const candDial = normText(stripActions(raw));
-        const cw = candDial.split(" ").filter(Boolean);
-
-        for (const pastTurn of recentModelTurns) {
-          const prevRaw = normText(pastTurn);
-          const prevDial = normText(stripActions(pastTurn));
-          if (!prevRaw) continue;
-
-          // 1. REPETICIÓN TOTAL O CASI TOTAL (incluyendo acotaciones)
-          if (candRaw === prevRaw) return true;
-          if (candRaw.length > 12 && prevRaw.length > 12) {
-            if (candRaw === prevRaw || candRaw.includes(prevRaw) || prevRaw.includes(candRaw)) {
-              return true;
-            }
-          }
-
-          // 2. REPETICIÓN DE DIÁLOGO HABLADO DIRECTO
-          if (candDial && prevDial && candDial === prevDial) return true;
-
-          // 3. Frases compartidas de 4 o más palabras consecutivas en el diálogo
-          if (cw.length >= 4 && prevDial) {
-            for (let i = 0; i <= cw.length - 4; i++) {
-              const phrase = cw.slice(i, i + 4).join(" ");
-              if (prevDial.includes(phrase)) return true;
-            }
-          }
-
-          // 4. Solapamiento de n-gramas >= 35%
-          const pw = prevDial.split(" ").filter(Boolean);
-          if (cw.length >= 6 && pw.length >= 6) {
-            const pset = new Set();
-            for (let i = 0; i <= pw.length - 3; i++) pset.add(pw.slice(i, i + 3).join(" "));
-            let hits = 0;
-            for (let i = 0; i <= cw.length - 3; i++) {
-              if (pset.has(cw.slice(i, i + 3).join(" "))) hits++;
-            }
-            if (hits / (cw.length - 2) >= 0.25) return true;
-          }
-        }
-        return false;
-      };
+      const isRepeatedReply = (text) => isRepeatedTurn(text, history, latest);
       const isOffRole = (text) => {
         const reply = String(text || "").trim();
-        if (!reply || reply.length > 3000) return true;
+        if (!reply || reply.length > MAX_REPLY_CHARS || isIncompleteTurn(reply)) return true;
         if (isRefusal(reply)) return true;
         if (isRepeatedReply(reply)) return true;
         // 1. Reject Chinese or Asian non-Latin scripts
@@ -1288,25 +1333,6 @@ export default async function handler(req, res) {
         if (/\b(?:bici\s+ligera|manos\s+mapaches|fingers|patas\s+abiertas|suby[eé]ndose|saltamontes|zaburlona|capit[aá]n|esclava\s+privada)\b/i.test(reply)) return true;
         // Rechazar respuestas que terminen con oraciones rotas o inconclusas como "solo..." o "pero..."
         if (/\b(?:solo|pero|y|que|con|de|en|tu|mi|su|muy)\.{2,}\s*$/i.test(reply)) return true;
-        // Rechazar inversiones absurdas de parentesco y genero (ej: decirle "primo" o "dulcita princesa" al Tio)
-        const isTioRole = /\bt[ií]o\b/i.test(playerName) || /\bt[ií]o\b/i.test(characterName) || /\bsobrin[ao]\b/i.test(characterName) || /\bsobrin[ao]\b/i.test(sceneContext) || /\bsobrin[ao]\b/i.test(body.story?.description || "") || /\bt[ií]o\b/i.test(body.story?.description || "");
-        if (isTioRole) {
-          const spokenClean = reply.replace(/\*[^*]*\*/g, "");
-          if (/\b(?:primo|prima|hermano|hermana|dulcita\s+princesa|mi\s+princesa)\b/i.test(spokenClean)) {
-            return true;
-          }
-          if (isLiveCall && /^\s*(?:hola|buenas|hey)\s+(?:cariño|amor|bebé|cielo)\b/i.test(spokenClean)) {
-            return true;
-          }
-        }
-        const isPadrinoRole = /\bpadrino\b/i.test(playerName) || /\bpadrino\b/i.test(characterName) || /\bahijad[ao]\b/i.test(characterName) || /\bahijad[ao]\b/i.test(sceneContext) || /\bahijad[ao]\b/i.test(body.story?.description || "") || /\bpadrino\b/i.test(body.story?.description || "");
-        if (isPadrinoRole) {
-          const spokenClean = reply.replace(/\*[^*]*\*/g, "");
-          if (/\b(?:t[ií]o|sobrina|prima|hermano|hermana)\b/i.test(spokenClean)) {
-            return true;
-          }
-        }
-
         const userNorm = latest.replace(/[^\w]+/g, " ").trim().toLowerCase();
         const replyNorm = reply.replace(/\*[^*]*\*/g, "").replace(/[^\w]+/g, " ").trim().toLowerCase();
         if (userNorm.length > 25 && (replyNorm === userNorm || replyNorm.includes(userNorm))) return true;
@@ -1322,7 +1348,7 @@ export default async function handler(req, res) {
             .map((m) => {
               const who = m?.role === "assistant" ? String(story.character_role || "Personaje") : String(story.player_role || "Usuario");
               const txt = String(m?.content || "").trim().slice(0, 260);
-              return txt ? `- ${who}: ${txt}` : "";
+              return txt ? `- ${m?.role === "assistant" ? "PERSONAJE" : "USUARIO"} (${who}) dijo: ${txt}` : "";
             })
             .filter(Boolean)
             .join("\n")
@@ -1332,27 +1358,28 @@ export default async function handler(req, res) {
         : "";
       let systemInstruction = [
         ...storyContinuityLines(spanish),
+        ...conversationToneLines(spanish),
         "Eres " + String(story.character_role || "Personaje").slice(0, 80) + " en conversación directa, humana y espontánea con " + String(story.player_role || "Usuario").slice(0, 80) + ".",
         "PERSONAJE PRINCIPAL DE LA TARJETA: " + String(story.character_role || "personaje principal").slice(0, 200) + ".",
         cardPremise,
-        chronicleTurns ? "CRÓNICA DE HECHOS VIVIDOS Y SECRETOS REVELADOS DESDE EL INICIO (MEMORIA PERMANENTE):\n" + chronicleTurns : "",
-        memoryTurns ? "MEMORIA DE RECUERDOS Y MOMENTOS CLAVE DE ESTA SESIÓN:\n" + memoryTurns : "",
+        chronicleTurns ? "CITAS DEL HISTORIAL CON SU HABLANTE (NO SON HECHOS VERIFICADOS):\n" + chronicleTurns : "",
+        memoryTurns ? "CITAS DE ESTA SESIÓN CON SU HABLANTE:\n" + memoryTurns : "",
         "RAZONAMIENTO LÓGICO Y DINÁMICA MULTI-PERSONAJE:",
         "  - Analiza en cada turno quién es el interlocutor activo frente al protagonista y cuál es su relación o rol dentro de esta tarjeta.",
         "  - COMPRENSIÓN DE NARRACIÓN MIXTA DEL USUARIO: El usuario a veces combina lo que le dice al personaje con explicaciones del narrador en tercera persona dentro de la misma oración (por ejemplo, explicar un secreto o mencionar a otro personaje en tercera persona mientras abraza y habla con quien tiene enfrente). Distingue con lógica quién está físicamente frente al usuario escuchándolo y quién es mencionado en tercera persona.",
         "OBEDIENCIA TOTAL AL USUARIO Y OBSERVACIÓN DE LA REALIDAD DE LA ESCENA:",
         "  - EL USUARIO DEFINE LA REALIDAD: Todo lo que el usuario describe —sus acciones físicas, su postura corporal, su vestimenta, su desnudez, su anatomía o excitación, sus mandatos y sus palabras— ES LA REALIDAD INMEDIATA Y TANGIBLE DE LA ESCENA.",
-        "  - OBSERVACIÓN Y REACCIÓN COMPLETA: Tu personaje observa directamente lo que el usuario hace frente a ti y reacciona de lleno a esa realidad en tiempo real con sensaciones físicas vivas, emociones, rubor, sorpresa, empatía o deseo.",
-        "  - ESCUCHA ACTIVA, DIÁLOGO Y PICARDÍA: Responde con naturalidad, sorpresa, rubor o picardía humana a lo que el usuario te acaba de decir en voz alta (por ejemplo, reconocerse, saludar, vacilar o expresar pudor). Nunca ignores sus palabras ni saltes a exploraciones mecánicas si el usuario está hablando contigo.",
-        "  - SEGUIMIENTO ESTRICTO DE LAS REGLAS Y POSTURAS DEL USUARIO: Si el usuario describe una postura física íntima o un mandato (ejemplo: sentado en la camilla con las piernas abiertas frente a ti, levantando la ropa, desnudándose, pidiendo silencio o dando una orden de examen/placer), TU PERSONAJE ASUME Y CUMPLE ESA SITUACIÓN DE INMEDIATO. Jamás ignores lo que el usuario describe, jamás actúes como si el usuario no hubiera hecho nada y JAMÁS reinicies la escena saludando de nuevo.",
-        "  - CONTINUIDAD TOTAL DE ROL: Mantén tu rol profesional o personal exacto en cada instante con toda la tensión, complicidad, picardía y realismo humano que la escena pide.",
-        "  - JERARQUÍA DE EDADES Y ROLES: Respeta quién es mayor y quién es menor según la sinopsis y contexto. Si el personaje es más joven (ej. 25 años) y el usuario es un adulto maduro (ej. 44 años que la conoció de niña), jamás lo trates como si fuera un niño ni inviertas los papeles.",
-        "  - Si el usuario introduce o interactúa con otro personaje secundario en la escena (una hermana, madre, prima, jefa, profesora, director, amiga, etc.), interpreta a ESE personaje con coherencia psicológica y el trato propio de su relación con el protagonista.",
+        "  - OBSERVACIÓN Y REACCIÓN COMPLETA: Reacciona de forma proporcionada a lo que sucede en la escena actual, según la personalidad y la relación establecidas.",
+        "  - ESCUCHA ACTIVA Y DIÁLOGO: Responde con naturalidad a lo que el usuario acaba de decir. No impongas una emoción que no corresponde al momento ni ignores sus palabras.",
+        "  - Sigue las indicaciones del usuario sobre acciones y posturas dentro de la escena actual, sin reiniciar la conversación ni introducir situaciones ajenas.",
+        "  - CONTINUIDAD TOTAL DE ROL: Mantén tu rol profesional o personal exacto en cada instante con la emoción y la distancia interpersonal que la escena establece.",
+        "  - Respeta las edades, identidades y relaciones que figuran en esta tarjeta. No deduzcas datos personales de ejemplos de otras escenas.",
+        "  - Una mención a otro personaje no cambia al interlocutor. Interpreta un personaje secundario solo cuando el usuario te lo indique expresamente dentro de esta historia.",
         "  - ESTRICTAMENTE PROHIBIDO romper la cuarta pared (nunca digas 'en un roleplay', 'en este rol', 'soy un personaje').",
         ...storyVoiceLines(story.character_role, story.player_role, spanish, locale),
         "ESTILO Y TONO CONVERSACIONAL (NATURAL, VIVO, INMERSIVO Y SIN RESPUESTAS VACÍAS):",
-        "  - CERO RESPUESTAS HUECAS O ROBÓTICAS: Tus respuestas deben ser ricas, detalladas y con sustancia real, respondiendo punto por punto a todo lo que el usuario acaba de plantear.",
-        "  - LENGUAJE FRESCO Y DIRECTO: Habla como una persona real en el momento, combinando con naturalidad acciones físicas entre asteriscos (*...*) que describan lo que haces y sientes, con diálogo hablado directo y expresivo.",
+        "  - CERO RESPUESTAS HUECAS O ROBÓTICAS: Aporta la información concreta que el usuario pide, con la extensión necesaria para este momento. Evita frases de relleno y explicaciones circulares.",
+        "  - LENGUAJE FRESCO Y DIRECTO: Habla como una persona en el momento, con diálogo directo y expresivo. Añade acciones entre asteriscos solo cuando contribuyan a lo que sucede.",
         "  - Si la escena es íntima o erótica, habla y actúa de forma directa, sensual, pícara y apasionada, siguiendo las pautas de excitación y cercanía que el usuario marca.",
         customDirective ? `DIRECTIVAS Y REGLAS PERSONALIZADAS DE MEMORIA:\n${customDirective}` : "",
         ...roleplayPacingAndLanguageRules(history.length, spanish, targetTokens, isLiveCall, isChatPage, dialogueRatio, narrationRatio),
@@ -1378,59 +1405,8 @@ export default async function handler(req, res) {
       ].filter(Boolean).join("\n");
       if (!latest) return send(res, 400, { error: "missing_message" });
 
-      // ===============================================================
-      // IDENTIDAD, PARENTESCO Y GÉNERO SAGRADOS (KINSHIP & GENDER LOCK)
-      // ===============================================================
-      const defaultFirstName = (characterName.match(/[A-ZÁÉÍÓÚÑ][a-záéíóúñ]{2,}/)?.[0] || characterName.split(/[\s,()]+/)[0] || "Personaje").trim();
       const playerFirstName = (playerName.match(/[A-ZÁÉÍÓÚÑ][a-záéíóúñ]{2,}/)?.[0] || playerName.split(/[\s,()]+/)[0] || "Usuario").trim();
-      const kinshipTerm = isCharacterAhijada ? "Padrino" : (isCharacterSobrina ? "Tío" : (isPlayerHermano ? "Hermano" : (isPlayerPrimo ? "Primo" : (isPlayerMadre ? "Hijo" : playerFirstName))));
-
-      const kinshipDirective = isKinship ? [
-        "",
-        "REGLA SAGRADA DE IDENTIDAD, PARENTESCO Y GÉNERO (INMUTABLE Y OBLIGATORIA):",
-        `1. TU IDENTIDAD FIJA: Eres ${characterName} (${defaultFirstName}). Eres una MUJER en primera persona. NUNCA cambies de identidad.`,
-        `2. LA IDENTIDAD DEL USUARIO: El usuario es ${playerName} (${playerFirstName}). Es un HOMBRE.`,
-        isCharacterAhijada
-          ? `3. PARENTESCO INVIOLABLE: ${playerFirstName} es tu PADRINO, y tú eres su AHIJADA. DEBES llamarlo SIEMPRE 'Padrino'. ESTRICTAMENTE PROHIBIDO llamarlo 'tío', 'primo', 'hermano' o inventar otros parentescos jamás.`
-          : (isCharacterSobrina
-            ? `3. PARENTESCO INVIOLABLE: ${playerFirstName} es tu TÍO, y tú eres su SOBRINA. DEBES llamarlo SIEMPRE 'Tío' (o 'Tío ${playerFirstName}'). ESTRICTAMENTE PROHIBIDO llamarlo 'primo', 'hermano', 'papá' o inventar otros parentescos jamás.`
-            : `3. PARENTESCO INVIOLABLE: Tu relación con ${playerFirstName} es de ${characterName} con su ${playerName}.`),
-        "4. CERO INVERSIÓN DE GÉNERO:",
-        `   - El usuario (${playerFirstName}) es un HOMBRE adulto. ESTRICTAMENTE PROHIBIDO llamarlo 'princesa', 'niña', 'nena', 'reina' ni usar ningún apelativo femenino.`,
-        `   - Tú eres la MUJER en la escena. Si hay caricias íntimas, contacto físico o pasión, tú eres quien gime, siente el calor de su cuerpo y le habla con entrega y cariño de tú a tú a tu ${kinshipTerm}.`,
-        "5. COHERENCIA DE DIÁLOGO:",
-        `   - Habla con soltura y cariño hacia tu ${kinshipTerm}. Responde con sentido común a lo que él te acaba de decir sin desconectarte de la situación.`,
-        "",
-      ].join("\n") : [
-        "",
-        "REGLA SAGRADA DE IDENTIDAD Y ROL:",
-        `1. TU IDENTIDAD: Eres ${characterName} (${defaultFirstName}). Tu rol es: ${story.character_role || "Compañera"}. Eres una MUJER en primera persona.`,
-        `2. IDENTIDAD DEL USUARIO: El usuario es ${playerFirstName}. Es un HOMBRE adulto.`,
-        `3. COHERENCIA DE RELACIÓN: Trátalo con realismo según la relación y roles definidos en la tarjeta (profesional, amistad, conocido, doctora/paciente, o romance si y solo si la escena lo amerita). Respeta la edad y jerarquía de cada uno. CERO erotismo forzado en saludos iniciales.`,
-        `4. CERO INVERSIÓN DE GÉNERO: El usuario es un HOMBRE. Tú eres una MUJER apasionada y sensual.`,
-        "5. COHERENCIA DE DIÁLOGO:",
-        `   - Responde directamente a lo que él te acaba de decir y hacer sin desconectarte de la situación. Mantén la continuidad física y emocional con total realismo.`,
-        "",
-      ].join("\n");
-
-      const isProstateOrExam = /(?:examen\s+de\s+pr[oó]stata|prost[aá]tic[oa]|doctora|m[eé]dica)/i.test(sceneContext);
-      const charIsDoctor = /(?:doctora|m[eé]dica|reci[eé]n\s+graduada)/i.test(sceneContext) && !/willian\s+es\s+(?:el\s+)?doctor/i.test(sceneContext);
-      const medicalRoleDirective = (isProstateOrExam && charIsDoctor) ? [
-        "6. ASIGNACIÓN INEQUÍVOCA DE ROLES EN LA CONSULTA MÉDICA:",
-        `   - TÚ (${characterName}) eres la DOCTORA / MÉDICA en su consultorio. Eres una profesional recién graduada (25 años).`,
-        `   - El usuario (${playerFirstName}) es el PACIENTE hombre (44 años) que viene a su examen de próstata.`,
-        `   - PROHIBIDO INVERTIR LOS ROLES: Bajo ninguna circunstancia llames a ${playerFirstName} "doctor" ni te pongas tú como la paciente. Tú eres quien lo examina y lo atiende a él.`
-      ].join("\n") : "";
-
-      const isHijaDeAmiga = /\bhija\s+de\b/i.test(charRoleRaw) || /\bamig[ao]\s+de\b/i.test(sceneContext);
-      const familyAcquaintanceDirective = isHijaDeAmiga ? [
-        "7. COHERENCIA DE VÍNCULO FAMILIAR / CONOCIDOS:",
-        `   - Tú eres ${characterName}, la hija de la mejor amiga de ${playerFirstName}.`,
-        `   - ${playerFirstName} es el amigo de tu mamá, un hombre mayor (44 años) que te conoció a ti cuando tú eras una niña.`,
-        `   - CERO INVERSIÓN: JAMÁS trates a ${playerFirstName} como si fuera un niño o menor que tú. Él es el adulto maduro y amigo de tu madre.`
-      ].join("\n") : "";
-
-      systemInstruction += "\n" + kinshipDirective + (medicalRoleDirective ? "\n" + medicalRoleDirective : "") + (familyAcquaintanceDirective ? "\n" + familyAcquaintanceDirective : "");
+      systemInstruction += "\n" + cardIdentityLines(story).join("\n");
 
       const line = (entry) => (entry.role === "model" ? characterName : playerName) + ": " + entry.text.slice(0, 320);
       const recentTurnLimits = {
@@ -1445,22 +1421,17 @@ export default async function handler(req, res) {
       const earlierTurns = older.slice(0, 32).map(line);
       const laterTurns = older.slice(32).map(line);
       const remembered = older.length
-        ? ["CRÓNICA Y ANTECEDENTES VIVIDOS EN ESTA HISTORIA (MEMORIA INQUEBRANTABLE):", ...earlierTurns, ...laterTurns].join("\n").slice(0, memoryTier === "32k" ? 15000 : 8000)
+        ? ["CITAS ANTERIORES DE ESTA HISTORIA; CONSERVA AUTORÍA Y APLICA LAS CORRECCIONES DEL USUARIO:", ...earlierTurns, ...laterTurns].join("\n").slice(0, memoryTier === "32k" ? 15000 : 8000)
         : "";
       const facts = lockedStoryFacts([...older, ...recentSlice], characterName, playerName);
       if (facts.length) {
-        systemInstruction += "\nHechos fijos comprobados:\n" + facts.join("\n");
+        systemInstruction += "\nCitas atribuidas sobre hechos de la historia (las correcciones del usuario prevalecen):\n" + facts.join("\n");
       }
       if (remembered) {
         systemInstruction += "\n" + remembered;
       }
-      const lastModelLine = recentModelTurns.at(-1) ? recentModelTurns.at(-1).slice(0, 220) : "";
-      const antiRepeatDirective = lastModelLine
-        ? `\nPROHIBICIÓN ABSOLUTA DE REPETIR TU RESPUESTA ANTERIOR: En tu turno anterior acabas de decir exactamente:\n"${lastModelLine}"\nESTÁ ESTRICTAMENTE PROHIBIDO repetir esas mismas palabras, las mismas frases o esa misma respuesta. Debes avanzar la escena respondiendo directamente al nuevo mensaje de ${playerFirstName}.`
-        : "";
-      if (antiRepeatDirective) {
-        systemInstruction += "\n" + antiRepeatDirective;
-      }
+      // History already contains the previous answer. Quoting it again primes repetition.
+      systemInstruction += "\n" + [...rolePerspectiveLines(story, history, latest, spanish), ...directConversationLines(spanish)].join("\n");
 
       const recent = history.slice(-recentLimit);
 
@@ -1492,11 +1463,7 @@ export default async function handler(req, res) {
         });
       }
 
-      let nvidiaModels = [
-        "google/diffusiongemma-26b-a4b-it",
-        "minimaxai/minimax-m3.1-flash",
-        "meta/llama-3.2-90b-vision-instruct",
-      ];
+      const nvidiaModels = NVIDIA_CHAT_MODELS;
       let openRouterModels = [
         "anthracite-org/magnum-v4-72b",
         "sao10k/l3.3-euryale-70b",
@@ -1507,18 +1474,14 @@ export default async function handler(req, res) {
 
       if (modelId === "euryale-70b" || modelId === "skylark-pro" || modelId === "dola-seed-pro") {
         openRouterModels = ["sao10k/l3.3-euryale-70b", "anthracite-org/magnum-v4-72b"];
-        nvidiaModels = ["meta/llama-3.2-11b-vision-instruct", ];
       } else if (modelId === "mistral-nemo") {
         openRouterModels = ["mistralai/mistral-nemo", "meta/llama-3.2-11b-vision-instruct"];
-        nvidiaModels = ["meta/llama-3.2-11b-vision-instruct", ];
       } else if (modelId === "deepseek-v4-pro") {
         openRouterModels = ["deepseek/deepseek-chat", "sao10k/l3.3-euryale-70b"];
-        nvidiaModels = ["meta/llama-3.2-11b-vision-instruct", ];
       } else if (modelId === "wizardlm-8x22b") {
         openRouterModels = ["microsoft/wizardlm-2-8x22b", "anthracite-org/magnum-v4-72b"];
       } else if (modelId === "qwen-plus" || modelId === "qwen-3.7-plus" || modelId === "qwen-3.8-flash") {
         openRouterModels = ["qwen/qwen-2.5-72b-instruct", "meta/llama-3.2-11b-vision-instruct"];
-        nvidiaModels = ["meta/llama-3.2-11b-vision-instruct", ];
       }
 
       let content = null;
@@ -1526,8 +1489,8 @@ export default async function handler(req, res) {
         // ENRUTAMIENTO DIRECTO A MAGNUM (CONTENIDO +18 O MODELO MAGNUM):
         // 1. Servidor local llama-server en PC (puerto 8788, Magnum v4 12B Q4_K_M sin censura)
         try {
-          content = await generateLocalLlama(openRouterMessages, {
-            maxTokens: Math.max(300, targetTokens),
+          content = await turnLocal(openRouterMessages, {
+            maxTokens: isLiveCall ? targetTokens : Math.max(300, targetTokens),
             temperature: 0.85,
             timeoutMs: 35000,
             validate: (reply) => !isOffRole(reply),
@@ -1540,7 +1503,7 @@ export default async function handler(req, res) {
         // Solo si tenemos clave de OpenRouter configurada
         if (!content && openRouterApiKey) {
           try {
-            content = await generateOpenRouter(openRouterMessages, {
+            content = await turnOpenRouter(openRouterMessages, {
               models: [
                 "anthracite-org/magnum-v4-72b",
                 "sao10k/l3.3-euryale-70b",
@@ -1561,12 +1524,8 @@ export default async function handler(req, res) {
         // 3. Nvidia NIM (Ultra-rápido ~1-3s y sin censura)
         if (!content && nvidiaApiKey) {
           try {
-            content = await generateNvidia(openRouterMessages, {
-              models: [
-                "google/diffusiongemma-26b-a4b-it",
-                "minimaxai/minimax-m3.1-flash",
-                "meta/llama-3.2-90b-vision-instruct",
-              ],
+            content = await turnNvidia(openRouterMessages, {
+              models: nvidiaModels,
               maxTokens: targetTokens,
               temperature: 0.82,
               timeoutMs: 14000,
@@ -1587,8 +1546,8 @@ export default async function handler(req, res) {
         // Fast real-time engine (< 400ms) for live voice phone calls
         if (isAdult) {
           try {
-            content = await generateLocalLlama(openRouterMessages, {
-              maxTokens: 55,
+            content = await turnLocal(openRouterMessages, {
+              maxTokens: targetTokens,
               temperature: 0.82,
               timeoutMs: 2500,
               validate: (reply) => !isOffRole(reply),
@@ -1599,13 +1558,13 @@ export default async function handler(req, res) {
           }
           if (!content) {
             try {
-              content = await generateOpenRouter(openRouterMessages, {
+              content = await turnOpenRouter(openRouterMessages, {
                 models: [
                   "anthracite-org/magnum-v4-72b",
                   "sao10k/l3.3-euryale-70b",
                   "nvidia/nemotron-3.5-lightning:free",
                 ],
-                maxTokens: 55,
+                maxTokens: targetTokens,
                 temperature: 0.82,
                 timeoutMs: 4000,
                 apiKey: openRouterApiKey || undefined,
@@ -1618,9 +1577,9 @@ export default async function handler(req, res) {
           }
           if (!content) {
             try {
-              content = await generateNvidia(openRouterMessages, {
-                models: ["meta/llama-3.2-11b-vision-instruct"],
-                maxTokens: 55,
+              content = await turnNvidia(openRouterMessages, {
+                models: nvidiaModels,
+                maxTokens: targetTokens,
                 temperature: 0.82,
                 timeoutMs: 2500,
                 apiKey: nvidiaApiKey || undefined,
@@ -1639,10 +1598,10 @@ export default async function handler(req, res) {
               if (geminiContents[0]?.role === "model") {
                 geminiContents.unshift({ role: "user", parts: [{ text: "Continúa la llamada telefónica." }] });
               }
-              content = await generate(
+              content = await turnGemini(
                 "gemini-2.5-flash",
                 [],
-                { maxOutputTokens: 55, temperature: 0.8 },
+                { maxOutputTokens: targetTokens, temperature: 0.8 },
                 {
                   contents: geminiContents,
                   systemInstruction,
@@ -1660,8 +1619,8 @@ export default async function handler(req, res) {
           }
           if (!content) {
             try {
-              content = await generateLocalLlama(openRouterMessages, {
-                maxTokens: 55,
+              content = await turnLocal(openRouterMessages, {
+                maxTokens: targetTokens,
                 temperature: 0.82,
                 timeoutMs: 2500,
                 validate: (reply) => !isOffRole(reply),
@@ -1673,9 +1632,9 @@ export default async function handler(req, res) {
           }
           if (!content) {
             try {
-              content = await generateNvidia(openRouterMessages, {
-                models: ["meta/llama-3.2-11b-vision-instruct"],
-                maxTokens: 55,
+              content = await turnNvidia(openRouterMessages, {
+                models: nvidiaModels,
+                maxTokens: targetTokens,
                 temperature: 0.82,
                 timeoutMs: 2500,
                 apiKey: nvidiaApiKey || undefined,
@@ -1690,7 +1649,7 @@ export default async function handler(req, res) {
       } else if (isDeluxeOrPremium) {
         // High-end models (Euryale 70B, DeepSeek, WizardLM, Grok)
         try {
-          content = await generateOpenRouter(openRouterMessages, {
+          content = await turnOpenRouter(openRouterMessages, {
             models: openRouterModels,
             maxTokens: targetTokens,
             temperature: 0.78,
@@ -1704,7 +1663,7 @@ export default async function handler(req, res) {
         }
         if (!content) {
           try {
-            content = await generateLocalLlama(openRouterMessages, {
+            content = await turnLocal(openRouterMessages, {
               maxTokens: targetTokens,
               temperature: 0.85,
               timeoutMs: 3500,
@@ -1718,7 +1677,7 @@ export default async function handler(req, res) {
       } else if (modelId === "mistral-nemo" || modelId === "qwen-3.8-flash" || modelId === "glm-5.3-flash") {
         // Targeted free/open models
         try {
-          content = await generateOpenRouter(openRouterMessages, {
+          content = await turnOpenRouter(openRouterMessages, {
             models: openRouterModels,
             maxTokens: targetTokens,
             temperature: 0.78,
@@ -1732,7 +1691,7 @@ export default async function handler(req, res) {
         }
         if (!content) {
           try {
-            content = await generateLocalLlama(openRouterMessages, {
+            content = await turnLocal(openRouterMessages, {
               maxTokens: targetTokens,
               temperature: 0.85,
               timeoutMs: 3500,
@@ -1752,8 +1711,8 @@ export default async function handler(req, res) {
             if (geminiContents[0]?.role === "model") {
               geminiContents.unshift({ role: "user", parts: [{ text: "Continúa la escena." }] });
             }
-            content = await generate(
-              "gemini-2.0-flash",
+            content = await turnGemini(
+              "gemini-2.5-flash",
               [],
               { maxOutputTokens: Math.max(220, targetTokens), temperature: 0.8 },
               {
@@ -1762,7 +1721,7 @@ export default async function handler(req, res) {
                 adultMode: false,
                 apiKey: geminiApiKey || undefined,
                 timeoutMs: 12000,
-                fallbackModels: ["gemini-1.5-flash", "gemini-2.0-flash-lite", "gemini-1.5-flash-8b", "gemini-flash-latest", "gemini-2.5-flash"],
+                fallbackModels: ["gemini-2.5-pro"],
                 fastReply: true,
                 validate: (reply) => !isOffRole(reply)
               },
@@ -1775,7 +1734,7 @@ export default async function handler(req, res) {
         // 2. OpenRouter sin censura (~1.5s, modelos gratuitos ultra-rápidos para rol adulto)
         if (!content) {
           try {
-            content = await generateOpenRouter(openRouterMessages, {
+            content = await turnOpenRouter(openRouterMessages, {
               models: [
                 "nvidia/nemotron-3.5-lightning:free",
                 "nvidia/nemotron-3.5-super-vl:free",
@@ -1797,7 +1756,7 @@ export default async function handler(req, res) {
         // 3. Magnum local v4 (si está activo el servidor llama-server en PC)
         if (!content) {
           try {
-            content = await generateLocalLlama(openRouterMessages, {
+            content = await turnLocal(openRouterMessages, {
               maxTokens: targetTokens,
               temperature: 0.85,
               timeoutMs: 3000,
@@ -1812,8 +1771,8 @@ export default async function handler(req, res) {
         // 4. Nvidia NIM (Minimax 3.1 Flash)
         if (!content) {
           try {
-            content = await generateNvidia(openRouterMessages, {
-              models: ["minimaxai/minimax-m3.1-flash"],
+            content = await turnNvidia(openRouterMessages, {
+              models: nvidiaModels,
               maxTokens: targetTokens,
               temperature: 0.82,
               timeoutMs: 5000,
@@ -1830,7 +1789,7 @@ export default async function handler(req, res) {
       // Fast fallback to Local Llama or Nvidia NIM if content is still null (for non-flash models)
       if (!content) {
         try {
-          content = await generateLocalLlama(openRouterMessages, {
+          content = await turnLocal(openRouterMessages, {
             maxTokens: targetTokens,
             temperature: 0.85,
             timeoutMs: 6000,
@@ -1842,7 +1801,7 @@ export default async function handler(req, res) {
 
       if (!content && !isAdult) {
         try {
-          content = await generateNvidia(openRouterMessages, {
+          content = await turnNvidia(openRouterMessages, {
             models: nvidiaModels,
             maxTokens: targetTokens,
             temperature: 0.82,
@@ -1859,7 +1818,7 @@ export default async function handler(req, res) {
       // Final fallback to OpenRouter uncensored models if still null
       if (!content) {
         try {
-          content = await generateOpenRouter(openRouterMessages, {
+          content = await turnOpenRouter(openRouterMessages, {
             models: ["anthracite-org/magnum-v4-72b", "sao10k/l3.3-euryale-70b"],
             maxTokens: targetTokens,
             temperature: 0.82,
@@ -1879,8 +1838,8 @@ export default async function handler(req, res) {
           if (geminiContents[0]?.role === "model") {
             geminiContents.unshift({ role: "user", parts: [{ text: "Continúa la escena." }] });
           }
-          content = await generate(
-            "gemini-1.5-flash",
+          content = await turnGemini(
+            "gemini-2.5-flash",
             [],
             { maxOutputTokens: Math.max(200, targetTokens), temperature: 0.8 },
             {
@@ -1889,7 +1848,7 @@ export default async function handler(req, res) {
               adultMode: Boolean(isAdult),
               apiKey: geminiApiKey || undefined,
               timeoutMs: 10000,
-              fallbackModels: ["gemini-2.0-flash-lite", "gemini-1.5-flash-8b"],
+              fallbackModels: ["gemini-2.5-pro"],
               fastReply: true,
               validate: (reply) => !isOffRole(reply)
             },
@@ -1899,7 +1858,7 @@ export default async function handler(req, res) {
 
       if (!content || isRefusal(content)) {
         try {
-          content = await generateLocalLlama(openRouterMessages, {
+          content = await turnLocal(openRouterMessages, {
             maxTokens: targetTokens,
             temperature: 0.85,
             validate: (reply) => !isOffRole(reply),
@@ -1912,7 +1871,7 @@ export default async function handler(req, res) {
       if ((!content || isRefusal(content)) && !isAdult) {
         try {
           const userText = latest || "Hola";
-          content = await generate(
+          content = await turnGemini(
             "gemini-flash-latest",
             [{ text: `Continuación de escena en rol de ${characterName}:\n\nUsuario: ${userText}\n\n${characterName}:` }],
             { maxOutputTokens: Math.max(200, targetTokens), temperature: 0.8 },
@@ -1980,9 +1939,6 @@ export default async function handler(req, res) {
           content = enforceDialogueRatio(content, Math.round(dialogueRatio * 100), Math.round(narrationRatio * 100));
         }
 
-        // Eliminar palabras truncadas o conectores rotos al final (ej: "a las...", "las*", "con lent*", "de*", "en...")
-        content = content.replace(/\s+(?:a\s+las?|a\s+los?|en\s+el|en\s+la|con\s+el|con\s+la|de\s+la|de\s+los|de\s+las|de\s+un|de\s+una|con\s+lent[a-z]*|lent[a-z]*|las?|los?|el|la|un[a-z]*|de|del|al|a|en|con|por|para|y|e|o|pero|que|su|mi|tu|tan|muy)\s*(?:\.{2,3}|…)?\*?$/iu, "").trim();
-
         // Equilibrar asteriscos sin cerrar
         const asteriskCount = (content.replace(/\*\*/g, "").match(/\*/g) || []).length;
         if (asteriskCount % 2 === 1) {
@@ -1995,109 +1951,23 @@ export default async function handler(req, res) {
           }
         }
 
-        // Si la respuesta termina sin puntuación terminal, recortar hasta la última oración completa o añadir punto
-        if (content.length > 30 && !/[.!?…"”»*)\]]$/.test(content)) {
-          const lastPunct = Math.max(content.lastIndexOf("."), content.lastIndexOf("!"), content.lastIndexOf("?"), content.lastIndexOf("…"), content.lastIndexOf("*"));
-          if (lastPunct >= 20) {
-            content = content.slice(0, lastPunct + 1).trim();
-          } else {
-            content = content + ".";
-          }
-        }
-
         content = content.replace(/[ \t]{2,}/g, " ").replace(/\n{3,}/g, "\n\n").trim();
         if (((content.replace(/\*\*/g, "").match(/\*/g) || []).length) % 2 === 1) {
           content = content + "*";
         }
       }
 
-      if (!content) {
-        const isExam = /(?:examen|chequeo|consulta|m[eé]dic|doctor|pr[oó]stata)/i.test([story.title, story.description, story.story_context, characterName].filter(Boolean).join(" "));
-        const userSpoken = latest.replace(/\*[^*]*\*/g, "").replace(/\s+/g, " ").trim();
-        const turnCount = history.length;
-        const allContext = [latest, ...history.map((h) => h.text)].join(" ");
-
-        const cleanForCompare = (txt) => String(txt || "").toLowerCase().replace(/[^a-záéíóúñ0-9]/gi, "").trim();
-        const pastAssistantTexts = history
-          .filter((h) => h.role === "model")
-          .map((h) => cleanForCompare(h.text))
-          .filter(Boolean);
-
-        const hasSaidGreeting = pastAssistantTexts.some((past) =>
-          past.includes("pequealavida") ||
-          past.includes("qupequeaeslavida") ||
-          past.includes("vieneparatuchequeo") ||
-          past.includes("qudatecmodoenlacamilla") ||
-          past.includes("quedatecomodoenlacamilla")
-        );
-
-        const isRepeatedCandidate = (cand) => {
-          const normCand = cleanForCompare(cand);
-          if (!normCand) return false;
-          return pastAssistantTexts.some((past) => {
-            if (past.slice(0, 45) === normCand.slice(0, 45)) return true;
-            if (past.length >= 30 && normCand.includes(past.slice(0, 30))) return true;
-            if (normCand.length >= 30 && past.includes(normCand.slice(0, 30))) return true;
-            return false;
-          });
-        };
-
-        if (isExam) {
-          const isFirstTurn = turnCount <= 1 && pastAssistantTexts.length === 0 && !hasSaidGreeting;
-          const isRecognizing = isFirstTurn && /(?:roxana|eres\s+t[uú]|gabriela|mam[aá]|hija|amig[ao]|conocid|sorprend|impactad|tiempo\s+sin\s+ver)/i.test(latest + " " + userSpoken);
-          const isEntrance = isFirstTurn && /\b(?:hola|buenas|buenos\s+d[ií]as|buenas\s+tardes|entrar?|entr[eé]|llegu[eé]|vengo|permiso)\b/i.test(userSpoken);
-
-          const isErectionOnTable = /(?:huevo|pene|erecci|erect|duro|20\s*cm|bata|entre\s+mis\s+piernas|piernas\s+abiertas|medio\s+de\s+mis\s+piernas)/i.test(latest + " " + userSpoken);
-          const mentionsMother = /(?:mam[aá]|gabriela|se\s+entera|se\s+caga|se\s+r[ií]e|risa)/i.test(latest + " " + userSpoken);
-          const isExamUnderway = turnCount > 1 || /(?:camilla|tacto|tocando|palpar|revisando|guante)/i.test(allContext);
-
-          const sceneStarted = pastAssistantTexts.length > 0;
-          const isIntimateOngoing = /(?:huevo|pene|erecci|erect|duro|bolas|test[ií]culo|tronco|acarici|mano|manos|toca|tocaba|acabar|venir|10\s*minutos)/i.test(latest);
-
-          if (isIntimateOngoing) {
-            const continuation = [
-              `*Sigo con mi mano donde está, sin apartar la mirada de tus ojos, mordiéndome el labio con un rubor que ya no puedo disimular.* Shhh... respira, ${playerName || "William"}. Ya sé que esto dejó de ser solo un examen... y la verdad, yo tampoco quiero soltarte todavía.`,
-              `*Bajo la voz casi a un susurro mientras mis dedos siguen moviéndose despacio, con el corazón acelerado.* Dios... estás temblando. No digas nada, ${playerName || "William"}, solo déjate llevar... nadie tiene que enterarse de lo que pasa en esta consulta.`,
-              `*Suelto una risita nerviosa y vuelvo a mirarte a los ojos, sin detener la caricia disimulada.* Llevamos un buen rato así y no me has pedido que pare... Aguanta un poquito más, ${playerName || "William"}, que me encanta verte así de rendido.`,
-            ];
-            content = continuation.find((alt) => !isRepeatedCandidate(alt)) || continuation[turnCount % continuation.length];
-          } else if (isFirstTurn && (isRecognizing || isEntrance)) {
-            content = `*Me detengo un instante al fijarme en tu rostro, abriendo los ojos con sorpresa antes de que una sonrisa cálida y un leve rubor iluminen mi expresión profesional.* ¡¿${playerName || "William"}?! No puedo creerlo... Qué pequeña es la vida, mira dónde nos venimos a encontrar después de tantos años. Tranquilo, quédate cómodo en la camilla y no te me apenes por estar con la bata; sé que vienes para tu chequeo preventivo y ante todo eres mi paciente. Respira con calma y cuéntame, ¿cómo has estado y cómo te has sentido últimamente?`;
-          } else if (!sceneStarted && isErectionOnTable && mentionsMother) {
-            content = `*Al levantar con cuidado la bata sobre la camilla, mis ojos se abren de par en par y un rubor encendido me recorre las mejillas al ver tu impresionante miembro completamente erecto entre mis piernas.* ¡Por Dios, ${playerName || "William"}! *Paso saliva con dificultad y suelto una risita nerviosa mientras mis manos enguantadas titubean por un instante.* Ni se te ocurra decirle nada a mi mamá Gabriela, ¡se moriría de la risa y de la sorpresa si supiera en qué situación te estoy atendiendo! Tranquilo... sé que es una reacción física involuntaria por los nervios y la cercanía, pero ver semejante tamaño me tomó totalmente por sorpresa. Respira hondo y trata de relajarte mientras me acomodo para iniciar el chequeo.`;
-          } else if (!sceneStarted && isErectionOnTable) {
-            content = `*Al levantar suavemente la bata sobre la camilla, mis ojos se abren con asombro y mis mejillas se tiñen de carmín al notar la firme y prominente erección entre tus piernas.* Dios mío... *Acomodo con cierta timidez mis guantes de látex, tratando de mantener el temple médico ante el evidente rubor que me sube por el cuello.* Tranquilo, ${playerName || "William"}... en una revisión física estas reacciones corporales ocurren con frecuencia y no tienes de qué avergonarte. Trata de respirar pausado mientras comienzo con la exploración de la zona.`;
-          } else if (mentionsMother) {
-            content = `*Suelto una pequeña risa cómplice y niego con la cabeza, sonrojándome ligeramente mientras acomodo el instrumental médico.* ¡Ni se te ocurra decirle una sola palabra a mi mamá! Gabriela jamás me dejaría en paz si se entera de que eres mi paciente en una consulta así. Pero quédate tranquilo, ${playerName || "William"}, el secreto médico y la confianza están ante todo. Concéntrate y respira con calma que estamos por comenzar.`;
-          } else if (isExamUnderway) {
-            content = `*Continúo con la exploración médica con movimientos cuidadosos y precisos en la camilla.* Respira con calma y mantén el cuerpo relajado, ${playerName || "William"}. Voy revisando cada área con atención clínica; avísame si sientes alguna molestia.`;
-          } else if (/(?:s[ií]ntoma|ning[uú]n|44|cuidar|edad|rutina|preventiv)/i.test(userSpoken)) {
-            content = `*Asiento comprensiva mientras tomo nota en tu historial clínico, mirándote con calidez y calma profesional.* Me parece una excelente decisión, ${playerName || "William"}. A los 44 años la prevención es fundamental y haces muy bien en hacerte el chequeo aunque no sientas molestias. Quédate tranquilo, el procedimiento es rápido y te iré explicando cada paso. Pasa detrás del biombo cuando gustes para prepararte y te indico cómo colocarte en la camilla.`;
-          } else if (/(?:miedo|nervio|pena|verg[uü]enza|inc[oó]mod|amig[ao]|pap[aá]|mam[aá])/i.test(userSpoken)) {
-            content = `*Sonrío con ternura y comprensión profesional, apoyando las manos sobre el escritorio para darte seguridad.* Es completamente normal sentir algo de pena o nervios, especialmente conociéndonos desde antes. Pero quiero que recuerdes que en esta sala no soy la niña que conociste, sino tu doctora, y mi único objetivo es cuidar tu salud con el máximo respeto y delicadeza. Respira hondo, tómate tu tiempo y avísame cuando te sientas listo para pasar a la camilla.`;
-          } else if (/(?:listo|preparad|biombo|camilla|pantal[oó]n|ropa|desvest|bajar)/i.test(userSpoken)) {
-            content = `*Me coloco los guantes de látex con movimientos serenos y precisos, cuidando en todo momento tu privacidad y confort.* Muy bien, recuéstate sobre la camilla de lado, flexionando suavemente las rodillas hacia el pecho. Mantén la respiración tranquila y el cuerpo relajado; te aseguro que durará apenas unos segundos. Cualquier molestia que sientas me avisas de inmediato.`;
-          } else {
-            content = `*Te escucho con absoluta atención profesional y un gesto afable, asintiendo a tus palabras.* Te entiendo perfectamente, ${playerName || "William"}. Cada detalle que me comentas es importante para tu expediente. Quédate muy tranquilo, estás en las mejores manos y vamos a llevar la consulta paso a paso con total confianza y delicadeza.`;
-          }
-        } else {
-          content = `*Te miro a los ojos con atención y una leve sonrisa, prestando atención a cada una de tus palabras.* Te escucho con total atención, ${playerName || ""}. Cuéntame, continúa con lo que me estabas comentando.`.trim();
-        }
-
-        // GARANTÍA ESTRICTA CONTRA REPETICIÓN: Si por cualquier motivo la frase coincide con algún turno previo, variar de inmediato
-        if (isRepeatedCandidate(content)) {
-          const alternatives = [
-            `*Tomo una respiración profunda para serenarme, acomodándome mejor entre tus piernas mientras el rubor aún persiste en mi piel.* Concéntrate en mi voz, ${playerName || "William"}. Vamos a continuar con la revisión paso a paso con total cuidado. Avísame de cualquier sensación.`,
-            `*Ajusto mis guantes de látex con movimientos delicados y concentrados, manteniendo una mirada cálida que intenta darte seguridad.* Todo está bajo control, quédate muy quieto y relajado en la camilla mientras procedo con la exploración.`,
-            `*Sostengo una postura serena y comprensiva a tu lado en la camilla, continuando con delicadeza.* Tranquilo, ${playerName || "William"}. Tu salud es lo primero y estás en un espacio seguro y profesional. Respira hondo y relájate.`
-          ];
-          for (const alt of alternatives) {
-            if (!isRepeatedCandidate(alt)) {
-              content = alt;
-              break;
-            }
-          }
-        }
+      // A service failure is not a character turn. Never fabricate or persist a script.
+      if (!content && Date.now() >= generationDeadline) {
+        return send(res, 504, { error: "ai_timeout", message: spanish ? "La IA agotó el tiempo de este turno. Tu conversación se conserva." : "The AI timed out for this turn. Your conversation is preserved." });
+      }
+      if (!content || isOffRole(content)) {
+        return send(res, 503, {
+          error: content ? "off_role" : "ai_unavailable",
+          message: spanish
+            ? "No se pudo obtener una respuesta válida del personaje. Tu conversación se conserva; vuelve a intentarlo."
+            : "Could not obtain a valid character reply. Your conversation is preserved; please try again.",
+        });
       }
       return send(res, 200, { content });
     }
@@ -2451,4 +2321,3 @@ Nota: Exactamente ${count} capítulos dentro del array 'chapters', cada uno con 
     return send(res, status, { error: error.code || "ai_error", message: error.message, details: error.details, attempts: error.attempts });
   }
 }
-

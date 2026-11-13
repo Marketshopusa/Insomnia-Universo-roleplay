@@ -3,7 +3,7 @@ import { beforeEach, expect, it, vi } from "vitest";
 const { invoke } = vi.hoisted(() => ({ invoke: vi.fn() }));
 vi.mock("@/integrations/supabase/client", () => ({
   supabase: {
-    auth: { getSession: () => Promise.resolve({ data: { session: { user: { id: "test-user" } } } }) },
+    auth: { getSession: () => Promise.resolve({ data: { session: { access_token: "test-token", user: { id: "test-user" } } } }) },
     functions: { invoke },
   },
 }));
@@ -46,6 +46,25 @@ it("keeps a scene without adult mode on Gemini", async () => {
   fetchMock.mockRestore();
 });
 
+it("does not run the entire provider chain twice after a terminal AI failure", async () => {
+  const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+    new Response(JSON.stringify({ error: "ai_timeout", message: "Turn timed out" }), { status: 504 }),
+  );
+  const result = await invokeFunctionWithRetry("story-chat", { userMessage: "Hola", story: { id: "a" } });
+  expect(result.error?.context.status).toBe(504);
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+  fetchMock.mockRestore();
+});
+
+it("does not retry a validation rejection from the server", async () => {
+  const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+    new Response(JSON.stringify({ error: "invalid_request" }), { status: 422 }),
+  );
+  await invokeFunctionWithRetry("story-chat", { userMessage: "Hola", story: { id: "a" } });
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+  fetchMock.mockRestore();
+});
+
 it("rejects candidate reply if it repeats previous assistant turn and returns the retried non-repeated reply", async () => {
   const fetchMock = vi.spyOn(globalThis, "fetch")
     .mockResolvedValueOnce(new Response(JSON.stringify({ content: "Mensaje idéntico anterior." }), { status: 200 }))
@@ -60,4 +79,30 @@ it("rejects candidate reply if it repeats previous assistant turn and returns th
   expect(result.data?.content).toBe("Nueva respuesta fresca y diferente.");
   expect(fetchMock).toHaveBeenCalledTimes(2);
   fetchMock.mockRestore();
+});
+
+
+it.each([
+  [422, "content_blocked", "El control de contenido rechazó este turno."],
+  [403, "adult_birth_date_required", "Completa tu fecha de nacimiento real en Mi perfil."],
+  [503, "magnum_policy_unavailable", "No se pudo comprobar la seguridad de este turno."],
+  [504, "ai_timeout", "La IA agotó el tiempo de este turno."],
+])("preserves the structured adult-mode error %s/%s for the screen", async (status, code, message) => {
+  const payload = { error: code, message };
+  const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+    new Response(JSON.stringify(payload), { status }),
+  );
+  try {
+    const result = await invokeFunctionWithRetry("story-chat", {
+      adultMode: true, adultConsent: true,
+      settings: { modelId: "magnum-v4-local", adultMode: true },
+      story: { id: "adult-test-card", character_age: 30 },
+      userMessage: "Mensaje de prueba",
+    });
+    expect(result.data).toEqual(payload);
+    expect(result.error?.message).toBe(message);
+    expect(result.error?.context.status).toBe(status);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(invoke).not.toHaveBeenCalled();
+  } finally { fetchMock.mockRestore(); }
 });

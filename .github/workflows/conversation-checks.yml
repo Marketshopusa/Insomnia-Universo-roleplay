@@ -1,0 +1,30 @@
+name: Conversation regression checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: conversation-checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+    env:
+      VITE_SUPABASE_URL: https://cexzmelshvbgabihtfvx.supabase.co
+      VITE_SUPABASE_PUBLISHABLE_KEY: ci-placeholder
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: node --test api/*.test.mjs
+      - run: npm run build
