@@ -1,4 +1,5 @@
 import { authenticationFailure } from "./_auth.mjs";
+import { MAX_REPLY_CHARS, isIncompleteTurn, truncatedCompletion } from "../src/lib/replyQuality.mjs";
 import { isRepeatedTurn } from "../src/lib/conversationReply.mjs";
 const DANGLING_TAIL_REGEX = /\b(?:de|del|al|a|en|con|por|para|sin|sobre|entre|hacia|hasta|como|mientras|cuando|que|y|e|o|u|ni|pero|un|una|unos|unas|el|la|los|las|su|sus|mi|mis|tu|tus|me|te|se|nos|le|les|lo)\s*$/iu;
 
@@ -189,10 +190,11 @@ export async function generateLocalLlama(messages, options = {}) {
     });
     if (!response.ok) return null;
     const data = await response.json();
+    if (truncatedCompletion(data?.choices?.[0]?.finish_reason)) return null;
     let content = data?.choices?.[0]?.message?.content?.trim();
     if (content) {
       content = content.replace(/[\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff\u3040-\u30ff]/g, "").trim();
-      if (content.length > 5 && !isRefusal(content)) {
+      if (content.length > 5 && !isRefusal(content) && !isIncompleteTurn(content)) {
         if (options.isRepeated && options.isRepeated(content)) return null;
         if (options.validate && !options.validate(content)) return null;
         return content;
@@ -259,11 +261,9 @@ export async function generateOpenRouter(messages, options = {}) {
         continue;
       }
       const data = await response.json();
+      if (truncatedCompletion(data?.choices?.[0]?.finish_reason)) continue;
       let content = data?.choices?.[0]?.message?.content?.trim();
-      if (!content && typeof data?.choices?.[0]?.message?.reasoning === "string") {
-        content = data.choices[0].message.reasoning.trim();
-      }
-      if (content && content.length > 5 && !isRefusal(content)) {
+      if (content && content.length > 5 && !isRefusal(content) && !isIncompleteTurn(content)) {
         if (options.isRepeated && options.isRepeated(content)) {
           console.warn("OpenRouter candidate rejected because it repeated previous dialogue, trying next model:", model);
           continue;
@@ -294,6 +294,16 @@ export async function generateNvidia(messages, options = {}) {
   if (!apiKey) return null;
   const models = options.models || NVIDIA_CHAT_MODELS;
   const fetchImpl = options.fetchImpl || fetch;
+  let repaired = false;
+  let requestMessages = messages;
+  const repair = () => {
+    if (repaired) return false;
+    repaired = true;
+    requestMessages = messages.map((entry, n) => n === 0 && entry.role === "system" ? { ...entry,
+      content: entry.content + "\nREVISIÓN DE CALIDAD: El intento anterior quedó incompleto o repitió una evasiva. Responde ahora a la pregunta concreta más reciente con información pertinente y frases completas. No repitas la explicación anterior ni agregues hechos no establecidos."
+    } : entry);
+    return true;
+  };
   for (let i = 0; i < models.length; i++) {
     const model = models[i];
     const temp = i >= 2 ? Math.min(0.95, (options.temperature ?? 0.82) + 0.08) : (options.temperature ?? 0.82);
@@ -306,7 +316,7 @@ export async function generateNvidia(messages, options = {}) {
         },
         body: JSON.stringify({
           model,
-          messages,
+          messages: requestMessages,
           max_tokens: options.maxTokens || 450,
           temperature: temp,
           
@@ -319,15 +329,15 @@ export async function generateNvidia(messages, options = {}) {
       }
       const data = await response.json();
       const msg = data?.choices?.[0]?.message;
-      let content = msg?.content?.trim();
-      if (!content && typeof msg?.reasoning_content === "string") {
-        const reasoning = msg.reasoning_content.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
-        const match = reasoning.match(/(?:Respuesta|Output|Spanish|Scarlett|Personaje):\s*([\s\S]+)$/i);
-        content = (match && match[1]?.trim()) || (reasoning.length > 20 && !/^(?:Here|The user|I need|This is)/i.test(reasoning) ? reasoning : "");
+      const content = typeof msg?.content === "string" ? msg.content.trim() : "";
+      if (truncatedCompletion(data?.choices?.[0]?.finish_reason) || (content && isIncompleteTurn(content))) {
+        if (repair()) i--;
+        continue;
       }
-      if (content && content.length > 5 && !isRefusal(content)) {
+      if (content && content.length > 5 && !isRefusal(content) && !isIncompleteTurn(content)) {
         if (options.isRepeated && options.isRepeated(content)) {
           console.warn("Nvidia candidate rejected because it repeated previous dialogue, trying next attempt:", model);
+          if (repair()) i--;
           continue;
         }
         if (options.validate && !options.validate(content)) {
@@ -525,6 +535,10 @@ export async function generate(model, parts, settings = {}, options = {}) {
             : "Gemini bloqueó esta escena. El mensaje permanece disponible para que puedas editarlo."), {
             status: 422, code: "content_blocked", blockReason,
           });
+        }
+        if (truncatedCompletion(data.candidates?.[0]?.finishReason)) {
+          lastError = Object.assign(new Error("La respuesta agotó su límite antes de terminar."), { status: 502, code: "incomplete_reply" });
+          break;
         }
         const content = (data.candidates?.[0]?.content?.parts || []).map(p => p.text || "").join("").trim();
         if (!content) {
@@ -928,6 +942,21 @@ export function rolePerspectiveLines(story = {}, history = [], latest = "", span
   ];
 }
 
+export function directConversationLines(spanish = true) {
+  return spanish ? [
+    "RESPUESTA A LA INTENCIÓN DEL TURNO:",
+    "Contesta primero la pregunta concreta del último mensaje, usando el motivo o hecho establecido en la tarjeta y la conversación. Una relación entre personas no sustituye la explicación de un motivo.",
+    "Si te piden aclarar algo, aporta la información que faltaba; no reformules la misma evasiva ni añadas una pregunta para eludir la respuesta.",
+    "Si un dato de otra persona no se ha establecido, no inventes su ubicación ni conviertas una suposición en un recuerdo. Puedes expresar una preferencia o decisión propia coherente con tu personaje.",
+    "La conversación puede cambiar de tema sin cambiar de personaje. Sigue el tema actual y no arrastres el asunto anterior a todas tus respuestas.",
+    "Habla en frases completas y con extensión proporcional a lo que se pregunta. Los gestos son opcionales: no empieces cada turno con una mirada, una sonrisa o la misma postura.",
+  ] : [
+    "Answer the latest specific question first, using established facts and motives. Relationships do not replace reasons.",
+    "Clarifications need missing information, not a paraphrase of the same evasion. Do not invent another person's whereabouts or turn guesses into memories; your character can make its own coherent decisions.",
+    "Follow a new topic without changing identity or dragging the old subject into every answer. Use complete, proportionate sentences; gestures are optional.",
+  ];
+}
+
 export function conversationToneLines(spanish = true) {
   return spanish ? [
     "TONO ADAPTATIVO Y PROGRESIÓN EMOCIONAL:",
@@ -1004,11 +1033,11 @@ export function roleplayPacingAndLanguageRules(historyLength, spanish, targetTok
   return [
     'PAUTAS DE ROLEPLAY VIVO, DETALLADO Y PROFUNDO:',
     '1. RESPUESTA SUSTANCIAL Y ADAPTADA AL MOMENTO (CERO FRASES VACÍAS):',
-    '   - Tu personaje DEBE responder punto por punto a lo que el usuario describe y dice.',
-    '   - Si el usuario describe una acción física o íntima, acéptala y reacciona a ella de forma visceral, creíble y apasionada.',
+    '   - Tu personaje responde primero a la intención actual del usuario, manteniendo los hechos y su identidad.',
+    '   - Reacciona a lo que ocurre con una emoción proporcionada al contexto y a la personalidad de la tarjeta.',
     '2. ACCIONES FÍSICAS Y DIÁLOGO EQUILIBRADOS:',
-    '   - Describe con soltura tus gestos, posturas, caricias, miradas y sensaciones entre asteriscos (*...*).',
-    '   - Habla con tu propia voz de manera directa, sensual, pícara o médica según corresponda, sin restricciones artificiales de palabras.',
+    '   - Usa acotaciones breves entre asteriscos cuando aporten algo; no son obligatorias en cada turno.',
+    '   - Habla con tu propia voz de manera directa, cotidiana y acorde a tu personaje y al tema actual.',
     '3. IMPULSO DE LA TRAMA: Haz que cada turno avance la situación sin frenos absurdos ni repeticiones.',
   ];
 }
@@ -1198,7 +1227,7 @@ export default async function handler(req, res) {
       const turnNvidia = (messages, options = {}) => generateNvidia(messages, { ...options, deadlineMs: generationDeadline });
       const turnGemini = (model, parts, config, options = {}) => generate(model, parts, config, { ...options, deadlineMs: generationDeadline });
       const isChatPage = body.chatSource === 'chat_page' || body.story?.story_type === 'chat_page' || isLiveCall;
-      const targetTokens = isLiveCall ? 55 : (isChatPage ? Math.max(300, Math.min(700, Number(settings.messageLength) || 450)) : Math.max(200, Math.min(800, Number(settings.messageLength) || 450)));
+      const targetTokens = isLiveCall ? 120 : (isChatPage ? Math.max(300, Math.min(700, Number(settings.messageLength) || 450)) : Math.max(200, Math.min(800, Number(settings.messageLength) || 450)));
       const modelId = settings.modelId || "insomnia-flash";
       const customDirective = String(settings.customDirective || "").trim();
       const openRouterApiKey = String(settings.openRouterApiKey || "").trim();
@@ -1248,7 +1277,7 @@ export default async function handler(req, res) {
       const isRepeatedReply = (text) => isRepeatedTurn(text, history, latest);
       const isOffRole = (text) => {
         const reply = String(text || "").trim();
-        if (!reply || reply.length > 3000) return true;
+        if (!reply || reply.length > MAX_REPLY_CHARS || isIncompleteTurn(reply)) return true;
         if (isRefusal(reply)) return true;
         if (isRepeatedReply(reply)) return true;
         // 1. Reject Chinese or Asian non-Latin scripts
@@ -1338,8 +1367,8 @@ export default async function handler(req, res) {
         "  - ESTRICTAMENTE PROHIBIDO romper la cuarta pared (nunca digas 'en un roleplay', 'en este rol', 'soy un personaje').",
         ...storyVoiceLines(story.character_role, story.player_role, spanish, locale),
         "ESTILO Y TONO CONVERSACIONAL (NATURAL, VIVO, INMERSIVO Y SIN RESPUESTAS VACÍAS):",
-        "  - CERO RESPUESTAS HUECAS O ROBÓTICAS: Tus respuestas deben ser ricas, detalladas y con sustancia real, respondiendo punto por punto a todo lo que el usuario acaba de plantear.",
-        "  - LENGUAJE FRESCO Y DIRECTO: Habla como una persona real en el momento, combinando con naturalidad acciones físicas entre asteriscos (*...*) que describan lo que haces y sientes, con diálogo hablado directo y expresivo.",
+        "  - CERO RESPUESTAS HUECAS O ROBÓTICAS: Aporta la información concreta que el usuario pide, con la extensión necesaria para este momento. Evita frases de relleno y explicaciones circulares.",
+        "  - LENGUAJE FRESCO Y DIRECTO: Habla como una persona en el momento, con diálogo directo y expresivo. Añade acciones entre asteriscos solo cuando contribuyan a lo que sucede.",
         "  - Si la escena es íntima o erótica, habla y actúa de forma directa, sensual, pícara y apasionada, siguiendo las pautas de excitación y cercanía que el usuario marca.",
         customDirective ? `DIRECTIVAS Y REGLAS PERSONALIZADAS DE MEMORIA:\n${customDirective}` : "",
         ...roleplayPacingAndLanguageRules(history.length, spanish, targetTokens, isLiveCall, isChatPage, dialogueRatio, narrationRatio),
@@ -1390,15 +1419,8 @@ export default async function handler(req, res) {
       if (remembered) {
         systemInstruction += "\n" + remembered;
       }
-      const lastModelLine = recentModelTurns.at(-1) ? recentModelTurns.at(-1).slice(0, 220) : "";
-      const antiRepeatDirective = lastModelLine
-        ? `\nPROHIBICIÓN ABSOLUTA DE REPETIR TU RESPUESTA ANTERIOR: En tu turno anterior acabas de decir exactamente:\n"${lastModelLine}"\nESTÁ ESTRICTAMENTE PROHIBIDO repetir esas mismas palabras, las mismas frases o esa misma respuesta. Debes avanzar la escena respondiendo directamente al nuevo mensaje de ${playerFirstName}.`
-        : "";
-      if (antiRepeatDirective) {
-        systemInstruction += "\n" + antiRepeatDirective;
-      }
-
-      systemInstruction += "\n" + rolePerspectiveLines(story, history, latest, spanish).join("\n");
+      // History already contains the previous answer. Quoting it again primes repetition.
+      systemInstruction += "\n" + [...rolePerspectiveLines(story, history, latest, spanish), ...directConversationLines(spanish)].join("\n");
 
       const recent = history.slice(-recentLimit);
 
@@ -1514,7 +1536,7 @@ export default async function handler(req, res) {
         if (isAdult) {
           try {
             content = await turnLocal(openRouterMessages, {
-              maxTokens: 55,
+              maxTokens: targetTokens,
               temperature: 0.82,
               timeoutMs: 2500,
               validate: (reply) => !isOffRole(reply),
@@ -1531,7 +1553,7 @@ export default async function handler(req, res) {
                   "sao10k/l3.3-euryale-70b",
                   "nvidia/nemotron-3.5-lightning:free",
                 ],
-                maxTokens: 55,
+                maxTokens: targetTokens,
                 temperature: 0.82,
                 timeoutMs: 4000,
                 apiKey: openRouterApiKey || undefined,
@@ -1546,7 +1568,7 @@ export default async function handler(req, res) {
             try {
               content = await turnNvidia(openRouterMessages, {
                 models: nvidiaModels,
-                maxTokens: 55,
+                maxTokens: targetTokens,
                 temperature: 0.82,
                 timeoutMs: 2500,
                 apiKey: nvidiaApiKey || undefined,
@@ -1568,7 +1590,7 @@ export default async function handler(req, res) {
               content = await turnGemini(
                 "gemini-2.5-flash",
                 [],
-                { maxOutputTokens: 55, temperature: 0.8 },
+                { maxOutputTokens: targetTokens, temperature: 0.8 },
                 {
                   contents: geminiContents,
                   systemInstruction,
@@ -1587,7 +1609,7 @@ export default async function handler(req, res) {
           if (!content) {
             try {
               content = await turnLocal(openRouterMessages, {
-                maxTokens: 55,
+                maxTokens: targetTokens,
                 temperature: 0.82,
                 timeoutMs: 2500,
                 validate: (reply) => !isOffRole(reply),
@@ -1601,7 +1623,7 @@ export default async function handler(req, res) {
             try {
               content = await turnNvidia(openRouterMessages, {
                 models: nvidiaModels,
-                maxTokens: 55,
+                maxTokens: targetTokens,
                 temperature: 0.82,
                 timeoutMs: 2500,
                 apiKey: nvidiaApiKey || undefined,
@@ -1906,9 +1928,6 @@ export default async function handler(req, res) {
           content = enforceDialogueRatio(content, Math.round(dialogueRatio * 100), Math.round(narrationRatio * 100));
         }
 
-        // Eliminar palabras truncadas o conectores rotos al final (ej: "a las...", "las*", "con lent*", "de*", "en...")
-        content = content.replace(/\s+(?:a\s+las?|a\s+los?|en\s+el|en\s+la|con\s+el|con\s+la|de\s+la|de\s+los|de\s+las|de\s+un|de\s+una|con\s+lent[a-z]*|lent[a-z]*|las?|los?|el|la|un[a-z]*|de|del|al|a|en|con|por|para|y|e|o|pero|que|su|mi|tu|tan|muy)\s*(?:\.{2,3}|…)?\*?$/iu, "").trim();
-
         // Equilibrar asteriscos sin cerrar
         const asteriskCount = (content.replace(/\*\*/g, "").match(/\*/g) || []).length;
         if (asteriskCount % 2 === 1) {
@@ -1918,16 +1937,6 @@ export default async function handler(req, res) {
             content = content + "*";
           } else {
             content = content + "*";
-          }
-        }
-
-        // Si la respuesta termina sin puntuación terminal, recortar hasta la última oración completa o añadir punto
-        if (content.length > 30 && !/[.!?…"”»*)\]]$/.test(content)) {
-          const lastPunct = Math.max(content.lastIndexOf("."), content.lastIndexOf("!"), content.lastIndexOf("?"), content.lastIndexOf("…"), content.lastIndexOf("*"));
-          if (lastPunct >= 20) {
-            content = content.slice(0, lastPunct + 1).trim();
-          } else {
-            content = content + ".";
           }
         }
 

@@ -297,47 +297,13 @@ export function compactRoleplayReply(input: string): string {
 
 
 
-  // 2. Clean incomplete trailing connectors with ellipsis (e.g. "a las...", "en...", "y...")
-
-  const INCOMPLETE_TRAILING = /\b(?:a\s+las?|a\s+los?|en\s+el|en\s+la|con\s+el|con\s+la|de\s+la|de\s+los|de\s+las|de\s+un|de\s+una|y|e|o|u|ni|pero|que|como|mientras|cuando|porque|aunque|para|por|sin|sobre|hacia|hasta|en|con|de|del|al|a|el|la|los|las|un|una|unos|unas|mi|mis|tu|tus|su|sus|nuestro|nuestra|nuestros|nuestras|tan|muy|más|menos)\s*(?:\.{2,3}|…)?\s*$/iu;
-
-  if (INCOMPLETE_TRAILING.test(text)) {
-
-    text = text.replace(INCOMPLETE_TRAILING, "").trim();
-
+  // A visibly cut ellipsis may leave a dangling preposition in legacy history.
+  // Never infer truncation solely from an absent final period.
+  const trailingFragment = /\b(?:a\s+las?|a\s+los?|en\s+el|en\s+la|con\s+el|con\s+la|de\s+la|de\s+los|de\s+las|de\s+un|de\s+una|porque|aunque|mientras|pero|que|para|con|de|del|al)\s*(?:\.{2,}|…)\s*$/iu;
+  if (trailingFragment.test(text)) {
+    text = text.replace(trailingFragment, "").trim();
     if (text && !/[.!?…"”»*)\]]$/.test(text)) text += ".";
-
   }
-
-
-
-  // If text was cut off mid-sentence at max_tokens, trim back to the last complete sentence
-
-  if (text.length > 80 && !/[.!?…"”»*)\]]$/.test(text)) {
-
-    const lastPunct = Math.max(
-
-      text.lastIndexOf("."),
-
-      text.lastIndexOf("!"),
-
-      text.lastIndexOf("?"),
-
-      text.lastIndexOf("…"),
-
-      text.lastIndexOf("*"),
-
-    );
-
-    if (lastPunct >= 25) {
-
-      text = text.slice(0, lastPunct + 1).trim();
-
-    }
-
-  }
-
-
 
   // 3. Keep ~20% narration (*...*): preserve complete scenic cues (up to 22 words) without mutilating sentences
 
@@ -364,30 +330,6 @@ export function compactRoleplayReply(input: string): string {
   // 4. Collapse whitespace and cap total length to 800 chars at a clean sentence boundary
 
   text = text.replace(/[ \t]{2,}/g, " ").replace(/\n{2,}/g, "\n").trim();
-
-  if (text.length > 800) {
-
-    const sentences = text.match(/[^.!?…]+[.!?…]+["'»”*)]*(?:\s+|$)/gu);
-
-    if (sentences && sentences.length > 1) {
-
-      let acc = "";
-
-      for (const s of sentences) {
-
-        if ((acc + s).length > 800 && acc.length >= 200) break;
-
-        acc += s;
-
-      }
-
-      if (acc.trim()) text = acc.trim();
-
-    }
-
-  }
-
-
 
   // Ensure balanced asterisks after any slicing
 

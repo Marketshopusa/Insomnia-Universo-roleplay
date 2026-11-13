@@ -18,3 +18,15 @@ it("allows ordinary shared phrases when the response advances the conversation",
   const history = [{ role: "assistant", content: "La clave de acceso es ORBITA23. Abre la puerta al llegar." }];
   expect(isRepeatedTurn("La clave de acceso es útil si llegas antes que yo, pero hoy nos encontraremos en la entrada principal.", history)).toBe(false);
 });
+
+it("rejects an evasion restated in fewer words after a request for clarification", () => {
+  const history = [{ role: "assistant", content: "Te esperaba porque somos un equipo y porque trabajamos aquí juntos." }];
+  expect(isRepeatedTurn("No es nada, solo te esperaba porque somos un equipo.", history, "¿Para qué me estabas esperando?")).toBe(true);
+  expect(isRepeatedTurn("Necesito tu firma en el permiso que está sobre la mesa.", history, "¿Para qué me estabas esperando?")).toBe(false);
+});
+
+it("allows an explicit recall and a newly acknowledged unknown fact", () => {
+  const history = [{ role: "assistant", content: "La reunión es con el jefe en la oficina." }];
+  expect(isRepeatedTurn("La reunión es con el jefe en la oficina.", history, "Repíteme dónde es la reunión.")).toBe(false);
+  expect(isRepeatedTurn("No sé dónde está el jefe ahora.", history, "¿A qué te refieres con que está el jefe?")).toBe(false);
+});

@@ -1,3 +1,4 @@
+import { MAX_REPLY_CHARS } from "../src/lib/replyQuality.mjs";
 import { detectPhysicalSoundEvents } from "../src/lib/soundbank/matcher.mjs";
 import { authenticationFailure } from "./_auth.mjs";
 import { synthesizeExpressiveScene } from "../src/lib/expressiveAudio.mjs";
@@ -96,7 +97,7 @@ export default async function handler(req, res) {
     .replace(/\b([aA]){4,}\b/gi, "Aaah")
     .replace(/\b([oO]){4,}\b/gi, "Oooh")
     .replace(/\b([eE]){4,}\b/gi, "Eeeh");
-  const limited = normalizedRaw.slice(0, 1400);
+  const limited = normalizedRaw.slice(0, MAX_REPLY_CHARS);
   // Prepare expressive speech parsing vocal reactions (*gime*, *se ríe*, *suspira*, *llora*) from original marked text
   const expression = req.body?.roleplay ? prepareExpressiveSpeech(limited, { roleplay: true }) : null;
   const text = (expression?.text && expression.text.trim()) || limited.replace(/[*_#]/g, "").replace(/\s+/g, " ").trim();
