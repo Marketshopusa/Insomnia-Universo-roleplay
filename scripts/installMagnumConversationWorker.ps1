@@ -5,7 +5,7 @@ $servicePath = Join-Path $statePath 'MagnumConversation'
 $envPath = Join-Path $statePath 'magnum-conversation.env'
 if (-not (Test-Path $envPath)) { throw 'La conexión privada de Magnum todavía no está configurada.' }
 New-Item -ItemType Directory -Force -Path (Join-Path $servicePath 'scripts'),(Join-Path $servicePath 'api') | Out-Null
-foreach ($file in @('scripts\magnumConversationWorker.mjs','api\_magnumProtocol.mjs','api\_config.mjs')) {
+foreach ($file in @('scripts\magnumConversationWorker.mjs','api\_magnumProtocol.mjs','api\_magnumFormat.mjs','api\_config.mjs')) {
   Copy-Item (Join-Path $sourcePath $file) (Join-Path $servicePath $file) -Force
 }
 $metadata = Get-Content (Join-Path $sourcePath 'node_modules\@supabase\supabase-js\package.json') -Raw | ConvertFrom-Json

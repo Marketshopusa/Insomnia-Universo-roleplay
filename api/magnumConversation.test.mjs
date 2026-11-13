@@ -99,3 +99,20 @@ test('a language drift is corrected by the same Magnum engine', async () => {
   assert.equal(result.engine.model, MAGNUM_MODEL);
   assert.equal(parseConversationReply(JSON.stringify({ reaction: 'Asiento.', dialogue: '*Miro la mesa*' })), null);
 });
+
+
+test('structured decoding requires both fields without forcing unnatural word joins', async () => {
+  const {magnumReplySchema} = await import('./_magnumFormat.mjs');
+  assert.deepEqual(magnumReplySchema(false, 'es').required, ['narracion', 'dialogo']);
+  assert.deepEqual(magnumReplySchema(true, 'en').required, ['reaction', 'dialogue']);
+  assert.equal(magnumReplySchema(false, 'es').properties.dialogo.pattern, undefined);
+});
+
+test('overlong drafts fit the budget on whole sentences while preserving the reaction', async () => {
+  const extra = dialogue + ' ' + dialogue;
+  const r = await magnumConversation(body(), { classify: async () => ({ allowed: true, length: 'standard' }), bridge: async () => ({ model: MAGNUM_MODEL, content: JSON.stringify({narracion:reaction,dialogo:extra}) }) });
+  assert.ok(r.words >= 90 && r.words <= 150);
+  assert.ok(r.content.startsWith('*' + reaction + '* ' + dialogue));
+  assert.ok(/[.!?]$/.test(r.content));
+  assert.ok(extra.startsWith(r.content.slice(reaction.length + 3)));
+});
