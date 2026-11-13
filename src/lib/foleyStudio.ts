@@ -353,27 +353,11 @@ export function scheduleFoleyForMessage(
   context: AudioContext,
   messageText: string,
   baseTime?: number,
-  volume = 0.60
+  volume = 0.60,
+  onScheduled?: (source: AudioBufferSourceNode, startAt: number, ambient: boolean) => void
 ): AudioBufferSourceNode[] {
-  // 1. Orquestación cinemática de alta fidelidad desde la Galería de Sonidos (28 categorías)
-  const cinematicSources = scheduleCinematicScene(context, messageText, baseTime, volume);
-  if (cinematicSources.length > 0) {
-    return cinematicSources;
-  }
+  return scheduleCinematicScene(context, messageText, baseTime, volume, onScheduled);
 
-  // 2. Fallback procedural si el texto no fue capturado por el soundbank
-  const events = detectFoleyEvents(messageText);
-  if (!events.length) return [];
-
-  const start = baseTime ?? context.currentTime;
-  const sources: AudioBufferSourceNode[] = [];
-
-  for (const event of events) {
-    const source = playFoley(context, event.type, start + event.delaySec, volume);
-    if (source) sources.push(source);
-  }
-
-  return sources;
 }
 
 let globalFoleyCtx: AudioContext | null = null;

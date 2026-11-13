@@ -22,13 +22,13 @@ describe("Cinematic Soundbank Engine", () => {
     expect(soundIds).toContain("salon_music");
   });
 
-  it("detects oral suction, wet mouth sounds, and onomatopoeic moans", () => {
+  it("detects narrated sounds without performing quoted phonetic dialogue", () => {
     const oralScene = "*Comienza a chupar de nuevo, succionando con fuerza y rapidez, su boca llena de saliva* \"Mmmm... ahh...\"";
     const events = detectSoundEvents(oralScene);
     const soundIds = events.map((e) => e.soundId);
 
     expect(soundIds).toContain("oral_suction");
-    expect(soundIds.some((id) => id === "moan_pleasure" || id === "moan_subtle")).toBe(true);
+    expect(soundIds.some((id) => id === "moan_pleasure" || id === "moan_subtle")).toBe(false);
   });
 
   it("never hallucinates random sounds on unrelated dialogue", () => {
@@ -78,4 +78,25 @@ describe("Cinematic Soundbank Engine", () => {
       expect(Number.isFinite(pcm[0])).toBe(true);
     }
   });
+});
+
+it.each([
+  '«Abre la puerta y camina hacia la ventana»',
+  '*No cierro la puerta*',
+  '*Recuerdo los pasos lentos de ayer*',
+  '*Si abro la puerta, entrará aire*',
+  '*Al entrar me mira y sonríe*',
+  '*Dejo las palmas sobre la mesa, junto a una copa y las sábanas*',
+])("adds no sound for a quotation, unreal action or silent object: %s", (text) => {
+  expect(detectSoundEvents(text)).toHaveLength(0);
+});
+
+it("keeps the order of physical actions and does not stack three door sounds", () => {
+  const ids = detectSoundEvents('*Camino hacia la ventana y cierro de golpe la puerta*').map((event) => event.soundId);
+  expect(ids).toEqual(["footsteps_normal", "door_slam"]);
+});
+
+
+it("does not turn a general mention of music into a synthetic soundtrack", () => {
+  expect(detectSoundEvents("La música es mi afición favorita.")).toHaveLength(0);
 });

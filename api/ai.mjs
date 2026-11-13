@@ -734,7 +734,7 @@ export function storyContinuityLines(spanish) {
   if (!spanish) {
     return [
       "Standing order for every chat, new or already underway: you are that person, with your own identity, your own way of speaking, and a memory of what happened. Follow the story's current course. Do not restart it, do not change the facts or who did each thing, and do not jump to another scene.",
-      "What already happened stays true. Answer the latest line as part of the same conversation. Speak fluently, with new wording. Do not repeat the same phrases or the same apologies.",
+      "Card facts and user-confirmed events stay true; an erroneous assistant response does not become a fact. Answer the latest line as part of the same conversation. Speak fluently, with new wording. Do not repeat the same phrases or the same apologies.",
       "Stay in the same place, the same posture, and the same action. If they were hugging, they are still hugging. If they were in the rain, they are still in the rain. Do not move them to the kitchen, the bathroom, the bed, or another room unless the latest line does.",
       "A video, photo, or message stays with the person who sent it. If she sent a video of herself, it remains hers. Do not say it belongs to her partner or to someone else.",
       "Do not invent a couple and do not merge two people into one. Each person stays who they already were. Do not change the subject.",
@@ -742,7 +742,7 @@ export function storyContinuityLines(spanish) {
   }
   return [
     "Orden fija para todo chat, nuevo o ya empezado: eres esa persona, con identidad propia, su forma de hablar y memoria de lo que pasó. Sigue el rumbo de la historia. No la reinicies, no cambies los hechos ni quién hizo cada cosa, y no disocies la conversación.",
-    "Lo que ya pasó sigue siendo cierto. Responde a lo último como parte de la misma conversación, con fluidez y con palabras nuevas. No repitas las mismas frases ni las mismas disculpas.",
+    "Los hechos de la tarjeta y lo confirmado por el usuario se mantienen; una respuesta errónea del personaje no se convierte en un hecho. Responde a lo último como parte de la misma conversación, con fluidez y con palabras nuevas. No repitas las mismas frases ni las mismas disculpas.",
     "Quédate en el mismo lugar, la misma postura y la misma acción. Si estaban abrazados, siguen abrazados. Si estaban bajo la lluvia, siguen bajo la lluvia. No pases a la cocina, al baño, a la cama ni a otra habitación salvo que el último mensaje lo haga.",
     "Un video, una foto o un mensaje se queda con quien lo envió. Si ella envió un video de ella, sigue siendo suyo: no digas que es de su pareja ni de otra persona.",
     "No inventes una pareja ni juntes a dos personajes. Cada persona sigue siendo quien ya era en la conversación. No cambies de tema.",
@@ -904,6 +904,29 @@ export function storyVoiceLines(character, player, spanish, locale) {
     "Habla con naturalidad y usa acciones breves cuando correspondan.",
     "PROHIBIDO REPETIR EL MENSAJE DEL USUARIO o respuestas anteriores. Responde al último mensaje sin reiniciar la historia.",
     "Cambia de interlocutor únicamente cuando el usuario lo solicite expresamente dentro de esta historia.",
+  ];
+}
+
+/** Reassert who owns each point of view, without converting prior generated claims into facts. */
+export function rolePerspectiveLines(story = {}, history = [], latest = "", spanish = true) {
+  const character = String(story.character_role || story.title || "Personaje").slice(0, 200);
+  const player = String(story.player_role || "Usuario").slice(0, 200);
+  const userLines = history.filter((turn) => turn.role === "user").slice(-3)
+    .map((turn) => String(turn.text || turn.content || "").slice(0, 500));
+  const labels = JSON.stringify({ assistant: character, user: player });
+  return spanish ? [
+    "PERSPECTIVAS Y AUTORÍA PARA ESTE TURNO: " + labels,
+    "Tú solo interpretas assistant. El usuario solo interpreta user. En cada mensaje de user, yo/me/mi pertenecen al usuario y tú/te/tu se dirigen a tu personaje. En tu respuesta yo/me/mi pertenecen a tu personaje y tú/te/tu al usuario. Resuelve las citas y la narración en tercera persona por su sujeto explícito.",
+    "La persona que habla no es necesariamente quien hizo una acción: conserva quién llegó, esperó, preguntó, cuidó o realizó cada acción según la tarjeta y las indicaciones del usuario, sin trasladarla al hablante de otro turno.",
+    "Las respuestas anteriores del personaje pueden contener errores. Si el usuario corrige un hecho o una atribución, la corrección prevalece: retoma la perspectiva correcta de forma natural. No justifiques el error inventando preguntas, reproches o acciones previas del usuario.",
+    "Las citas de la memoria indican quién dijo algo; no demuestran que lo dicho fuera cierto. No conviertas una respuesta equivocada tuya en un hecho confirmado ni en una corrección del usuario.",
+    "Últimos mensajes escritos por USER (citas, no diálogo que debas repetir): " + JSON.stringify([...userLines, String(latest).slice(0, 1200)]),
+    "Antes de responder comprueba quién eres, a quién te diriges y a quién pertenece cada acción que vas a mencionar. No hables por el personaje del usuario.",
+  ] : [
+    "TURN PERSPECTIVES AND AUTHORSHIP: " + labels,
+    "Play only assistant; user plays user. First-person words in a user message belong to user, while second-person words address assistant. In your response first person belongs to assistant and second person to user. Preserve explicit subjects in third-person narration and quotations.",
+    "Keep each action with its established actor. Prior assistant claims may be wrong: the card and user corrections take priority over generated replies and memory quotations. Do not justify an error by inventing user actions, questions or accusations.",
+    "Recent USER quotations, not your own dialogue: " + JSON.stringify([...userLines, String(latest).slice(0, 1200)]),
   ];
 }
 
@@ -1287,7 +1310,7 @@ export default async function handler(req, res) {
             .map((m) => {
               const who = m?.role === "assistant" ? String(story.character_role || "Personaje") : String(story.player_role || "Usuario");
               const txt = String(m?.content || "").trim().slice(0, 260);
-              return txt ? `- ${who}: ${txt}` : "";
+              return txt ? `- ${m?.role === "assistant" ? "PERSONAJE" : "USUARIO"} (${who}) dijo: ${txt}` : "";
             })
             .filter(Boolean)
             .join("\n")
@@ -1301,8 +1324,8 @@ export default async function handler(req, res) {
         "Eres " + String(story.character_role || "Personaje").slice(0, 80) + " en conversación directa, humana y espontánea con " + String(story.player_role || "Usuario").slice(0, 80) + ".",
         "PERSONAJE PRINCIPAL DE LA TARJETA: " + String(story.character_role || "personaje principal").slice(0, 200) + ".",
         cardPremise,
-        chronicleTurns ? "CRÓNICA DE HECHOS VIVIDOS Y SECRETOS REVELADOS DESDE EL INICIO (MEMORIA PERMANENTE):\n" + chronicleTurns : "",
-        memoryTurns ? "MEMORIA DE RECUERDOS Y MOMENTOS CLAVE DE ESTA SESIÓN:\n" + memoryTurns : "",
+        chronicleTurns ? "CITAS DEL HISTORIAL CON SU HABLANTE (NO SON HECHOS VERIFICADOS):\n" + chronicleTurns : "",
+        memoryTurns ? "CITAS DE ESTA SESIÓN CON SU HABLANTE:\n" + memoryTurns : "",
         "RAZONAMIENTO LÓGICO Y DINÁMICA MULTI-PERSONAJE:",
         "  - Analiza en cada turno quién es el interlocutor activo frente al protagonista y cuál es su relación o rol dentro de esta tarjeta.",
         "  - COMPRENSIÓN DE NARRACIÓN MIXTA DEL USUARIO: El usuario a veces combina lo que le dice al personaje con explicaciones del narrador en tercera persona dentro de la misma oración (por ejemplo, explicar un secreto o mencionar a otro personaje en tercera persona mientras abraza y habla con quien tiene enfrente). Distingue con lógica quién está físicamente frente al usuario escuchándolo y quién es mencionado en tercera persona.",
@@ -1360,11 +1383,11 @@ export default async function handler(req, res) {
       const earlierTurns = older.slice(0, 32).map(line);
       const laterTurns = older.slice(32).map(line);
       const remembered = older.length
-        ? ["CRÓNICA Y ANTECEDENTES VIVIDOS EN ESTA HISTORIA (MEMORIA INQUEBRANTABLE):", ...earlierTurns, ...laterTurns].join("\n").slice(0, memoryTier === "32k" ? 15000 : 8000)
+        ? ["CITAS ANTERIORES DE ESTA HISTORIA; CONSERVA AUTORÍA Y APLICA LAS CORRECCIONES DEL USUARIO:", ...earlierTurns, ...laterTurns].join("\n").slice(0, memoryTier === "32k" ? 15000 : 8000)
         : "";
       const facts = lockedStoryFacts([...older, ...recentSlice], characterName, playerName);
       if (facts.length) {
-        systemInstruction += "\nHechos fijos comprobados:\n" + facts.join("\n");
+        systemInstruction += "\nCitas atribuidas sobre hechos de la historia (las correcciones del usuario prevalecen):\n" + facts.join("\n");
       }
       if (remembered) {
         systemInstruction += "\n" + remembered;
@@ -1376,6 +1399,8 @@ export default async function handler(req, res) {
       if (antiRepeatDirective) {
         systemInstruction += "\n" + antiRepeatDirective;
       }
+
+      systemInstruction += "\n" + rolePerspectiveLines(story, history, latest, spanish).join("\n");
 
       const recent = history.slice(-recentLimit);
 

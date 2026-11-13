@@ -1,5 +1,5 @@
 import type { SoundId, DetectedSoundEvent } from "./types";
-import { detectSoundEvents } from "./matcher";
+import { detectPhysicalSoundEvents } from "./matcher";
 import { generateSoundPcm } from "./audioSynthesizer";
 
 export * from "./types";
@@ -67,11 +67,10 @@ export function scheduleCinematicScene(
   context: AudioContext,
   messageText: string,
   baseTime?: number,
-  masterVolume = 0.65
+  masterVolume = 0.65,
+  onScheduled?: (source: AudioBufferSourceNode, startAt: number, ambient: boolean) => void
 ): AudioBufferSourceNode[] {
-  const vocalIds = new Set<SoundId>(["moan_pleasure", "moan_subtle", "scream_pleasure", "scream_pain", "gasp_breathless", "pant_running", "cry_deep", "laugh_chuckle", "laugh_burst", "guttural_groan", "kiss_wet", "oral_suction"]);
-  // Vocal reactions belong to the selected neural speaker in /api/speech.
-  const events: DetectedSoundEvent[] = detectSoundEvents(messageText).filter((event) => !vocalIds.has(event.soundId));
+  const events: DetectedSoundEvent[] = detectPhysicalSoundEvents(messageText);
   if (!events.length) return [];
 
   const start = baseTime ?? context.currentTime;
@@ -84,7 +83,10 @@ export function scheduleCinematicScene(
       start + event.delaySec,
       event.volume * masterVolume
     );
-    if (source) sources.push(source);
+    if (source) {
+      sources.push(source);
+      onScheduled?.(source, start + event.delaySec, /^(?:rain|wind|thunder|salon)/u.test(event.soundId));
+    }
   }
 
   return sources;

@@ -85,3 +85,42 @@ it("keeps the public playback helpers aligned with the ordered score", () => {
   expect(roleplaySpeechText("*Grito de dolor* «Ahhh, no me toques»"))
     .toBe("[shouting] ¡Aaaah! «Ahhh, no me toques»");
 });
+
+it("does not play a scene-wide startup sound and places steps after their narration", async () => {
+  const pcm = Buffer.alloc(48000, 1).toString("base64");
+  const events = [
+    { type: "speech.segment", durationSamples: 24000, narration: "" },
+    { type: "speech.audio.delta", audio: pcm },
+    { type: "speech.segment", durationSamples: 24000, narration: "Camino hacia la ventana" },
+    { type: "speech.audio.delta", audio: pcm },
+    { type: "speech.segment", durationSamples: 24000, narration: "" },
+    { type: "speech.audio.delta", audio: pcm },
+    { type: "speech.audio.done" },
+  ];
+  const stream = new ReadableStream<Uint8Array>({ start(controller) {
+    controller.enqueue(new TextEncoder().encode(events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join("")));
+    controller.close();
+  } });
+  vi.spyOn(supabase.auth, "getSession").mockResolvedValue({ data: { session: { access_token: "test" } }, error: null } as any);
+  vi.stubGlobal("fetch", vi.fn((_url, init) => JSON.parse(init.body).metric
+    ? Promise.resolve(new Response(null, { status: 204 })) : Promise.resolve(new Response(stream))));
+  const starts: { at: number; duration: number }[] = [];
+  vi.stubGlobal("AudioContext", class {
+    state = "running"; currentTime = 0; sampleRate = 24000; destination = {};
+    createBuffer(_ch, length, rate) { return { duration: length / rate, copyToChannel() {} }; }
+    createGain() { return { gain: { setValueAtTime() {} }, connect() {} }; }
+    createBufferSource() { return { buffer: null, onended: null, connect() {}, disconnect() {}, stop() {},
+      start(at) { starts.push({ at, duration: this.buffer.duration }); } }; }
+    close() { return Promise.resolve(); }
+  });
+  const speech = streamSpeech('«Hola». *Camino hacia la ventana* «Mira afuera».', "Kore", "es", true, "ve");
+  await speech.started;
+  expect(starts).toHaveLength(4);
+  const steps = starts.find((part) => part.duration !== 1);
+  expect(steps?.at).toBeCloseTo(2.065);
+  const dialogue = starts.filter((part) => part.duration === 1);
+  expect(dialogue[0].at).toBeCloseTo(0.025);
+  expect(dialogue[2].at).toBeGreaterThanOrEqual(steps!.at + steps!.duration);
+  speech.stop();
+  await speech.done;
+});

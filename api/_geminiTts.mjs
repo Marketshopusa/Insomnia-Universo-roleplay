@@ -57,7 +57,7 @@ export function quotaProjectId() {
 }
 
 export function removePerformanceCues(text) {
-  return text.replace(/\[(?:laughing|sigh|uhm|short pause|medium pause|long pause|laughs|sighs|gasps|crying|sobbing|gasping|panting|groaning|moaning|grunting|growling|coughing|sneezing|hiccup|clears throat|kiss|shouting|moaning|whispering)\]/gi, "").replace(/\s+/g, " ").trim();
+  return text.replace(/\[(?:breathing|laughing|sigh|uhm|short pause|medium pause|long pause|laughs|sighs|gasps|crying|sobbing|gasping|panting|groaning|moaning|grunting|growling|coughing|sneezing|hiccup|clears throat|kiss|shouting|moaning|whispering)\]/gi, "").replace(/\s+/g, " ").trim();
 }
 
 function resamplePcm16(pcm, fromRate, toRate = 24000) {

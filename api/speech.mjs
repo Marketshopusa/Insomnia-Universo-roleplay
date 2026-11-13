@@ -1,3 +1,4 @@
+import { detectPhysicalSoundEvents } from "../src/lib/soundbank/matcher.mjs";
 import { authenticationFailure } from "./_auth.mjs";
 import { synthesizeExpressiveScene } from "../src/lib/expressiveAudio.mjs";
 import { prepareExpressiveSpeech, hasVocalCue } from "../src/lib/expressiveSpeech.mjs";
@@ -132,7 +133,7 @@ export default async function handler(req, res) {
 
   try {
     // 1. Si hay reacciones acústicas marcadas (*gime*, *se ríe*, *suspira*, *llora*), inyectar muestras acústicas hiperrealistas y streamear de inmediato
-    if (expression?.reactions?.length) {
+    if (expression && (expression.reactions.length || expression.segments.some((part) => part.kind === "narration" && detectPhysicalSoundEvents(part.text).length))) {
       try {
         let streamedChunks = 0;
         const scene = await synthesizeExpressiveScene(expression, req.body.voice, req.body.language, {
@@ -141,12 +142,13 @@ export default async function handler(req, res) {
           resolvedVoice: previewVoice(req.body.voice),
           samples: (v, lang, event, dir) => vocalSample(v, lang, event, dir, region),
           synthesize: synthesizePieceWithRetry,
-          deadlineMs: 18_000,
-          onAudio: (pcmChunk) => {
+          deadlineMs: 30_000,
+          onAudio: (pcmChunk, segment) => {
             if (!opened) {
               opened = true;
               openSpeech(res, provider, startedAt);
             }
+            sendEvent(res, { type: "speech.segment", ...segment });
             writePcmChunks(res, pcmChunk);
             streamedChunks += 1;
           },
@@ -160,6 +162,9 @@ export default async function handler(req, res) {
           finishSpeech(res, provider, startedAt);
           return;
         }
+        if (scene.status !== 200) {
+          return res.status(scene.status === 429 ? 429 : 502).json({ error: "expressive_audio_failed", message: "No se pudo completar una expresión con la voz seleccionada." });
+        }
         if (scene.status === 200 && scene.pcm?.length) {
           writePcm(res, scene.pcm, provider, startedAt);
           return;
@@ -170,7 +175,8 @@ export default async function handler(req, res) {
           res.end();
           return;
         }
-        console.warn("synthesizeExpressiveScene fallback to unified track:", sceneErr);
+        console.warn("synthesizeExpressiveScene failed:", sceneErr?.message);
+        return res.status(502).json({ error: "expressive_audio_failed", message: "No se pudo completar una expresión con la voz seleccionada." });
       }
     }
 
@@ -183,7 +189,7 @@ export default async function handler(req, res) {
           region,
           expression,
           firstAudioMs: 1200,
-          onAudio: (pcmChunk) => {
+          onAudio: (pcmChunk, segment) => {
             if (!opened) {
               opened = true;
               openSpeech(res, provider, startedAt);

@@ -4,7 +4,7 @@ const clips = new Map();
 export function vocalSample(voice, language = "es", event, direction = "", region = "plain") {
   if (region !== "plain") return null;
   if (bank.verification !== "automated_pass" || voice !== bank.voice || language !== bank.language) return null;
-  const alias = { cry: "sob", chuckle: "laugh", scream: "pain_scream", pleasure_moan: "pant", groan: "sigh" }[event] || event;
+  const alias = { cry: "sob", chuckle: "laugh", scream: "pain_scream" }[event] || event;
   const encoded = bank.clips[alias];
   if (!encoded) return null;
   if (!clips.has(alias)) clips.set(alias, Buffer.from(encoded, "base64"));

@@ -48,7 +48,7 @@ export function buildPersistentChronicle(
     const text = String(turn.content || "").replace(/\s+/g, " ").trim();
     if (factRegex.test(text)) {
       const actor = turn.role === "assistant" ? characterName : playerName;
-      entries.push(`${actor}: ${text.slice(0, 220)}`);
+      entries.push(`${turn.role === "assistant" ? "PERSONAJE" : "USUARIO"} (${actor}) dijo: ${text.slice(0, 220)}`);
     }
   }
   return entries.slice(-24);

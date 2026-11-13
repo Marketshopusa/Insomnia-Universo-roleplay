@@ -151,6 +151,17 @@ export function generateSoundPcm(soundId: SoundId, sampleRate = 24000): Float32A
     }
 
     case "footsteps_running":
+    case "heartbeat": {
+      const duration = 0.7;
+      buffer = new Float32Array(Math.floor(sampleRate * duration));
+      for (let i = 0; i < buffer.length; i++) {
+        const t = i / sampleRate;
+        const beat = (at: number, hz: number) => at < 0 || at > 0.2 ? 0 : Math.sin(2 * Math.PI * hz * at) * Math.exp(-at * 22);
+        buffer[i] = (beat(t - 0.04, 64) + beat(t - 0.27, 78) * 0.7) * 0.8;
+      }
+      break;
+    }
+
     case "footsteps_normal": {
       // Pasos secos
       const duration = 0.32;
