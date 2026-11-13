@@ -17,11 +17,11 @@ export function parseConversationReply(raw, budget = 150, language = 'es') {
 }
 export async function magnumConversation(body, { policyGenerate, systemLines = [], bridge = requestMagnum, classify } = {}) {
   if (body.adultMode === true || body.isNsfw === true || body.isAdult === true || body.settings?.adultMode === true) throw Object.assign(new Error('Selecciona una conversación no explícita para usar este modo de Magnum.'), { status: 422, code: 'non_explicit_only' });
-  const deadline = Date.now() + (body.isLiveCall ? 24000 : 48000);
+  const deadline = Date.now() + (body.isLiveCall ? 36000 : 52000);
   const runPolicy = classify || (async (value) => {
     let raw;
     try {
-      raw = await policyGenerate([{ role: 'system', content: NON_EXPLICIT_POLICY }, { role: 'user', content: JSON.stringify(value) }], { models: ['nvidia/nemotron-3.5-bolt-e4b'], temperature: 0, maxTokens: 140, timeoutMs: 5000, deadlineMs: Math.min(deadline, Date.now() + 6000), purpose: 'non_explicit_policy' });
+      raw = await policyGenerate([{ role: 'system', content: NON_EXPLICIT_POLICY }, { role: 'user', content: JSON.stringify(value) }], { models: ['nvidia/nemotron-3.5-bolt-e4b'], temperature: 0, maxTokens: 140, timeoutMs: 10000, deadlineMs: Math.min(deadline, Date.now() + 11000), purpose: 'non_explicit_policy' });
     } catch (error) {
       if (error?.status === 422) return { allowed: false };
       throw Object.assign(new Error('No se pudo comprobar el modo no explícito. Inténtalo de nuevo.'), { status: 503, code: 'magnum_policy_unavailable' });
