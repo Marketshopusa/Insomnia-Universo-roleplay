@@ -361,7 +361,7 @@ export async function generate(model, parts, settings = {}, options = {}) {
     throw Object.assign(new Error("Gemini no está configurado en Insomnia (Vercel)."), { status: 503, code: "gemini_not_configured" });
   }
   const fetchImpl = options.fetchImpl || fetch;
-  const defaultFallbacks = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-2.0-flash-lite", "gemini-1.5-flash-8b", "gemini-flash-latest", "gemini-2.5-flash"];
+  const defaultFallbacks = ["gemini-2.5-flash", "gemini-2.5-pro"];
   const choices = [...new Set([model, ...(options.fallbackModels || defaultFallbacks)])];
   let lastError;
 
@@ -435,13 +435,11 @@ export async function generate(model, parts, settings = {}, options = {}) {
               },
             };
             const vertexJson = JSON.stringify(vertexPayload);
-            const vertexCandidates = [
-              candidate === "gemini-flash-latest" ? "gemini-2.0-flash" : candidate === "gemini-pro-latest" ? "gemini-1.5-pro" : candidate,
-              "gemini-2.0-flash",
-              "gemini-1.5-flash-002",
-              "gemini-1.5-flash",
+            const vertexCandidates = [...new Set([
+              candidate === "gemini-flash-latest" ? "gemini-2.5-flash" : candidate === "gemini-pro-latest" ? "gemini-2.5-pro" : candidate,
               "gemini-2.5-flash",
-            ];
+              "gemini-2.5-pro",
+            ])];
             for (const pId of targetProjects) {
               for (const vModel of vertexCandidates) {
                 const vertexEndpoints = [
@@ -1681,7 +1679,7 @@ export default async function handler(req, res) {
               geminiContents.unshift({ role: "user", parts: [{ text: "Continúa la escena." }] });
             }
             content = await turnGemini(
-              "gemini-2.0-flash",
+              "gemini-2.5-flash",
               [],
               { maxOutputTokens: Math.max(220, targetTokens), temperature: 0.8 },
               {
@@ -1690,7 +1688,7 @@ export default async function handler(req, res) {
                 adultMode: false,
                 apiKey: geminiApiKey || undefined,
                 timeoutMs: 12000,
-                fallbackModels: ["gemini-1.5-flash", "gemini-2.0-flash-lite", "gemini-1.5-flash-8b", "gemini-flash-latest", "gemini-2.5-flash"],
+                fallbackModels: ["gemini-2.5-pro"],
                 fastReply: true,
                 validate: (reply) => !isOffRole(reply)
               },
@@ -1808,7 +1806,7 @@ export default async function handler(req, res) {
             geminiContents.unshift({ role: "user", parts: [{ text: "Continúa la escena." }] });
           }
           content = await turnGemini(
-            "gemini-1.5-flash",
+            "gemini-2.5-flash",
             [],
             { maxOutputTokens: Math.max(200, targetTokens), temperature: 0.8 },
             {
@@ -1817,7 +1815,7 @@ export default async function handler(req, res) {
               adultMode: Boolean(isAdult),
               apiKey: geminiApiKey || undefined,
               timeoutMs: 10000,
-              fallbackModels: ["gemini-2.0-flash-lite", "gemini-1.5-flash-8b"],
+              fallbackModels: ["gemini-2.5-pro"],
               fastReply: true,
               validate: (reply) => !isOffRole(reply)
             },
