@@ -11,7 +11,7 @@ import { invokeFunctionWithRetry } from "@/lib/invokeFunction";
 import { normalizeAssistantResponse, type ReplyEngine } from "@/lib/roleReply";
 import { selectStoryMemory } from "@/lib/storyMemory";
 import { getMotherCardConfig } from "@/lib/roleplayBase";
-import { getStoryAiSettings } from "@/lib/storyAiSettings";
+import { resolveConversationModelId, getStoryAiSettings } from "@/lib/storyAiSettings";
 
 type CallState = "idle" | "listening" | "thinking" | "speaking";
 
@@ -38,6 +38,7 @@ interface CallDialogProps {
   voice: string;
   region: string;
   adultMode: boolean;
+  adultConsent?: boolean;
   history: Turn[];
   onTurn: (userText: string, assistantText: string | null, engine?: ReplyEngine) => void;
 }
@@ -51,6 +52,7 @@ export const CallDialog = ({
   voice,
   region,
   adultMode,
+  adultConsent = false,
   history,
   onTurn,
 }: CallDialogProps) => {
@@ -136,6 +138,8 @@ export const CallDialog = ({
           description: story?.description,
           story_context: story?.story_context,
           character_role: story?.character_role,
+          character_age: story?.character_age,
+          player_age: story?.player_age,
           player_role: story?.player_role,
           story_type: story?.story_type,
         },
@@ -144,7 +148,7 @@ export const CallDialog = ({
         settings: {
           ...mother.aiSettings,
           ...cardSettings,
-          modelId: adultMode ? "magnum-v4-local" : (cardSettings.modelId || mother.aiSettings.modelId || "insomnia-flash"),
+          modelId: resolveConversationModelId(adultMode, cardSettings.modelId, mother.aiSettings.modelId),
           customDirective: cardSettings.customDirective || mother.masterDirective,
           messageLength: 45,
         },
@@ -152,6 +156,7 @@ export const CallDialog = ({
         memory: selectStoryMemory(priorHistory, userText),
         userMessage: userText,
         adultMode,
+        adultConsent,
         region: voiceSettingsRef.current.region,
     });
     if (error || !data?.content) {
@@ -371,9 +376,10 @@ export const CallDialog = ({
         requireLogin();
         return;
       }
+      const accessFailure = String(replyResult.error || "").startsWith("adult_");
       historyRef.current = [...priorHistory, { role: "user", content: userText }];
       toast({
-        title: replyResult.error === "credits_exhausted"
+        title: accessFailure ? (es ? "Acceso al modo adulto" : "Adult mode access") : replyResult.error === "credits_exhausted"
           ? (es ? "Se agotaron los creditos de IA" : "AI credits are exhausted")
           : replyResult.error === "content_blocked"
             ? (es ? "Esta escena no puede continuar" : "This scene cannot continue")
@@ -381,7 +387,7 @@ export const CallDialog = ({
         description: replyResult.message || t("call.savedMessage"),
         variant: "destructive",
       });
-      if (replyResult.error === "credits_exhausted" || replyResult.error === "content_blocked") {
+      if (accessFailure || replyResult.error === "credits_exhausted" || replyResult.error === "content_blocked") {
         hangUp();
       } else {
         if (activeRef.current && sessionCountRef.current === turnSession) void listen();

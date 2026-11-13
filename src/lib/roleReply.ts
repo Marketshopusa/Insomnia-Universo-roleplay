@@ -83,7 +83,7 @@ export type ReplyEngine = { profile?: string; model?: string; provider?: string;
 
 /** Magnum's structured response has already been validated; retain both components in full. */
 export function normalizeAssistantResponse(data: { content?: unknown; engine?: ReplyEngine }): string | null {
-  if (data.engine?.profile === "magnum-conversation" && typeof data.content === "string") return data.content.trim() || null;
+  if ((data.engine?.profile === "magnum-conversation" || (data.engine?.profile === "magnum-v4-local" && data.engine.model === "magnum-v4-12b" && data.engine.fallback === false)) && typeof data.content === "string") return data.content.trim() || null;
   return normalizeAssistantReply(data.content);
 }
 

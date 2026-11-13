@@ -37,7 +37,7 @@ async function callOwnAi<T>(name: string, body: unknown): Promise<FunctionResult
     if (name === "story-chat") {
       controller = new AbortController();
       const request = body as { isLiveCall?: boolean; settings?: { modelId?: string } };
-      const timeoutMs = request?.settings?.modelId === "magnum-conversation"
+      const timeoutMs = ["magnum-conversation", "magnum-v4-local"].includes(request?.settings?.modelId || "")
         ? (request.isLiveCall ? 42000 : 58000)
         : (request?.isLiveCall ? 15000 : 30000);
       timeoutId = setTimeout(() => controller?.abort(), timeoutMs);
@@ -845,5 +845,3 @@ export async function invokeFunctionWithRetry<T>(name: string, body: unknown): P
   return result as FunctionResult<T>;
 
 }
-
-

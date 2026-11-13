@@ -5,14 +5,14 @@ import { beforeEach, expect, it, vi } from "vitest";
 
 const state = vi.hoisted(() => ({
   user: { id: "account-one" },
-  adultEnabled: false, consentGiven: false, callProps: vi.fn(),
+  adultEnabled: false, consentGiven: false, characterAge: 30, callProps: vi.fn(),
   loads: {} as Record<string, Promise<unknown>>,
   reply: vi.fn(), save: vi.fn(), remove: vi.fn(), speech: vi.fn(),
 }));
 vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ user: state.user, loading: false }) }));
 vi.mock("@/contexts/LanguageContext", () => ({ useLanguage: () => ({ language: "es", t: (key: string) => key }) }));
 vi.mock("@/contexts/AdultModeContext", () => ({ useAdultMode: () => ({ enabled: state.adultEnabled, consentGiven: state.consentGiven }) }));
-vi.mock("@/hooks/useStories", () => ({ useStory: (id: string) => ({ data: { id, title: `Tarjeta ${id}`, description: `Premisa ${id}`, character_role: `Personaje ${id}`, player_role: "Visita", story_type: "roleplay" }, isLoading: false }) }));
+vi.mock("@/hooks/useStories", () => ({ useStory: (id: string) => ({ data: { id, title: `Tarjeta ${id}`, description: `Premisa ${id}`, character_role: `Personaje ${id}`, player_role: "Visita", character_age: state.characterAge, story_type: "roleplay" }, isLoading: false }) }));
 vi.mock("@/hooks/useStoryCustomizations", () => ({ useStoryCustomizations: () => ({ data: {} }) }));
 vi.mock("@/hooks/useTranslatedTexts", () => ({ useTranslatedTexts: (texts: string[]) => texts, useTranslatedText: (text: string) => text }));
 vi.mock("@/components/layout/MainLayout", () => ({ MainLayout: ({ children }: { children: React.ReactNode }) => <div>{children}</div> }));
@@ -56,7 +56,7 @@ const session = (text: string) => ({ data: { messages: [{ id: text, role: "assis
 
 beforeEach(() => {
   localStorage.clear();
-  state.adultEnabled = false; state.consentGiven = false; state.callProps.mockReset();
+  state.adultEnabled = false; state.consentGiven = false; state.characterAge = 30; state.callProps.mockReset();
   state.loads = {};
   state.reply.mockReset(); state.save.mockReset(); state.remove.mockReset(); state.speech.mockReset();
   state.speech.mockReturnValue({ done: Promise.resolve(), stop: vi.fn() });
@@ -121,6 +121,7 @@ it('a recovered profile cannot override an enabled and consented mode', async ()
   await waitFor(() => expect(state.reply).toHaveBeenCalledTimes(1));
   const request = state.reply.mock.calls[0][1];
   expect(request.adultMode).toBe(true);
+  expect(request.adultConsent).toBe(true);
   expect(request.settings.adultMode).toBe(true);
   expect(request.settings.modelId).not.toBe('magnum-conversation');
   expect(state.callProps.mock.lastCall?.[0].adultMode).toBe(true);
@@ -132,6 +133,42 @@ it('a normal conversation returns to the Gemini configuration', async () => {
   render(<MemoryRouter initialEntries={['/story/a']}><Harness /></MemoryRouter>);
   await screen.findByText('Conversacion normal de prueba.');
   fireEvent.change(screen.getByPlaceholderText('story.typeMessage'), { target: { value: 'Revisamos el proyecto mañana?' } });
+  fireEvent.click(screen.getByText('story.send'));
+  await waitFor(() => expect(state.reply).toHaveBeenCalledTimes(1));
+  const request = state.reply.mock.calls[0][1];
+  expect(request.adultMode).toBe(false);
+  expect(request.settings.modelId).toBe('insomnia-flash');
+});
+
+it('does not rewrite a card age and removes a rejected turn from the next request', async () => {
+  state.adultEnabled = true; state.consentGiven = true; state.characterAge = 16;
+  state.loads.a = Promise.resolve(session('Sesion de seguridad de prueba.'));
+  state.reply.mockResolvedValueOnce({ data: { error: 'content_blocked', message: 'Caso rechazado por las reglas.' }, error: { message: 'Caso rechazado por las reglas.', context: new Response(null, { status: 422 }) } });
+  state.reply.mockResolvedValueOnce({ data: { content: 'Podemos revisar las notas de la presentación.' }, error: null });
+  render(<MemoryRouter initialEntries={['/story/a']}><Harness /></MemoryRouter>);
+  await screen.findByText('Sesion de seguridad de prueba.');
+  const input = screen.getByPlaceholderText('story.typeMessage');
+  fireEvent.change(input, { target: { value: 'Caso de prueba no permitido.' } });
+  fireEvent.click(screen.getByText('story.send'));
+  await waitFor(() => expect(state.reply).toHaveBeenCalledTimes(1));
+  await waitFor(() => expect(input).toHaveValue('Caso de prueba no permitido.'));
+  expect(state.reply.mock.calls[0][1].story.character_age).toBe(16);
+  expect(state.reply.mock.calls[0][1].adultConsent).toBe(true);
+  expect(state.speech).not.toHaveBeenCalled();
+  state.characterAge = 30;
+  fireEvent.change(input, { target: { value: 'Volvemos al plan de la tarde.' } });
+  fireEvent.click(screen.getByText('story.send'));
+  await waitFor(() => expect(state.reply).toHaveBeenCalledTimes(2));
+  expect(JSON.stringify(state.reply.mock.calls[1][1].history)).not.toContain('Caso de prueba no permitido.');
+});
+
+it('a saved Magnum choice does not activate adult mode when that mode is off', async () => {
+  localStorage.setItem('insomnia_story_ai_settings_a', JSON.stringify({ modelId: 'magnum-v4-local', adultMode: false }));
+  state.loads.a = Promise.resolve(session('Modo normal de prueba.'));
+  state.reply.mockResolvedValue({ data: { content: 'Podemos revisar las notas de mañana.' }, error: null });
+  render(<MemoryRouter initialEntries={['/story/a']}><Harness /></MemoryRouter>);
+  await screen.findByText('Modo normal de prueba.');
+  fireEvent.change(screen.getByPlaceholderText('story.typeMessage'), { target: { value: 'Revisamos el proyecto?' } });
   fireEvent.click(screen.getByText('story.send'));
   await waitFor(() => expect(state.reply).toHaveBeenCalledTimes(1));
   const request = state.reply.mock.calls[0][1];

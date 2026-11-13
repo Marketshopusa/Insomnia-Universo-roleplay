@@ -20,7 +20,7 @@ import { buildPersistentChronicle, selectStoryMemory } from "@/lib/storyMemory";
 import { useConversationScope } from "@/hooks/useConversationScope";
 import { resolveStoryCover } from "@/lib/storyCover";
 import { ChatAiSettingsDialog } from "@/components/story/ChatAiSettingsDialog";
-import { getStoryAiSettings, type StoryAiSettings } from "@/lib/storyAiSettings";
+import { resolveConversationModelId, getStoryAiSettings, type StoryAiSettings } from "@/lib/storyAiSettings";
 import { getMotherCardConfig } from "@/lib/roleplayBase";
 import { useStoryCustomizations } from "@/hooks/useStoryCustomizations";
  import { useStory } from "@/hooks/useStories";
@@ -425,7 +425,7 @@ type Mode = "select" | "read" | "roleplay";
     const effectiveAiSettings: StoryAiSettings = {
       ...mother.aiSettings,
       ...aiSettings,
-      modelId: isAdultStory ? "magnum-v4-local" : (aiSettings?.modelId || mother.aiSettings?.modelId || "insomnia-flash"),
+      modelId: resolveConversationModelId(isAdultStory, aiSettings?.modelId, mother.aiSettings?.modelId),
       adultMode: isAdultStory,
       dialogueRatio: mother.dialogueRatio || 0.80,
       narrationRatio: mother.narrationRatio || 0.20,
@@ -440,7 +440,7 @@ type Mode = "select" | "read" | "roleplay";
           description: localOverride?.bio || story?.description || tDescription,
           story_context: localOverride?.starterMessage || storyContext || tDescription,
           character_role: localOverride?.roleTitle || story?.character_role || tCharacter,
-          character_age: Math.max(18, Number(story?.character_age) || 21),
+          character_age: localOverride?.age ?? story?.character_age ?? null,
           player_role: story?.player_role || tPlayer,
           story_type: story?.story_type,
         },
@@ -451,6 +451,7 @@ type Mode = "select" | "read" | "roleplay";
         settings: effectiveAiSettings,
         userMessage,
         adultMode: isAdultStory,
+        adultConsent: consentGiven,
         isNsfw: isAdultStory,
         region: activeRegion(),
     });
@@ -458,6 +459,10 @@ type Mode = "select" | "read" | "roleplay";
     if (error || !data?.content) {
       const status = (error as { context?: Response } | null)?.context?.status;
       const code = status === 402 ? "credits_exhausted" : (data as any)?.error;
+      if (code === "content_blocked") {
+        messagesRef.current = messagesRef.current.filter(message => message.id !== currentMessageId);
+        setMessages(messagesRef.current);
+      }
       if (code === "rate_limited") toast({ title: t("mode.rateLimited"), variant: "destructive" });
       else if (code === "credits_exhausted") toast({ title: t("mode.creditsExhausted"), variant: "destructive" });
       else if (code === "login_required" || status === 401) toast({
@@ -480,6 +485,7 @@ type Mode = "select" | "read" | "roleplay";
         description: data?.message,
         variant: "destructive",
       });
+      else if (String(code || "").startsWith("adult_")) toast({ title: language === "es" ? "Acceso al modo adulto" : "Adult mode access", description: data?.message || error?.message, variant: "destructive" });
       else if (code === "minor_safety_violation") toast({
         title: language === "es" ? "Bloqueo de Seguridad (+18)" : "Safety Policy Block (+18)",
         description: data?.message || (language === "es" ? "Está terminantemente prohibido cualquier contenido o rol que involucre o aluda a menores de edad. Todos los personajes deben ser mayores de 18 años." : "Content involving minors is strictly prohibited. All characters must be 18+."),
@@ -500,7 +506,7 @@ type Mode = "select" | "read" | "roleplay";
         description: data?.message || (language === "es" ? "Tu mensaje sigue en el cuadro para reenviarlo." : "Your message remains in the box for another attempt."),
         variant: "destructive",
       });
-      else if (String(code || "").startsWith("magnum_") || code === "non_explicit_only") toast({ title: "Magnum · conversación no explícita", description: data?.message || error?.message, variant: "destructive" });
+      else if (String(code || "").startsWith("magnum_") || code === "non_explicit_only") toast({ title: "Magnum", description: data?.message || error?.message, variant: "destructive" });
       else toast({ title: t("mode.aiError"), variant: "destructive" });
       return null;
     }
@@ -1158,11 +1164,13 @@ type Mode = "select" | "read" | "roleplay";
                         description: localOverride?.bio || story.description,
                         story_context: localOverride?.starterMessage || storyContext,
                         character_role: localOverride?.roleTitle || story.character_role,
+                        character_age: localOverride?.age ?? story.character_age ?? null,
                       }}
                       language={language}
                       voice={voice}
                       region={spokenRegion(region, accent)}
                       adultMode={adultEnabled && consentGiven}
+                      adultConsent={consentGiven}
                       history={messages
                         .filter((message) => message.id !== "intro")
                         .map((message) => ({ role: message.role, content: message.content }))}

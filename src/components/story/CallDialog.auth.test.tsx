@@ -8,7 +8,7 @@ vi.mock("@/lib/invokeFunction", () => ({ invokeFunctionWithRetry: mocks.invoke }
 vi.mock("@/lib/wavRecorder", () => ({ startWavRecording: mocks.record, blobToBase64: async () => "recorded-audio" }));
 vi.mock("@/lib/ttsStream", () => ({ streamSpeech: vi.fn() }));
 vi.mock("@/lib/roleplayBase", () => ({ getMotherCardConfig: () => ({ aiSettings: {}, masterDirective: "Conserva la historia." }) }));
-vi.mock("@/lib/storyAiSettings", () => ({ getStoryAiSettings: () => ({}) }));
+vi.mock("@/lib/storyAiSettings", async (importOriginal) => ({ ...await importOriginal() as Record<string, unknown>, getStoryAiSettings: () => ({}) }));
 import { CallDialog } from "./CallDialog";
 
 beforeEach(() => {
@@ -32,4 +32,18 @@ it.each(["transcription", "reply"])("stops the microphone loop after unrecoverab
   expect(mocks.record).toHaveBeenCalledTimes(1);
   expect(mocks.invoke).toHaveBeenCalledTimes(stage === "reply" ? 2 : 1);
   expect(onTurn).not.toHaveBeenCalledWith(expect.anything(), expect.any(String));
+});
+
+it.each(['adult_age_required', 'adult_consent_required', 'adult_not_eligible'])('stops the call loop and displays the access reason for %s', async code => {
+  mocks.invoke.mockImplementation(async name => name === 'speech-to-text'
+    ? { data: { text: 'Confirmamos el plan de mañana.' }, error: null }
+    : { data: { error: code, message: 'Revisa los datos de acceso de tu cuenta.' }, error: { message: code, context: new Response(null, { status: 403 }) } });
+  render(<CallDialog story={{ id: 'card-a', character_role: 'Ana, adulta', player_role: 'Visita adulta' }} language="es" voice="Aoede" region="plain" adultMode={true} adultConsent={true} history={[]} onTurn={vi.fn()} />);
+  await act(async () => fireEvent.click(screen.getByRole('button', { name: 'call.startCall' })));
+  await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Enviar voz' })));
+  expect(screen.getByRole('button', { name: 'call.startCall' })).toBeInTheDocument();
+  expect(mocks.invoke.mock.calls[1][1].adultConsent).toBe(true);
+  expect(mocks.toast).toHaveBeenCalledWith(expect.objectContaining({ description: 'Revisa los datos de acceso de tu cuenta.' }));
+  await act(async () => { vi.advanceTimersByTime(30000); });
+  expect(mocks.record).toHaveBeenCalledTimes(1);
 });

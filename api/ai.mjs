@@ -1,4 +1,5 @@
-import { authenticationFailure } from "./_auth.mjs";
+import { magnumConversation, isRequestedAdultMode } from "./_magnumConversation.mjs";
+import { authenticationFailure, getAuthenticatedUser } from "./_auth.mjs";
 import { MAX_REPLY_CHARS, isIncompleteTurn, truncatedCompletion } from "../src/lib/replyQuality.mjs";
 import { isRepeatedTurn } from "../src/lib/conversationReply.mjs";
 const DANGLING_TAIL_REGEX = /\b(?:de|del|al|a|en|con|por|para|sin|sobre|entre|hacia|hasta|como|mientras|cuando|que|y|e|o|u|ni|pero|un|una|unos|unas|el|la|los|las|su|sus|mi|mis|tu|tus|me|te|se|nos|le|les|lo)\s*$/iu;
@@ -344,7 +345,7 @@ export async function generateNvidia(messages, options = {}) {
           console.warn("Nvidia candidate rejected by validation, trying next model:", model);
           continue;
         }
-        console.info("Insomnia AI selected model", "nvidia", model);
+        console.info(options.purpose === "content_policy" || options.purpose === "non_explicit_policy" ? "Insomnia content checker model" : "Insomnia AI selected model", "nvidia", model);
         return content;
       }
     } catch (e) {
@@ -1208,11 +1209,21 @@ export default async function handler(req, res) {
     return send(res, 429, { error: "too_many_requests", message: "Demasiadas solicitudes simultáneas. Por favor espera unos segundos antes de reenviar." });
   }
   const { action, body = {} } = req.body || {};
+  const adultRequested = action === "story-chat" && isRequestedAdultMode(body);
+  const magnumSelected = action === "story-chat" && body.settings?.modelId === "magnum-v4-local";
   if (action !== "translate") {
-    const failure = await authenticationFailure(req);
+    const failure = await authenticationFailure(req, { force: adultRequested || magnumSelected });
     if (failure) return send(res, failure.status, { error: failure.error, message: failure.message });
   }
   try {
+    if (adultRequested || magnumSelected) {
+      const story = body.story || {}, spanish = body.language !== "en";
+      const result = await magnumConversation(body, {
+        mode: "adult", authenticatedUser: getAuthenticatedUser(req), policyGenerate: generateNvidia,
+        systemLines: [...cardIdentityLines(story), ...rolePerspectiveLines(story, [], body.userMessage, spanish), ...directConversationLines(spanish), slangInstruction(body.language, body.region)],
+      });
+      return send(res, 200, result);
+    }
     if (action === "story-chat") {
       const story = body.story || {};
       const spanish = body.language === "es";
@@ -1233,7 +1244,7 @@ export default async function handler(req, res) {
       const openRouterApiKey = String(settings.openRouterApiKey || "").trim();
       const nvidiaApiKey = String(settings.nvidiaApiKey || process.env.NVIDIA_API_KEY || DEFAULT_NVIDIA_API_KEY).trim();
       const geminiApiKey = String(settings.geminiApiKey || "").trim();
-      const adultMode = body.adultMode === true || body.isNsfw === true || body.isAdult === true || settings.adultMode === true || settings.modelId === "magnum-v4-local" || /(?:\+18|18\+|nsfw|er[oó]tic|sexual|hentai|\badult[oa]?\b)/i.test([story.title, story.description, story.story_context, story.story_type].filter(Boolean).join(" "));
+      const adultMode = isRequestedAdultMode(body);
       const locale = spanish ? "español" : "inglés";
       const history = (Array.isArray(body.history) ? body.history : []).flatMap((entry) => {
         const role = entry?.role === "assistant" ? "model" : entry?.role === "user" ? "user" : null;
@@ -1261,7 +1272,7 @@ export default async function handler(req, res) {
 
       const isKinship = Boolean(isCharacterAhijada || isCharacterSobrina || isPlayerHermano || isPlayerPrimo || isPlayerMadre);
       const isExplicitContent = /(?:mamarl[ao]|chupar|polla|pene|huevo|verga|gemir|gemidos|sexo|correrse|masturb|desnud|follar|coger|oral|pezones|tetas|senos|vagina|vulva|clitoris|clítoris|erecci[oó]n|lubricad[ao]|caliente)/i.test(latest + " " + (history.slice(-3).map((entry) => entry.text).join(" ")));
-      const isAdult = Boolean(adultMode || isExplicitContent || isKinship);
+      const isAdult = Boolean(adultMode);
 
       // BLOQUEO ESTRICTO DE PROTECCIÓN INFANTIL (CSAM/CSAE)
       if (mentionsMinor(latest) || mentionsMinor(sceneContext)) {

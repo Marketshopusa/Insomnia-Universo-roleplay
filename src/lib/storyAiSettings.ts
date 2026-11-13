@@ -27,12 +27,12 @@ export const AVAILABLE_AI_MODELS: AiModelOption[] = [
   },
   {
     id: "magnum-v4-local",
-    name: "Magnum v4 (PC Local / 8788)",
+    name: "Magnum v4 12B (PC)",
     tier: "free",
     badge: "Local",
-    description: "Modelo LLaMA 3.x / Magnum corriendo localmente en tu propia computadora.",
-    bullet1: "Privacidad 100% local, cero censura y cero consumo de saldo en la nube.",
-    bullet2: "Usa el servidor de tu PC en http://127.0.0.1:8788 con velocidad nativa.",
+    description: "Magnum de tu PC conectado con el modo adulto de Insomnia.",
+    bullet1: "El texto se genera en tu PC; los turnos pasan por el control de seguridad.",
+    bullet2: "Requiere el PC y Magnum encendidos. Vercel usa un enlace cifrado.",
   },
   {
     id: "mistral-nemo",
@@ -291,4 +291,11 @@ export function setStoryAiSettings(storyId: string | null | undefined, settings:
   } catch (e) {
     console.warn("Could not save story AI settings to localStorage", e);
   }
+}
+
+/** Mode determines the runtime engine without rewriting a card's saved settings. */
+export function resolveConversationModelId(adult: boolean, selected?: string, fallback?: string): string {
+  if (adult) return "magnum-v4-local";
+  const model = selected || fallback || "insomnia-flash";
+  return model === "magnum-v4-local" || model === "magnum-conversation" ? "insomnia-flash" : model;
 }

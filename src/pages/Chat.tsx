@@ -56,7 +56,7 @@ import { normalizeAssistantResponse, type ReplyEngine } from "@/lib/roleReply";
 import { ChatCharacterConfigDialog, isMediaVideo } from "@/components/chat/ChatCharacterConfigDialog";
 import { PremiumGalleryDialog } from "@/components/chat/PremiumGalleryDialog";
 import { ChatAiSettingsDialog } from "@/components/story/ChatAiSettingsDialog";
-import { getStoryAiSettings, AVAILABLE_AI_MODELS } from "@/lib/storyAiSettings";
+import { resolveConversationModelId, getStoryAiSettings, AVAILABLE_AI_MODELS } from "@/lib/storyAiSettings";
 import { getMotherCardConfig } from "@/lib/roleplayBase";
 import { toast } from "@/hooks/use-toast";
 
@@ -468,7 +468,7 @@ export default function ChatPage() {
   const navigate = useNavigate();
   const { language } = useLanguage();
   const isEs = language === "es";
-  const { enabled: adultEnabled } = useAdultMode();
+  const { enabled: adultEnabled, consentGiven } = useAdultMode();
   const { isAdmin, user } = useAuth();
 
   // State: View Mode ('explore' for Catalog, 'room' for Chat Room)
@@ -1025,7 +1025,7 @@ export default function ChatPage() {
       const mother = getMotherCardConfig();
       const rawAiSettings = getStoryAiSettings(activeChar.id);
       const isCharNsfw = Boolean(activeChar.isNsfw || rawAiSettings.adultMode || adultEnabled);
-      const selectedModelId = isCharNsfw ? "magnum-v4-local" : (rawAiSettings.modelId || activeChar.modelId || mother.aiSettings.modelId || "insomnia-flash");
+      const selectedModelId = resolveConversationModelId(isCharNsfw, rawAiSettings.modelId || activeChar.modelId, mother.aiSettings.modelId);
       const charAiSettings = {
         ...mother.aiSettings,
         ...rawAiSettings,
@@ -1065,6 +1065,7 @@ export default function ChatPage() {
           description: charBio,
           story_context: `${resolvedCharRole}. Personalidad: ${charBio}. ${roleRelationSentence}`,
           character_role: resolvedCharRole,
+          character_age: activeChar.age,
           player_role: playerRoleName,
           story_type: "chat_page"
         },
@@ -1076,6 +1077,7 @@ export default function ChatPage() {
         chronicle: chroniclePayload,
         userMessage: text,
         adultMode: (Boolean(adultEnabled || isCharNsfw)),
+        adultConsent: consentGiven,
         isNsfw: isCharNsfw,
         region: charRegion,
         settings: charAiSettings
@@ -1443,7 +1445,7 @@ export default function ChatPage() {
       const { playerRoleName, resolvedCharRole, isSobrina, charBio } = resolveChatKinship(activeChar, chatHistory[activeChar.id] || [], isEs);
       const mother = getMotherCardConfig();
       const rawAiSettings = getStoryAiSettings(activeChar.id);
-      const isCharNsfw = Boolean(activeChar.isNsfw || rawAiSettings.adultMode || rawAiSettings.modelId === "magnum-v4-local");
+      const isCharNsfw = Boolean(activeChar.isNsfw || rawAiSettings.adultMode);
       const charAiSettings = {
         ...mother.aiSettings,
         ...rawAiSettings,
@@ -1453,7 +1455,7 @@ export default function ChatPage() {
       // Fast call settings: 45 tokens max for instant snappy phone response (<0.5s)
       const fastCallSettings = {
         ...charAiSettings,
-        modelId: isCharNsfw ? "magnum-v4-local" : (rawAiSettings.modelId || activeChar.modelId || mother.aiSettings.modelId || "insomnia-flash"),
+        modelId: resolveConversationModelId(Boolean(adultEnabled || isCharNsfw), rawAiSettings.modelId || activeChar.modelId, mother.aiSettings.modelId),
         adultMode: (Boolean(adultEnabled || isCharNsfw)),
         messageLength: 45
       };
@@ -1466,6 +1468,7 @@ export default function ChatPage() {
           description: charBio,
           story_context: `${resolvedCharRole}. Bio: ${charBio}. Parentesco inmutable: el usuario es su ${playerRoleName} y ella es su ${resolvedCharRole}`,
           character_role: resolvedCharRole,
+          character_age: activeChar.age,
           player_role: playerRoleName,
           story_type: "live_call"
         },
@@ -1476,6 +1479,7 @@ export default function ChatPage() {
         memory: selectStoryMemory(priorHistory, userText),
         userMessage: userText,
         adultMode: (Boolean(adultEnabled || isCharNsfw)),
+        adultConsent: consentGiven,
         isNsfw: isCharNsfw,
         region: charRegion,
         settings: fastCallSettings
@@ -1557,7 +1561,7 @@ export default function ChatPage() {
       }));
       const mother = getMotherCardConfig();
       const rawAiSettings = getStoryAiSettings(activeChar.id);
-      const isCharNsfw = Boolean(activeChar.isNsfw || rawAiSettings.adultMode || rawAiSettings.modelId === "magnum-v4-local");
+      const isCharNsfw = Boolean(activeChar.isNsfw || rawAiSettings.adultMode);
       const charAiSettings = {
         ...mother.aiSettings,
         ...rawAiSettings,
@@ -1572,6 +1576,7 @@ export default function ChatPage() {
           description: charBio,
           story_context: `${resolvedCharRole}. Bio: ${charBio}. Parentesco inmutable: el usuario es su ${playerRoleName} y ella es su ${resolvedCharRole}`,
           character_role: resolvedCharRole,
+          character_age: activeChar.age,
           player_role: playerRoleName,
           story_type: "live_call"
         },
@@ -1582,9 +1587,10 @@ export default function ChatPage() {
         memory: selectStoryMemory(historyPayload, promptContext),
         userMessage: promptContext,
         adultMode: (Boolean(adultEnabled || isCharNsfw)),
+        adultConsent: consentGiven,
         isNsfw: isCharNsfw,
         region: charRegion,
-        settings: { ...charAiSettings, modelId: isCharNsfw ? "magnum-v4-local" : (rawAiSettings.modelId || activeChar.modelId || mother.aiSettings.modelId || "insomnia-flash"), messageLength: 45 }
+        settings: { ...charAiSettings, modelId: resolveConversationModelId(Boolean(adultEnabled || isCharNsfw), rawAiSettings.modelId || activeChar.modelId, mother.aiSettings.modelId), messageLength: 45 }
       });
 
       if (!error && data?.content) {

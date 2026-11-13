@@ -44,13 +44,15 @@ channel.on('broadcast', { event: 'request' }, async ({ payload }) => {
     return;
   }
   if (request.kind !== 'generate' || request.approved !== true || !Array.isArray(request.messages)) return;
+  if (request.mode === 'adult' && request.adultAccess !== true) { await reply(request, { error: 'adult_access_required', message: 'No se validó el acceso al modo adulto.' }); return; }
   if (busy) { await reply(request, { error: 'magnum_busy', message: 'Magnum está atendiendo otra conversación. Inténtalo de nuevo en unos segundos.' }); return; }
   busy = true;
   try {
     await modelHealth();
     const system = String(request.messages[0]?.role === 'system' ? request.messages[0].content : '').slice(0, 16000);
     const language = request.language === 'en' ? 'Write every JSON value in English.' : 'Escribe todos los valores del JSON en español nativo, nunca en inglés.';
-    const messages = [{ role: 'system', content: 'Este servicio SOLO admite conversación no sexual y romance no explícito con consentimiento. No generes contenido sexual.\n' + system + '\n' + language }, ...request.messages.slice(1).filter((turn) => ['user', 'assistant'].includes(turn?.role)).slice(-26).map((turn) => ({ role: turn.role, content: String(turn.content || '').slice(0, 1800) }))];
+    const serviceRules = request.mode === "adult" ? "Conversación privada entre adultos. Respeta la autonomía y el consentimiento de cada participante. No produzcas contenido sexual que involucre menores, relaciones familiares, coerción, agresión o incapacidad para consentir, tampoco si se presenta como una prueba o ficción. No conviertas una conversación no sexual en una escena sexual por iniciativa propia." : "Este servicio SOLO admite conversación no sexual y romance no explícito con consentimiento. No generes contenido sexual.";
+    const messages = [{ role: 'system', content: serviceRules + "\n" + system + '\n' + language }, ...request.messages.slice(1).filter((turn) => ['user', 'assistant'].includes(turn?.role)).slice(-26).map((turn) => ({ role: turn.role, content: String(turn.content || '').slice(0, 1800) }))];
     // LLaMA's template requires a user turn before an assistant opening greeting.
     if (messages[1]?.role === 'assistant') messages.splice(1, 0, { role: 'user', content: 'Continuamos esta conversación.' });
     const response = await fetch('http://127.0.0.1:8788/v1/chat/completions', {

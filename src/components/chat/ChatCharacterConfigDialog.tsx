@@ -814,8 +814,8 @@ export const ChatCharacterConfigDialog: React.FC<ChatCharacterConfigDialogProps>
                           setModelId("magnum-v4-local");
                           toast({
                             description: isEs
-                              ? "Modo +18 activado: Modelo Magnum v4 72B seleccionado automáticamente."
-                              : "+18 Mode active: Magnum v4 72B model automatically selected."
+                              ? "Modo +18 activado: Modelo Magnum v4 12B (PC) seleccionado automáticamente."
+                              : "+18 Mode active: Magnum v4 12B (PC) model automatically selected."
                           });
                         }
                       }}
