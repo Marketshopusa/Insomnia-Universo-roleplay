@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate, useLocation, Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { safeInternalPath } from "@/lib/accountProfile";
 import { signIn } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { MainLayout } from "@/components/layout/MainLayout";
@@ -14,6 +15,7 @@ const Login = () => {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
   const { toast } = useToast();
   const { t } = useLanguage();
 
@@ -39,7 +41,7 @@ const Login = () => {
           title: t("auth.welcomeToast"),
           description: t("auth.welcomeToastDesc"),
         });
-        navigate("/");
+        navigate(safeInternalPath(new URLSearchParams(location.search).get("returnTo"), "/"), { replace: true });
       }
     } finally {
       setLoading(false);

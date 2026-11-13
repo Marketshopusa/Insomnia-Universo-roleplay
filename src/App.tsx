@@ -37,6 +37,7 @@ const lazyWithRetry = <T extends React.ComponentType<any>>(
 
 const Index = lazyWithRetry(() => import("./pages/Index"));
 const NotFound = lazyWithRetry(() => import("./pages/NotFound"));
+const Profile = lazyWithRetry(() => import("./pages/Profile"));
 const Login = lazyWithRetry(() => import("./pages/Login"));
 const Register = lazyWithRetry(() => import("./pages/Register"));
 const Studio = lazyWithRetry(() => import("./pages/Studio"));
@@ -80,6 +81,7 @@ const App = () => (
                   <Routes>
                     <Route path="/" element={<Index />} />
                     <Route path="/story/:storyId" element={<StoryDetail />} />
+                    <Route path="/profile" element={<Profile />} />
                     <Route path="/login" element={<Login />} />
                     <Route path="/register" element={<Register />} />
                     <Route path="/studio" element={<Studio />} />
