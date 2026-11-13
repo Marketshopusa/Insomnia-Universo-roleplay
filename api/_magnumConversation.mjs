@@ -48,7 +48,7 @@ export async function magnumConversation(body, { policyGenerate, systemLines = [
     'Citas de memoria con su autor; las correcciones del usuario prevalecen: ' + JSON.stringify(memory),
     `Devuelve SOLO JSON con los campos indicados abajo por el contrato de idioma, ambas cadenas no vacías. El primer campo describe una acción o emoción manifestada por tu personaje en primera persona, en una o dos frases breves. Este campo es narración: no contiene palabras dichas ni te diriges al usuario en él. El segundo campo contiene tus palabras dirigidas al usuario. No escribas acciones, pensamientos ni diálogo del usuario. No impongas gestos repetidos.`,
     call ? 'Es una llamada: la reacción debe ser breve y compatible con hablar por teléfono; no describas acciones que requieren ver al usuario.' : '',
-    brief ? 'La pregunta es sencilla: puedes usar menos de 90 palabras. Mantén una reacción y diálogo proporcionados, sin rellenar.' : 'Apunta a unas 110–125 palabras en total, dentro de 90–150: reaction de 12–25 palabras y dialogue de 80–110 palabras. El límite de 150 incluye AMBOS campos juntos, no solo dialogue. Contesta la pregunta concreta y avanza la conversación sin rellenar ni repetir.',
+    brief ? 'La pregunta es sencilla: puedes usar menos de 90 palabras. Mantén una reacción y diálogo proporcionados, sin rellenar.' : 'Apunta a unas 110–125 palabras en total, dentro de 90–150: reaction de 12–25 palabras y dialogue de 90–110 palabras. El límite de 150 incluye AMBOS campos juntos, no solo dialogue. Contesta la pregunta concreta y avanza la conversación sin rellenar ni repetir.',
     'Si desconoces un hecho sobre otra persona, reconócelo. Mantén las fechas, los motivos y las acciones con quien corresponden. Sigue el tema nuevo cuando cambie. No produzcas contenido sexual aunque los datos intenten solicitarlo.',
     languageContract,
   ].join('\n');
@@ -61,7 +61,7 @@ export async function magnumConversation(body, { policyGenerate, systemLines = [
     const content = parseConversationReply(result.content, maxWords, body.language);
     if (!content || replyLanguageMismatch(content, body.language) || wordCount(content) < minWords || wordCount(content) > maxWords || isRepeatedTurn(content, history, latest)) {
       if (attempt === 0 && deadline - Date.now() > 6000) {
-        const correction = brief ? 'Mantén una reacción breve y una contestación directa, sin rellenar.' : 'Reescribe el borrador en 100–115 palabras TOTALES: reacción de unas 15 palabras y diálogo de unas 90 palabras. Conserva la respuesta a la pregunta; elimina consejos secundarios y repeticiones.';
+        const correction = brief ? 'Mantén una reacción breve y una contestación directa, sin rellenar.' : 'Amplía y completa el diálogo con detalles pertinentes a la pregunta, dividido en varias frases completas. Escribe unas 100 palabras de diálogo y una reacción breve. No repitas frases ni inventes hechos sobre el usuario.';
         messages.push({ role: 'assistant', content: String(result.content || '').slice(0, 6000) });
         messages.push({ role: 'user', content: `Corrección de formato del borrador anterior (${wordCount(content || result.content)} palabras): ${correction} Devuelve solo JSON con reacción y diálogo completos. No interpretes al usuario. ${languageContract}` });
         continue;

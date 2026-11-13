@@ -1,9 +1,11 @@
-// Enforce both components; natural language stays unconstrained within each value.
-export function magnumReplySchema(_brief = false, language = 'es') {
+// Require both components and a substantial dialogue; leave maximum length unconstrained
+// during decoding so the model can finish words and sentences naturally.
+export function magnumReplySchema(brief = false, language = 'es') {
   const reactionKey = language === 'en' ? 'reaction' : 'narracion';
   const dialogueKey = language === 'en' ? 'dialogue' : 'dialogo';
   return { type: 'object', properties: {
-    [reactionKey]: { type: 'string' }, [dialogueKey]: { type: 'string' },
+    [reactionKey]: { type: 'string', minLength: 1 },
+    [dialogueKey]: brief ? { type: 'string', minLength: 1 } : { type: 'string', pattern: String.raw`^[^ \n\r"]+( [^ \n\r"]+){89,}$` },
   }, required: [reactionKey, dialogueKey], additionalProperties: false };
 }
 // Fit a long draft using complete sentences only. Never slice a sentence or an action.

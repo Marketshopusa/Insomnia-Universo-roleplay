@@ -105,7 +105,10 @@ test('structured decoding requires both fields without forcing unnatural word jo
   const {magnumReplySchema} = await import('./_magnumFormat.mjs');
   assert.deepEqual(magnumReplySchema(false, 'es').required, ['narracion', 'dialogo']);
   assert.deepEqual(magnumReplySchema(true, 'en').required, ['reaction', 'dialogue']);
-  assert.equal(magnumReplySchema(false, 'es').properties.dialogo.pattern, undefined);
+  const pattern = new RegExp(magnumReplySchema(false, 'es').properties.dialogo.pattern);
+  assert.ok(pattern.test(dialogue + ' ' + dialogue));
+  assert.equal(pattern.test('Una contestación demasiado corta.'), false);
+  assert.equal(magnumReplySchema(true, 'es').properties.dialogo.pattern, undefined);
 });
 
 test('overlong drafts fit the budget on whole sentences while preserving the reaction', async () => {
