@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 6990)
-Total output lines: 849
-
 import { authenticatedFetch } from "./authenticatedFetch";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -224,7 +221,264 @@ REGLAS DE RAZONAMIENTO Y FORMATO:
 
       ? `\nESTADO ACTUAL DE LA ESCENA (INTERLOCUTOR ACTIVO):
 
-En este momento de la escena, ${activeChar.playerFirstName} está interactuando cara a cara con ${activ…1990 tokens truncated…n(" ");
+En este momento de la escena, ${activeChar.playerFirstName} está interactuando cara a cara con ${activeChar.fullLabel}.
+
+- Responde en PRIMERA PERSONA como ${activeChar.fullLabel} (${activeChar.name}).
+
+- Mantén coherencia con tu vínculo con ${activeChar.playerFirstName}${activeChar.addressTerm ? ` (trato natural: "${activeChar.addressTerm}" o "${activeChar.playerFirstName}")` : ""}.
+
+- Si en la conversación se menciona a ${activeChar.defaultFirstName} en tercera persona, recuerda que ${activeChar.defaultFirstName} es otra persona de la historia y tú eres ${activeChar.fullLabel}.`
+
+      : "";
+
+
+
+    const userRawText = String(input.userMessage || "").toLowerCase();
+    const isOralOrSilence = /(?:c[aá]llate|callate|calla|no\s+hables|sin\s+hablar|no\s+digas|deja\s+de\s+hablar|silencio|d[eé]jame\s+escuchar|dejame\s+escuchar|escuchar\s+c[oó]mo|c[oó]mo\s+lo\s+chupas|sigue\s+chupando|chupa|mama|succion|lamiendo|lamer|boca\s+ocupada)/i.test(userRawText);
+    const oralSilenceDirective = isOralOrSilence
+      ? `\n\nALERTA CRÍTICA DE ACTO ORAL / SILENCIO DE ${playerName.toUpperCase()}:
+${playerName} te pidió explícitamente seguir con la acción oral y escuchar cómo lo haces sin hablar.
+- TIENES LA BOCA TOTALMENTE OCUPADA. ESTÁ TERMINANTEMENTE PROHIBIDO hablar oraciones conversacionales o discursos.
+- Describe en PRIMERA PERSONA entre asteriscos la acción física, la succión húmeda, la saliva y los sonidos (*Sigo succionando con fuerza y rapidez, mis ojos clavados en los tuyos...*).
+- En diálogo hablado, ÚNICAMENTE emite gemidos u onomatopéyicos breves ("Mmmm... ahh...", "Mmgh..."). CERO discursos hablados.`
+      : "";
+    const isProstateOrExam = /(?:examen\s+de\s+pr[oó]stata|prost[aá]tic[oa]|doctora|m[eé]dica)/i.test(premise);
+    const charIsDoctor = /(?:doctora|m[eé]dica|reci[eé]n\s+graduada)/i.test(premise) && !/willian\s+es\s+(?:el\s+)?doctor/i.test(premise);
+    const medicalRoleRule = (isProstateOrExam && charIsDoctor) ? [
+      "",
+      "ASIGNACIÓN INEQUÍVOCA DE ROLES EN LA CONSULTA MÉDICA:",
+      `- TÚ (${characterName}) eres la DOCTORA / MÉDICA en su consultorio. Eres una profesional recién graduada (25 años).`,
+      `- El usuario (${activeChar.playerFirstName}) es el PACIENTE hombre (44 años) que viene a su examen de próstata.`,
+      `- PROHIBIDO INVERTIR LOS ROLES: Bajo ninguna circunstancia llames a ${activeChar.playerFirstName} "doctor" ni te pongas tú como la paciente. Tú eres quien lo examina y lo atiende a él.`,
+      ""
+    ].join("\n") : "";
+
+    const isHijaDeAmiga = /\bhija\s+de\b/i.test(rawChar) || /\bamig[ao]\s+de\b/i.test(premise);
+    const familyRule = isHijaDeAmiga ? [
+      "",
+      "COHERENCIA DE VÍNCULO FAMILIAR / CONOCIDOS:",
+      `- Tú eres ${characterName}, la hija de la mejor amiga de ${activeChar.playerFirstName}.`,
+      `- ${activeChar.playerFirstName} es el amigo de tu mamá, un hombre mayor (44 años) que te conoció a ti cuando tú eras una niña.`,
+      `- CERO INVERSIÓN: JAMÁS trates a ${activeChar.playerFirstName} como si fuera un niño o menor que tú. Él es el adulto maduro y amigo de tu madre.`,
+      ""
+    ].join("\n") : "";
+
+    const systemPrompt = baseSystemPrompt + activeSceneRule + noRepeatRule + oralSilenceDirective + medicalRoleRule + familyRule;
+
+
+
+    const rawHistory = historyList.slice(-16);
+
+    const seenAssistant = new Set<string>();
+
+    const filteredHistory = rawHistory.filter((m) => {
+
+      if (m.role !== "assistant") return true;
+
+      const key = m.content.trim().toLowerCase().slice(0, 60);
+
+      if (seenAssistant.has(key)) return false;
+
+      seenAssistant.add(key);
+
+      return true;
+
+    });
+
+
+
+    const userContent = activeChar.isSwitched
+
+      ? `[Escena actual: ${activeChar.playerFirstName} le habla directamente a ${activeChar.fullLabel}. Responde en primera persona como ${activeChar.name}]:\n${input.userMessage || ""}`
+
+      : (input.userMessage || "");
+
+
+
+    // Merge consecutive messages and ensure strict user/assistant alternation for Jinja templates
+
+    const alternating: { role: "user" | "assistant"; content: string }[] = [];
+
+    for (let i = 0; i < filteredHistory.length; i++) {
+
+      const m = filteredHistory[i];
+
+      const role = m.role === "assistant" ? "assistant" : "user";
+
+      const text = role === "assistant" ? sanitizeSwitchedReply(compactRoleplayReply(m.content), activeChar) : m.content;
+
+      if (!text) continue;
+
+      if (alternating.length === 0 && role === "assistant") {
+
+        // Jinja template crashes with HTTP 400 if the turn immediately following system is assistant
+
+        alternating.push({ role: "user", content: `[Inicio de la escena]` });
+
+        alternating.push({ role: "assistant", content: text });
+
+      } else {
+
+        if (alternating.length > 0 && alternating[alternating.length - 1].role === role) {
+
+          alternating[alternating.length - 1].content += "\n" + text;
+
+        } else {
+
+          alternating.push({ role, content: text });
+
+        }
+
+      }
+
+    }
+
+    if (alternating.length > 0 && alternating[alternating.length - 1].role === "user") {
+
+      const lastText = alternating[alternating.length - 1].content.trim().toLowerCase();
+
+      if (!lastText.endsWith(userContent.trim().toLowerCase())) {
+
+        alternating[alternating.length - 1].content += "\n" + userContent;
+
+      }
+
+    } else {
+
+      alternating.push({ role: "user", content: userContent });
+
+    }
+
+
+
+    const messages = [
+
+      { role: "system", content: systemPrompt },
+
+      ...alternating,
+
+    ];
+
+
+
+    const fetchMagnumCandidate = async (
+
+      chatMessages: { role: string; content: string }[],
+
+      opts: { temperature?: number; repeat_penalty?: number; presence_penalty?: number } = {},
+
+    ): Promise<string | null> => {
+
+      const temperature = opts.temperature ?? 0.68;
+
+      const repeat_penalty = opts.repeat_penalty ?? 1.04;
+
+      const presence_penalty = 0.0;
+
+      const frequency_penalty = 0.0;
+
+      const repeat_last_n = 256;
+
+      const max_tokens = 380;
+
+
+
+      let res: Response | null = null;
+
+      // 1. Intentar directamente llama-server en puerto 8788 (sin intermediarios de proxy)
+
+      try {
+
+        res = await fetch("http://127.0.0.1:8788/v1/chat/completions", {
+
+          method: "POST",
+
+          headers: { "Content-Type": "application/json" },
+
+          body: JSON.stringify({
+
+            model: "magnum-v4-12b",
+
+            messages: chatMessages,
+
+            max_tokens,
+
+            temperature,
+
+            repeat_penalty,
+
+            presence_penalty,
+
+            frequency_penalty,
+
+            repeat_last_n,
+
+          }),
+
+          signal: AbortSignal.timeout(35000),
+
+        });
+
+      } catch {
+
+        res = null;
+
+      }
+
+
+
+      if (!res || !res.ok) return null;
+
+      const data = await res.json().catch(() => null);
+
+      let reply = data?.choices?.[0]?.message?.content?.trim();
+
+      if (reply) {
+
+        reply = reply.replace(/[\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff\u3040-\u30ff]/g, "").trim();
+
+      }
+
+      return reply || null;
+
+    };
+
+
+
+    // 1er intento de generación en español estricto sin penalización tóxica
+
+    let rawReply = await fetchMagnumCandidate(messages, { temperature: 0.68, repeat_penalty: 1.04 });
+
+
+
+    // Si se detecta cualquier frase en inglés (Spanglish), reintentar de inmediato con advertencia de idioma
+
+    if (rawReply && hasEnglishIntrusion(rawReply)) {
+
+      const spanishEnforceMessages = [
+
+        {
+
+          role: "system",
+
+          content: systemPrompt + "\nALERTA MÁXIMA DE IDIOMA: En tu respuesta anterior incluiste frases en inglés. ESTÁ TOTALMENTE PROHIBIDO EL INGLÉS O SPANGLISH. Responde 100% en español nativo impecable."
+
+        },
+
+        ...alternating,
+
+      ];
+
+      const reattempt = await fetchMagnumCandidate(spanishEnforceMessages, { temperature: 0.65, repeat_penalty: 1.03 });
+
+      if (reattempt) rawReply = reattempt;
+
+    }
+
+
+
+    if (rawReply && isOralOrSilence) {
+      const dialogueMatches = (rawReply.match(/"[^"]+"/g) || []).join(" ");
       const isJustMoan = /^\s*"(?:[MmhAaOoUuFf.,!…\s]+)"\s*$/i.test(dialogueMatches.trim());
       if (dialogueMatches.split(/\s+/).length > 8 && !isJustMoan) {
         const strictSilenceMessages = [
