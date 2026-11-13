@@ -48,7 +48,7 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
-import { getStoryAiSettings, setStoryAiSettings, isMagnumConversationSelected } from "@/lib/storyAiSettings";
+import { getStoryAiSettings, setStoryAiSettings } from "@/lib/storyAiSettings";
 
 export interface CharacterItem {
   id: string;
@@ -340,9 +340,9 @@ export const ChatCharacterConfigDialog: React.FC<ChatCharacterConfigDialogProps>
       setGallery(character.gallery && character.gallery.length > 0 ? [...character.gallery] : [character.avatar || ""]);
       
       const currentAi = getStoryAiSettings(character.id);
-      const isCharNsfw = !isMagnumConversationSelected(character.id) && Boolean(character.isNsfw || currentAi.adultMode);
+      const isCharNsfw = Boolean(character.isNsfw || currentAi.adultMode);
       setIsNsfw(isCharNsfw);
-      setModelId(!isCharNsfw && currentAi.modelId === "magnum-conversation" ? "magnum-conversation" : (character.modelId || (isCharNsfw ? "magnum-v4-local" : currentAi.modelId) || "magnum-conversation"));
+      setModelId(character.modelId || currentAi.modelId || "insomnia-flash");
     } else {
       // New Character defaults
       setName("");
@@ -817,8 +817,6 @@ export const ChatCharacterConfigDialog: React.FC<ChatCharacterConfigDialogProps>
                               ? "Modo +18 activado: Modelo Magnum v4 72B seleccionado automáticamente."
                               : "+18 Mode active: Magnum v4 72B model automatically selected."
                           });
-                        } else {
-                          setModelId("magnum-conversation");
                         }
                       }}
                       className="data-[state=checked]:bg-red-500"

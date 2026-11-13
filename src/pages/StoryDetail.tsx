@@ -20,7 +20,7 @@ import { buildPersistentChronicle, selectStoryMemory } from "@/lib/storyMemory";
 import { useConversationScope } from "@/hooks/useConversationScope";
 import { resolveStoryCover } from "@/lib/storyCover";
 import { ChatAiSettingsDialog } from "@/components/story/ChatAiSettingsDialog";
-import { isMagnumConversationSelected, getStoryAiSettings, type StoryAiSettings } from "@/lib/storyAiSettings";
+import { getStoryAiSettings, type StoryAiSettings } from "@/lib/storyAiSettings";
 import { getMotherCardConfig } from "@/lib/roleplayBase";
 import { useStoryCustomizations } from "@/hooks/useStoryCustomizations";
  import { useStory } from "@/hooks/useStories";
@@ -413,7 +413,7 @@ type Mode = "select" | "read" | "roleplay";
       .filter((m) => m.id !== "intro" && m.id !== currentMessageId)
       .map((m) => ({ role: m.role, content: m.content }));
     const mother = getMotherCardConfig();
-    const isAdultStory = !isMagnumConversationSelected(storyId) && Boolean(
+    const isAdultStory = Boolean(
       (adultEnabled && consentGiven) ||
       story?.nsfw ||
       story?.adult_mode ||
@@ -1162,7 +1162,7 @@ type Mode = "select" | "read" | "roleplay";
                       language={language}
                       voice={voice}
                       region={spokenRegion(region, accent)}
-                      adultMode={!isMagnumConversationSelected(storyId) && adultEnabled && consentGiven}
+                      adultMode={adultEnabled && consentGiven}
                       history={messages
                         .filter((message) => message.id !== "intro")
                         .map((message) => ({ role: message.role, content: message.content }))}

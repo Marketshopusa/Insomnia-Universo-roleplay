@@ -31,38 +31,34 @@ it("updating the mother card preserves explicit per-card overrides", () => {
   expect(getStoryAiSettings("card-b").messageLength).toBe(500);
 });
 
-it('uses real Magnum for factory non-explicit conversations while preserving card choices', async () => {
-  const { DEFAULT_MOTHER_CARD, getMotherCardConfig } = await import('./roleplayBase');
-  localStorage.setItem('insomnia_mother_card_config_v2', JSON.stringify({ ...DEFAULT_MOTHER_CARD, version: 6, aiSettings: { ...DEFAULT_AI_SETTINGS, modelId: 'insomnia-flash' } }));
-  expect(getStoryAiSettings('fresh').modelId).toBe('magnum-conversation');
-  expect(getMotherCardConfig().aiSettings.modelId).toBe('magnum-conversation');
-  setStoryAiSettings('custom', { ...DEFAULT_AI_SETTINGS, modelId: 'mistral-nemo' });
+it('recovers the Gemini default and mother settings after the withdrawn profile migration', async () => {
+  localStorage.setItem('insomnia_mother_card_config_v2', JSON.stringify({ version: 7, masterDirective: 'Conserva mi directiva.', aiSettings: { modelId: 'magnum-conversation', adultMode: false, messageLength: 620 } }));
+  const {getMotherCardConfig} = await import('./roleplayBase');
+  expect(DEFAULT_AI_SETTINGS.modelId).toBe('insomnia-flash');
+  expect(getMotherCardConfig().aiSettings.modelId).toBe('insomnia-flash');
+  expect(getMotherCardConfig().masterDirective).toBe('Conserva mi directiva.');
+  expect(getStoryAiSettings('fresh').messageLength).toBe(620);
+});
+it('recovers stored cards without discarding settings or forcing adult mode off', () => {
+  localStorage.setItem('insomnia_story_ai_settings_affected', JSON.stringify({ modelId: 'magnum-conversation', adultMode: true, nonExplicitConversation: true, customDirective: 'Conserva mi texto.', memoryTier: '32k' }));
+  const value = getStoryAiSettings('affected');
+  expect(value.modelId).toBe('insomnia-flash');
+  expect(value.adultMode).toBe(true);
+  expect(value.customDirective).toBe('Conserva mi texto.');
+  expect(value.memoryTier).toBe('32k');
+  expect(localStorage.getItem('insomnia_story_ai_settings_affected')).not.toContain('nonExplicitConversation');
+});
+it('saving settings preserves the selected adult flag', () => {
+  setStoryAiSettings('card', { ...DEFAULT_AI_SETTINGS, adultMode: true });
+  expect(getStoryAiSettings('card').adultMode).toBe(true);
+  setStoryAiSettings('card', { ...getStoryAiSettings('card'), adultMode: false });
+  expect(getStoryAiSettings('card').adultMode).toBe(false);
+});
+it('recovery preserves custom models and prevents the withdrawn forward migration', () => {
+  localStorage.setItem('insomnia_story_ai_settings_custom', JSON.stringify({ modelId: 'mistral-nemo', adultMode: false, customDirective: 'Texto propio.' }));
   expect(getStoryAiSettings('custom').modelId).toBe('mistral-nemo');
-});
-
-it('keeps a customized mother card model unchanged', async () => {
-  const { DEFAULT_MOTHER_CARD } = await import('./roleplayBase');
-  localStorage.setItem('insomnia_mother_card_config_v2', JSON.stringify({ ...DEFAULT_MOTHER_CARD, version: 6, masterDirective: 'Mi directiva de astronomía.', aiSettings: { ...DEFAULT_AI_SETTINGS, modelId: 'mistral-nemo' } }));
-  expect(getStoryAiSettings('custom-mother').modelId).toBe('mistral-nemo');
-});
-
-
-it('upgrades the old non-adult default once and respects subsequent choices', () => {
-  localStorage.setItem('insomnia_story_ai_settings_old-card', JSON.stringify({ ...DEFAULT_AI_SETTINGS, modelId: 'insomnia-flash', customDirective: 'Habla de astronomía.' }));
-  localStorage.setItem('insomnia_story_ai_settings_adult-card', JSON.stringify({ ...DEFAULT_AI_SETTINGS, modelId: 'insomnia-flash', adultMode: true }));
-  expect(getStoryAiSettings('old-card').modelId).toBe('magnum-conversation');
-  expect(getStoryAiSettings('old-card').customDirective).toBe('Habla de astronomía.');
-  expect(getStoryAiSettings('adult-card').modelId).toBe('insomnia-flash');
-  setStoryAiSettings('old-card', { ...getStoryAiSettings('old-card'), modelId: 'insomnia-flash' });
-  expect(getStoryAiSettings('old-card').modelId).toBe('insomnia-flash');
-});
-
-it('an explicit non-explicit Magnum selection applies only to its own card', async () => {
-  const { isMagnumConversationSelected } = await import('./storyAiSettings');
-  setStoryAiSettings('chosen', { ...DEFAULT_AI_SETTINGS, modelId: 'magnum-conversation', adultMode: true });
-  expect(isMagnumConversationSelected('chosen')).toBe(true);
-  expect(getStoryAiSettings('chosen').adultMode).toBe(false);
-  expect(isMagnumConversationSelected('other')).toBe(false);
-  setStoryAiSettings('chosen', { ...getStoryAiSettings('chosen'), modelId: 'insomnia-flash' });
-  expect(isMagnumConversationSelected('chosen')).toBe(false);
+  expect(getStoryAiSettings('custom').customDirective).toBe('Texto propio.');
+  expect(localStorage.getItem('insomnia_magnum_conversation_primary_v1')).toBe('1');
+  setStoryAiSettings('custom', { ...getStoryAiSettings('custom'), modelId: 'insomnia-flash' });
+  expect(getStoryAiSettings('custom').modelId).toBe('insomnia-flash');
 });

@@ -144,7 +144,7 @@ export const CallDialog = ({
         settings: {
           ...mother.aiSettings,
           ...cardSettings,
-          modelId: adultMode ? "magnum-v4-local" : (cardSettings.modelId || mother.aiSettings.modelId || "magnum-conversation"),
+          modelId: adultMode ? "magnum-v4-local" : (cardSettings.modelId || mother.aiSettings.modelId || "insomnia-flash"),
           customDirective: cardSettings.customDirective || mother.masterDirective,
           messageLength: 45,
         },

@@ -56,7 +56,7 @@ import { normalizeAssistantResponse, type ReplyEngine } from "@/lib/roleReply";
 import { ChatCharacterConfigDialog, isMediaVideo } from "@/components/chat/ChatCharacterConfigDialog";
 import { PremiumGalleryDialog } from "@/components/chat/PremiumGalleryDialog";
 import { ChatAiSettingsDialog } from "@/components/story/ChatAiSettingsDialog";
-import { isMagnumConversationSelected, getStoryAiSettings, AVAILABLE_AI_MODELS } from "@/lib/storyAiSettings";
+import { getStoryAiSettings, AVAILABLE_AI_MODELS } from "@/lib/storyAiSettings";
 import { getMotherCardConfig } from "@/lib/roleplayBase";
 import { toast } from "@/hooks/use-toast";
 
@@ -1024,7 +1024,7 @@ export default function ChatPage() {
       const existingHistory = updatedHistory;
       const mother = getMotherCardConfig();
       const rawAiSettings = getStoryAiSettings(activeChar.id);
-      const isCharNsfw = !isMagnumConversationSelected(activeChar.id) && Boolean(activeChar.isNsfw || rawAiSettings.adultMode || adultEnabled);
+      const isCharNsfw = Boolean(activeChar.isNsfw || rawAiSettings.adultMode || adultEnabled);
       const selectedModelId = isCharNsfw ? "magnum-v4-local" : (rawAiSettings.modelId || activeChar.modelId || mother.aiSettings.modelId || "insomnia-flash");
       const charAiSettings = {
         ...mother.aiSettings,
@@ -1075,7 +1075,7 @@ export default function ChatPage() {
         memory: memoryPayload,
         chronicle: chroniclePayload,
         userMessage: text,
-        adultMode: (!isMagnumConversationSelected(activeChar.id) && Boolean(adultEnabled || isCharNsfw)),
+        adultMode: (Boolean(adultEnabled || isCharNsfw)),
         isNsfw: isCharNsfw,
         region: charRegion,
         settings: charAiSettings
@@ -1443,7 +1443,7 @@ export default function ChatPage() {
       const { playerRoleName, resolvedCharRole, isSobrina, charBio } = resolveChatKinship(activeChar, chatHistory[activeChar.id] || [], isEs);
       const mother = getMotherCardConfig();
       const rawAiSettings = getStoryAiSettings(activeChar.id);
-      const isCharNsfw = !isMagnumConversationSelected(activeChar.id) && Boolean(activeChar.isNsfw || rawAiSettings.adultMode || rawAiSettings.modelId === "magnum-v4-local");
+      const isCharNsfw = Boolean(activeChar.isNsfw || rawAiSettings.adultMode || rawAiSettings.modelId === "magnum-v4-local");
       const charAiSettings = {
         ...mother.aiSettings,
         ...rawAiSettings,
@@ -1453,8 +1453,8 @@ export default function ChatPage() {
       // Fast call settings: 45 tokens max for instant snappy phone response (<0.5s)
       const fastCallSettings = {
         ...charAiSettings,
-        modelId: isCharNsfw ? "magnum-v4-local" : (rawAiSettings.modelId || activeChar.modelId || mother.aiSettings.modelId || "magnum-conversation"),
-        adultMode: (!isMagnumConversationSelected(activeChar.id) && Boolean(adultEnabled || isCharNsfw)),
+        modelId: isCharNsfw ? "magnum-v4-local" : (rawAiSettings.modelId || activeChar.modelId || mother.aiSettings.modelId || "insomnia-flash"),
+        adultMode: (Boolean(adultEnabled || isCharNsfw)),
         messageLength: 45
       };
       const charRegion = spokenRegion(getStoryRegion(activeCharRef.current.id), getStoryAccent(activeCharRef.current.id));
@@ -1475,7 +1475,7 @@ export default function ChatPage() {
         history: priorHistory,
         memory: selectStoryMemory(priorHistory, userText),
         userMessage: userText,
-        adultMode: (!isMagnumConversationSelected(activeChar.id) && Boolean(adultEnabled || isCharNsfw)),
+        adultMode: (Boolean(adultEnabled || isCharNsfw)),
         isNsfw: isCharNsfw,
         region: charRegion,
         settings: fastCallSettings
@@ -1557,7 +1557,7 @@ export default function ChatPage() {
       }));
       const mother = getMotherCardConfig();
       const rawAiSettings = getStoryAiSettings(activeChar.id);
-      const isCharNsfw = !isMagnumConversationSelected(activeChar.id) && Boolean(activeChar.isNsfw || rawAiSettings.adultMode || rawAiSettings.modelId === "magnum-v4-local");
+      const isCharNsfw = Boolean(activeChar.isNsfw || rawAiSettings.adultMode || rawAiSettings.modelId === "magnum-v4-local");
       const charAiSettings = {
         ...mother.aiSettings,
         ...rawAiSettings,
@@ -1581,10 +1581,10 @@ export default function ChatPage() {
         history: historyPayload,
         memory: selectStoryMemory(historyPayload, promptContext),
         userMessage: promptContext,
-        adultMode: (!isMagnumConversationSelected(activeChar.id) && Boolean(adultEnabled || isCharNsfw)),
+        adultMode: (Boolean(adultEnabled || isCharNsfw)),
         isNsfw: isCharNsfw,
         region: charRegion,
-        settings: { ...charAiSettings, modelId: isCharNsfw ? "magnum-v4-local" : (rawAiSettings.modelId || activeChar.modelId || mother.aiSettings.modelId || "magnum-conversation"), messageLength: 45 }
+        settings: { ...charAiSettings, modelId: isCharNsfw ? "magnum-v4-local" : (rawAiSettings.modelId || activeChar.modelId || mother.aiSettings.modelId || "insomnia-flash"), messageLength: 45 }
       });
 
       if (!error && data?.content) {

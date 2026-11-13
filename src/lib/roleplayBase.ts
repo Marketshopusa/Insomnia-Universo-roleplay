@@ -9,7 +9,7 @@
  * automáticamente a todas las tarjetas del sistema.
  */
 
-import { StoryAiSettings, DEFAULT_AI_SETTINGS, getStoryAiSettings, setStoryAiSettings, MAGNUM_CONVERSATION_MODEL, FACTORY_CONVERSATION_DIRECTIVE, isLegacyFactoryConversation } from "./storyAiSettings";
+import { StoryAiSettings, DEFAULT_AI_SETTINGS, getStoryAiSettings, setStoryAiSettings, restoreConversationModeSettings } from "./storyAiSettings";
 
 export interface MotherCardConfig {
   id: string;
@@ -36,19 +36,26 @@ export interface MotherCardConfig {
 export const DEFAULT_MOTHER_CARD: MotherCardConfig = {
   id: "mother-card-roleplay-base",
   name: "Tarjeta Madre / Roleplay Base",
-  version: 7,
+  version: 6,
   dialogueRatio: 0.80, // 80% Diálogo directo
   narrationRatio: 0.20, // 20% Relato sensorial entre asteriscos
   targetTokens: 350, // Permite 60-90 palabras fluidas sin ahogo de tokens
   aiSettings: {
     ...DEFAULT_AI_SETTINGS,
-    modelId: MAGNUM_CONVERSATION_MODEL,
+    modelId: "insomnia-flash",
     memoryTier: "16k",
     messageLength: 350,
     dialogueRatio: 0.80,
     narrationRatio: 0.20,
   },
-  masterDirective: FACTORY_CONVERSATION_DIRECTIVE,
+  masterDirective: `IDENTIDAD, MEMORIA Y CONVERSACIÓN:
+1. Interpreta el personaje y la relación definidos en la tarjeta actual. No inventes profesiones, edades, géneros ni relaciones.
+2. Cada tarjeta mantiene su propia historia. La configuración general define el estilo, nunca aporta recuerdos ni escenas.
+3. Responde al último mensaje respetando lo que ya ocurrió. No reinicies ni cambies de interlocutor por una simple mención.
+4. El usuario dirige su personaje. No escribas sus diálogos, decisiones ni sentimientos.
+5. Habla con naturalidad en el idioma elegido. Evita repeticiones y termina las oraciones.
+6. Mantén aproximadamente 80% de diálogo y 20% de acciones breves cuando la escena lo permita.
+7. Las expresiones vocales y los efectos deben ser breves y corresponder a la escena. No prolongues risas ni sonidos sin motivo.`,
   kinshipPreservation: true,
   preventTruncation: true,
   minCharacterAge: 18,
@@ -63,6 +70,7 @@ const MOTHER_CARD_STORAGE_KEY = "insomnia_mother_card_config_v2";
  * de lo contrario, devuelve los valores predeterminados de fábrica.
  */
 export function getMotherCardConfig(): MotherCardConfig {
+  restoreConversationModeSettings();
   if (typeof window === "undefined") return { ...DEFAULT_MOTHER_CARD };
   try {
     const raw = localStorage.getItem(MOTHER_CARD_STORAGE_KEY);
@@ -72,16 +80,13 @@ export function getMotherCardConfig(): MotherCardConfig {
         const factoryVersion5 = parsed.version === 5
           && parsed.updatedAt === "2026-10-22T00:00:00.000Z"
           && String(parsed.masterDirective || "").startsWith("REGLA SUPREMA DE IDENTIDAD, ROL Y CONVERSACIÓN (VERSION 5 MASTER):");
-        const factoryConversation = isLegacyFactoryConversation(parsed);
         return {
           ...DEFAULT_MOTHER_CARD,
           ...parsed,
-          ...(factoryVersion5 ? { version: 7, masterDirective: DEFAULT_MOTHER_CARD.masterDirective } : {}),
-          ...(factoryConversation ? { version: 7 } : {}),
+          ...(factoryVersion5 ? { version: 6, masterDirective: DEFAULT_MOTHER_CARD.masterDirective } : {}),
           aiSettings: {
             ...DEFAULT_MOTHER_CARD.aiSettings,
             ...(parsed.aiSettings || {}),
-            ...(factoryConversation ? { modelId: MAGNUM_CONVERSATION_MODEL } : {}),
           },
         };
       }
