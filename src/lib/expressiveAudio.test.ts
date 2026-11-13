@@ -91,7 +91,7 @@ it("caps a minute of generated laughter and preserves the entire following dialo
  synthesize:async(_text,_v,_l,{expression})=>({status:200,pcm:expression.reactions.length?longLaugh:speech})});
  expect(result.parts[0].endSample/24000).toBe(1.6);
  expect(result.pcm.readInt16LE(1.6*24000*2-2)).toBe(0);
- expect(result.pcm.subarray(1.6*24000*2)).toEqual(speech);
+ expect(Buffer.compare(result.pcm.subarray(1.6*24000*2),speech)).toBe(0);
 });
 it("caps cached and banked sounds as well as generated sounds",async()=>{
  for(const samples of [()=>Buffer.alloc(60*24000*2,1),()=>null]){
