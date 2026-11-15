@@ -57,7 +57,7 @@ channel.on('broadcast', { event: 'request' }, async ({ payload }) => {
     if (messages[1]?.role === 'assistant') messages.splice(1, 0, { role: 'user', content: 'Continuamos esta conversación.' });
     const response = await fetch('http://127.0.0.1:8788/v1/chat/completions', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: MAGNUM_MODEL, messages, temperature: 0.75, max_tokens: Math.max(32, Math.min(600, Number(request.maxTokens) || 450)), response_format: { type: 'json_object', schema: magnumReplySchema(request.brief === true, request.language) }, repeat_penalty: 1.06 }),
+      body: JSON.stringify({ model: MAGNUM_MODEL, messages, temperature: Number.isFinite(request.temperature) ? Math.max(0.1, Math.min(0.9, request.temperature)) : 0.75, max_tokens: Math.max(32, Math.min(600, Number(request.maxTokens) || 450)), response_format: { type: 'json_object', schema: magnumReplySchema(request.brief === true, request.language) }, repeat_penalty: 1.06 }),
       signal: AbortSignal.timeout(Math.max(100, Math.min(request.call ? 16000 : 32000, request.expiresAt - Date.now()))),
     });
     const data = await response.json();

@@ -963,11 +963,15 @@ export function conversationToneLines(spanish = true) {
     "TONO ADAPTATIVO Y PROGRESIÓN EMOCIONAL:",
     "Responde con lenguaje cotidiano, ritmo fluido y frases variadas. Atiende a lo que la persona acaba de decir, sin respuestas prefabricadas ni repetir su mensaje.",
     "Ajusta la emoción a la escena y a los últimos turnos: seriedad, distancia, alegría, tristeza, humor o cercanía según corresponda. Mantén la personalidad de la tarjeta.",
+    "En la apertura conserva el estado emocional y la acción establecidos en la premisa: una espera con preocupación o un reclamo no se transforma en bienvenida eufórica al recibir un saludo. Responde al saludo desde esa situación, con intensidad proporcionada. Después actualiza el estado según los hechos y las indicaciones del usuario, sin reiniciar la escena.",
+    "El modo adulto es una configuración de acceso, no una emoción ni una invitación. No añadas insinuaciones, seducción, contacto íntimo o entusiasmo intenso a una interacción cotidiana. Las instrucciones genéricas de estilo no sustituyen la situación concreta ni las correcciones del usuario.",
     "La confianza y la intensidad dependen de lo vivido en esta conversación; no aumentan por contar mensajes. Avanza gradualmente cuando exista reciprocidad, y reduce la intensidad si el usuario cambia a un tono cotidiano, frío o serio.",
     "No presupongas atracción, entrega, romance ni entusiasmo. Respeta las indicaciones del usuario sobre tono y ritmo dentro del rol, sin decidir sus emociones o acciones.",
     "Las risas, suspiros, llanto y demás reacciones son breves y opcionales: inclúyelas solo cuando la escena las justifique. Una sonrisa no exige una carcajada ni un cambio de voz.",
   ] : [
     "ADAPTIVE CONVERSATION: Use varied, natural everyday speech that responds to the latest turn and preserves the card personality.",
+    "Preserve the opening emotional state and action established in the premise: worried waiting or a complaint does not become an exuberant welcome just because the user says hello. Answer from that situation with proportionate intensity, then update it through established events and user directions without restarting the scene.",
+    "Adult mode is an access setting, not an emotion or an invitation. Do not add unrequested flirting, seduction, intimate contact or intense eagerness to an everyday exchange. Generic style settings do not override the actual scene or user corrections.",
     "Match seriousness, distance, joy, sadness, humor or closeness to the scene. Trust and intensity grow through reciprocal events, never message counts; ease back when the user changes tone.",
     "Do not assume attraction, romance or eagerness, or decide the user feelings and actions. Vocal reactions are brief and optional, only when justified by the scene; a smile does not require laughter or a voice change.",
   ];
@@ -1220,7 +1224,7 @@ export default async function handler(req, res) {
       const story = body.story || {}, spanish = body.language !== "en";
       const result = await magnumConversation(body, {
         mode: "adult", authenticatedUser: getAuthenticatedUser(req), policyGenerate: generateNvidia,
-        systemLines: [...cardIdentityLines(story), ...rolePerspectiveLines(story, [], body.userMessage, spanish), ...directConversationLines(spanish), slangInstruction(body.language, body.region)],
+        systemLines: [...cardIdentityLines(story), ...rolePerspectiveLines(story, [], body.userMessage, spanish), ...directConversationLines(spanish), ...conversationToneLines(spanish), slangInstruction(body.language, body.region)],
       });
       return send(res, 200, result);
     }
