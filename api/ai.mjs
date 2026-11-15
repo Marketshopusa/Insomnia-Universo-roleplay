@@ -2317,7 +2317,7 @@ Nota: Exactamente ${count} capítulos dentro del array 'chapters', cada uno con 
     return send(res, 404, { error: "feature_not_configured", message: "Esta funciÃ³n todavÃ­a no estÃ¡ conectada a Kineva." });
   } catch (error) {
     const status = Number(error.status) >= 400 && Number(error.status) <= 599 ? Number(error.status) : error.name === "TimeoutError" ? 504 : 500;
-    console.error("Insomnia AI", action, status, error.message);
-    return send(res, status, { error: error.code || "ai_error", message: error.message, details: error.details, attempts: error.attempts });
+    console.error("Insomnia AI", action, status, error.code || "ai_error", error.stage || "request", error.message);
+    return send(res, status, { error: error.code || "ai_error", message: error.message, stage: error.stage, details: error.details, attempts: error.attempts });
   }
 }
