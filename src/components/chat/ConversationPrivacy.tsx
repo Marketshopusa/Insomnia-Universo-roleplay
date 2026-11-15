@@ -14,8 +14,16 @@ export function ConversationPrivacy() {
     const clearLegacyWrite = (event: StorageEvent) => {
       if (event.key && isConversationHistoryKey(event.key)) clearBrowserConversationHistory();
     };
+    // A browser Back/Forward cache can restore the whole old React heap without mounting again.
+    const freshAfterBrowserRestore = (event: PageTransitionEvent) => {
+      if (event.persisted) window.location.reload();
+    };
+    window.addEventListener("pageshow", freshAfterBrowserRestore);
     window.addEventListener("storage", clearLegacyWrite);
-    return () => window.removeEventListener("storage", clearLegacyWrite);
+    return () => {
+      window.removeEventListener("pageshow", freshAfterBrowserRestore);
+      window.removeEventListener("storage", clearLegacyWrite);
+    };
   }, []);
   useEffect(() => {
     let active = true;
