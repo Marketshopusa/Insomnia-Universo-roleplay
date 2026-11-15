@@ -1,3 +1,4 @@
+import { CHAT_STORAGE, readChatValue } from "@/lib/chatStorage";
  import { useState, useRef, useEffect, useMemo } from "react";
  import { useParams, useNavigate } from "react-router-dom";
  import { MainLayout } from "@/components/layout/MainLayout";
@@ -60,14 +61,14 @@ type Mode = "select" | "read" | "roleplay";
    const localOverride = useMemo(() => {
      if (!storyId || typeof window === "undefined") return null;
      try {
-       const raw = localStorage.getItem("talkiemate_custom_chars_v2");
+       const raw = readChatValue<any[] | null>(CHAT_STORAGE.characters, user?.id, null);
        if (raw) {
-         const list = JSON.parse(raw);
+         const list = raw;
          return list.find((c: any) => c.id === storyId) || null;
        }
      } catch {}
      return null;
-   }, [storyId, story]);
+   }, [storyId, story, user?.id]);
 
    
    const [messages, setMessages] = useState<Message[]>([]);
@@ -306,6 +307,7 @@ type Mode = "select" | "read" | "roleplay";
       if (!error && data) {
         const raw = (data.messages as any[]) || [];
         const restored: Message[] = raw.flatMap((m: any) => {
+          if (m.id === "intro") return [];
           const content = m.role === "assistant" ? normalizeAssistantResponse(m) : m.content;
           return content ? [{ id: m.id, role: m.role, content, engine: m.engine, timestamp: new Date(m.timestamp) }] : [];
         });
@@ -369,34 +371,6 @@ type Mode = "select" | "read" | "roleplay";
    useEffect(() => {
      scrollToBottom();
    }, [messages]);
- 
-   // Initialize with story intro message
-   useEffect(() => {
-     if (story && sessionLoaded && messages.length === 0) {
-       const introMessage: Message = {
-         id: "intro",
-         role: "assistant",
-         content: getIntroMessage(story),
-         timestamp: new Date(),
-       };
-       setMessages([introMessage]);
-     }
-  }, [story, sessionLoaded, language, tTitle, tDescription, tCharacter, tPlayer]);
-
-  // Re-render intro when language changes
-  useEffect(() => {
-    if (story && messages.length > 0) {
-      const nextIntro = getIntroMessage(story);
-      setMessages((prev) => {
-        const currentIntro = prev.find((m) => m.id === "intro");
-        if (currentIntro && currentIntro.content === nextIntro) return prev;
-        return prev.map((m) =>
-          m.id === "intro" ? { ...m, content: nextIntro } : m
-        );
-      });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [language, tTitle, tDescription, tCharacter, tPlayer]);
  
    const getIntroMessage = (story: any) => {
     const characterRole = localOverride?.roleTitle || tCharacter || story.character_role || t("chat.char");
@@ -618,9 +592,7 @@ type Mode = "select" | "read" | "roleplay";
        toast({ title: language === "es" ? "No se pudo reiniciar la conversación" : "Could not reset conversation", variant: "destructive" });
        return;
      }
-     const next: Message[] = story
-       ? [{ id: "intro", role: "assistant", content: getIntroMessage(story), timestamp: new Date() }] : [];
-     messagesRef.current = next;
+     const next: Message[] = [];
      setMessages(next);
      setSceneImages({});
      toast({ title: language === "es" ? "Roleplay reiniciado. La conversación anterior se borró." : "Roleplay reset. Previous conversation deleted." });
@@ -676,6 +648,7 @@ type Mode = "select" | "read" | "roleplay";
 
     const generateNarrative = async () => {
      if (!story) return;
+     const request = conversationScope.capture();
      setNarrativeLoading(true);
      setNarrative("");
      try {
@@ -701,6 +674,7 @@ type Mode = "select" | "read" | "roleplay";
              .join("\n")
              .slice(0, 4000),
        });
+       if (!conversationScope.isCurrent(request)) return;
        if (error || !(data as any)?.content) {
          const code = (data as any)?.error;
          if (code === "rate_limited") toast({ title: t("mode.rateLimited"), variant: "destructive" });
@@ -712,7 +686,7 @@ type Mode = "select" | "read" | "roleplay";
           saveSession(messages, (data as any).content, mode);
        }
      } finally {
-       setNarrativeLoading(false);
+       if (conversationScope.isCurrent(request)) setNarrativeLoading(false);
      }
    };
 
@@ -1217,6 +1191,7 @@ type Mode = "select" | "read" | "roleplay";
  
                {/* Messages */}
                <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                 {story && <div aria-label={language === "es" ? "Escena inicial" : "Opening scene"} className="rounded-lg border border-border p-3 text-sm text-muted-foreground whitespace-pre-wrap">{getIntroMessage(story)}</div>}
                  {messages.map((message) => (
                    <div
                      key={message.id}

@@ -106,3 +106,18 @@ it.each([
     expect(invoke).not.toHaveBeenCalled();
   } finally { fetchMock.mockRestore(); }
 });
+
+it("does not return a duplicate after both cloud attempts repeat a previous turn", async () => {
+  const repeated = "Esta es exactamente la respuesta del turno anterior.";
+  const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async () =>
+    new Response(JSON.stringify({ content: repeated }), { status: 200 }));
+  try {
+    const result = await invokeFunctionWithRetry<{ content?: string; error?: string }>("story-chat", {
+      story: { id: "isolated-card" }, history: [{ role: "assistant", content: repeated }], userMessage: "Responde a mi nueva pregunta.",
+    });
+    expect(result.error).not.toBeNull();
+    expect(result.data?.content).toBeUndefined();
+    expect(result.data?.error).toBe("off_role");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  } finally { fetchMock.mockRestore(); }
+});

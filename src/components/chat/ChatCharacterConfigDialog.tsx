@@ -53,6 +53,10 @@ import { getStoryAiSettings, setStoryAiSettings } from "@/lib/storyAiSettings";
 export interface CharacterItem {
   id: string;
   name: string;
+  playerRole?: string;
+  playerRoleEs?: string;
+  playerRoleEn?: string;
+  sourceKey?: string;
   age: number;
   gender: "female" | "male" | "non-binary";
   style: "realistic" | "anime";
@@ -346,20 +350,12 @@ export const ChatCharacterConfigDialog: React.FC<ChatCharacterConfigDialogProps>
     } else {
       // New Character defaults
       setName("");
-      setRoleTitle(isEs ? "Compañera Íntima" : "Intimate Partner");
+      setRoleTitle("");
       setAge(26);
       setGender("female");
       setStyle("realistic");
-      setBio(
-        isEs
-          ? "Una mujer apasionada y cariñosa que busca una conexión auténtica e íntima."
-          : "A passionate and warm woman seeking an authentic and intimate connection."
-      );
-      setStarterMessage(
-        isEs
-          ? "Hola cariño... me alegra tanto tenerte aquí conmigo. ¿Qué te gustaría que hagamos hoy?"
-          : "Hey there... I'm so glad to have you here with me. What would you like to do today?"
-      );
+      setBio("");
+      setStarterMessage("");
       setVoiceName("Aoede");
       setRegion("mx");
       setAccentEnabled(true);
@@ -587,17 +583,21 @@ export const ChatCharacterConfigDialog: React.FC<ChatCharacterConfigDialogProps>
       return;
     }
 
-    const charId = character?.id && !isNew ? character.id : `char-${Date.now()}`;
+    const charId = character?.id && !isNew ? character.id : `char-${crypto.randomUUID()}`;
     const mainAvatar = avatar.trim() || gallery[0] || "https://media.talkiemate.com/app/uploads/growtype-ai-uploads/models/6e8f818f9b187d2ebdf4e1d77521e051/3545853885239688145_69992903230.jpg";
 
     const effectiveModelId = modelId || "insomnia-flash";
-    const cleanStarter = starterMessage.trim() || (isEs ? "Hola, me alegra verte. ¿En qué estás pensando?" : "Hey, nice to see you. What's on your mind?");
+    const cleanStarter = starterMessage.trim();
     const cleanBio = bio.trim();
-    const cleanRoleTitle = roleTitle.trim() || (isEs ? "Compañera" : "Partner");
+    const cleanRoleTitle = roleTitle.trim();
 
     const updated: CharacterItem = {
       id: charId,
       name: name.trim(),
+      ...(character?.sourceKey ? { sourceKey: character.sourceKey } : {}),
+      ...(character?.playerRole ? { playerRole: character.playerRole } : {}),
+      ...(character?.playerRoleEs ? { playerRoleEs: character.playerRoleEs } : {}),
+      ...(character?.playerRoleEn ? { playerRoleEn: character.playerRoleEn } : {}),
       roleTitle: cleanRoleTitle,
       roleTitleEn: cleanRoleTitle,
       roleTitleEs: cleanRoleTitle,
@@ -840,13 +840,13 @@ export const ChatCharacterConfigDialog: React.FC<ChatCharacterConfigDialogProps>
 
               <div className="space-y-1.5">
                 <Label className="text-xs text-zinc-300 font-semibold">
-                  {isEs ? "Mensaje Inicial" : "Starter Greeting Message"}
+                  {isEs ? "Escena inicial (contexto)" : "Opening scene (context)"}
                 </Label>
                 <Textarea
                   value={starterMessage}
                   onChange={(e) => setStarterMessage(e.target.value)}
                   rows={2}
-                  placeholder={isEs ? "Primer mensaje que dirá el personaje al abrir el chat..." : "First message spoken by the character when chat opens..."}
+                  placeholder={isEs ? "Describe dónde está el personaje y qué ocurre al comenzar. No se enviará como una respuesta de la IA." : "Describe where the character is and what is happening initially. This is not sent as an AI reply."}
                   className="bg-[#1a1a1a] border-[#2b2b2b] text-sm text-white focus:border-[#ff8c00] resize-none"
                 />
               </div>

@@ -175,7 +175,7 @@ REGLAS DE RAZONAMIENTO Y FORMATO:
 
    - ESTÁ COMPLETAMENTE PROHIBIDO mezclar palabras, frases o expresiones en inglés (cero Spanglish como "again after so long", "I've missed you", "sweetheart", etc.).
 
-   - Si el usuario menciona marcas, cafeterías o lugares en inglés (como Starbucks), TÚ respondes exclusivamente en español natural ("¡Qué bueno verte después de tanto tiempo!", "¡Te extrañé tanto!", etc.).
+   - Si el usuario menciona marcas, cafeterías o lugares en inglés (como Starbucks), TÚ respondes exclusivamente en español natural con palabras propias y adecuadas a la escena.
 
 2. ADAPTACIÓN AL TONO Y RITMO DE LA HISTORIA (CRÍTICO):
 
@@ -824,6 +824,11 @@ export async function invokeFunctionWithRetry<T>(name: string, body: unknown): P
 
 
 
+    const finalContent = (cloudResult.data as any)?.content;
+    if (name === "story-chat" && !cloudResult.error && finalContent && isRepeatedAssistantReply(finalContent, historyList, b?.userMessage || "")) {
+      const message = "La respuesta repitió un turno anterior. Tu conversación se conserva.";
+      return { data: { error: "off_role", message } as T, error: { message, context: new Response(null, { status: 503 }) } };
+    }
     return cloudResult;
 
   }

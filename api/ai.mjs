@@ -72,7 +72,7 @@ export function isRateLimited(identifier) {
 }
 
 export const maxDuration = 60;
-const send = (res, status, value) => res.status(status).json(value);
+const send = (res, status, value) => { res.setHeader?.("Cache-Control", "private, no-store"); return res.status(status).json(value); };
 export function generationConfigFor(candidate, settings, options = {}, thinking = true) {
   if (!thinking || !options.fastReply) return settings;
   if (candidate.startsWith("gemini-3.")) return { ...settings, thinkingConfig: { thinkingLevel: "low" } };
@@ -1894,72 +1894,8 @@ export default async function handler(req, res) {
         content = null;
       }
 
-      if (content) {
-        // 1. Purga estricta de caracteres chinos, japoneses u otros caracteres CJK
-        content = content.replace(/[\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff\u3040-\u30ff]/g, "").trim();
-
-        // 2. Purga de intrusiones de oraciones en inglés en modo español
-        if (spanish) {
-          content = content
-            .replace(/\bagain\s+after\s+so\s+long\b/gi, "después de tanto tiempo")
-            .replace(/\bafter\s+so\s+long\b/gi, "después de tanto tiempo")
-            .replace(/\bi(?:'ve)?\s+missed\s+you\s+so\s+much\b/gi, "te he extrañado tanto")
-            .replace(/\bi(?:'ve)?\s+missed\s+you\b/gi, "te extrañé")
-            .replace(/\bso\s+good\s+to\s+see\s+you\b/gi, "qué bueno verte")
-            .replace(/\bgood\s+to\s+see\s+you\b/gi, "qué bueno verte")
-            .replace(/\boh\s+my\s+god\b/gi, "dios mío")
-            .replace(/\bmy\s+love\b/gi, "mi amor")
-            .replace(/\bsweetheart\b/gi, "cariño")
-            .replace(/\bdarling\b/gi, "cariño")
-            .replace(/\bhoney\b/gi, "cariño")
-            .replace(/\bcome\s+here\b/gi, "ven aquí")
-            .replace(/\bright\s+now\b/gi, "ahora mismo")
-            .replace(/\b(exclama|dice|murmura|susurra|gime|sonr[ií]e)\s+([a-záéíóúñ]+)\./gi, (_m, a, b) => `*${a} ${b}.*`)
-            .replace(/(?:^|\n|[.!?]\s+)(?:After\s+[^.!?]+|Under\s+the\s+cloak\s+of\s+[^.!?]+|I\s+can't\s+deny\s+[^.!?]+|Holding\s+your\s+[^.!?]+|Accidentally\s+tasting\s+[^.!?]+)[.!?]?/gi, ".").trim();
-        }
-
-        // 3. Purga estricta de Godmoding / Monólogo (eliminar párrafos donde la IA inventa acciones o diálogos para el usuario)
-        content = content.replace(/(?:\n\s*|^)(?:Rompes\s+el\s+silencio|Miras\s+fijamente|Tomas\s+mi\s+mano|Te\s+acercas\s+a\s+mí|Dices\s+con\s+voz|Me\s+dices\s+con|Jadeas\s+con|Suspiras\s+mientras)[^.\n]*["“«][^"”»]+["”»][^\n]*/gi, "").trim();
-        content = content.replace(/(?:\n\s*|^)Rompes\s+el\s+silencio[^\n]*/gi, "").trim();
-
-        // 4. Purga automática de clichés moralizantes o protestas de conciencia
-        content = content.replace(/\*A\s+pesar\s+de\s+las\s+protestas\s+de\s+conciencia[^*]*\*/gi, "").trim();
-        content = content.replace(/\*(?:No\s+puedo\s+seguir\s+negando|aunque\s+esté\s+mal|pensamientos\s+prohibidos)[^*]*\*/gi, "").trim();
-        content = content.replace(/^(?:Mmmh[.…]*\s*)?(?:tienes\s+(?:toda\s+la\s+)?razón(?:\s+\w+)?)[.,!:]*\s*/i, "").trim();
-        content = content.replace(/Quiero liberar toda esta pasión que bulle dentro de mí sin restricciones ni tabúes\.?/gi, "").trim();
-        content = content.replace(/sin restricciones ni tabúes\.?/gi, "").trim();
-        content = content.replace(/pasión que bulle dentro de mí\.?/gi, "").trim();
-
-        // 5. Purga estricta de rotura de cuarta pared
-        content = content.replace(/\s*en\s+un\s+roleplay\s+(?:íntimo\s+)?(?:con\s+[a-záéíóúñ]+)?/gi, "").trim();
-        content = content.replace(/\s*en\s+este\s+roleplay[.,]?/gi, "").trim();
-
-        // 6. Enforzar proporción estricta: 80% diálogo hablado directo / 20% relato breve en asteriscos
-        if (isLiveCall) {
-          // Mantener acotaciones vocales acústicas (*se ríe*, *suspira*, *gime*, *jadea*, etc.) para el TTS neuronal
-          // Solo eliminar narraciones largas de novela (> 35 caracteres entre asteriscos)
-          content = content.replace(/\*([^*]{35,})\*/g, "").replace(/\s+/g, " ").trim() || content;
-        } else {
-          content = enforceDialogueRatio(content, Math.round(dialogueRatio * 100), Math.round(narrationRatio * 100));
-        }
-
-        // Equilibrar asteriscos sin cerrar
-        const asteriskCount = (content.replace(/\*\*/g, "").match(/\*/g) || []).length;
-        if (asteriskCount % 2 === 1) {
-          const lastStar = content.lastIndexOf("*");
-          const beforeStar = content.slice(0, lastStar).trim();
-          if (beforeStar.length >= 15) {
-            content = content + "*";
-          } else {
-            content = content + "*";
-          }
-        }
-
-        content = content.replace(/[ \t]{2,}/g, " ").replace(/\n{3,}/g, "\n\n").trim();
-        if (((content.replace(/\*\*/g, "").match(/\*/g) || []).length) % 2 === 1) {
-          content = content + "*";
-        }
-      }
+      // Presentation cleanup must not invent dialogue, translate canned phrases or change who acted.
+      if (content) content = String(content).replace(/[ \t]{2,}/g, " ").replace(/\n{3,}/g, "\n\n").trim();
 
       // A service failure is not a character turn. Never fabricate or persist a script.
       if (!content && Date.now() >= generationDeadline) {
