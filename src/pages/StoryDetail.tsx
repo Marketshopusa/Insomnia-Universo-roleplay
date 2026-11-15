@@ -1,3 +1,5 @@
+import { useConversationScope } from "@/hooks/useConversationScope";
+import { clearBrowserConversationHistory, clearSavedStorySessions } from "@/lib/ephemeralConversations";
  import { useState, useRef, useEffect, useMemo } from "react";
  import { useParams, useNavigate } from "react-router-dom";
  import { MainLayout } from "@/components/layout/MainLayout";
@@ -45,6 +47,13 @@ type Mode = "select" | "read" | "roleplay";
  
  const StoryDetail = () => {
    const { storyId } = useParams<{ storyId: string }>();
+   const { user, loading } = useAuth();
+   if (loading) return null;
+   return <StoryRoom key={`${user?.id || "guest"}:${storyId}`} />;
+ };
+
+ const StoryRoom = () => {
+   const { storyId } = useParams<{ storyId: string }>();
    const navigate = useNavigate();
   const { t, language } = useLanguage();
   const { user, loading: authLoading } = useAuth();
@@ -70,6 +79,10 @@ type Mode = "select" | "read" | "roleplay";
    }, [storyId, story]);
 
    
+   const conversationScope = useConversationScope(`${user?.id || "guest"}:${storyId}`);
+   const renderScope = conversationScope.capture();
+   const sendPendingRef = useRef(false);
+   const [callVersion, setCallVersion] = useState(0);
    const [messages, setMessages] = useState<Message[]>([]);
   const messagesRef = useRef<Message[]>([]);
   useEffect(() => {
@@ -113,7 +126,6 @@ type Mode = "select" | "read" | "roleplay";
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const streamRef = useRef<SpeechStream | null>(null);
   const [playingId, setPlayingId] = useState<string | null>(null);
-  const [sessionLoaded, setSessionLoaded] = useState(false);
   useEffect(() => {
     const nextVoice = getStoryVoice(storyId);
     const nextRegion = getStoryRegion(storyId);
@@ -267,72 +279,7 @@ type Mode = "select" | "read" | "roleplay";
     story?.story_categories?.map((sc: any) => sc?.categories?.name).filter(Boolean) || [];
   const tCategoryNames = useTranslatedTexts(categoryNamesAll);
  
-  // Load saved session for this user + story (persistent history)
-  useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
-      if (!user || !storyId) return;
-      const { data, error } = await supabase
-        .from("story_sessions")
-        .select("messages, narrative, last_mode")
-        .eq("user_id", user.id)
-        .eq("story_id", storyId)
-        .maybeSingle();
-      if (cancelled) return;
-      if (!error && data) {
-        const raw = (data.messages as any[]) || [];
-        const restored: Message[] = raw.flatMap((m: any) => {
-          const content = m.role === "assistant" ? normalizeAssistantReply(m.content) : m.content;
-          return content ? [{ id: m.id, role: m.role, content, timestamp: new Date(m.timestamp) }] : [];
-        });
-        if (restored.length > 0) setMessages(restored);
-        if (data.narrative) setNarrative(data.narrative);
-        if (data.last_mode === "read" || data.last_mode === "roleplay") {
-          setMode(data.last_mode as Mode);
-        }
-      }
-      setSessionLoaded(true);
-    };
-    load();
-    return () => { cancelled = true; };
-  }, [user, storyId]);
-
-  // Preserve the order of saves: a slow earlier request must not overwrite a newer turn.
-  const saveQueueRef = useRef<Promise<void> | null>(null);
-  const saveSession = (
-    nextMessages: Message[],
-    nextNarrative: string | null,
-    nextMode: Mode
-  ): Promise<void> => {
-    if (!user || !storyId) return Promise.resolve();
-    const accountKey = user.id;
-    const currentStoryId = storyId;
-    const serializable = nextMessages
-      .filter((m) => m.id !== "intro")
-      .map((m) => ({
-        id: m.id,
-        role: m.role,
-        content: m.content,
-        timestamp: m.timestamp.toISOString(),
-      }));
-    const sessionRow = {
-      user_id: accountKey,
-      story_id: currentStoryId,
-      messages: serializable,
-      narrative: nextNarrative,
-      last_mode: nextMode,
-    };
-    const previous = saveQueueRef.current ?? Promise.resolve();
-    const nextSave = previous.catch(() => {}).then(async () => {
-      const { error } = await supabase
-        .from("story_sessions")
-        .upsert(sessionRow, { onConflict: "user_id,story_id" });
-      if (error) console.error("Could not save story turn:", error.message);
-    });
-    saveQueueRef.current = nextSave;
-    return nextSave;
-  };
-
+  // Conversation state lives only in this mounted visit.
    const scrollToBottom = () => {
      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
    };
@@ -341,44 +288,7 @@ type Mode = "select" | "read" | "roleplay";
      scrollToBottom();
    }, [messages]);
  
-   // Initialize with story intro message
-   useEffect(() => {
-     if (story && sessionLoaded && messages.length === 0) {
-       const introMessage: Message = {
-         id: "intro",
-         role: "assistant",
-         content: getIntroMessage(story),
-         timestamp: new Date(),
-       };
-       setMessages([introMessage]);
-     }
-  }, [story, sessionLoaded, language, tTitle, tDescription, tCharacter, tPlayer]);
-
-  // Re-render intro when language changes
-  useEffect(() => {
-    if (story && messages.length > 0) {
-      const nextIntro = getIntroMessage(story);
-      setMessages((prev) => {
-        const currentIntro = prev.find((m) => m.id === "intro");
-        if (currentIntro && currentIntro.content === nextIntro) return prev;
-        return prev.map((m) =>
-          m.id === "intro" ? { ...m, content: nextIntro } : m
-        );
-      });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [language, tTitle, tDescription, tCharacter, tPlayer]);
- 
-   const getIntroMessage = (story: any) => {
-    const characterRole = localOverride?.roleTitle || tCharacter || story.character_role || t("chat.char");
-    const playerRole = tPlayer || story.player_role || t("chat.you");
-    const title = localOverride?.name || tTitle || story.title;
-    const description = localOverride?.bio || tDescription || story.description || t("story.welcome");
-
-    return `*${title}*\n\n${description}\n\n${t("story.youArePlaying")}: **${playerRole}**\n${t("story.iAmPlaying")}: **${characterRole}**\n\n*${t("story.sceneSet")}*`;
-   };
- 
-   const generateResponse = async (userMessage: string, currentMessageId: string): Promise<string | null> => {
+   const generateResponse = async (userMessage: string, currentMessageId: string, request: number): Promise<string | null> => {
     const history = messagesRef.current
       .filter((m) => m.id !== "intro" && m.id !== currentMessageId)
       .map((m) => ({ role: m.role, content: m.content }));
@@ -424,6 +334,7 @@ type Mode = "select" | "read" | "roleplay";
         isNsfw: isAdultStory,
         region: activeRegion(),
     });
+    if (!conversationScope.isCurrent(request)) return null;
     if (error || !data?.content) {
       const status = (error as { context?: Response } | null)?.context?.status;
       const code = status === 402 ? "credits_exhausted" : (data as any)?.error;
@@ -481,7 +392,9 @@ type Mode = "select" | "read" | "roleplay";
    };
  
    const handleSendMessage = async () => {
-     if (!inputMessage.trim()) return;
+     if (!inputMessage.trim() || sendPendingRef.current) return;
+     sendPendingRef.current = true;
+     const request = conversationScope.capture();
  
      const userMessage: Message = {
        id: Date.now().toString(),
@@ -495,7 +408,9 @@ type Mode = "select" | "read" | "roleplay";
      setIsTyping(true);
  
  
-     const responseContent = await generateResponse(userMessage.content, userMessage.id);
+     const responseContent = await generateResponse(userMessage.content, userMessage.id, request);
+     if (!conversationScope.isCurrent(request)) return;
+     sendPendingRef.current = false;
      if (!responseContent) {
        setMessages((previous) => previous.filter((message) => message.id !== userMessage.id));
        setInputMessage(userMessage.content);
@@ -515,7 +430,7 @@ type Mode = "select" | "read" | "roleplay";
      const next = base.some((item) => item.id === assistantMessage.id) ? base : [...base, assistantMessage];
      messagesRef.current = next;
      setMessages(next);
-     void saveSession(next, narrative || null, mode);
+
      setIsTyping(false);
      if (!isMuted) void playAudio(responseContent, assistantMessage.id);
    };
@@ -558,18 +473,25 @@ type Mode = "select" | "read" | "roleplay";
      setPlayingId(null);
    };
 
-   // Reset the roleplay: wipe the saved conversation so it starts fresh and stays private
+   // Invalidate work first: a late turn must never refill a reset conversation.
    const resetRoleplay = async () => {
-     if (!user || !storyId) return;
+     conversationScope.invalidate();
+     sendPendingRef.current = false;
      stopAudio();
-     await supabase
-       .from("story_sessions")
-       .delete()
-       .eq("user_id", user.id)
-       .eq("story_id", storyId);
-     setMessages(story ? [{ id: "intro", role: "assistant", content: getIntroMessage(story), timestamp: new Date() }] : []);
+     setCallVersion(version => version + 1);
+     messagesRef.current = [];
+     setMessages([]);
+     setInputMessage("");
+     setIsTyping(false);
+     setNarrative("");
+     setNarrativeLoading(false);
      setSceneImages({});
-     toast({ title: language === "es" ? "Roleplay reiniciado. La conversación anterior se borró." : "Roleplay reset. Previous conversation deleted." });
+     setIllustratingId(null);
+     clearBrowserConversationHistory();
+     const error = await clearSavedStorySessions(user?.id);
+     toast({ title: error
+       ? (language === "es" ? "El chat está vacío; no se pudo borrar la copia antigua de la cuenta" : "The chat is empty; the old account copy could not be erased")
+       : (language === "es" ? "Conversación reiniciada desde cero" : "Conversation restarted from zero"), variant: error ? "destructive" : "default" });
    };
 
    const buildIllustrationContext = (key: string) => {
@@ -622,6 +544,7 @@ type Mode = "select" | "read" | "roleplay";
 
     const generateNarrative = async () => {
      if (!story) return;
+     const request = conversationScope.capture();
      setNarrativeLoading(true);
      setNarrative("");
      try {
@@ -647,6 +570,7 @@ type Mode = "select" | "read" | "roleplay";
              .join("\n")
              .slice(0, 4000),
        });
+       if (!conversationScope.isCurrent(request)) return;
        if (error || !(data as any)?.content) {
          const code = (data as any)?.error;
          if (code === "rate_limited") toast({ title: t("mode.rateLimited"), variant: "destructive" });
@@ -655,10 +579,10 @@ type Mode = "select" | "read" | "roleplay";
          else toast({ title: t("mode.aiError"), variant: "destructive" });
        } else {
          setNarrative((data as any).content);
-          saveSession(messages, (data as any).content, mode);
+
        }
      } finally {
-       setNarrativeLoading(false);
+       if (conversationScope.isCurrent(request)) setNarrativeLoading(false);
      }
    };
 
@@ -1103,6 +1027,7 @@ type Mode = "select" | "read" | "roleplay";
                     <VoiceMenu value={voice} language={language} onChange={changeVoice} />
                     <RegionMenu value={region} accent={accent} language={language} onChange={changeRegion} onAccentChange={changeAccent} />
                     <CallDialog
+                      key={callVersion}
                       story={story}
                       language={language}
                       voice={voice}
@@ -1112,6 +1037,7 @@ type Mode = "select" | "read" | "roleplay";
                         .filter((message) => message.id !== "intro")
                         .map((message) => ({ role: message.role, content: message.content }))}
                       onTurn={(userText, assistantText) => {
+                        if (!conversationScope.isCurrent(renderScope)) return;
                         const previous = messagesRef.current;
                         const last = previous[previous.length - 1];
                         const spoken = last?.role === "user" && last.content === userText;
@@ -1124,7 +1050,7 @@ type Mode = "select" | "read" | "roleplay";
                         }
                         messagesRef.current = next;
                         setMessages(next);
-                        void saveSession(next, narrative || null, mode);
+
                       }}
                     />
                    <Button

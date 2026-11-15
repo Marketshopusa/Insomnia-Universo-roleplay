@@ -128,19 +128,7 @@ export const StoryConfigDialog = ({ story, open, onOpenChange, onSaved }: StoryC
         setSelectedCategories(storyCats.map((sc: any) => sc.category_id));
       }
 
-      // If both story_context and description were empty, check if user has a narrative in story_sessions
-      if (user && (!dbStory || (!(dbStory.story_context || "").trim() && !(dbStory.description || "").trim()))) {
-        const { data: sess } = await supabase
-          .from("story_sessions")
-          .select("narrative")
-          .eq("user_id", user.id)
-          .eq("story_id", story.id)
-          .maybeSingle();
-        if (cancelled) return;
-        if (sess?.narrative) {
-          setStoryContext(sess.narrative);
-        }
-      }
+      // Conversation transcripts are never used to populate authored card settings.
 
       let url = dbStory?.cover_image ?? story.cover_image ?? null;
       if (user) {

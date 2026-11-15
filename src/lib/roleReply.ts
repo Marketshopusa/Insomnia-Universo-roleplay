@@ -966,28 +966,8 @@ export function isRepeatedAssistantReply(
 
 
 
-export function sanitizeSwitchedReply(reply: string, info: ActiveCharacterInfo): string {
-
-  if (!info.isSwitched || !reply) return reply;
-
-  let cleaned = reply;
-
-
-
-  // Only convert 3rd-person *DefaultCharacterName ...* action cues if the model narrated the switched character using the default character's name
-
-  if (info.defaultFirstName && info.defaultFirstName.toLowerCase() !== info.name.toLowerCase()) {
-
-    const escapedDefault = info.defaultFirstName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
-    cleaned = cleaned.replace(new RegExp(`\\*[^*]*\\b${escapedDefault}\\b[^*]*\\*`, "gi"), "*Me acerco a ti*");
-
-  }
-
-
-
-  return compactRoleplayReply(cleaned);
-
+export function sanitizeSwitchedReply(reply: string, _info: ActiveCharacterInfo): string {
+  return String(reply || "").trim();
 }
 
 export function enforceFirstPersonNarrative(text: string, characterName?: string): string {
@@ -1016,28 +996,7 @@ export function enforceFirstPersonNarrative(text: string, characterName?: string
   return res;
 }
 
-export function cleanOralOrSilenceDialogue(text: string, isOralOrSilence: boolean): string {
-  if (!isOralOrSilence || !text) return text;
-
-  let cleaned = text.replace(/"([^"]+)"/g, (match, quoteContent) => {
-    const trimmed = quoteContent.trim();
-    const isVocalMoan = /^(?:[MmhAaOoUuFf.,!…\s]+)$/i.test(trimmed);
-    if (isVocalMoan && trimmed.length < 35) {
-      return match;
-    }
-    const words = trimmed.split(/\s+/);
-    if (words.length > 4) {
-      const moanPrefix = trimmed.match(/^([MmhAaOoUuFf]+[.,!…\s]*)/i);
-      if (moanPrefix && moanPrefix[1].trim().length >= 3) {
-        return `"${moanPrefix[1].trim()}"`;
-      }
-      return '"Mmmm... mmgh..."';
-    }
-    return match;
-  });
-
-  // Deduplicate consecutive moans
-  cleaned = cleaned.replace(/(?:"[MmhAaOoUuFf.,!…\s]+"[\s]*){2,}/gi, '"Mmmm... ahh..." ');
-  return cleaned.trim();
+export function cleanOralOrSilenceDialogue(text: string, _isOralOrSilence: boolean): string {
+  return String(text || "");
 }
 

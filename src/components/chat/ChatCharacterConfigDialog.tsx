@@ -353,11 +353,7 @@ export const ChatCharacterConfigDialog: React.FC<ChatCharacterConfigDialogProps>
           ? "Una mujer apasionada y cariñosa que busca una conexión auténtica e íntima."
           : "A passionate and warm woman seeking an authentic and intimate connection."
       );
-      setStarterMessage(
-        isEs
-          ? "Hola cariño... me alegra tanto tenerte aquí conmigo. ¿Qué te gustaría que hagamos hoy?"
-          : "Hey there... I'm so glad to have you here with me. What would you like to do today?"
-      );
+      setStarterMessage("");
       setVoiceName("Aoede");
       setRegion("mx");
       setAccentEnabled(true);
@@ -589,7 +585,7 @@ export const ChatCharacterConfigDialog: React.FC<ChatCharacterConfigDialogProps>
     const mainAvatar = avatar.trim() || gallery[0] || "https://media.talkiemate.com/app/uploads/growtype-ai-uploads/models/6e8f818f9b187d2ebdf4e1d77521e051/3545853885239688145_69992903230.jpg";
 
     const effectiveModelId = modelId || "insomnia-flash";
-    const cleanStarter = starterMessage.trim() || (isEs ? "Hola, me alegra verte. ¿En qué estás pensando?" : "Hey, nice to see you. What's on your mind?");
+    const cleanStarter = starterMessage.trim();
     const cleanBio = bio.trim();
     const cleanRoleTitle = roleTitle.trim() || (isEs ? "Compañera" : "Partner");
 
@@ -838,13 +834,13 @@ export const ChatCharacterConfigDialog: React.FC<ChatCharacterConfigDialogProps>
 
               <div className="space-y-1.5">
                 <Label className="text-xs text-zinc-300 font-semibold">
-                  {isEs ? "Mensaje Inicial" : "Starter Greeting Message"}
+                  {isEs ? "Situación inicial (contexto)" : "Opening situation (context)"}
                 </Label>
                 <Textarea
                   value={starterMessage}
                   onChange={(e) => setStarterMessage(e.target.value)}
                   rows={2}
-                  placeholder={isEs ? "Primer mensaje que dirá el personaje al abrir el chat..." : "First message spoken by the character when chat opens..."}
+                  placeholder={isEs ? "Contexto opcional para la escena. No se envía como respuesta del personaje." : "Optional scene context. It is not sent as a character reply."}
                   className="bg-[#1a1a1a] border-[#2b2b2b] text-sm text-white focus:border-[#ff8c00] resize-none"
                 />
               </div>

@@ -1,3 +1,4 @@
+import { ordinaryScenePrompt } from "./currentTurnRules.mjs";
 import { supabase } from "@/integrations/supabase/client";
 
 
@@ -122,6 +123,9 @@ async function callLocalLlama<T>(body: unknown): Promise<FunctionResult<T> | nul
       history?: { role: string; content: string }[];
 
       language?: string;
+      adultMode?: boolean;
+      isNsfw?: boolean;
+      settings?: { adultMode?: boolean; modelId?: string };
 
     };
 
@@ -259,7 +263,10 @@ ${playerName} te pidió explícitamente seguir con la acción oral y escuchar c�
       ""
     ].join("\n") : "";
 
-    const systemPrompt = baseSystemPrompt + activeSceneRule + noRepeatRule + oralSilenceDirective + medicalRoleRule + familyRule;
+    const adultScene = input.adultMode || input.isNsfw || input.settings?.adultMode || input.settings?.modelId === "magnum-v4-local";
+    const systemPrompt = adultScene
+      ? baseSystemPrompt + activeSceneRule + noRepeatRule + oralSilenceDirective + medicalRoleRule + familyRule
+      : ordinaryScenePrompt(input.story, historyList.length, input.language !== "en");
 
 
 
