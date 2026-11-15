@@ -288,6 +288,18 @@ type Mode = "select" | "read" | "roleplay";
      scrollToBottom();
    }, [messages]);
  
+   // The authored role introduction is visible UI, not a generated conversation turn.
+   const getIntroMessage = (story: any) => {
+     const characterRole = localOverride?.roleTitle || tCharacter || story.character_role || t("chat.char");
+     const playerRole = tPlayer || story.player_role || t("chat.you");
+     const title = localOverride?.name || tTitle || story.title;
+     const description = localOverride?.bio || tDescription || story.description || t("story.welcome");
+     return `*${title}*\n\n${description}\n\n${t("story.youArePlaying")}: **${playerRole}**\n${t("story.iAmPlaying")}: **${characterRole}**\n\n*${t("story.sceneSet")}*`;
+   };
+   const displayedMessages: Message[] = story
+     ? [{ id: "intro", role: "assistant", content: getIntroMessage(story), timestamp: new Date() }, ...messages]
+     : messages;
+
    const generateResponse = async (userMessage: string, currentMessageId: string, request: number): Promise<string | null> => {
     const history = messagesRef.current
       .filter((m) => m.id !== "intro" && m.id !== currentMessageId)
@@ -1080,7 +1092,7 @@ type Mode = "select" | "read" | "roleplay";
  
                {/* Messages */}
                <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                 {messages.map((message) => (
+                 {displayedMessages.map((message) => (
                    <div
                      key={message.id}
                      className={`flex ${
