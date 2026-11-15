@@ -25,27 +25,63 @@ describe("role reply presentation", () => {
     expect(visible).toBe('Hola, ¿cómo estás hoy?');
     expect(visible).not.toContain('dialogo');
   });
-  it("preserves complete generated actions instead of truncating or replacing them", () => {
-    const actions = ["*Abro el libro que habíamos dejado sobre la mesa y reviso con atención la nota del margen.*", "*Paso a la página siguiente para comprobar la fecha escrita junto al dibujo.*", "*Cierro el cuaderno y conservo la ficha entre las páginas.*"];
-    const input = actions.join("\n") + "\nLa fecha de la ficha coincide con el registro. *Fragmento sin terminar";
-    const visible = normalizeAssistantReply(input)!;
-    for (const action of actions) expect(visible).toContain(action);
-    expect(visible).toContain("La fecha de la ficha coincide con el registro.");
-    expect(visible).not.toContain("Fragmento sin terminar");
+  it("compacts bloated narration to <=20% action cues and removes cut-off trailing asterisks", () => {
+    const bloated = [
+      "*Estefanía se retuerce de placer, gimiendo con fuerza mientras su tío la penetra. Sus manos se aferran a las sábanas, buscando apoyo mientras sus caderas se mueven al ritmo de las embestidas.*",
+      "¡Ahh! Sí, Tío... no pares. Me encanta sentir cómo me llenas por completo y me haces perder la razón con cada caricia.",
+      "*Sus pechos rebotan con cada movimiento, y su respiración se vuelve cada vez más agitada. Mira a su tío con los ojos llenos de lujuria y deseo.*",
+      "Estoy tan cerca... ¡Hazme tuya, Tío! ¡Quiero sentirte dentro de mí hasta el final!",
+      "*Un escalofrío recorre su cuerpo mientras alcanza el clímax, gritando de placer mientras se aferra a su tío con fuerza.*",
+      "¡Ahhh! ¡Tío! Eso fue... increíble, Tío. *Murmura entre jade",
+    ].join("\n");
+    const visible = normalizeAssistantReply(bloated)!;
+    expect(visible).not.toContain("*Murmura entre jade");
+    expect((visible.match(/\*/g) || []).length % 2).toBe(0);
+    expect(visible.length).toBeLessThanOrEqual(440);
+    const actions = [...visible.matchAll(/\*([^*]+)\*/g)].map((m) => m[1]);
+    expect(actions.length).toBeLessThanOrEqual(2);
+    for (const act of actions) {
+      expect(act.split(/\s+/).length).toBeGreaterThanOrEqual(8);
+      expect(act.split(/\s+/).length).toBeLessThanOrEqual(16);
+    }
   });
-  it("does not change the active speaker merely because another person enters the scene", () => {
-    const info = resolveActiveCharacter("Mi amiga Gabriela abre la puerta y saluda.", [], "Laura", "Daniel");
-    expect(info.isSwitched).toBe(false); expect(info.name).toBe("Laura");
+  it("detects when the user introduces another character like sister Gabriela and sanitizes niece leaks", () => {
+    const userLine = "Mi hermana Gabriela abre la puerta. Y me conseguí allí en toallas sin importar las altas sobre mí para darme un abrazote Y apretarse fuente contra mí de la emoción";
+    const info = resolveActiveCharacter(userLine, [], "Estefanía (la sobrina)", "William (el tío)");
+    expect(info.isSwitched).toBe(true);
+    expect(info.name).toBe("Gabriela");
+    expect(info.role).toBe("la hermana de William");
+    expect(info.fullLabel).toBe("Gabriela (la hermana de William)");
+    expect(info.addressTerm).toBe("hermano");
+
+    // Keeps Gabriela active on subsequent turn when no other character is named
+    const nextInfo = resolveActiveCharacter("La abrazo fuerte contra mi pecho", [{ role: "user", content: userLine }], "Estefanía (la sobrina)", "William (el tío)");
+    expect(nextInfo.isSwitched).toBe(true);
+    expect(nextInfo.name).toBe("Gabriela");
+
+    const leaked = "*Estefanía se sonroja y mira*\nTe extrañé mucho, hermano.";
+    const cleaned = sanitizeSwitchedReply(leaked, info);
+    expect(cleaned).not.toContain("*Estefanía");
+    expect(cleaned).toContain("*Me acerco a ti*");
+    expect(cleaned).toContain("hermano");
   });
-  it("follows an explicit director instruction and does not invent a replacement action", () => {
-    const info = resolveActiveCharacter("Ahora responde como Gabriela", [], "Laura", "Daniel");
-    expect(info.isSwitched).toBe(true); expect(info.name).toBe("Gabriela");
-    const reply = "*Laura mira el reloj.* Todavía son las ocho.";
-    expect(sanitizeSwitchedReply(reply, info)).toBe(reply);
-    expect(sanitizeSwitchedReply(reply, info)).not.toContain("Me acerco a ti");
-    const next = resolveActiveCharacter("Seguimos hablando del libro.", [{ role: "user", content: "Ahora responde como Gabriela" }], "Laura", "Daniel");
-    expect(next.name).toBe("Gabriela");
-    expect(resolveActiveCharacter("Vuelve a tu personaje original", [{ role: "user", content: "Ahora responde como Gabriela" }], "Laura", "Daniel").name).toBe("Laura");
+  it("keeps sister active when user mentions Estefanía/sobrina in third person and does not block vocabulary words", () => {
+    const turn1 = "La abrazo por la cintura la pego hacia mí, le digo yo también te extrañé mucho hermana pero tú sabes que tuvimos algo más que una relación como hermanos";
+    const turn2 = "le digo claro que no olvidaría un momento así si el mejor efecto de ese momento lo tuve hace unos minutos atrás y ese efecto era Estefanía porque aunque mi hermana no me lo había confesado, Estefanía no era mi sobrina, era mi hija";
+    const turn3 = "tú sabes que Estefanía tiene mis mismos ojos y cuando Estefanía me abrazó sentí la verdad";
+    const info = resolveActiveCharacter(turn3, [{ role: "user", content: turn1 }, { role: "user", content: turn2 }], "Estefanía", "Willian");
+    expect(info.isSwitched).toBe(true);
+    expect(info.name).toBe("la hermana de Willian");
+    expect(info.role).toBe("la hermana de Willian");
+    expect(info.fullLabel).toBe("la hermana de Willian");
+    expect(info.addressTerm).toBe("hermano");
+
+    // Does NOT block or strip legitimate words like "director", "papá", "tío", or "Estefanía"
+    const replyText = "*Me estremezco* Willian, Estefanía sigue pensando que eres su tío y el director del colegio nos vio llegar.";
+    const cleaned = sanitizeSwitchedReply(replyText, info);
+    expect(cleaned).toContain("director");
+    expect(cleaned).toContain("tío");
+    expect(cleaned).toContain("Estefanía");
   });
   it("detects verbatim and near-duplicate assistant replies in history", () => {
     const prevReply = "*Me estremezco al escuchar tus palabras, hermano* Willian, no puedes borrar lo que pasó entre nosotros esa noche; el deseo me sigue quemando por dentro cada vez que me tocas así.";
@@ -88,12 +124,4 @@ describe("role reply presentation", () => {
     expect(info.role).toBe("Daniela");
     expect(info.fullLabel).toBe("Daniela");
   });
-});
-
-it("retains both generated components when the provider uses narration/dialogue field names", () => {
-  expect(normalizeAssistantReply('{"narracion":"Reviso la fecha.","dialogo":"La carta está fechada el martes."}')).toBe("*Reviso la fecha.* La carta está fechada el martes.");
-  expect(normalizeAssistantReply('{"reaction":"I check the date.","dialogue":"The letter is dated Tuesday."}')).toBe("*I check the date.* The letter is dated Tuesday.");
-});
-it("does not expose a truncated narration/dialogue object as visible chat", () => {
-  expect(normalizeAssistantReply('{"narracion":"Reviso la carta","dialogo":"Todavía falta')).toBeNull();
 });

@@ -1,5 +1,5 @@
 import type { SoundId, DetectedSoundEvent } from "./types";
-import { detectPhysicalSoundEvents } from "./matcher";
+import { detectSoundEvents } from "./matcher";
 import { generateSoundPcm } from "./audioSynthesizer";
 
 export * from "./types";
@@ -67,10 +67,9 @@ export function scheduleCinematicScene(
   context: AudioContext,
   messageText: string,
   baseTime?: number,
-  masterVolume = 0.65,
-  onScheduled?: (source: AudioBufferSourceNode, startAt: number, ambient: boolean) => void
+  masterVolume = 0.65
 ): AudioBufferSourceNode[] {
-  const events: DetectedSoundEvent[] = detectPhysicalSoundEvents(messageText);
+  const events: DetectedSoundEvent[] = detectSoundEvents(messageText);
   if (!events.length) return [];
 
   const start = baseTime ?? context.currentTime;
@@ -83,10 +82,7 @@ export function scheduleCinematicScene(
       start + event.delaySec,
       event.volume * masterVolume
     );
-    if (source) {
-      sources.push(source);
-      onScheduled?.(source, start + event.delaySec, /^(?:rain|wind|thunder|salon)/u.test(event.soundId));
-    }
+    if (source) sources.push(source);
   }
 
   return sources;

@@ -1,5 +1,3 @@
-import { chatSceneContext } from "@/lib/chatScene";
-import { getStoryVoice } from "@/lib/voices";
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Header } from "@/components/layout/Header";
@@ -49,16 +47,15 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useAdultMode } from "@/contexts/AdultModeContext";
 import { invokeFunctionWithRetry } from "@/lib/invokeFunction";
 import { streamSpeech, type SpeechStream } from "@/lib/ttsStream";
+import { playSceneFoley } from "@/lib/foleyStudio";
 import { selectStoryMemory, buildPersistentChronicle } from "@/lib/storyMemory";
-import { useConversationScope } from "@/hooks/useConversationScope";
-import { CHAT_STORAGE, readChatHistory, readChatValue, writeChatValue, legacyChatAvailable, recoverLegacyChat, persistChatChanges } from "@/lib/chatStorage";
 import { startWavRecording, blobToBase64, type WavRecorder } from "@/lib/wavRecorder";
 import { browserSpeechLocale, getStoryRegion, getStoryAccent, spokenRegion } from "@/lib/regions";
-import { normalizeAssistantResponse, type ReplyEngine } from "@/lib/roleReply";
-import { ChatCharacterConfigDialog, isMediaVideo } from "@/components/chat/ChatCharacterConfigDialog";
+import { normalizeAssistantReply } from "@/lib/roleReply";
+import { ChatCharacterConfigDialog, fallbackFemaleSpeech, isMediaVideo } from "@/components/chat/ChatCharacterConfigDialog";
 import { PremiumGalleryDialog } from "@/components/chat/PremiumGalleryDialog";
 import { ChatAiSettingsDialog } from "@/components/story/ChatAiSettingsDialog";
-import { resolveConversationModelId, getStoryAiSettings, AVAILABLE_AI_MODELS } from "@/lib/storyAiSettings";
+import { getStoryAiSettings, AVAILABLE_AI_MODELS } from "@/lib/storyAiSettings";
 import { getMotherCardConfig } from "@/lib/roleplayBase";
 import { toast } from "@/hooks/use-toast";
 
@@ -69,10 +66,6 @@ import { toast } from "@/hooks/use-toast";
 export interface CharacterItem {
   id: string;
   name: string;
-  playerRole?: string;
-  playerRoleEs?: string;
-  playerRoleEn?: string;
-  sourceKey?: string;
   age: number;
   gender: "female" | "male" | "non-binary";
   style: "realistic" | "anime";
@@ -110,7 +103,6 @@ export interface ChatMessage {
   content: string;
   timestamp: string;
   mediaUrl?: string;
-  engine?: ReplyEngine;
 }
 
 // ==========================================
@@ -148,9 +140,9 @@ const TALKIEMATE_CHARACTERS: CharacterItem[] = [
     affinityTitleEs: "Coqueteo Curioso",
     affinityXp: 70,
     category: "featured",
-    starterMessage: "",
-    starterMessageEn: "",
-    starterMessageEs: "",
+    starterMessage: "Hey there... I've been thinking about you all day. How are you going to spoil me tonight?",
+    starterMessageEn: "Hey there... I've been thinking about you all day. How are you going to spoil me tonight?",
+    starterMessageEs: "Mmm, hola cariño... He estado pensando en ti todo el día. Dime cómo me vas a consentir esta noche...",
     voiceName: "Aoede"
   },
   {
@@ -182,9 +174,9 @@ const TALKIEMATE_CHARACTERS: CharacterItem[] = [
     affinityTitleEs: "Atracción Seductora",
     affinityXp: 45,
     category: "featured",
-    starterMessage: "",
-    starterMessageEn: "",
-    starterMessageEs: "",
+    starterMessage: "*Adjusting my crimson silk dress on the balcony.* You're late... though I must admit, you were worth the wait. Pour me a glass?",
+    starterMessageEn: "*Adjusting my crimson silk dress on the balcony.* You're late... though I must admit, you were worth the wait. Pour me a glass?",
+    starterMessageEs: "*Acomodo mi vestido carmesí en el balcón mientras te miro con una sonrisa.* Llegas tarde... aunque admito que la espera valió la pena. ¿Me sirves una copa?",
     voiceName: "Kore"
   },
   {
@@ -215,9 +207,9 @@ const TALKIEMATE_CHARACTERS: CharacterItem[] = [
     affinityTitleEs: "Vínculo Digital",
     affinityXp: 30,
     category: "featured",
-    starterMessage: "",
-    starterMessageEn: "",
-    starterMessageEs: "",
+    starterMessage: "*My cybernetic eyes glow with a soft azure shimmer.* Neural link established. I'm so excited to finally have you here with me...",
+    starterMessageEn: "*My cybernetic eyes glow with a soft azure shimmer.* Neural link established. I'm so excited to finally have you here with me...",
+    starterMessageEs: "*Mis ojos cibernéticos brillan con un suave resplandor azul.* Conexión neuronal establecida. Qué alegría tenerte aquí frente a mí...",
     voiceName: "Fenrir"
   },
   {
@@ -253,9 +245,9 @@ const TALKIEMATE_CHARACTERS: CharacterItem[] = [
     affinityTitleEs: "Intrigada",
     affinityXp: 20,
     category: "featured",
-    starterMessage: "",
-    starterMessageEn: "",
-    starterMessageEs: "",
+    starterMessage: "*Leaning back on the leather couch, looking you up and down.* I assume you didn't come all this way just to talk business, right?",
+    starterMessageEn: "*Leaning back on the leather couch, looking you up and down.* I assume you didn't come all this way just to talk business, right?",
+    starterMessageEs: "*Me recuesto en el sofá de cuero mirándote de arriba abajo.* Supongo que no viniste hasta aquí solo para hablar de negocios, ¿verdad?",
     voiceName: "Aoede"
   },
   {
@@ -289,9 +281,9 @@ const TALKIEMATE_CHARACTERS: CharacterItem[] = [
     affinityTitleEs: "Oyente Cercana",
     affinityXp: 55,
     category: "featured",
-    starterMessage: "",
-    starterMessageEn: "",
-    starterMessageEs: "",
+    starterMessage: "Close the door and make yourself comfortable. No judgment here... just you and me. Tell me what no one else knows about you.",
+    starterMessageEn: "Close the door and make yourself comfortable. No judgment here... just you and me. Tell me what no one else knows about you.",
+    starterMessageEs: "Cierra la puerta y ponte cómodo. Aquí no hay juicios... solo tú y yo. Cuéntame qué es lo que nadie más sabe de ti.",
     voiceName: "Kore"
   },
   {
@@ -322,9 +314,9 @@ const TALKIEMATE_CHARACTERS: CharacterItem[] = [
     affinityTitleEs: "Compañera Íntima",
     affinityXp: 60,
     category: "featured",
-    starterMessage: "",
-    starterMessageEn: "",
-    starterMessageEs: "",
+    starterMessage: "*Holding my wine glass with a thoughtful smile.* The best stories always begin after midnight, don't you think?",
+    starterMessageEn: "*Holding my wine glass with a thoughtful smile.* The best stories always begin after midnight, don't you think?",
+    starterMessageEs: "*Sostengo mi copa de vino con una media sonrisa pensativa.* Las mejores historias siempre empiezan después de medianoche, ¿no crees?",
     voiceName: "Aoede"
   },
   {
@@ -355,9 +347,9 @@ const TALKIEMATE_CHARACTERS: CharacterItem[] = [
     affinityTitleEs: "Atracción Rebelde",
     affinityXp: 25,
     category: "featured",
-    starterMessage: "",
-    starterMessageEn: "",
-    starterMessageEs: "",
+    starterMessage: "*Biting my lip and looking right at you.* I saw you watching me from backstage... Don't act shy now.",
+    starterMessageEn: "*Biting my lip and looking right at you.* I saw you watching me from backstage... Don't act shy now.",
+    starterMessageEs: "*Muerdo mi labio y te desafío con la mirada.* Te vi mirándome desde el escenario... No te hagas el tímido ahora.",
     voiceName: "Puck"
   },
   {
@@ -388,9 +380,9 @@ const TALKIEMATE_CHARACTERS: CharacterItem[] = [
     affinityTitleEs: "Fan VIP",
     affinityXp: 80,
     category: "featured",
-    starterMessage: "",
-    starterMessageEn: "",
-    starterMessageEs: "",
+    starterMessage: "*Adjusting my cute costume with a wink.* You got the exclusive backstage pass... so, what are you going to do with it?",
+    starterMessageEn: "*Adjusting my cute costume with a wink.* You got the exclusive backstage pass... so, what are you going to do with it?",
+    starterMessageEs: "*Acomodo mi traje y te guiño un ojo.* Conseguiste el pase exclusivo tras bambalinas... ¿y ahora qué vas a hacer con él?",
     voiceName: "Kore"
   },
   {
@@ -421,9 +413,9 @@ const TALKIEMATE_CHARACTERS: CharacterItem[] = [
     affinityTitleEs: "Secreto de Medianoche",
     affinityXp: 35,
     category: "featured",
-    starterMessage: "",
-    starterMessageEn: "",
-    starterMessageEs: "",
+    starterMessage: "*Looking at you with captivating coolness.* If you're staying here with me tonight, be prepared to not sleep at all.",
+    starterMessageEn: "*Looking at you with captivating coolness.* If you're staying here with me tonight, be prepared to not sleep at all.",
+    starterMessageEs: "*Mirándote fijamente con frialdad seductora.* Si vas a estar aquí conmigo esta noche, prepárate para no dormir nada.",
     voiceName: "Fenrir"
   }
 ];
@@ -433,28 +425,49 @@ const TALKIEMATE_CHARACTERS: CharacterItem[] = [
  * a partir ÚNICAMENTE de la tarjeta explícita del personaje (título de rol y biografía).
  * NUNCA infiere parentesco de palabras sueltas en el historial para evitar alucinaciones.
  */
-export function resolveChatIdentity(char: CharacterItem, _history: ChatMessage[], isEs: boolean) {
+export function resolveChatKinship(char: CharacterItem, history: ChatMessage[], isEs: boolean) {
   const charRole = (isEs ? (char.roleTitleEs || char.roleTitle) : (char.roleTitleEn || char.roleTitle)) || "";
   const charBio = (isEs ? (char.bioEs || char.bio) : (char.bioEn || char.bio)) || "";
-  const playerRoleName = (isEs ? char.playerRoleEs : char.playerRoleEn) || char.playerRole || (isEs ? "Usuario" : "User");
-  const resolvedCharRole = charRole ? char.name + " (" + charRole + ")" : char.name;
-  return { playerRoleName, resolvedCharRole, charBio, charRole };
+
+  // Inspeccionar estrictamente la definición de la tarjeta, jamás el historial abierto
+  const cardText = `${charRole} ${charBio}`.toLowerCase();
+
+  const isPadrino = /\b(?:padrino|ahijad[ao])\b/i.test(cardText);
+  const isSobrina = /\b(?:sobrin[ao]|es\s+su\s+t[ií]o|eres\s+su\s+t[ií]o|tu\s+t[ií]o)\b/i.test(cardText);
+  const isHermana = /\b(?:herman[ao]|hermanit[ao])\b/i.test(cardText);
+  const isPrima = /\b(?:prim[ao]|primit[ao])\b/i.test(cardText);
+  const isMadre = /\b(?:madre|mamá)\b/i.test(cardText) && !/\b(?:gimnasio|compañera|amiga|ejecutiva)\b/i.test(cardText);
+
+  let playerRoleName = isEs ? "Compañero" : "Partner";
+  let resolvedCharRole = charRole || char.name;
+
+  if (isPadrino) {
+    playerRoleName = isEs ? "Padrino" : "Godfather";
+    resolvedCharRole = isEs ? `${char.name} (la ahijada)` : `${char.name} (the goddaughter)`;
+  } else if (isSobrina) {
+    playerRoleName = isEs ? "Tío" : "Uncle";
+    resolvedCharRole = isEs ? `${char.name} (la sobrina)` : `${char.name} (the niece)`;
+  } else if (isHermana) {
+    playerRoleName = isEs ? "Hermano" : "Brother";
+    resolvedCharRole = isEs ? `${char.name} (la hermana)` : `${char.name} (the sister)`;
+  } else if (isPrima) {
+    playerRoleName = isEs ? "Primo" : "Cousin";
+    resolvedCharRole = isEs ? `${char.name} (la prima)` : `${char.name} (the cousin)`;
+  } else if (isMadre) {
+    playerRoleName = isEs ? "Hijo" : "Son";
+    resolvedCharRole = isEs ? `${char.name} (la madre)` : `${char.name} (the mother)`;
+  }
+
+  return { playerRoleName, resolvedCharRole, isSobrina, charBio, charRole };
 }
 
 export default function ChatPage() {
-  const { user, loading } = useAuth();
-  const { language } = useLanguage();
-  if (loading) return <div role="status">{language === "es" ? "Cargando conversaciones…" : "Loading conversations…"}</div>;
-  return <ChatRoom key={user?.id || "guest"} />;
-}
-
-function ChatRoom() {
   const { characterId } = useParams<{ characterId?: string }>();
   const navigate = useNavigate();
   const { language } = useLanguage();
   const isEs = language === "es";
-  const { enabled: adultEnabled, consentGiven } = useAdultMode();
-  const { isAdmin, user } = useAuth();
+  const { enabled: adultEnabled } = useAdultMode();
+  const { isAdmin } = useAuth();
 
   // State: View Mode ('explore' for Catalog, 'room' for Chat Room)
   const [viewMode, setViewMode] = useState<"explore" | "room">(
@@ -463,9 +476,6 @@ function ChatRoom() {
   const [selectedCharacterId, setSelectedCharacterId] = useState<string>(
     characterId || "olivia-adams"
   );
-
-  const conversationScope = useConversationScope(`${user?.id || "guest"}:${characterId || selectedCharacterId}:${selectedCharacterId}`);
-  const sendPendingRef = useRef(false);
 
   // AI Settings Dialog State (Momoo AI style models, memory tiers & token lengths)
   const [isAiSettingsOpen, setIsAiSettingsOpen] = useState(false);
@@ -482,9 +492,9 @@ function ChatRoom() {
   // Dynamic Characters List (persisted in localStorage, allows creating and modifying characters)
   const [characterList, setCharacterList] = useState<CharacterItem[]>(() => {
     try {
-      const saved = readChatValue<CharacterItem[] | null>(CHAT_STORAGE.characters, user?.id, null);
+      const saved = localStorage.getItem("talkiemate_custom_chars_v2");
       if (saved) {
-        const parsed = saved;
+        const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
           // Merge newly enriched default gallery photos if saved character had only 1 photo
           return parsed.map((char: CharacterItem) => {
@@ -500,13 +510,11 @@ function ChatRoom() {
     return TALKIEMATE_CHARACTERS;
   });
 
-  const [charactersChanged, setCharactersChanged] = useState(false);
   useEffect(() => {
     try {
-      if (!charactersChanged && !readChatValue(CHAT_STORAGE.characters, user?.id, null)) return;
-      writeChatValue(CHAT_STORAGE.characters, user?.id, characterList);
+      localStorage.setItem("talkiemate_custom_chars_v2", JSON.stringify(characterList));
     } catch {}
-  }, [characterList, charactersChanged, user?.id]);
+  }, [characterList]);
 
   // Character Configuration Dialog State
   const [isConfigOpen, setIsConfigOpen] = useState(false);
@@ -531,14 +539,60 @@ function ChatRoom() {
   };
 
   const handleSaveCharacter = (updated: CharacterItem) => {
-    stopAudio();
-    setCharactersChanged(true);
     setCharacterList((prev) => {
       const exists = prev.some((c) => c.id === updated.id);
       if (exists) {
         return prev.map((c) => (c.id === updated.id ? updated : c));
       }
       return [updated, ...prev];
+    });
+
+    const newGreeting = isEs
+      ? (updated.starterMessageEs || updated.starterMessage)
+      : (updated.starterMessageEn || updated.starterMessage);
+
+    // Sincronizar inmediatamente el historial para que el saludo inicial muestre el cambio sin demora
+    setChatHistory((prev) => {
+      const existing = prev[updated.id];
+      // Si no hay historial o el historial solo tiene el saludo inicial
+      if (!existing || existing.length === 0 || (existing.length === 1 && existing[0].role === "assistant")) {
+        const next = {
+          ...prev,
+          [updated.id]: [
+            {
+              id: `starter-${updated.id}`,
+              role: "assistant" as const,
+              content: newGreeting,
+              timestamp: isEs ? "Inicio" : "Start"
+            }
+          ]
+        };
+        try {
+          localStorage.setItem("insomnia_user_chat_history_v1", JSON.stringify(next));
+        } catch {}
+        return next;
+      }
+
+      // Si hay mensajes posteriores, actualizar siempre el primer mensaje de bienvenida
+      if (existing.length > 0 && existing[0].role === "assistant") {
+        const updatedFirst = [
+          {
+            ...existing[0],
+            content: newGreeting
+          },
+          ...existing.slice(1)
+        ];
+        const next = {
+          ...prev,
+          [updated.id]: updatedFirst
+        };
+        try {
+          localStorage.setItem("insomnia_user_chat_history_v1", JSON.stringify(next));
+        } catch {}
+        return next;
+      }
+
+      return prev;
     });
 
     if (!openConversations.includes(updated.id)) {
@@ -550,9 +604,9 @@ function ChatRoom() {
   // Open Conversations List in Chat Room (Starts 100% clean for each user)
   const [openConversations, setOpenConversations] = useState<string[]>(() => {
     try {
-      const saved = readChatValue<string[] | null>(CHAT_STORAGE.open, user?.id, null);
+      const saved = localStorage.getItem("insomnia_user_open_convs_v1");
       if (saved) {
-        const parsed = saved;
+        const parsed = JSON.parse(saved);
         if (Array.isArray(parsed)) return parsed;
       }
     } catch {}
@@ -561,30 +615,28 @@ function ChatRoom() {
 
   useEffect(() => {
     try {
-      writeChatValue(CHAT_STORAGE.open, user?.id, openConversations);
+      localStorage.setItem("insomnia_user_open_convs_v1", JSON.stringify(openConversations));
     } catch {}
   }, [openConversations]);
 
-  const [chatHistory, setChatHistory] = useState<Record<string, ChatMessage[]>>(() => readChatHistory(user?.id) as Record<string, ChatMessage[]>);
-  const [canRecoverLegacy, setCanRecoverLegacy] = useState(() => legacyChatAvailable(user?.id));
-  const persistedHistoryRef = useRef(chatHistory);
-  useEffect(() => {
-    try { persistChatChanges(persistedHistoryRef.current, chatHistory, user?.id); persistedHistoryRef.current = chatHistory; } catch { /* Keep the in-memory conversation if storage is full. */ }
-  }, [chatHistory, user?.id]);
-  const handleRecoverLegacy = async () => {
-    if (!user) return;
+  // Messages per character - 100% CLEAN START, NO MOCK OR FAKE PRIOR DIALOGUES
+  const [chatHistory, setChatHistory] = useState<Record<string, ChatMessage[]>>(() => {
     try {
-      const recovered = await recoverLegacyChat(user.id);
-      setChatHistory(recovered.history as Record<string, ChatMessage[]>);
-      if (recovered.characters.length) { setCharactersChanged(true); setCharacterList(recovered.characters); }
-      setOpenConversations(recovered.open);
-      setCanRecoverLegacy(false);
-    } catch (error) {
-      toast({ title: isEs ? "No se pudieron recuperar las conversaciones" : "Could not recover conversations", description: error instanceof Error ? error.message : undefined, variant: "destructive" });
-    }
-  };
+      // Clean up legacy mock data keys so browser cache is completely cleared
+      localStorage.removeItem("talkiemate_exact_history_v3");
+      const saved = localStorage.getItem("insomnia_user_chat_history_v1");
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return {};
+  });
 
-  const bridgeIdsRef = useRef(new Map<string, string>());
+  // Sync to localstorage
+  useEffect(() => {
+    try {
+      localStorage.setItem("insomnia_user_chat_history_v1", JSON.stringify(chatHistory));
+    } catch {}
+  }, [chatHistory]);
+
   // CandyShorts -> Chat Bridge: Ingest character from Series / Shorts directly into Room mode
   useEffect(() => {
     try {
@@ -596,29 +648,64 @@ function ChatRoom() {
       const isAdultParam = params.get("adult") === "1";
 
       if (charName) {
-        const sourceKey = JSON.stringify([seriesTitle || "", charName, premise || ""]);
-        const found = characterList.find((c) => c.sourceKey === sourceKey);
-        const cleanId = found?.id || bridgeIdsRef.current.get(sourceKey) || `series-${crypto.randomUUID()}`;
-        bridgeIdsRef.current.set(sourceKey, cleanId);
+        const cleanId = `series-${charName.toLowerCase().replace(/[^a-z0-9]/g, "-")}`;
+        const found = characterList.find((c) => c.id === cleanId || c.name.toLowerCase() === charName.toLowerCase());
         const targetId = found ? found.id : cleanId;
 
         if (!found) {
           const newChar: CharacterItem = {
-            id: cleanId, sourceKey, name: charName, age: 24, gender: "female", style: "realistic",
-            roleTitle: seriesTitle || charName, roleTitleEs: seriesTitle || charName,
-            bio: premise || "", bioEs: premise || "", shortBio: premise || "", shortBioEs: premise || "",
+            id: cleanId,
+            name: charName,
+            title: seriesTitle || charName,
+            titleEs: seriesTitle || charName,
+            age: 24,
+            gender: "female",
+            relationshipStatus: "Single",
+            relationshipStatusEs: "Soltera",
+            occupation: "Protagonista de Serie",
+            occupationEs: "Protagonista de Serie",
+            personality: ["Enigmática", "Sensual", "Divertida"],
+            personalityEs: ["Enigmática", "Sensual", "Divertida"],
+            bio: premise || `Protagonista de la serie "${seriesTitle || charName}".`,
+            bioEs: premise || `Protagonista de la serie "${seriesTitle || charName}".`,
             avatar: avatar || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=800&q=80",
-            gallery: avatar ? [avatar] : [], imageCount: avatar ? 1 : 0, audioCount: 0, likesCount: "0",
-            affinityLevel: 0, affinityTitle: "", affinityXp: 0, category: "featured",
-            starterMessage: "", starterMessageEs: "", starterMessageEn: "", voiceName: getStoryVoice(cleanId),
+            gallery: [avatar || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=800&q=80"],
+            imageCount: 1,
+            unreadCount: 0,
+            isOnline: true,
+            starterMessage: `Hola... Estaba esperando a que vinieras después de ver mi serie "${seriesTitle || charName}". ¿De qué quieres hablar hoy?`,
+            starterMessageEs: `Hola... Estaba esperando a que vinieras después de ver mi serie "${seriesTitle || charName}". ¿De qué quieres hablar hoy?`,
+            starterMessageEn: `Hey... I was waiting for you to come by after watching my series "${seriesTitle || charName}". What should we talk about?`,
+            voiceName: "es-VE-PaolaNeural",
+            voiceEngine: "edge",
+            style: "realistic",
+            isSpicy: isAdultParam,
           };
-          setCharactersChanged(true);
-          setCharacterList((prev) => prev.some(card => card.id === newChar.id) ? prev : [newChar, ...prev]);
+          setCharacterList((prev) => [newChar, ...prev]);
         }
 
         setSelectedCharacterId(targetId);
         setViewMode("room");
 
+        // Set starter greeting if no prior conversation exists
+        setChatHistory((prev) => {
+          if (!prev[targetId] || prev[targetId].length === 0) {
+            return {
+              ...prev,
+              [targetId]: [
+                {
+                  id: `starter-${targetId}`,
+                  role: "assistant",
+                  content: isEs
+                    ? `Hola... Me alegra verte aquí después de ver mi serie "${seriesTitle || charName}". Cuéntame, ¿qué fue lo que más te gustó?`
+                    : `Hey... So glad to see you here after watching my series "${seriesTitle || charName}". Tell me, what did you like most?`,
+                  timestamp: isEs ? "Ahora" : "Now",
+                },
+              ],
+            };
+          }
+          return prev;
+        });
       }
     } catch (e) {
       console.warn("Could not parse character parameters from URL:", e);
@@ -627,7 +714,6 @@ function ChatRoom() {
 
   // Chat inputs
   const [inputText, setInputText] = useState("");
-  const [pendingUserTurn, setPendingUserTurn] = useState<{ cardId: string; message: ChatMessage } | null>(null);
   const [isTyping, setIsTyping] = useState(false);
   const [playingAudioId, setPlayingAudioId] = useState<string | null>(null);
   const [activePhotoIdx, setActivePhotoIdx] = useState(0);
@@ -664,21 +750,24 @@ function ChatRoom() {
   // Reset conversation for active character to original starter message
   const handleResetCurrentHistory = (customStarter?: string) => {
     if (!activeChar) return;
-    conversationScope.invalidate();
-    sendPendingRef.current = false;
-    setIsTyping(false);
-    setPendingUserTurn(null);
-    handleEndCall();
     stopAudio();
-    if (typeof customStarter === "string") {
-      setCharactersChanged(true);
-      setCharacterList(previous => previous.map(card => card.id === activeChar.id ? {
-        ...card, starterMessage: customStarter.trim(), ...(isEs ? { starterMessageEs: customStarter.trim() } : { starterMessageEn: customStarter.trim() }),
-      } : card));
-    }
-    const nextHistory = { ...chatHistory, [activeChar.id]: [] };
+    const greeting = (typeof customStarter === "string" && customStarter.trim()) || (isEs
+      ? (activeChar.starterMessageEs || activeChar.starterMessage)
+      : (activeChar.starterMessageEn || activeChar.starterMessage));
+
+    const initialStarter: ChatMessage = {
+      id: `starter-${activeChar.id}`,
+      role: "assistant",
+      content: greeting,
+      timestamp: isEs ? "Inicio" : "Start"
+    };
+
+    const nextHistory = { ...chatHistory, [activeChar.id]: [initialStarter] };
     setChatHistory(nextHistory);
-    try { persistChatChanges(chatHistory, nextHistory, user?.id); } catch {}
+    try {
+      localStorage.setItem("insomnia_user_chat_history_v1", JSON.stringify(nextHistory));
+    } catch {}
+
     setIsConfigOpen(false);
 
     toast({
@@ -777,24 +866,68 @@ function ChatRoom() {
     return characterList[0] || TALKIEMATE_CHARACTERS[0];
   }, [characterList, selectedCharacterId]);
 
-  useEffect(() => {
-    handleEndCall();
-    sendPendingRef.current = false;
-    setIsTyping(false);
-    setInputText("");
-    setPendingUserTurn(null);
-    // End pending audio and recording when another card/account becomes active.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedCharacterId, user?.id]);
-
-  const activeCharRef = useRef(activeChar);
-  activeCharRef.current = activeChar;
-
   // Active character full media (video or photo)
   const activeMediaUrl = activeChar.gallery[activePhotoIdx] || activeChar.avatar;
   const isVideoMedia = isMediaVideo(activeMediaUrl);
 
-  const currentMessages = useMemo(() => [...(chatHistory[activeChar.id] || []), ...(pendingUserTurn?.cardId === activeChar.id ? [pendingUserTurn.message] : [])], [chatHistory, activeChar.id, pendingUserTurn]);
+  // Messages for active character: Only clean starter message if no conversation yet
+  const currentMessages = useMemo(() => {
+    const history = chatHistory[activeChar.id];
+    const greeting = isEs
+      ? (activeChar.starterMessageEs || activeChar.starterMessage)
+      : (activeChar.starterMessageEn || activeChar.starterMessage);
+
+    if (!history || history.length === 0) {
+      return [
+        {
+          id: `starter-${activeChar.id}`,
+          role: "assistant" as const,
+          content: greeting,
+          timestamp: isEs ? "Ahora" : "Just now"
+        }
+      ];
+    }
+
+    // Si el primer mensaje fue el saludo inicial, garantizar que siempre refleje el starterMessage configurado
+    if (history.length > 0 && history[0].role === "assistant" && history[0].content !== greeting) {
+      return [
+        {
+          ...history[0],
+          content: greeting
+        },
+        ...history.slice(1)
+      ];
+    }
+
+    return history;
+  }, [chatHistory, activeChar, isEs]);
+
+  // Sincronizar automáticamente chatHistory en localStorage cuando el starterMessage del personaje cambie
+  useEffect(() => {
+    if (!activeChar) return;
+    const greeting = isEs
+      ? (activeChar.starterMessageEs || activeChar.starterMessage)
+      : (activeChar.starterMessageEn || activeChar.starterMessage);
+    if (!greeting) return;
+
+    setChatHistory((prev) => {
+      const history = prev[activeChar.id];
+      if (!history || history.length === 0) return prev;
+
+      if (history[0].role === "assistant" && history[0].content !== greeting) {
+        const next = {
+          ...prev,
+          [activeChar.id]: [{ ...history[0], content: greeting }, ...history.slice(1)]
+        };
+        try {
+          localStorage.setItem("insomnia_user_chat_history_v1", JSON.stringify(next));
+        } catch {}
+        return next;
+      }
+
+      return prev;
+    });
+  }, [activeChar?.id, activeChar?.starterMessage, activeChar?.starterMessageEs, isEs]);
 
   // Scroll to bottom
   useEffect(() => {
@@ -831,9 +964,7 @@ function ChatRoom() {
   // Send message in chat room
   const handleSendMessage = async () => {
     const text = inputText.trim();
-    if (!text || isTyping || sendPendingRef.current || selectedCharacterId !== activeChar.id) return;
-    sendPendingRef.current = true;
-    const request = conversationScope.capture();
+    if (!text || isTyping) return;
 
     const userMsg: ChatMessage = {
       id: `u-${Date.now()}`,
@@ -842,10 +973,22 @@ function ChatRoom() {
       timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
     };
 
-    const currentHistory = chatHistory[activeChar.id] || [];
+    const initialStarter: ChatMessage = {
+      id: `starter-${activeChar.id}`,
+      role: "assistant",
+      content: isEs
+        ? (activeChar.starterMessageEs || activeChar.starterMessage)
+        : (activeChar.starterMessageEn || activeChar.starterMessage),
+      timestamp: isEs ? "Inicio" : "Start"
+    };
+
+    const currentHistory = chatHistory[activeChar.id] || [initialStarter];
     const updatedHistory = [...currentHistory, userMsg];
 
-    setPendingUserTurn({ cardId: activeChar.id, message: userMsg });
+    setChatHistory((prev) => ({
+      ...prev,
+      [activeChar.id]: updatedHistory
+    }));
     setInputText("");
     setIsTyping(true);
 
@@ -858,7 +1001,7 @@ function ChatRoom() {
       const mother = getMotherCardConfig();
       const rawAiSettings = getStoryAiSettings(activeChar.id);
       const isCharNsfw = Boolean(activeChar.isNsfw || rawAiSettings.adultMode || adultEnabled);
-      const selectedModelId = resolveConversationModelId(isCharNsfw, rawAiSettings.modelId || activeChar.modelId, mother.aiSettings.modelId);
+      const selectedModelId = isCharNsfw ? "magnum-v4-local" : (rawAiSettings.modelId || activeChar.modelId || mother.aiSettings.modelId || "insomnia-flash");
       const charAiSettings = {
         ...mother.aiSettings,
         ...rawAiSettings,
@@ -873,28 +1016,33 @@ function ChatRoom() {
 
       // Memory depth matching story cards (up to 260 turns for 32k, 140 for 16k)
       const maxTurns = charAiSettings.memoryTier === "32k" ? 260 : charAiSettings.memoryTier === "16k" ? 140 : charAiSettings.memoryTier === "4k" ? 60 : 30;
-      const fullHistory = currentHistory.map((m) => ({ role: m.role, content: m.content }));
-      const historyPayload = fullHistory.slice(-maxTurns);
+      const historyPayload = currentHistory.slice(-maxTurns).map((m) => ({
+        role: m.role,
+        content: m.content
+      }));
 
-      const { playerRoleName, resolvedCharRole, charBio } = resolveChatIdentity(activeChar, existingHistory, isEs);
+      const { playerRoleName, resolvedCharRole, isSobrina, charBio } = resolveChatKinship(activeChar, existingHistory, isEs);
       
       // Full unified persistent chronicle and memory recall
-      const chroniclePayload = buildPersistentChronicle(fullHistory, activeChar.name, playerRoleName);
+      const chroniclePayload = buildPersistentChronicle(historyPayload, activeChar.name, playerRoleName);
       const memoryPayload = selectStoryMemory(
-        fullHistory,
+        historyPayload,
         text,
         charAiSettings.memoryTier === "32k" ? 60 : charAiSettings.memoryTier === "16k" ? 40 : 20
       );
-      const charRegion = spokenRegion(getStoryRegion(activeCharRef.current.id), getStoryAccent(activeCharRef.current.id));
+      const charRegion = spokenRegion(getStoryRegion(activeChar.id), getStoryAccent(activeChar.id)) || (isEs ? "co" : "us");
 
-      const { data, error } = await invokeFunctionWithRetry<{ content?: string; engine?: ReplyEngine }>("story-chat", {
+      const roleRelationSentence = isSobrina
+        ? `Parentesco inmutable: el usuario es su ${playerRoleName} y ella es su ${resolvedCharRole}.`
+        : `Relación: el usuario es su ${playerRoleName} masculino (NO son familiares, estrictamente prohibido inventar que es su tío o pariente).`;
+
+      const { data, error } = await invokeFunctionWithRetry<{ content?: string }>("story-chat", {
         story: {
           id: activeChar.id,
           title: activeChar.name,
           description: charBio,
-          story_context: chatSceneContext(activeChar, isEs),
+          story_context: `${resolvedCharRole}. Personalidad: ${charBio}. ${roleRelationSentence}`,
           character_role: resolvedCharRole,
-          character_age: activeChar.age,
           player_role: playerRoleName,
           story_type: "chat_page"
         },
@@ -905,28 +1053,63 @@ function ChatRoom() {
         memory: memoryPayload,
         chronicle: chroniclePayload,
         userMessage: text,
-        adultMode: (Boolean(adultEnabled || isCharNsfw)),
-        adultConsent: consentGiven,
+        adultMode: Boolean(adultEnabled || isCharNsfw),
         isNsfw: isCharNsfw,
         region: charRegion,
         settings: charAiSettings
       });
 
-      if (!conversationScope.isCurrent(request)) return;
-      if (error || !data?.content) throw new Error(error?.message || (isEs ? "No se pudo obtener una respuesta del personaje." : "Could not obtain a character reply."));
-      const reply = data.content;
+      let reply = "";
+      if (!error && data?.content) {
+        reply = data.content;
+      } else {
+        // Reintento limpio inmediato si hubo un error transitorio
+        const retryResult = await invokeFunctionWithRetry<{ content?: string }>("story-chat", {
+          story: {
+            id: activeChar.id,
+            title: activeChar.name,
+            description: charBio,
+            story_context: `${resolvedCharRole}. Personalidad: ${charBio}. ${roleRelationSentence}`,
+            character_role: resolvedCharRole,
+            player_role: playerRoleName,
+            story_type: "chat_page"
+          },
+          chatSource: "chat_page",
+          isLiveCall: false,
+          language,
+          history: historyPayload,
+          userMessage: text,
+          adultMode: Boolean(adultEnabled || isCharNsfw),
+          isNsfw: isCharNsfw,
+          region: charRegion,
+          settings: charAiSettings
+        });
+
+        if (retryResult?.data?.content) {
+          reply = retryResult.data.content;
+        } else {
+          setIsTyping(false);
+          toast({
+            title: isEs ? "Error de conexión temporal" : "Temporary connection error",
+            description: isEs
+              ? "No se pudo recibir la respuesta del personaje. Por favor pulsa enviar nuevamente."
+              : "Could not receive character reply. Please try resending your message.",
+            variant: "destructive"
+          });
+          return;
+        }
+      }
 
       const assistantMsg: ChatMessage = {
         id: `a-${Date.now()}`,
         role: "assistant",
         content: reply,
-        engine: data.engine,
         timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
       };
 
       setChatHistory((prev) => ({
         ...prev,
-        [activeChar.id]: [...(prev[activeChar.id] || []), userMsg, assistantMsg]
+        [activeChar.id]: [...(prev[activeChar.id] || []), assistantMsg]
       }));
 
       // AUTO-VOICE: If corneta is active (!isChatMuted), automatically speak incoming message aloud!
@@ -934,22 +1117,9 @@ function ChatRoom() {
         void handlePlayAudio(assistantMsg.id, reply);
       }
     } catch (e) {
-      if (!conversationScope.isCurrent(request)) return;
-      setChatHistory((prev) => ({
-        ...prev, [activeChar.id]: (prev[activeChar.id] || []).filter((message) => message.id !== userMsg.id),
-      }));
-      setInputText((current) => current || text);
-      toast({
-        title: isEs ? "No se pudo recibir la respuesta" : "Could not receive the reply",
-        description: e instanceof Error ? e.message : undefined,
-        variant: "destructive",
-      });
+      console.error(e);
     } finally {
-      if (conversationScope.isCurrent(request)) {
-        sendPendingRef.current = false;
-        setIsTyping(false);
-        setPendingUserTurn(null);
-      }
+      setIsTyping(false);
     }
   };
 
@@ -977,10 +1147,12 @@ function ChatRoom() {
     stopAudio();
     setPlayingAudioId(messageId);
 
+    // Activar foley acústico cinematográfico (puertas, pasos, sábanas, roces, etc.)
+    playSceneFoley(text);
 
     // Voz neural con acento regional auténtico asignado al personaje
-    const voiceToUse = getStoryVoice(activeCharRef.current.id, activeCharRef.current.voiceName);
-    const charRegion = spokenRegion(getStoryRegion(activeCharRef.current.id), getStoryAccent(activeCharRef.current.id));
+    const voiceToUse = activeChar.voiceName || "Aoede";
+    const charRegion = spokenRegion(getStoryRegion(activeChar.id), getStoryAccent(activeChar.id)) || (language === "es" ? "co" : "us");
 
     try {
       const stream = streamSpeech(text, voiceToUse, language, true, charRegion);
@@ -1034,8 +1206,8 @@ function ChatRoom() {
     setCallState("speaking");
     setCallSpeakerText(text);
     const spoken = text.trim();
-    const voiceToUse = getStoryVoice(activeCharRef.current.id, activeCharRef.current.voiceName);
-    const charRegion = spokenRegion(getStoryRegion(activeCharRef.current.id), getStoryAccent(activeCharRef.current.id));
+    const voiceToUse = activeChar.voiceName || "Aoede";
+    const charRegion = spokenRegion(getStoryRegion(activeChar.id), getStoryAccent(activeChar.id)) || (isEs ? "co" : "us");
 
     try {
       const stream = streamSpeech(spoken, voiceToUse, language, true, charRegion);
@@ -1226,7 +1398,7 @@ function ChatRoom() {
             audio,
             mimeType: "audio/wav",
             language: isEs ? "es" : "en",
-            region: spokenRegion(getStoryRegion(activeCharRef.current.id), getStoryAccent(activeCharRef.current.id))
+            region: "mx"
           });
 
           if (!error && data?.text) {
@@ -1272,10 +1444,10 @@ function ChatRoom() {
 
     // 3. Request AI reply continuing the unbroken conversation
     try {
-      const { playerRoleName, resolvedCharRole, charBio } = resolveChatIdentity(activeChar, chatHistory[activeChar.id] || [], isEs);
+      const { playerRoleName, resolvedCharRole, isSobrina, charBio } = resolveChatKinship(activeChar, chatHistory[activeChar.id] || [], isEs);
       const mother = getMotherCardConfig();
       const rawAiSettings = getStoryAiSettings(activeChar.id);
-      const isCharNsfw = Boolean(activeChar.isNsfw || rawAiSettings.adultMode);
+      const isCharNsfw = Boolean(activeChar.isNsfw || rawAiSettings.adultMode || rawAiSettings.modelId === "magnum-v4-local");
       const charAiSettings = {
         ...mother.aiSettings,
         ...rawAiSettings,
@@ -1285,20 +1457,19 @@ function ChatRoom() {
       // Fast call settings: 45 tokens max for instant snappy phone response (<0.5s)
       const fastCallSettings = {
         ...charAiSettings,
-        modelId: resolveConversationModelId(Boolean(adultEnabled || isCharNsfw), rawAiSettings.modelId || activeChar.modelId, mother.aiSettings.modelId),
-        adultMode: (Boolean(adultEnabled || isCharNsfw)),
+        modelId: isCharNsfw ? "magnum-v4-local" : "insomnia-flash",
+        adultMode: Boolean(adultEnabled || isCharNsfw),
         messageLength: 45
       };
-      const charRegion = spokenRegion(getStoryRegion(activeCharRef.current.id), getStoryAccent(activeCharRef.current.id));
+      const charRegion = spokenRegion(getStoryRegion(activeChar.id), getStoryAccent(activeChar.id)) || (isEs ? "co" : "us");
 
-      const { data, error } = await invokeFunctionWithRetry<{ content?: string; engine?: ReplyEngine }>("story-chat", {
+      const { data, error } = await invokeFunctionWithRetry<{ content?: string }>("story-chat", {
         story: {
           id: activeChar.id,
           title: activeChar.name,
           description: charBio,
-          story_context: chatSceneContext(activeChar, isEs),
+          story_context: `${resolvedCharRole}. Bio: ${charBio}. Parentesco inmutable: el usuario es su ${playerRoleName} y ella es su ${resolvedCharRole}`,
           character_role: resolvedCharRole,
-          character_age: activeChar.age,
           player_role: playerRoleName,
           story_type: "live_call"
         },
@@ -1308,31 +1479,29 @@ function ChatRoom() {
         history: priorHistory,
         memory: selectStoryMemory(priorHistory, userText),
         userMessage: userText,
-        adultMode: (Boolean(adultEnabled || isCharNsfw)),
-        adultConsent: consentGiven,
+        adultMode: Boolean(adultEnabled || isCharNsfw),
         isNsfw: isCharNsfw,
         region: charRegion,
         settings: fastCallSettings
       });
 
-      if (!callActiveRef.current || callSessionRef.current !== currentCallSession) return;
-      if (error || !data?.content) {
-        toast({
-          title: isEs ? "No se pudo recibir la respuesta" : "Could not receive the reply",
-          description: error?.message,
-          variant: "destructive",
-        });
-        void callListen();
-        return;
+      let reply = "";
+      if (!error && data?.content) {
+        const clean = normalizeAssistantReply(data.content) || data.content;
+        reply = clean.trim();
+      } else {
+        reply = isSobrina
+          ? (isEs ? `*suspira suavemente* Te escucho tío... Dime más.` : `*sighs softly* I'm listening uncle... Tell me more.`)
+          : (isEs ? `*sonríe* Te escucho perfectamente... Cuéntame más.` : `*smiles* I hear you loud and clear... Tell me more.`);
       }
-      const reply = (normalizeAssistantResponse(data) || data.content).trim();
+
+      if (!callActiveRef.current || callSessionRef.current !== currentCallSession) return;
 
       // 4. Add character reply directly to chat history!
       const assistantMsg: ChatMessage = {
         id: `a-call-${Date.now()}`,
         role: "assistant",
         content: reply,
-        engine: data.engine,
         timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
       };
 
@@ -1369,16 +1538,20 @@ function ChatRoom() {
     // Check existing chat history for context continuity & kinship role
     const existingHistory = chatHistory[activeChar.id] || [];
     const hasUserChatted = existingHistory.some((m) => m.role === "user");
-    const { playerRoleName, resolvedCharRole, charBio } = resolveChatIdentity(activeChar, existingHistory, isEs);
+    const { playerRoleName, resolvedCharRole, isSobrina, charBio } = resolveChatKinship(activeChar, existingHistory, isEs);
 
     let greetingText = "";
 
     const lastUser = [...existingHistory].reverse().find((m) => m.role === "user");
     const lastTopic = lastUser ? lastUser.content.slice(0, 120) : "";
 
-    const promptContext = isEs
-      ? "(Atiende mi llamada en el personaje de esta tarjeta. Conserva la situación y el tono de nuestra conversación, contesta de forma natural y breve, sin inventar familiaridad, alegría ni acontecimientos previos.)"
-      : "(Answer my call as this card's character. Preserve our current situation and tone; respond naturally and briefly without inventing familiarity, enthusiasm or previous events.)";
+    const promptContext = hasUserChatted
+      ? (isEs
+          ? `(Te acabo de llamar por teléfono para continuar nuestra conversación. Contesta la llamada en tu personaje de ${resolvedCharRole}, dirigiéndote a mí como tu ${playerRoleName}, y continúa de forma directa lo último que estábamos hablando sobre: "${lastTopic}". Habla en 1 sola oración breve, viva y natural de voz hablada, puedes incluir una reacción vocal acústica como (*se ríe*, *suspira* o *sonríe*) para transmitir emoción).`
+          : `(I just called you to continue our chat. Pick up in character as ${resolvedCharRole}, addressing me as your ${playerRoleName}, and continue directly what we were talking about: "${lastTopic}". Speak in 1 brief natural spoken sentence with vocal expression).`)
+      : (isEs
+          ? `(Te acabo de llamar por teléfono. Atiende la llamada en tu personaje de ${resolvedCharRole}, saludando a tu ${playerRoleName} con familiaridad y respeto a tu parentesco, diciendo algo como: "¡Hola ${playerRoleName}! ¿Cómo estás? Me alegra mucho que me llames...". Habla en 1 sola oración breve de voz hablada real, puedes incluir una reacción vocal acústica como (*se ríe* o *sonríe*)).`
+          : `(I just called you. Pick up in character as ${resolvedCharRole}, addressing me as your ${playerRoleName}. Speak in 1 brief natural spoken sentence with vocal expression).`);
 
     try {
       const historyPayload = existingHistory.slice(-8).map((m) => ({
@@ -1387,22 +1560,21 @@ function ChatRoom() {
       }));
       const mother = getMotherCardConfig();
       const rawAiSettings = getStoryAiSettings(activeChar.id);
-      const isCharNsfw = Boolean(activeChar.isNsfw || rawAiSettings.adultMode);
+      const isCharNsfw = Boolean(activeChar.isNsfw || rawAiSettings.adultMode || rawAiSettings.modelId === "magnum-v4-local");
       const charAiSettings = {
         ...mother.aiSettings,
         ...rawAiSettings,
         nvidiaApiKey: rawAiSettings.nvidiaApiKey || mother.aiSettings?.nvidiaApiKey || "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",
       };
-      const charRegion = spokenRegion(getStoryRegion(activeCharRef.current.id), getStoryAccent(activeCharRef.current.id));
+      const charRegion = spokenRegion(getStoryRegion(activeChar.id), getStoryAccent(activeChar.id)) || (isEs ? "co" : "us");
 
-      const { data, error } = await invokeFunctionWithRetry<{ content?: string; engine?: ReplyEngine }>("story-chat", {
+      const { data, error } = await invokeFunctionWithRetry<{ content?: string }>("story-chat", {
         story: {
           id: activeChar.id,
           title: activeChar.name,
           description: charBio,
-          story_context: chatSceneContext(activeChar, isEs),
+          story_context: `${resolvedCharRole}. Bio: ${charBio}. Parentesco inmutable: el usuario es su ${playerRoleName} y ella es su ${resolvedCharRole}`,
           character_role: resolvedCharRole,
-          character_age: activeChar.age,
           player_role: playerRoleName,
           story_type: "live_call"
         },
@@ -1412,31 +1584,33 @@ function ChatRoom() {
         history: historyPayload,
         memory: selectStoryMemory(historyPayload, promptContext),
         userMessage: promptContext,
-        adultMode: (Boolean(adultEnabled || isCharNsfw)),
-        adultConsent: consentGiven,
+        adultMode: Boolean(adultEnabled || isCharNsfw),
         isNsfw: isCharNsfw,
         region: charRegion,
-        settings: { ...charAiSettings, modelId: resolveConversationModelId(Boolean(adultEnabled || isCharNsfw), rawAiSettings.modelId || activeChar.modelId, mother.aiSettings.modelId), messageLength: 45 }
+        settings: { ...charAiSettings, modelId: isCharNsfw ? "magnum-v4-local" : "insomnia-flash", messageLength: 45 }
       });
 
       if (!error && data?.content) {
-        const clean = normalizeAssistantResponse(data) || data.content;
+        const clean = normalizeAssistantReply(data.content) || data.content;
         greetingText = clean.trim();
       }
     } catch (e) {
       console.warn("Failed to generate dynamic call intro:", e);
     }
 
-    if (!callActiveRef.current || callSessionRef.current !== currentSession) return;
     if (!greetingText) {
-      handleEndCall();
-      toast({
-        title: isEs ? "No se pudo iniciar la llamada" : "Could not start the call",
-        description: isEs ? "El personaje no pudo responder. La conversación se conserva." : "The character could not respond. Your conversation is preserved.",
-        variant: "destructive",
-      });
-      return;
+      if (isSobrina) {
+        greetingText = hasUserChatted
+          ? (isEs ? `*sonríe* ¡Hola tío! Sí, te escucho perfectamente... Dime, ¿en qué nos quedamos de lo que me decías?` : `*smiles* Hey uncle! Yes, I hear you loud and clear... Tell me, where were we on what you were saying?`)
+          : (isEs ? `*se ríe contenta* ¡Hola tío! Qué alegría que me llames... ¿Cómo estás? Me alegra mucho escucharte.` : `*laughs softly* Hey uncle! What a nice surprise you called... How are you doing?`);
+      } else {
+        greetingText = hasUserChatted
+          ? (isEs ? `*sonríe* ¡Hola! Sí, te escucho perfectamente... Dime, ¿en qué nos quedamos de lo que me decías?` : `*smiles* Hey! Yes, I hear you loud and clear... Tell me, where were we on what you were saying?`)
+          : (isEs ? `*sonríe* ¡Hola! Qué gusto que me llames... ¿Cómo estás? Dime, ¿en qué andas?` : `*smiles* Hey! So nice you called... How are you doing?`);
+      }
     }
+
+    if (!callActiveRef.current || callSessionRef.current !== currentSession) return;
 
     // Add greeting to chat history so it is logged in the written chat!
     const introMsg: ChatMessage = {
@@ -1486,17 +1660,10 @@ function ChatRoom() {
     });
   }, [characterList, activeGender, activeStyle]);
 
-  const recoveryNotice = canRecoverLegacy && <div role="note" className="px-4 py-3 text-sm bg-zinc-900 border-b border-zinc-700">
-        {isEs ? "Hay conversaciones antiguas guardadas en este navegador. Recupéralas en esta cuenta solo si son tuyas." : "There are older conversations saved in this browser. Recover them in this account only if they are yours."}
-        <button className="ml-3 underline" onClick={() => void handleRecoverLegacy()}>{isEs ? "Recuperar mis conversaciones" : "Recover my conversations"}</button>
-      </div>;
-  if (viewMode === "room" && selectedCharacterId !== activeChar.id) return <div><Header />{recoveryNotice}<p role="alert">{isEs ? "Esta tarjeta no está disponible en esta cuenta." : "This card is unavailable in this account."}</p><button onClick={() => navigate("/chat")}>{isEs ? "Volver a personajes" : "Back to characters"}</button></div>;
-
   return (
     <div className="flex flex-col h-[100dvh] w-full max-w-full bg-[#000000] text-zinc-100 font-sans select-none overflow-x-hidden">
       {/* Insomnia Header */}
       <Header />
-      {recoveryNotice}
 
       {/* =========================================================================
           VIEW 1: TALKIEMATE CHARACTER & STORIES HUB
@@ -1829,7 +1996,11 @@ function ChatRoom() {
                     const isSelected = convChar.id === selectedCharacterId;
                     const history = chatHistory[convChar.id] || [];
                     const lastMsg = history[history.length - 1];
-                    const snippet = lastMsg ? lastMsg.content : (isEs ? "Sin mensajes todavía" : "No messages yet");
+                    const snippet = lastMsg
+                      ? lastMsg.content
+                      : isEs
+                      ? (convChar.starterMessageEs || convChar.starterMessage)
+                      : (convChar.starterMessageEn || convChar.starterMessage);
 
                     return (
                       <div

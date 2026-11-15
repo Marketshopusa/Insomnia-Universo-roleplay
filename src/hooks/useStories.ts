@@ -1,5 +1,4 @@
-import { useAuth } from "@/contexts/AuthContext";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { CATALOG_STORIES, CATALOG_CATEGORIES, type CatalogStory } from "@/data/catalogStories";
 import { applyMotherCard } from "@/lib/roleplayBase";
@@ -26,11 +25,8 @@ export const useStories = ({
   page = 1,
   pageSize = 12,
 }: UseStoriesParams = {}) => {
-  const { user, loading } = useAuth();
-  const account = user?.id || "guest";
   return useQuery({
-    enabled: !loading,
-    queryKey: ["stories", account, type, source, hasExplicit, categoryIds, page, pageSize],
+    queryKey: ["stories", type, source, hasExplicit, categoryIds, page, pageSize],
     queryFn: async () => {
       // 1. Helper to query and paginate the 108 crafted stories from the official catalog
       const getCraftedCatalog = (extraRemoteStories: any[] = []) => {
@@ -121,15 +117,14 @@ export const useStories = ({
         return { stories: [], totalCount: 0, totalPages: 0 };
       }
     },
-    placeholderData: (previous, query) => query?.queryKey[1] === account ? previous : undefined,
+    placeholderData: keepPreviousData,
     staleTime: 1000 * 60 * 2,
   });
 };
 
 export const useStory = (storyId: string) => {
-  const { user, loading } = useAuth();
   return useQuery({
-    queryKey: ["story", user?.id || "guest", storyId],
+    queryKey: ["story", storyId],
     queryFn: async () => {
       // 1. Check local catalog first for instant zero-latency loading
       const found = CATALOG_STORIES.find((s) => s.id === storyId);
@@ -173,7 +168,7 @@ export const useStory = (storyId: string) => {
 
       return null;
     },
-    enabled: !!storyId && !loading,
+    enabled: !!storyId,
     staleTime: 1000 * 60 * 5,
   });
 };

@@ -1,4 +1,3 @@
-import { CHAT_STORAGE, readChatValue } from "@/lib/chatStorage";
  import { useState, useRef, useEffect, useMemo } from "react";
  import { useParams, useNavigate } from "react-router-dom";
  import { MainLayout } from "@/components/layout/MainLayout";
@@ -14,14 +13,15 @@ import { RegionMenu } from "@/components/story/RegionMenu";
 import { getStoryVoice, setStoryVoice } from "@/lib/voices";
 import { getStoryAccent, getStoryRegion, setStoryAccent, setStoryRegion, spokenRegion } from "@/lib/regions";
 import { streamSpeech, type SpeechStream } from "@/lib/ttsStream";
+import { fallbackFemaleSpeech } from "@/components/chat/ChatCharacterConfigDialog";
+import { playSceneFoley } from "@/lib/foleyStudio";
 import { invokeFunctionWithRetry } from "@/lib/invokeFunction";
 import { generateSceneImage } from "@/lib/sceneImage";
-import { normalizeAssistantResponse, type ReplyEngine } from "@/lib/roleReply";
+import { normalizeAssistantReply } from "@/lib/roleReply";
 import { buildPersistentChronicle, selectStoryMemory } from "@/lib/storyMemory";
-import { useConversationScope } from "@/hooks/useConversationScope";
 import { resolveStoryCover } from "@/lib/storyCover";
 import { ChatAiSettingsDialog } from "@/components/story/ChatAiSettingsDialog";
-import { resolveConversationModelId, getStoryAiSettings, type StoryAiSettings } from "@/lib/storyAiSettings";
+import { getStoryAiSettings, type StoryAiSettings } from "@/lib/storyAiSettings";
 import { getMotherCardConfig } from "@/lib/roleplayBase";
 import { useStoryCustomizations } from "@/hooks/useStoryCustomizations";
  import { useStory } from "@/hooks/useStories";
@@ -39,12 +39,11 @@ import { toast } from "@/hooks/use-toast";
    role: "user" | "assistant";
    content: string;
    timestamp: Date;
-   engine?: ReplyEngine;
  }
 
 type Mode = "select" | "read" | "roleplay";
  
- const StoryDetailSession = () => {
+ const StoryDetail = () => {
    const { storyId } = useParams<{ storyId: string }>();
    const navigate = useNavigate();
   const { t, language } = useLanguage();
@@ -61,14 +60,14 @@ type Mode = "select" | "read" | "roleplay";
    const localOverride = useMemo(() => {
      if (!storyId || typeof window === "undefined") return null;
      try {
-       const raw = readChatValue<any[] | null>(CHAT_STORAGE.characters, user?.id, null);
+       const raw = localStorage.getItem("talkiemate_custom_chars_v2");
        if (raw) {
-         const list = raw;
+         const list = JSON.parse(raw);
          return list.find((c: any) => c.id === storyId) || null;
        }
      } catch {}
      return null;
-   }, [storyId, story, user?.id]);
+   }, [storyId, story]);
 
    
    const [messages, setMessages] = useState<Message[]>([]);
@@ -96,27 +95,18 @@ type Mode = "select" | "read" | "roleplay";
     setVoice(value);
     voiceRef.current = value;
     setStoryVoice(storyId, value);
-    streamRef.current?.stop();
-    streamRef.current = null;
-    setPlayingId(null);
     audioCacheRef.current.clear();
   };
   const changeRegion = (value: string) => {
     setRegion(value);
     regionRef.current = value;
     setStoryRegion(storyId, value);
-    streamRef.current?.stop();
-    streamRef.current = null;
-    setPlayingId(null);
     audioCacheRef.current.clear();
   };
   const changeAccent = (enabled: boolean) => {
     setAccent(enabled);
     accentRef.current = enabled;
     setStoryAccent(storyId, enabled);
-    streamRef.current?.stop();
-    streamRef.current = null;
-    setPlayingId(null);
     audioCacheRef.current.clear();
   };
   const activeRegion = () => spokenRegion(regionRef.current, accentRef.current);
@@ -124,12 +114,6 @@ type Mode = "select" | "read" | "roleplay";
   const streamRef = useRef<SpeechStream | null>(null);
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [sessionLoaded, setSessionLoaded] = useState(false);
-  const [sessionLoadError, setSessionLoadError] = useState(false);
-  const [sessionLoadAttempt, setSessionLoadAttempt] = useState(0);
-  const [conversationVersion, setConversationVersion] = useState(0);
-  const conversationScope = useConversationScope(`${user?.id || "guest"}:${storyId || ""}`);
-  const sendPendingRef = useRef(false);
-  const saveRevisionRef = useRef(0);
   useEffect(() => {
     const nextVoice = getStoryVoice(storyId);
     const nextRegion = getStoryRegion(storyId);
@@ -287,29 +271,19 @@ type Mode = "select" | "read" | "roleplay";
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
-      const request = conversationScope.capture();
-      setSessionLoadError(false);
-      if (!user || !storyId) {
-        setSessionLoaded(!authLoading);
-        return;
-      }
+      if (!user || !storyId) return;
       const { data, error } = await supabase
         .from("story_sessions")
         .select("messages, narrative, last_mode")
         .eq("user_id", user.id)
         .eq("story_id", storyId)
         .maybeSingle();
-      if (cancelled || !conversationScope.isCurrent(request)) return;
-      if (error) {
-        setSessionLoadError(true);
-        return; // Never overwrite a session whose history could not be read.
-      }
+      if (cancelled) return;
       if (!error && data) {
         const raw = (data.messages as any[]) || [];
         const restored: Message[] = raw.flatMap((m: any) => {
-          if (m.id === "intro") return [];
-          const content = m.role === "assistant" ? normalizeAssistantResponse(m) : m.content;
-          return content ? [{ id: m.id, role: m.role, content, engine: m.engine, timestamp: new Date(m.timestamp) }] : [];
+          const content = m.role === "assistant" ? normalizeAssistantReply(m.content) : m.content;
+          return content ? [{ id: m.id, role: m.role, content, timestamp: new Date(m.timestamp) }] : [];
         });
         if (restored.length > 0) setMessages(restored);
         if (data.narrative) setNarrative(data.narrative);
@@ -319,11 +293,9 @@ type Mode = "select" | "read" | "roleplay";
       }
       setSessionLoaded(true);
     };
-    void load().catch(() => {
-      if (!cancelled) setSessionLoadError(true);
-    });
+    load();
     return () => { cancelled = true; };
-  }, [user?.id, storyId, authLoading, sessionLoadAttempt]);
+  }, [user, storyId]);
 
   // Preserve the order of saves: a slow earlier request must not overwrite a newer turn.
   const saveQueueRef = useRef<Promise<void> | null>(null);
@@ -341,7 +313,6 @@ type Mode = "select" | "read" | "roleplay";
         id: m.id,
         role: m.role,
         content: m.content,
-        ...(m.engine ? { engine: m.engine } : {}),
         timestamp: m.timestamp.toISOString(),
       }));
     const sessionRow = {
@@ -351,10 +322,8 @@ type Mode = "select" | "read" | "roleplay";
       narrative: nextNarrative,
       last_mode: nextMode,
     };
-    const revision = saveRevisionRef.current;
     const previous = saveQueueRef.current ?? Promise.resolve();
     const nextSave = previous.catch(() => {}).then(async () => {
-      if (revision !== saveRevisionRef.current) return;
       const { error } = await supabase
         .from("story_sessions")
         .upsert(sessionRow, { onConflict: "user_id,story_id" });
@@ -372,6 +341,34 @@ type Mode = "select" | "read" | "roleplay";
      scrollToBottom();
    }, [messages]);
  
+   // Initialize with story intro message
+   useEffect(() => {
+     if (story && sessionLoaded && messages.length === 0) {
+       const introMessage: Message = {
+         id: "intro",
+         role: "assistant",
+         content: getIntroMessage(story),
+         timestamp: new Date(),
+       };
+       setMessages([introMessage]);
+     }
+  }, [story, sessionLoaded, language, tTitle, tDescription, tCharacter, tPlayer]);
+
+  // Re-render intro when language changes
+  useEffect(() => {
+    if (story && messages.length > 0) {
+      const nextIntro = getIntroMessage(story);
+      setMessages((prev) => {
+        const currentIntro = prev.find((m) => m.id === "intro");
+        if (currentIntro && currentIntro.content === nextIntro) return prev;
+        return prev.map((m) =>
+          m.id === "intro" ? { ...m, content: nextIntro } : m
+        );
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [language, tTitle, tDescription, tCharacter, tPlayer]);
+ 
    const getIntroMessage = (story: any) => {
     const characterRole = localOverride?.roleTitle || tCharacter || story.character_role || t("chat.char");
     const playerRole = tPlayer || story.player_role || t("chat.you");
@@ -381,8 +378,7 @@ type Mode = "select" | "read" | "roleplay";
     return `*${title}*\n\n${description}\n\n${t("story.youArePlaying")}: **${playerRole}**\n${t("story.iAmPlaying")}: **${characterRole}**\n\n*${t("story.sceneSet")}*`;
    };
  
-   const generateResponse = async (userMessage: string, currentMessageId: string): Promise<{ content: string; engine?: ReplyEngine } | null> => {
-    const request = conversationScope.capture();
+   const generateResponse = async (userMessage: string, currentMessageId: string): Promise<string | null> => {
     const history = messagesRef.current
       .filter((m) => m.id !== "intro" && m.id !== currentMessageId)
       .map((m) => ({ role: m.role, content: m.content }));
@@ -399,7 +395,7 @@ type Mode = "select" | "read" | "roleplay";
     const effectiveAiSettings: StoryAiSettings = {
       ...mother.aiSettings,
       ...aiSettings,
-      modelId: resolveConversationModelId(isAdultStory, aiSettings?.modelId, mother.aiSettings?.modelId),
+      modelId: isAdultStory ? "magnum-v4-local" : (aiSettings?.modelId || mother.aiSettings?.modelId || "insomnia-flash"),
       adultMode: isAdultStory,
       dialogueRatio: mother.dialogueRatio || 0.80,
       narrationRatio: mother.narrationRatio || 0.20,
@@ -407,14 +403,14 @@ type Mode = "select" | "read" | "roleplay";
       messageLength: Math.max(280, Number(aiSettings.messageLength || mother.targetTokens)),
     };
 
-    const { data, error } = await invokeFunctionWithRetry<{ content?: string; engine?: ReplyEngine; error?: string; message?: string }>("story-chat", {
+    const { data, error } = await invokeFunctionWithRetry<{ content?: string; error?: string; message?: string }>("story-chat", {
         story: {
           id: story?.id,
           title: localOverride?.name || story?.title || tTitle,
           description: localOverride?.bio || story?.description || tDescription,
           story_context: localOverride?.starterMessage || storyContext || tDescription,
           character_role: localOverride?.roleTitle || story?.character_role || tCharacter,
-          character_age: localOverride?.age ?? story?.character_age ?? null,
+          character_age: Math.max(18, Number(story?.character_age) || 21),
           player_role: story?.player_role || tPlayer,
           story_type: story?.story_type,
         },
@@ -425,18 +421,12 @@ type Mode = "select" | "read" | "roleplay";
         settings: effectiveAiSettings,
         userMessage,
         adultMode: isAdultStory,
-        adultConsent: consentGiven,
         isNsfw: isAdultStory,
         region: activeRegion(),
     });
-    if (!conversationScope.isCurrent(request)) return null;
     if (error || !data?.content) {
       const status = (error as { context?: Response } | null)?.context?.status;
       const code = status === 402 ? "credits_exhausted" : (data as any)?.error;
-      if (code === "content_blocked") {
-        messagesRef.current = messagesRef.current.filter(message => message.id !== currentMessageId);
-        setMessages(messagesRef.current);
-      }
       if (code === "rate_limited") toast({ title: t("mode.rateLimited"), variant: "destructive" });
       else if (code === "credits_exhausted") toast({ title: t("mode.creditsExhausted"), variant: "destructive" });
       else if (code === "login_required" || status === 401) toast({
@@ -459,7 +449,6 @@ type Mode = "select" | "read" | "roleplay";
         description: data?.message,
         variant: "destructive",
       });
-      else if (String(code || "").startsWith("adult_")) toast({ title: language === "es" ? "Acceso al modo adulto" : "Adult mode access", description: data?.message || error?.message, variant: "destructive" });
       else if (code === "minor_safety_violation") toast({
         title: language === "es" ? "Bloqueo de Seguridad (+18)" : "Safety Policy Block (+18)",
         description: data?.message || (language === "es" ? "Está terminantemente prohibido cualquier contenido o rol que involucre o aluda a menores de edad. Todos los personajes deben ser mayores de 18 años." : "Content involving minors is strictly prohibited. All characters must be 18+."),
@@ -480,58 +469,55 @@ type Mode = "select" | "read" | "roleplay";
         description: data?.message || (language === "es" ? "Tu mensaje sigue en el cuadro para reenviarlo." : "Your message remains in the box for another attempt."),
         variant: "destructive",
       });
-      else if (String(code || "").startsWith("magnum_") || code === "non_explicit_only") toast({ title: "Magnum", description: data?.message || error?.message, variant: "destructive" });
       else toast({ title: t("mode.aiError"), variant: "destructive" });
       return null;
     }
-    const visibleReply = normalizeAssistantResponse(data);
+    const visibleReply = normalizeAssistantReply(data.content);
     if (!visibleReply) {
       toast({ title: language === "es" ? "La respuesta salió incompleta; inténtalo de nuevo" : "The reply was incomplete; try again", variant: "destructive" });
       return null;
     }
-    return { content: visibleReply, engine: data.engine };
+    return visibleReply;
    };
  
    const handleSendMessage = async () => {
-     if (!inputMessage.trim() || sendPendingRef.current || !sessionLoaded) return;
-     sendPendingRef.current = true;
-     const request = conversationScope.capture();
+     if (!inputMessage.trim()) return;
+ 
      const userMessage: Message = {
-       id: crypto.randomUUID(), role: "user", content: inputMessage, timestamp: new Date(),
+       id: Date.now().toString(),
+       role: "user",
+       content: inputMessage,
+       timestamp: new Date(),
      };
-     messagesRef.current = [...messagesRef.current, userMessage];
-     setMessages(messagesRef.current);
+ 
+     setMessages((prev) => [...prev, userMessage]);
      setInputMessage("");
      setIsTyping(true);
-     try {
-       const responseContent = await generateResponse(userMessage.content, userMessage.id);
-       if (!conversationScope.isCurrent(request)) return;
-       if (!responseContent) {
-         messagesRef.current = messagesRef.current.filter((message) => message.id !== userMessage.id);
-         setMessages(messagesRef.current);
-         setInputMessage((current) => current || userMessage.content);
-         return;
-       }
-       const assistantMessage: Message = {
-         id: crypto.randomUUID(), role: "assistant", content: responseContent.content, engine: responseContent.engine, timestamp: new Date(),
-       };
-       const next = [...messagesRef.current, assistantMessage];
-       messagesRef.current = next;
-       setMessages(next);
-       void saveSession(next, narrative || null, mode);
-       if (!isMuted) void playAudio(responseContent.content, assistantMessage.id);
-     } catch {
-       if (!conversationScope.isCurrent(request)) return;
-       messagesRef.current = messagesRef.current.filter((message) => message.id !== userMessage.id);
-       setMessages(messagesRef.current);
-       setInputMessage((current) => current || userMessage.content);
-       toast({ title: t("mode.aiError"), variant: "destructive" });
-     } finally {
-       if (conversationScope.isCurrent(request)) {
-         sendPendingRef.current = false;
-         setIsTyping(false);
-       }
+ 
+ 
+     const responseContent = await generateResponse(userMessage.content, userMessage.id);
+     if (!responseContent) {
+       setMessages((previous) => previous.filter((message) => message.id !== userMessage.id));
+       setInputMessage(userMessage.content);
+       setIsTyping(false);
+       return;
      }
+     
+     const assistantMessage: Message = {
+       id: (Date.now() + 1).toString(),
+       role: "assistant",
+       content: responseContent,
+       timestamp: new Date(),
+     };
+ 
+     const current = messagesRef.current;
+     const base = current.some((item) => item.id === userMessage.id) ? current : [...current, userMessage];
+     const next = base.some((item) => item.id === assistantMessage.id) ? base : [...base, assistantMessage];
+     messagesRef.current = next;
+     setMessages(next);
+     void saveSession(next, narrative || null, mode);
+     setIsTyping(false);
+     if (!isMuted) void playAudio(responseContent, assistantMessage.id);
    };
 
   const playAudio = async (text: string, id: string) => {
@@ -544,9 +530,11 @@ type Mode = "select" | "read" | "roleplay";
       streamRef.current = null;
       setPlayingId(id);
 
+      // Activar foley acústico cinematográfico (puertas, pasos, sábanas, roces, etc.)
+      playSceneFoley(text);
 
       const activeVoice = voiceRef.current;
-      const speech = streamSpeech(text, activeVoice, language, true, activeRegion());
+      const speech = streamSpeech(text, activeVoice, language, id !== "narrative" && id !== "intro", activeRegion());
       streamRef.current = speech;
       await speech.done;
       if (streamRef.current === speech) {
@@ -573,27 +561,13 @@ type Mode = "select" | "read" | "roleplay";
    // Reset the roleplay: wipe the saved conversation so it starts fresh and stays private
    const resetRoleplay = async () => {
      if (!user || !storyId) return;
-     conversationScope.invalidate();
-     const request = conversationScope.capture();
-     saveRevisionRef.current += 1;
-     sendPendingRef.current = false;
-     setIsTyping(false);
-     setSessionLoaded(false);
-     setConversationVersion((version) => version + 1);
      stopAudio();
-     // Let an in-flight save settle, then delete; invalidate older queued saves.
-     await saveQueueRef.current?.catch(() => {});
-     if (!conversationScope.isCurrent(request)) return;
-     const { error } = await supabase
-       .from("story_sessions").delete().eq("user_id", user.id).eq("story_id", storyId);
-     if (!conversationScope.isCurrent(request)) return;
-     setSessionLoaded(true);
-     if (error) {
-       toast({ title: language === "es" ? "No se pudo reiniciar la conversación" : "Could not reset conversation", variant: "destructive" });
-       return;
-     }
-     const next: Message[] = [];
-     setMessages(next);
+     await supabase
+       .from("story_sessions")
+       .delete()
+       .eq("user_id", user.id)
+       .eq("story_id", storyId);
+     setMessages(story ? [{ id: "intro", role: "assistant", content: getIntroMessage(story), timestamp: new Date() }] : []);
      setSceneImages({});
      toast({ title: language === "es" ? "Roleplay reiniciado. La conversación anterior se borró." : "Roleplay reset. Previous conversation deleted." });
    };
@@ -648,7 +622,6 @@ type Mode = "select" | "read" | "roleplay";
 
     const generateNarrative = async () => {
      if (!story) return;
-     const request = conversationScope.capture();
      setNarrativeLoading(true);
      setNarrative("");
      try {
@@ -674,7 +647,6 @@ type Mode = "select" | "read" | "roleplay";
              .join("\n")
              .slice(0, 4000),
        });
-       if (!conversationScope.isCurrent(request)) return;
        if (error || !(data as any)?.content) {
          const code = (data as any)?.error;
          if (code === "rate_limited") toast({ title: t("mode.rateLimited"), variant: "destructive" });
@@ -686,7 +658,7 @@ type Mode = "select" | "read" | "roleplay";
           saveSession(messages, (data as any).content, mode);
        }
      } finally {
-       if (conversationScope.isCurrent(request)) setNarrativeLoading(false);
+       setNarrativeLoading(false);
      }
    };
 
@@ -1126,29 +1098,20 @@ type Mode = "select" | "read" | "roleplay";
                       title={language === "es" ? "Configurar IA y Memoria (Estilo Momoo AI)" : "AI & Memory Settings"}
                     >
                       <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                      <span className="text-xs font-semibold">{aiSettings.memoryTier.toUpperCase()} • {aiSettings.modelId === "magnum-conversation" ? "90–150 palabras" : `${aiSettings.messageLength}t`}</span>
+                      <span className="text-xs font-semibold">{aiSettings.memoryTier.toUpperCase()} • {aiSettings.messageLength}t</span>
                     </Button>
                     <VoiceMenu value={voice} language={language} onChange={changeVoice} />
                     <RegionMenu value={region} accent={accent} language={language} onChange={changeRegion} onAccentChange={changeAccent} />
-                    {sessionLoaded && <CallDialog
-                      key={`${storyId}:${conversationVersion}`}
-                      story={{
-                        ...story,
-                        title: localOverride?.name || story.title,
-                        description: localOverride?.bio || story.description,
-                        story_context: localOverride?.starterMessage || storyContext,
-                        character_role: localOverride?.roleTitle || story.character_role,
-                        character_age: localOverride?.age ?? story.character_age ?? null,
-                      }}
+                    <CallDialog
+                      story={story}
                       language={language}
                       voice={voice}
                       region={spokenRegion(region, accent)}
                       adultMode={adultEnabled && consentGiven}
-                      adultConsent={consentGiven}
                       history={messages
                         .filter((message) => message.id !== "intro")
                         .map((message) => ({ role: message.role, content: message.content }))}
-                      onTurn={(userText, assistantText, engine) => {
+                      onTurn={(userText, assistantText) => {
                         const previous = messagesRef.current;
                         const last = previous[previous.length - 1];
                         const spoken = last?.role === "user" && last.content === userText;
@@ -1157,13 +1120,13 @@ type Mode = "select" | "read" | "roleplay";
                           { id: `${Date.now()}-u`, role: "user", content: userText, timestamp: new Date() },
                         ];
                         if (assistantText) {
-                          next.push({ id: `${Date.now()}-a`, role: "assistant", content: assistantText, engine, timestamp: new Date() });
+                          next.push({ id: `${Date.now()}-a`, role: "assistant", content: assistantText, timestamp: new Date() });
                         }
                         messagesRef.current = next;
                         setMessages(next);
                         void saveSession(next, narrative || null, mode);
                       }}
-                    />}
+                    />
                    <Button
                      variant="ghost"
                      size="sm"
@@ -1191,7 +1154,6 @@ type Mode = "select" | "read" | "roleplay";
  
                {/* Messages */}
                <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                 {story && <div aria-label={language === "es" ? "Escena inicial" : "Opening scene"} className="rounded-lg border border-border p-3 text-sm text-muted-foreground whitespace-pre-wrap">{getIntroMessage(story)}</div>}
                  {messages.map((message) => (
                    <div
                      key={message.id}
@@ -1294,14 +1256,6 @@ type Mode = "select" | "read" | "roleplay";
  
                {/* Input Area */}
                <div className="p-4 border-t border-border">
-                 {sessionLoadError && (
-                   <div role="alert" className="mb-2 text-sm">
-                     {language === "es" ? "No se pudo cargar tu conversación. Reintenta para conservarla." : "Could not load your conversation. Retry to preserve it."}
-                     <Button variant="ghost" size="sm" onClick={() => setSessionLoadAttempt((attempt) => attempt + 1)}>
-                       {language === "es" ? "Reintentar" : "Retry"}
-                     </Button>
-                   </div>
-                 )}
                  <div className="flex gap-2">
                     <Input
                       ref={inputRef}
@@ -1310,11 +1264,11 @@ type Mode = "select" | "read" | "roleplay";
                      onKeyPress={handleKeyPress}
                      placeholder={t("story.typeMessage")}
                      className="flex-1 bg-secondary border-border"
-                     disabled={isTyping || !sessionLoaded}
+                     disabled={isTyping}
                    />
                    <Button
                      onClick={handleSendMessage}
-                     disabled={!inputMessage.trim() || isTyping || !sessionLoaded}
+                     disabled={!inputMessage.trim() || isTyping}
                      className="gap-2"
                    >
                      <Send className="w-4 h-4" />
@@ -1338,11 +1292,4 @@ type Mode = "select" | "read" | "roleplay";
    );
  };
  
- // A route/account change mounts a fresh conversation before loading any session.
- const StoryDetail = () => {
-   const { storyId } = useParams<{ storyId: string }>();
-   const { user } = useAuth();
-   return <StoryDetailSession key={`${user?.id || "guest"}:${storyId || ""}`} />;
- };
-
  export default StoryDetail;

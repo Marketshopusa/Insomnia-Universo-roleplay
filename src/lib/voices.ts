@@ -63,10 +63,10 @@ export const voiceGender = (value: string): "female" | "male" =>
 const keyFor = (storyId: string) => `insomnia.voice.${storyId}`;
 
 /** The voice chosen for a story stays the same for reading, chat and calls. */
-export const getStoryVoice = (storyId?: string, characterVoice?: string) => {
+export const getStoryVoice = (storyId?: string) => {
   if (typeof window === "undefined") return DEFAULT_VOICE;
   const stored = storyId ? window.localStorage.getItem(keyFor(storyId)) : null;
-  const value = stored || characterVoice || window.localStorage.getItem("insomnia.voice") || DEFAULT_VOICE;
+  const value = stored || window.localStorage.getItem("insomnia.voice") || DEFAULT_VOICE;
   return normalizeStoryVoice(value);
 };
 
@@ -74,5 +74,5 @@ export const setStoryVoice = (storyId: string | undefined, value: string) => {
   if (typeof window === "undefined") return;
   const voice = normalizeStoryVoice(value);
   if (storyId) window.localStorage.setItem(keyFor(storyId), voice);
-  else window.localStorage.setItem("insomnia.voice", voice);
+  window.localStorage.setItem("insomnia.voice", voice);
 };
