@@ -318,7 +318,7 @@ type Mode = "select" | "read" | "roleplay";
           id: story?.id,
           title: localOverride?.name || story?.title || tTitle,
           description: localOverride?.bio || story?.description || tDescription,
-          story_context: localOverride?.starterMessage || storyContext || tDescription,
+          story_context: storyContext || localOverride?.bio || tDescription,
           character_role: localOverride?.roleTitle || story?.character_role || tCharacter,
           character_age: Math.max(18, Number(story?.character_age) || 21),
           player_role: story?.player_role || tPlayer,
