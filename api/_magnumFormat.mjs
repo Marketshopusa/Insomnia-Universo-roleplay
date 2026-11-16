@@ -1,11 +1,11 @@
-// Let the model close each JSON string naturally; word-count regexes can trap decoding.
-// The prompt guides visible length; character ceilings bound decoding inside the token budget.
+// Require both components without forcing words past a natural ending or cutting mid-word.
+// The scene prompt sets visible length; the worker token budget bounds decoding.
 export function magnumReplySchema(brief = false, language = 'es') {
-  const reactionKey = language === 'en' ? 'reaction' : 'narracion';
+  const reactionKey = language === 'en' ? 'reaction' : 'gesto';
   const dialogueKey = language === 'en' ? 'dialogue' : 'dialogo';
   return { type: 'object', properties: {
-    [reactionKey]: { type: 'string', minLength: 1, maxLength: 160 },
-    [dialogueKey]: { type: 'string', minLength: brief ? 1 : 450, maxLength: brief ? 450 : 900 },
+    [reactionKey]: { type: 'string', minLength: 1 },
+    [dialogueKey]: { type: 'string', minLength: 1 },
   }, required: [reactionKey, dialogueKey], additionalProperties: false };
 }
 // Fit a long draft using complete sentences only. Never slice a sentence or an action.

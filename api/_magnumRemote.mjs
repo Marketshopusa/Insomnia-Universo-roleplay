@@ -6,7 +6,12 @@ export async function generateConnectedMagnum(messages, options = {}, request = 
   const lengthRule = options.language === 'en'
     ? (options.brief ? 'For this simple exchange, use a brief reaction and 15–40 words of dialogue. Finish the JSON completely.' : 'Use a brief reaction and 90–125 words of dialogue, 90–150 words total. Finish every sentence and the JSON completely; keep the current scene.')
     : (options.brief ? 'Para este intercambio sencillo, usa una reacción breve y un diálogo de 15–40 palabras. Cierra el JSON por completo.' : 'Usa una reacción breve y un diálogo de 90–125 palabras, 90–150 palabras en total. Termina todas las frases y cierra el JSON por completo; conserva la escena actual.');
-  const system = [{ role: 'system', content: (messages[0]?.role === 'system' ? String(messages[0].content).slice(0, 15000) + '\n' : '') + lengthRule }];
+  const character = String(options.characterRole || (options.language === 'en' ? 'your assigned character' : 'tu personaje asignado')).slice(0, 240);
+  const player = String(options.playerRole || (options.language === 'en' ? 'the user' : 'el usuario')).slice(0, 240);
+  const formatRule = options.language === 'en'
+    ? `Return only JSON with reaction and dialogue. In both fields I means ${character}; you means ${player}. reaction contains one short first-person gesture by ${character}. dialogue contains only the words ${character} says to ${player}, without narration, actions or the user's lines.`
+    : `Devuelve únicamente JSON con gesto y dialogo. En ambos campos YO soy ${character}; TÚ eres ${player}. gesto contiene una sola reacción breve de ${character} en primera persona. dialogo contiene únicamente las palabras que ${character} le dice a ${player}, sin narración, acciones ni frases del usuario.`;
+  const system = [{ role: 'system', content: (messages[0]?.role === 'system' ? String(messages[0].content).slice(0, 14000) + '\n' : '') + lengthRule + '\n' + formatRule }];
   const turns = [];
   for (const turn of messages.filter(turn => ['user', 'assistant'].includes(turn.role)).slice(-25)) {
     const content = String(turn.content || '').slice(0, 1800);
@@ -27,7 +32,7 @@ export async function generateConnectedMagnum(messages, options = {}, request = 
   if (result.model !== MAGNUM_MODEL) throw Object.assign(new Error('El servicio no confirmó Magnum v4 12B.'), { code: 'magnum_model_mismatch', status: 503 });
   let parsed;
   try { parsed = JSON.parse(result.content); } catch { throw Object.assign(new Error('Magnum devolvió una respuesta incompleta.'), { code: 'magnum_generation_incomplete', status: 503 }); }
-  const reaction = parsed.narracion ?? parsed.reaction;
+  const reaction = parsed.gesto ?? parsed.narracion ?? parsed.reaction;
   const dialogue = parsed.dialogo ?? parsed.dialogue;
   if (typeof reaction !== 'string' || !reaction.trim() || typeof dialogue !== 'string' || !dialogue.trim()) throw Object.assign(new Error('Magnum devolvió una respuesta incompleta.'), { code: 'magnum_generation_incomplete', status: 503 });
   const content = `*${reaction.trim().replace(/^\*|\*$/g, '')}* ${dialogue.trim()}`;

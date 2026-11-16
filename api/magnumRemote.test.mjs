@@ -27,3 +27,9 @@ test('bounds long conversations to the worker packet and starts with a real user
   await generateConnectedMagnum([{role:'system',content:'Sistema.'},...history,{role:'user',content:'Mensaje actual.'}],{},async payload=>{sent=payload;return reply});
   assert.equal(sent.messages[1].role,'user');assert.equal(sent.messages.at(-1).content,'Mensaje actual.');assert.ok(Buffer.byteLength(JSON.stringify(sent.messages))<=65000);
 });
+
+test('preserves a generated first-person gesture and spoken dialogue without rewriting either speaker', async () => {
+  const generated = { gesto: 'Me despierto y me froto los ojos.', dialogo: 'Willian, me quedé dormida esperándote. ¿Por qué llegas tan tarde?' };
+  const result = await generateConnectedMagnum([{ role: 'system', content: 'Una conversación cotidiana.' }, { role: 'user', content: 'Acabo de entrar y te veo dormida.' }], { characterRole: 'Sasha', playerRole: 'Willian' }, async () => ({ model: 'magnum-v4-12b', content: JSON.stringify(generated) }));
+  assert.equal(result.content, `*${generated.gesto}* ${generated.dialogo}`);
+});

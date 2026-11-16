@@ -1,4 +1,4 @@
-import { ordinaryScenePrompt } from "../src/lib/currentTurnRules.mjs";
+import { ordinaryScenePrompt, interactiveScenePrompt } from "../src/lib/currentTurnRules.mjs";
 import { generateConnectedMagnum } from "./_magnumRemote.mjs";
 const DANGLING_TAIL_REGEX = /\b(?:de|del|al|a|en|con|por|para|sin|sobre|entre|hacia|hasta|como|mientras|cuando|que|y|e|o|u|ni|pero|un|una|unos|unas|el|la|los|las|su|sus|mi|mis|tu|tus|me|te|se|nos|le|les|lo)\s*$/iu;
 
@@ -1537,8 +1537,13 @@ export default async function handler(req, res) {
         if (process.env.VERCEL) {
           try {
             const brief = isLiveCall || /^(?:(?:hola|buenas|hey|hello|hi)[!.,¿?\s]*)?(?:(?:¿?c[oó]mo est[aá]s\??|¿?qu[eé] tal\??|how are you\??)[!.,\s]*)?$/i.test(latest);
-            const result = await generateConnectedMagnum(openRouterMessages, {
+            const connectedMessages = [
+              { role: "system", content: interactiveScenePrompt(story, history.length, spanish, { memory: memoryTurns, chronicle: chronicleTurns, directive: customDirective }) },
+              ...openRouterMessages.slice(1),
+            ];
+            const result = await generateConnectedMagnum(connectedMessages, {
               language: spanish ? "es" : "en", brief, call: isLiveCall,
+              characterRole: story.character_role, playerRole: story.player_role,
               maxTokens: targetTokens, temperature: 0.85,
               validate: (reply) => !isOffRole(reply), isRepeated: isRepeatedReply,
             });
