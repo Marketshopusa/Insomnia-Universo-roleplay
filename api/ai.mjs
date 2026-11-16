@@ -1,3 +1,4 @@
+import { magnumRawResponse } from "./_magnumRaw.mjs";
 const DANGLING_TAIL_REGEX = /\b(?:de|del|al|a|en|con|por|para|sin|sobre|entre|hacia|hasta|como|mientras|cuando|que|y|e|o|u|ni|pero|un|una|unos|unas|el|la|los|las|su|sus|mi|mis|tu|tus|me|te|se|nos|le|les|lo)\s*$/iu;
 
 function cleanCueText(rawInner, maxWords = 22) {
@@ -85,7 +86,7 @@ async function authenticated(req) {
 }
 export function generationConfigFor(candidate, settings, options = {}, thinking = true) {
   if (!thinking || !options.fastReply) return settings;
-  if (candidate.startsWith("gemini-3.")) return { ...settings, thinkingConfig: { thinkingLevel: "low" } };
+  if (candidate.startsWith("gemini-3.")) return { ...settings, thinkingConfig: { thinkingLevel: options.thinkingLevel || "low" } };
   return { ...settings, thinkingConfig: { thinkingBudget: 0 } };
 }
 export function isRefusal(text) {
@@ -154,14 +155,16 @@ export function isRefusal(text) {
 export async function generateLocalLlama(messages, options = {}) {
   try {
     // En Vercel no existe el servidor local de PC, omitir instantáneamente para no esperar timeouts inútiles
-    if (process.env.VERCEL) return null;
+    if (process.env.VERCEL && !options.connectedPC) return null;
     const fetchImpl = options.fetchImpl || fetch;
     // Ensure strict alternation for Jinja templates in local llama-server
     const sanitizedMessages = [...messages];
     if (sanitizedMessages.length > 1 && sanitizedMessages[1]?.role === "assistant") {
       sanitizedMessages.splice(1, 0, { role: "user", content: "[Inicio de la escena]" });
     }
-    const response = await fetchImpl("http://127.0.0.1:8788/v1/chat/completions", {
+    const response = process.env.VERCEL
+      ? await magnumRawResponse(sanitizedMessages, options)
+      : await fetchImpl("http://127.0.0.1:8788/v1/chat/completions", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -531,6 +534,7 @@ export async function generate(model, parts, settings = {}, options = {}) {
           console.warn("Insomnia AI rejected off-role output", candidate);
           break;
         }
+        options.onModelResolved?.({ requestedModel: candidate, model: data.modelVersion || candidate });
         return content;
       } catch (error) {
         if (error.name !== "TimeoutError") throw error;
@@ -1527,12 +1531,15 @@ export default async function handler(req, res) {
       }
 
       let content = null;
+      let resolvedEngine = null;
       if (isAdult || modelId === "magnum-v4-local") {
         // ENRUTAMIENTO DIRECTO A MAGNUM (CONTENIDO +18 O MODELO MAGNUM):
         // 1. Servidor local llama-server en PC (puerto 8788, Magnum v4 12B Q4_K_M sin censura)
         try {
           content = await generateLocalLlama(openRouterMessages, {
             maxTokens: Math.max(300, targetTokens),
+            connectedPC: true, call: isLiveCall, language: spanish ? "es" : "en",
+            onEngine: engine => { resolvedEngine = engine; },
             temperature: 0.85,
             timeoutMs: 35000,
             validate: (reply) => !isOffRole(reply),
@@ -1601,7 +1608,8 @@ export default async function handler(req, res) {
           } catch (err) {
             console.warn("Local llama live call adult failed:", err.message);
           }
-          if (!content) {
+          if (process.env.VERCEL && !content) return send(res, 503, { error: "magnum_unavailable", message: "Magnum no pudo completar la respuesta." });
+        if (!content) {
             try {
               content = await generateOpenRouter(openRouterMessages, {
                 models: [
@@ -1757,22 +1765,24 @@ export default async function handler(req, res) {
               geminiContents.unshift({ role: "user", parts: [{ text: "Continúa la escena." }] });
             }
             content = await generate(
-              "gemini-2.0-flash",
+              "gemini-3.1-flash-lite",
               [],
-              { maxOutputTokens: Math.max(220, targetTokens), temperature: 0.8 },
+              { maxOutputTokens: Math.max(1000, targetTokens), temperature: 0.8 },
               {
                 contents: geminiContents,
                 systemInstruction,
                 adultMode: false,
                 apiKey: geminiApiKey || undefined,
-                timeoutMs: 12000,
-                fallbackModels: ["gemini-1.5-flash", "gemini-2.0-flash-lite", "gemini-1.5-flash-8b", "gemini-flash-latest", "gemini-2.5-flash"],
-                fastReply: true,
+                timeoutMs: 18000,
+                fallbackModels: ["gemini-3.8-flash"],
+                fastReply: true, thinkingLevel: "minimal",
+                onModelResolved: engine => { resolvedEngine = { profile: "sfw-gemini", provider: "google", ...engine }; },
                 validate: (reply) => !isOffRole(reply)
               },
             );
           } catch (err) {
             console.warn("Gemini Flash primary failed:", err.message);
+            return send(res, err.status === 429 ? 429 : 503, { error: err.code || "ai_unavailable", message: "Gemini no pudo completar la respuesta." });
           }
         }
 
@@ -2018,105 +2028,8 @@ export default async function handler(req, res) {
         }
       }
 
-      if (!content) {
-        const isExam = /(?:examen|chequeo|consulta|m[eé]dic|doctor|pr[oó]stata)/i.test([story.title, story.description, story.story_context, characterName].filter(Boolean).join(" "));
-        const userSpoken = latest.replace(/\*[^*]*\*/g, "").replace(/\s+/g, " ").trim();
-        const turnCount = history.length;
-        const allContext = [latest, ...history.map((h) => h.text)].join(" ");
-
-        const cleanForCompare = (txt) => String(txt || "").toLowerCase().replace(/[^a-záéíóúñ0-9]/gi, "").trim();
-        const pastAssistantTexts = history
-          .filter((h) => h.role === "model")
-          .map((h) => cleanForCompare(h.text))
-          .filter(Boolean);
-
-        const hasSaidGreeting = pastAssistantTexts.some((past) =>
-          past.includes("pequealavida") ||
-          past.includes("qupequeaeslavida") ||
-          past.includes("vieneparatuchequeo") ||
-          past.includes("qudatecmodoenlacamilla") ||
-          past.includes("quedatecomodoenlacamilla")
-        );
-
-        const isRepeatedCandidate = (cand) => {
-          const normCand = cleanForCompare(cand);
-          if (!normCand) return false;
-          return pastAssistantTexts.some((past) => {
-            if (past.slice(0, 45) === normCand.slice(0, 45)) return true;
-            if (past.length >= 30 && normCand.includes(past.slice(0, 30))) return true;
-            if (normCand.length >= 30 && past.includes(normCand.slice(0, 30))) return true;
-            return false;
-          });
-        };
-
-        if (isExam) {
-          const isFirstTurn = turnCount <= 1 && pastAssistantTexts.length === 0 && !hasSaidGreeting;
-          const isRecognizing = isFirstTurn && /(?:roxana|eres\s+t[uú]|gabriela|mam[aá]|hija|amig[ao]|conocid|sorprend|impactad|tiempo\s+sin\s+ver)/i.test(latest + " " + userSpoken);
-          const isEntrance = isFirstTurn && /\b(?:hola|buenas|buenos\s+d[ií]as|buenas\s+tardes|entrar?|entr[eé]|llegu[eé]|vengo|permiso)\b/i.test(userSpoken);
-
-          const isErectionOnTable = /(?:huevo|pene|erecci|erect|duro|20\s*cm|bata|entre\s+mis\s+piernas|piernas\s+abiertas|medio\s+de\s+mis\s+piernas)/i.test(latest + " " + userSpoken);
-          const mentionsMother = /(?:mam[aá]|gabriela|se\s+entera|se\s+caga|se\s+r[ií]e|risa)/i.test(latest + " " + userSpoken);
-          const isExamUnderway = turnCount > 1 || /(?:camilla|tacto|tocando|palpar|revisando|guante)/i.test(allContext);
-
-          const sceneStarted = pastAssistantTexts.length > 0;
-          const isIntimateOngoing = /(?:huevo|pene|erecci|erect|duro|bolas|test[ií]culo|tronco|acarici|mano|manos|toca|tocaba|acabar|venir|10\s*minutos)/i.test(latest);
-
-          if (isIntimateOngoing) {
-            const continuation = [
-              `*Sigo con mi mano donde está, sin apartar la mirada de tus ojos, mordiéndome el labio con un rubor que ya no puedo disimular.* Shhh... respira, ${playerName || "William"}. Ya sé que esto dejó de ser solo un examen... y la verdad, yo tampoco quiero soltarte todavía.`,
-              `*Bajo la voz casi a un susurro mientras mis dedos siguen moviéndose despacio, con el corazón acelerado.* Dios... estás temblando. No digas nada, ${playerName || "William"}, solo déjate llevar... nadie tiene que enterarse de lo que pasa en esta consulta.`,
-              `*Suelto una risita nerviosa y vuelvo a mirarte a los ojos, sin detener la caricia disimulada.* Llevamos un buen rato así y no me has pedido que pare... Aguanta un poquito más, ${playerName || "William"}, que me encanta verte así de rendido.`,
-            ];
-            content = continuation.find((alt) => !isRepeatedCandidate(alt)) || continuation[turnCount % continuation.length];
-          } else if (isFirstTurn && (isRecognizing || isEntrance)) {
-            content = `*Me detengo un instante al fijarme en tu rostro, abriendo los ojos con sorpresa antes de que una sonrisa cálida y un leve rubor iluminen mi expresión profesional.* ¡¿${playerName || "William"}?! No puedo creerlo... Qué pequeña es la vida, mira dónde nos venimos a encontrar después de tantos años. Tranquilo, quédate cómodo en la camilla y no te me apenes por estar con la bata; sé que vienes para tu chequeo preventivo y ante todo eres mi paciente. Respira con calma y cuéntame, ¿cómo has estado y cómo te has sentido últimamente?`;
-          } else if (!sceneStarted && isErectionOnTable && mentionsMother) {
-            content = `*Al levantar con cuidado la bata sobre la camilla, mis ojos se abren de par en par y un rubor encendido me recorre las mejillas al ver tu impresionante miembro completamente erecto entre mis piernas.* ¡Por Dios, ${playerName || "William"}! *Paso saliva con dificultad y suelto una risita nerviosa mientras mis manos enguantadas titubean por un instante.* Ni se te ocurra decirle nada a mi mamá Gabriela, ¡se moriría de la risa y de la sorpresa si supiera en qué situación te estoy atendiendo! Tranquilo... sé que es una reacción física involuntaria por los nervios y la cercanía, pero ver semejante tamaño me tomó totalmente por sorpresa. Respira hondo y trata de relajarte mientras me acomodo para iniciar el chequeo.`;
-          } else if (!sceneStarted && isErectionOnTable) {
-            content = `*Al levantar suavemente la bata sobre la camilla, mis ojos se abren con asombro y mis mejillas se tiñen de carmín al notar la firme y prominente erección entre tus piernas.* Dios mío... *Acomodo con cierta timidez mis guantes de látex, tratando de mantener el temple médico ante el evidente rubor que me sube por el cuello.* Tranquilo, ${playerName || "William"}... en una revisión física estas reacciones corporales ocurren con frecuencia y no tienes de qué avergonarte. Trata de respirar pausado mientras comienzo con la exploración de la zona.`;
-          } else if (mentionsMother) {
-            content = `*Suelto una pequeña risa cómplice y niego con la cabeza, sonrojándome ligeramente mientras acomodo el instrumental médico.* ¡Ni se te ocurra decirle una sola palabra a mi mamá! Gabriela jamás me dejaría en paz si se entera de que eres mi paciente en una consulta así. Pero quédate tranquilo, ${playerName || "William"}, el secreto médico y la confianza están ante todo. Concéntrate y respira con calma que estamos por comenzar.`;
-          } else if (isExamUnderway) {
-            content = `*Continúo con la exploración médica con movimientos cuidadosos y precisos en la camilla.* Respira con calma y mantén el cuerpo relajado, ${playerName || "William"}. Voy revisando cada área con atención clínica; avísame si sientes alguna molestia.`;
-          } else if (/(?:s[ií]ntoma|ning[uú]n|44|cuidar|edad|rutina|preventiv)/i.test(userSpoken)) {
-            content = `*Asiento comprensiva mientras tomo nota en tu historial clínico, mirándote con calidez y calma profesional.* Me parece una excelente decisión, ${playerName || "William"}. A los 44 años la prevención es fundamental y haces muy bien en hacerte el chequeo aunque no sientas molestias. Quédate tranquilo, el procedimiento es rápido y te iré explicando cada paso. Pasa detrás del biombo cuando gustes para prepararte y te indico cómo colocarte en la camilla.`;
-          } else if (/(?:miedo|nervio|pena|verg[uü]enza|inc[oó]mod|amig[ao]|pap[aá]|mam[aá])/i.test(userSpoken)) {
-            content = `*Sonrío con ternura y comprensión profesional, apoyando las manos sobre el escritorio para darte seguridad.* Es completamente normal sentir algo de pena o nervios, especialmente conociéndonos desde antes. Pero quiero que recuerdes que en esta sala no soy la niña que conociste, sino tu doctora, y mi único objetivo es cuidar tu salud con el máximo respeto y delicadeza. Respira hondo, tómate tu tiempo y avísame cuando te sientas listo para pasar a la camilla.`;
-          } else if (/(?:listo|preparad|biombo|camilla|pantal[oó]n|ropa|desvest|bajar)/i.test(userSpoken)) {
-            content = `*Me coloco los guantes de látex con movimientos serenos y precisos, cuidando en todo momento tu privacidad y confort.* Muy bien, recuéstate sobre la camilla de lado, flexionando suavemente las rodillas hacia el pecho. Mantén la respiración tranquila y el cuerpo relajado; te aseguro que durará apenas unos segundos. Cualquier molestia que sientas me avisas de inmediato.`;
-          } else {
-            content = `*Te escucho con absoluta atención profesional y un gesto afable, asintiendo a tus palabras.* Te entiendo perfectamente, ${playerName || "William"}. Cada detalle que me comentas es importante para tu expediente. Quédate muy tranquilo, estás en las mejores manos y vamos a llevar la consulta paso a paso con total confianza y delicadeza.`;
-          }
-        } else {
-          const isBanterOrSofa = /(?:sof[aá]|ropa\s+interior|pantis?|bragas?|calz[oó]n|ver|viste|mostr|herman|pap[aá]|cuerpo|coj[ií]n|mirar|callad)/i.test(allContext);
-          if (isBanterOrSofa) {
-            const banterAlts = [
-              `*Acomodo el cojín con fuerza contra mi cuerpo aún con las mejillas encendidas de vergüenza, mirándote de reojo con picardía y reproche.* ¡Cállate, ${playerName || "Willian"}! No te hagas el inocente, que bien que te quedaste ahí plantado mirando todo el rato sin decir ni pío... Si papá se llega a enterar, nos mata a los dos.`,
-              `*Suelto un suspiro sonrojado y me hundo un poco más en el sofá abrazando el cojín, sonriendo nerviosa.* Eres un descarado total, ${playerName || "Willian"}. Sabías muy bien que estaba descuidada y no me dijiste nada... Ahora no te quejes de lo que viste.`,
-              `*Bajo la mirada al cojín con una sonrisita avergonzada y vuelvo a clavarte los ojos.* Bueno ya, no seas malo... Estaba cómoda en mi casa y no pensé que fueras a fijarte tanto. ¿De verdad te diste cuenta desde el principio?`
-            ];
-            content = banterAlts.find((alt) => !isRepeatedCandidate(alt)) || banterAlts[turnCount % banterAlts.length];
-          } else {
-            content = `*Te miro fijamente a los ojos con una leve sonrisa cómplice, asimilando tus palabras mientras la cercanía se siente en el aire.* Dime, ${playerName || "Willian"}... ¿qué se supone que debería responderte a eso?`;
-          }
-        }
-
-        // GARANTÍA ESTRICTA CONTRA REPETICIÓN: Si por cualquier motivo la frase coincide con algún turno previo, variar de inmediato
-        if (isRepeatedCandidate(content)) {
-          const alternatives = [
-            `*Tomo una respiración profunda para serenarme, acomodándome mejor entre tus piernas mientras el rubor aún persiste en mi piel.* Concéntrate en mi voz, ${playerName || "William"}. Vamos a continuar con la revisión paso a paso con total cuidado. Avísame de cualquier sensación.`,
-            `*Ajusto mis guantes de látex con movimientos delicados y concentrados, manteniendo una mirada cálida que intenta darte seguridad.* Todo está bajo control, quédate muy quieto y relajado en la camilla mientras procedo con la exploración.`,
-            `*Sostengo una postura serena y comprensiva a tu lado en la camilla, continuando con delicadeza.* Tranquilo, ${playerName || "William"}. Tu salud es lo primero y estás en un espacio seguro y profesional. Respira hondo y relájate.`
-          ];
-          for (const alt of alternatives) {
-            if (!isRepeatedCandidate(alt)) {
-              content = alt;
-              break;
-            }
-          }
-        }
-      }
-      return send(res, 200, { content });
+      if (!content) return send(res, 503, { error: "ai_unavailable", message: "El motor no devolvió una respuesta." });
+      return send(res, 200, { content, ...(resolvedEngine ? { engine: resolvedEngine } : {}) });
     }
     if (action === "translate") {
       const texts = Array.isArray(body.texts) ? body.texts.slice(0, 50).map(s => String(s).slice(0, 1000)) : [];
