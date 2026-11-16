@@ -87,7 +87,7 @@ async function authenticated(req) {
 }
 export function generationConfigFor(candidate, settings, options = {}, thinking = true) {
   if (!thinking || !options.fastReply) return settings;
-  if (candidate.startsWith("gemini-3.")) return { ...settings, thinkingConfig: { thinkingLevel: "low" } };
+  if (candidate.startsWith("gemini-3.")) return { ...settings, thinkingConfig: { thinkingLevel: options.thinkingLevel || "low" } };
   return { ...settings, thinkingConfig: { thinkingBudget: 0 } };
 }
 export function isRefusal(text) {
@@ -1777,7 +1777,7 @@ export default async function handler(req, res) {
               geminiContents.unshift({ role: "user", parts: [{ text: "Continúa la escena." }] });
             }
             content = await generate(
-              "gemini-3.8-flash",
+              "gemini-3.1-flash-lite",
               [],
               { maxOutputTokens: Math.max(1000, targetTokens), temperature: 0.8 },
               {
@@ -1785,15 +1785,16 @@ export default async function handler(req, res) {
                 systemInstruction,
                 adultMode: false,
                 apiKey: geminiApiKey || undefined,
-                timeoutMs: 12000,
-                fallbackModels: ["gemini-flash-latest"],
-                fastReply: true,
+                timeoutMs: 18000,
+                fallbackModels: ["gemini-3.8-flash"],
+                fastReply: true, thinkingLevel: "minimal",
                 onModelResolved: (model) => { geminiEngine = { profile: "sfw-gemini", provider: "google", ...model }; },
                 validate: (reply) => !isOffRole(reply)
               },
             );
           } catch (err) {
             console.warn("Gemini Flash primary failed:", err.message);
+            return send(res, err.status === 429 || err.status === 422 ? err.status : 503, { error: err.code || "gemini_unavailable", message: err.message || "Gemini no pudo responder." });
           }
         }
 
