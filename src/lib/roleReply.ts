@@ -901,14 +901,10 @@ export function isRepeatedAssistantReply(
 
 
   const assistantTurns = history
-
     .filter((h) => h.role === "assistant" || h.role === "model")
-
     .map((h) => String(h.content || h.text || "").trim())
-
     .filter(Boolean)
-
-    .slice(-6);
+    .slice(-2);
 
 
 
