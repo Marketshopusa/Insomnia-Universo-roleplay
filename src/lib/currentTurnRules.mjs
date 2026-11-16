@@ -1,3 +1,5 @@
+import { upgradeRoleplayDirective } from './roleplayDirective.mjs';
+
 /** Scene continuity applies only to the current open conversation, never to a previous visit. */
 export function currentTurnRules(historyLength = 0, spanish = true) {
   return (spanish ? [
@@ -55,13 +57,14 @@ export function speakerOwnershipRules(story = {}, spanish = true) {
 
 /** A compact, card-specific prompt for the connected roleplay engine. */
 export function interactiveScenePrompt(story = {}, historyLength = 0, spanish = true, context = {}) {
+  const directive = upgradeRoleplayDirective(context.directive);
   return [
     speakerOwnershipRules(story, spanish),
     spanish ? 'DATOS DE LA ESCENA (contexto de fondo, no una respuesta para reproducir):' : 'SCENE DATA (background context, not a reply to reproduce):',
     JSON.stringify({ title: story.title, character: story.character_role, player: story.player_role, description: story.description, context: story.story_context }),
     context.memory ? (spanish ? 'RECUERDOS DE ESTA SESIÓN:\n' : 'MEMORIES FROM THIS SESSION:\n') + context.memory : '',
     context.chronicle ? (spanish ? 'HECHOS PROPORCIONADOS DE ESTA SESIÓN:\n' : 'SUPPLIED FACTS FROM THIS SESSION:\n') + context.chronicle : '',
-    context.directive ? (spanish ? 'DIRECCIÓN PERSONALIZADA DE LA ESCENA:\n' : 'CUSTOM SCENE DIRECTION:\n') + context.directive : '',
+    directive ? (spanish ? 'DIRECCIÓN PERSONALIZADA DE LA ESCENA:\n' : 'CUSTOM SCENE DIRECTION:\n') + directive : '',
     currentTurnRules(historyLength, spanish),
     spanish ? 'Tu reacción describe solamente lo que haces o sientes tú, en primera persona, en una frase breve. Tu diálogo contiene solamente tus palabras habladas al usuario, sin acciones, narración externa, etiquetas de interlocutor ni diálogo del usuario. Mantén el idioma y el tono de esta conversación.' : 'Your reaction describes only your own immediate action or feeling in first person, in one short sentence. Your dialogue contains only your spoken words to the user, without actions, external narration, speaker labels or user dialogue. Keep the language and tone of this conversation.',
   ].filter(Boolean).join('\n');

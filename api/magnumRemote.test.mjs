@@ -33,3 +33,15 @@ test('preserves a generated first-person gesture and spoken dialogue without rew
   const result = await generateConnectedMagnum([{ role: 'system', content: 'Una conversación cotidiana.' }, { role: 'user', content: 'Acabo de entrar y te veo dormida.' }], { characterRole: 'Sasha', playerRole: 'Willian' }, async () => ({ model: 'magnum-v4-12b', content: JSON.stringify(generated) }));
   assert.equal(result.content, `*${generated.gesto}* ${generated.dialogo}`);
 });
+
+test('regenerates an off-role draft with the same model before returning it', async () => {
+  let attempts = 0;
+  const result = await generateConnectedMagnum([{role:'user',content:'Te encuentro dormida en el sofá.'}], {validate:text=>!text.includes('¡Sasha!')}, async () => {
+    attempts++;
+    return {model:'magnum-v4-12b',content:JSON.stringify(attempts===1 ? {gesto:'Entro en casa.',dialogo:'¡Sasha! Me has dado un susto.'} : {gesto:'Me despierto en el sofá.',dialogo:'Willian, estaba esperándote.'})};
+  });
+  assert.equal(attempts,2);
+  assert.equal(result.content,'*Me despierto en el sofá.* Willian, estaba esperándote.');
+  assert.equal(result.engine.model,'magnum-v4-12b');
+  assert.equal(result.engine.generationAttempts,2);
+});

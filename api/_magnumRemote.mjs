@@ -3,6 +3,17 @@ import { MAGNUM_MODEL } from './_magnumProtocol.mjs';
 
 /** Transport to the already running PC service; no provider substitution or content classification. */
 export async function generateConnectedMagnum(messages, options = {}, request = requestMagnum) {
+  try {
+    return await generateMagnumCandidate(messages, options, request);
+  } catch (error) {
+    // Regenerate only a draft rejected by the existing role/repetition checks.
+    if (error.code !== 'off_role' || options.call) throw error;
+    const result = await generateMagnumCandidate(messages, { ...options, temperature: 0.65 }, request);
+    return { ...result, engine: { ...result.engine, generationAttempts: 2 } };
+  }
+}
+
+async function generateMagnumCandidate(messages, options, request) {
   const lengthRule = options.language === 'en'
     ? (options.brief ? 'For this simple exchange, use a brief reaction and 15–40 words of dialogue. Finish the JSON completely.' : 'Use a brief reaction and 90–125 words of dialogue, 90–150 words total. Finish every sentence and the JSON completely; keep the current scene.')
     : (options.brief ? 'Para este intercambio sencillo, usa una reacción breve y un diálogo de 15–40 palabras. Cierra el JSON por completo.' : 'Usa una reacción breve y un diálogo de 90–125 palabras, 90–150 palabras en total. Termina todas las frases y cierra el JSON por completo; conserva la escena actual.');

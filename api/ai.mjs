@@ -1539,7 +1539,12 @@ export default async function handler(req, res) {
             const brief = isLiveCall || /^(?:(?:hola|buenas|hey|hello|hi)[!.,¿?\s]*)?(?:(?:¿?c[oó]mo est[aá]s\??|¿?qu[eé] tal\??|how are you\??)[!.,\s]*)?$/i.test(latest);
             const connectedMessages = [
               { role: "system", content: interactiveScenePrompt(story, history.length, spanish, { memory: memoryTurns, chronicle: chronicleTurns, directive: customDirective }) },
-              ...openRouterMessages.slice(1),
+              ...openRouterMessages.slice(1).map((message) => message.role === "user" ? {
+                role: "user",
+                content: spanish
+                  ? `TURNO ESCRITO POR ${playerName} (USUARIO):\n${message.content}\n\nAHORA RESPONDE EXCLUSIVAMENTE ${characterName} (PERSONAJE).`
+                  : `TURN WRITTEN BY ${playerName} (USER):\n${message.content}\n\nNOW ONLY ${characterName} (CHARACTER) RESPONDS.`,
+              } : message),
             ];
             const result = await generateConnectedMagnum(connectedMessages, {
               language: spanish ? "es" : "en", brief, call: isLiveCall,
