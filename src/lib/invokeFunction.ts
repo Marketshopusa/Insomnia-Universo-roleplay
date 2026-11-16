@@ -733,6 +733,7 @@ export async function invokeFunctionWithRetry<T>(name: string, body: unknown): P
 
 
       const cloudResult = await callOwnAi<T>(name, { ...b, adultMode: true, isNsfw: true });
+      if (cloudResult.error) return cloudResult;
       const firstContent = (cloudResult.data as any)?.content;
       if (!cloudResult.error && firstContent && !isClientRefusal(firstContent) && !isRepeatedAssistantReply(firstContent, historyList)) {
         return cloudResult;

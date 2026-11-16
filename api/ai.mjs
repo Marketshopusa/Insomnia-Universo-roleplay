@@ -1,4 +1,5 @@
 import { ordinaryScenePrompt } from "../src/lib/currentTurnRules.mjs";
+import { generateConnectedMagnum } from "./_magnumRemote.mjs";
 const DANGLING_TAIL_REGEX = /\b(?:de|del|al|a|en|con|por|para|sin|sobre|entre|hacia|hasta|como|mientras|cuando|que|y|e|o|u|ni|pero|un|una|unos|unas|el|la|los|las|su|sus|mi|mis|tu|tus|me|te|se|nos|le|les|lo)\s*$/iu;
 
 function cleanCueText(rawInner, maxWords = 22) {
@@ -532,6 +533,7 @@ export async function generate(model, parts, settings = {}, options = {}) {
           console.warn("Insomnia AI rejected off-role output", candidate);
           break;
         }
+        options.onModelResolved?.({ requestedModel: candidate, ...(typeof data.modelVersion === "string" ? { model: data.modelVersion } : {}) });
         return content;
       } catch (error) {
         if (error.name !== "TimeoutError") throw error;
@@ -1530,7 +1532,22 @@ export default async function handler(req, res) {
       }
 
       let content = null;
+      let geminiEngine = null;
       if (isAdult || modelId === "magnum-v4-local") {
+        if (process.env.VERCEL) {
+          try {
+            const brief = isLiveCall || /^(?:(?:hola|buenas|hey|hello|hi)[!.,¿?\s]*)?(?:(?:¿?c[oó]mo est[aá]s\??|¿?qu[eé] tal\??|how are you\??)[!.,\s]*)?$/i.test(latest);
+            const result = await generateConnectedMagnum(openRouterMessages, {
+              language: spanish ? "es" : "en", brief, call: isLiveCall,
+              maxTokens: targetTokens, temperature: 0.85,
+              validate: (reply) => !isOffRole(reply), isRepeated: isRepeatedReply,
+            });
+            return send(res, 200, result);
+          } catch (error) {
+            console.warn("Magnum PC request failed:", error.code || error.name);
+            return send(res, 503, { error: error.code || "magnum_unavailable", message: error.message || "Magnum no pudo responder." });
+          }
+        }
         // ENRUTAMIENTO DIRECTO A MAGNUM (CONTENIDO +18 O MODELO MAGNUM):
         // 1. Servidor local llama-server en PC (puerto 8788, Magnum v4 12B Q4_K_M sin censura)
         try {
@@ -1760,17 +1777,18 @@ export default async function handler(req, res) {
               geminiContents.unshift({ role: "user", parts: [{ text: "Continúa la escena." }] });
             }
             content = await generate(
-              "gemini-2.0-flash",
+              "gemini-3.8-flash",
               [],
-              { maxOutputTokens: Math.max(220, targetTokens), temperature: 0.8 },
+              { maxOutputTokens: Math.max(1000, targetTokens), temperature: 0.8 },
               {
                 contents: geminiContents,
                 systemInstruction,
                 adultMode: false,
                 apiKey: geminiApiKey || undefined,
                 timeoutMs: 12000,
-                fallbackModels: ["gemini-1.5-flash", "gemini-2.0-flash-lite", "gemini-1.5-flash-8b", "gemini-flash-latest", "gemini-2.5-flash"],
+                fallbackModels: ["gemini-flash-latest"],
                 fastReply: true,
+                onModelResolved: (model) => { geminiEngine = { profile: "sfw-gemini", provider: "google", ...model }; },
                 validate: (reply) => !isOffRole(reply)
               },
             );
@@ -2022,7 +2040,7 @@ export default async function handler(req, res) {
       }
 
       if (!content) return send(res, 503, { error: "ai_unavailable", message: "El motor no devolvió una respuesta. Puedes volver a enviar tu mensaje." });
-      return send(res, 200, { content });
+      return send(res, 200, { content, ...(geminiEngine ? { engine: geminiEngine } : {}) });
     }
     if (action === "translate") {
       const texts = Array.isArray(body.texts) ? body.texts.slice(0, 50).map(s => String(s).slice(0, 1000)) : [];

@@ -61,3 +61,12 @@ it("rejects candidate reply if it repeats previous assistant turn and returns th
   expect(fetchMock).toHaveBeenCalledTimes(2);
   fetchMock.mockRestore();
 });
+
+it("preserves a disconnected Magnum error instead of replacing it with a generic busy state", async () => {
+  const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({ error: "magnum_offline", message: "Magnum no está conectado." }), { status: 503 }));
+  const result = await invokeFunctionWithRetry<{ error: string; message: string }>("story-chat", { adultMode: true, settings: { modelId: "magnum-v4-local" }, userMessage: "Hola" });
+  expect(result.data?.error).toBe("magnum_offline");
+  expect(result.data?.message).toBe("Magnum no está conectado.");
+  expect(result.error?.context?.status).toBe(503);
+  fetchMock.mockRestore();
+});
