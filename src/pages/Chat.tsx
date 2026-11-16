@@ -1,5 +1,3 @@
-import { useConversationScope } from "@/hooks/useConversationScope";
-import { clearBrowserConversationHistory, clearSavedStorySessions } from "@/lib/ephemeralConversations";
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Header } from "@/components/layout/Header";
@@ -142,9 +140,9 @@ const TALKIEMATE_CHARACTERS: CharacterItem[] = [
     affinityTitleEs: "Coqueteo Curioso",
     affinityXp: 70,
     category: "featured",
-    starterMessage: "",
-    starterMessageEn: "",
-    starterMessageEs: "",
+    starterMessage: "Hey there... I've been thinking about you all day. How are you going to spoil me tonight?",
+    starterMessageEn: "Hey there... I've been thinking about you all day. How are you going to spoil me tonight?",
+    starterMessageEs: "Mmm, hola cariño... He estado pensando en ti todo el día. Dime cómo me vas a consentir esta noche...",
     voiceName: "Aoede"
   },
   {
@@ -176,9 +174,9 @@ const TALKIEMATE_CHARACTERS: CharacterItem[] = [
     affinityTitleEs: "Atracción Seductora",
     affinityXp: 45,
     category: "featured",
-    starterMessage: "",
-    starterMessageEn: "",
-    starterMessageEs: "",
+    starterMessage: "*Adjusting my crimson silk dress on the balcony.* You're late... though I must admit, you were worth the wait. Pour me a glass?",
+    starterMessageEn: "*Adjusting my crimson silk dress on the balcony.* You're late... though I must admit, you were worth the wait. Pour me a glass?",
+    starterMessageEs: "*Acomodo mi vestido carmesí en el balcón mientras te miro con una sonrisa.* Llegas tarde... aunque admito que la espera valió la pena. ¿Me sirves una copa?",
     voiceName: "Kore"
   },
   {
@@ -209,9 +207,9 @@ const TALKIEMATE_CHARACTERS: CharacterItem[] = [
     affinityTitleEs: "Vínculo Digital",
     affinityXp: 30,
     category: "featured",
-    starterMessage: "",
-    starterMessageEn: "",
-    starterMessageEs: "",
+    starterMessage: "*My cybernetic eyes glow with a soft azure shimmer.* Neural link established. I'm so excited to finally have you here with me...",
+    starterMessageEn: "*My cybernetic eyes glow with a soft azure shimmer.* Neural link established. I'm so excited to finally have you here with me...",
+    starterMessageEs: "*Mis ojos cibernéticos brillan con un suave resplandor azul.* Conexión neuronal establecida. Qué alegría tenerte aquí frente a mí...",
     voiceName: "Fenrir"
   },
   {
@@ -247,9 +245,9 @@ const TALKIEMATE_CHARACTERS: CharacterItem[] = [
     affinityTitleEs: "Intrigada",
     affinityXp: 20,
     category: "featured",
-    starterMessage: "",
-    starterMessageEn: "",
-    starterMessageEs: "",
+    starterMessage: "*Leaning back on the leather couch, looking you up and down.* I assume you didn't come all this way just to talk business, right?",
+    starterMessageEn: "*Leaning back on the leather couch, looking you up and down.* I assume you didn't come all this way just to talk business, right?",
+    starterMessageEs: "*Me recuesto en el sofá de cuero mirándote de arriba abajo.* Supongo que no viniste hasta aquí solo para hablar de negocios, ¿verdad?",
     voiceName: "Aoede"
   },
   {
@@ -283,9 +281,9 @@ const TALKIEMATE_CHARACTERS: CharacterItem[] = [
     affinityTitleEs: "Oyente Cercana",
     affinityXp: 55,
     category: "featured",
-    starterMessage: "",
-    starterMessageEn: "",
-    starterMessageEs: "",
+    starterMessage: "Close the door and make yourself comfortable. No judgment here... just you and me. Tell me what no one else knows about you.",
+    starterMessageEn: "Close the door and make yourself comfortable. No judgment here... just you and me. Tell me what no one else knows about you.",
+    starterMessageEs: "Cierra la puerta y ponte cómodo. Aquí no hay juicios... solo tú y yo. Cuéntame qué es lo que nadie más sabe de ti.",
     voiceName: "Kore"
   },
   {
@@ -316,9 +314,9 @@ const TALKIEMATE_CHARACTERS: CharacterItem[] = [
     affinityTitleEs: "Compañera Íntima",
     affinityXp: 60,
     category: "featured",
-    starterMessage: "",
-    starterMessageEn: "",
-    starterMessageEs: "",
+    starterMessage: "*Holding my wine glass with a thoughtful smile.* The best stories always begin after midnight, don't you think?",
+    starterMessageEn: "*Holding my wine glass with a thoughtful smile.* The best stories always begin after midnight, don't you think?",
+    starterMessageEs: "*Sostengo mi copa de vino con una media sonrisa pensativa.* Las mejores historias siempre empiezan después de medianoche, ¿no crees?",
     voiceName: "Aoede"
   },
   {
@@ -349,9 +347,9 @@ const TALKIEMATE_CHARACTERS: CharacterItem[] = [
     affinityTitleEs: "Atracción Rebelde",
     affinityXp: 25,
     category: "featured",
-    starterMessage: "",
-    starterMessageEn: "",
-    starterMessageEs: "",
+    starterMessage: "*Biting my lip and looking right at you.* I saw you watching me from backstage... Don't act shy now.",
+    starterMessageEn: "*Biting my lip and looking right at you.* I saw you watching me from backstage... Don't act shy now.",
+    starterMessageEs: "*Muerdo mi labio y te desafío con la mirada.* Te vi mirándome desde el escenario... No te hagas el tímido ahora.",
     voiceName: "Puck"
   },
   {
@@ -382,9 +380,9 @@ const TALKIEMATE_CHARACTERS: CharacterItem[] = [
     affinityTitleEs: "Fan VIP",
     affinityXp: 80,
     category: "featured",
-    starterMessage: "",
-    starterMessageEn: "",
-    starterMessageEs: "",
+    starterMessage: "*Adjusting my cute costume with a wink.* You got the exclusive backstage pass... so, what are you going to do with it?",
+    starterMessageEn: "*Adjusting my cute costume with a wink.* You got the exclusive backstage pass... so, what are you going to do with it?",
+    starterMessageEs: "*Acomodo mi traje y te guiño un ojo.* Conseguiste el pase exclusivo tras bambalinas... ¿y ahora qué vas a hacer con él?",
     voiceName: "Kore"
   },
   {
@@ -415,9 +413,9 @@ const TALKIEMATE_CHARACTERS: CharacterItem[] = [
     affinityTitleEs: "Secreto de Medianoche",
     affinityXp: 35,
     category: "featured",
-    starterMessage: "",
-    starterMessageEn: "",
-    starterMessageEs: "",
+    starterMessage: "*Looking at you with captivating coolness.* If you're staying here with me tonight, be prepared to not sleep at all.",
+    starterMessageEn: "*Looking at you with captivating coolness.* If you're staying here with me tonight, be prepared to not sleep at all.",
+    starterMessageEs: "*Mirándote fijamente con frialdad seductora.* Si vas a estar aquí conmigo esta noche, prepárate para no dormir nada.",
     voiceName: "Fenrir"
   }
 ];
@@ -465,18 +463,11 @@ export function resolveChatKinship(char: CharacterItem, history: ChatMessage[], 
 
 export default function ChatPage() {
   const { characterId } = useParams<{ characterId?: string }>();
-  const { user, loading } = useAuth();
-  if (loading) return null;
-  return <ChatRoom key={`${user?.id || "guest"}:${characterId || "explore"}`} />;
-}
-
-function ChatRoom() {
-  const { characterId } = useParams<{ characterId?: string }>();
   const navigate = useNavigate();
   const { language } = useLanguage();
   const isEs = language === "es";
   const { enabled: adultEnabled } = useAdultMode();
-  const { isAdmin, user } = useAuth();
+  const { isAdmin } = useAuth();
 
   // State: View Mode ('explore' for Catalog, 'room' for Chat Room)
   const [viewMode, setViewMode] = useState<"explore" | "room">(
@@ -485,9 +476,6 @@ function ChatRoom() {
   const [selectedCharacterId, setSelectedCharacterId] = useState<string>(
     characterId || "olivia-adams"
   );
-
-  const conversationScope = useConversationScope(`${user?.id || "guest"}:${characterId || "explore"}:${selectedCharacterId}`);
-  const sendPendingRef = useRef(false);
 
   // AI Settings Dialog State (Momoo AI style models, memory tiers & token lengths)
   const [isAiSettingsOpen, setIsAiSettingsOpen] = useState(false);
@@ -559,17 +547,95 @@ function ChatRoom() {
       return [updated, ...prev];
     });
 
+    const newGreeting = isEs
+      ? (updated.starterMessageEs || updated.starterMessage)
+      : (updated.starterMessageEn || updated.starterMessage);
+
+    // Sincronizar inmediatamente el historial para que el saludo inicial muestre el cambio sin demora
+    setChatHistory((prev) => {
+      const existing = prev[updated.id];
+      // Si no hay historial o el historial solo tiene el saludo inicial
+      if (!existing || existing.length === 0 || (existing.length === 1 && existing[0].role === "assistant")) {
+        const next = {
+          ...prev,
+          [updated.id]: [
+            {
+              id: `starter-${updated.id}`,
+              role: "assistant" as const,
+              content: newGreeting,
+              timestamp: isEs ? "Inicio" : "Start"
+            }
+          ]
+        };
+        try {
+          localStorage.setItem("insomnia_user_chat_history_v1", JSON.stringify(next));
+        } catch {}
+        return next;
+      }
+
+      // Si hay mensajes posteriores, actualizar siempre el primer mensaje de bienvenida
+      if (existing.length > 0 && existing[0].role === "assistant") {
+        const updatedFirst = [
+          {
+            ...existing[0],
+            content: newGreeting
+          },
+          ...existing.slice(1)
+        ];
+        const next = {
+          ...prev,
+          [updated.id]: updatedFirst
+        };
+        try {
+          localStorage.setItem("insomnia_user_chat_history_v1", JSON.stringify(next));
+        } catch {}
+        return next;
+      }
+
+      return prev;
+    });
+
     if (!openConversations.includes(updated.id)) {
       setOpenConversations((prev) => [updated.id, ...prev]);
     }
     setSelectedCharacterId(updated.id);
   };
 
-  // The sidebar contains only cards opened during this mounted visit.
-  const [openConversations, setOpenConversations] = useState<string[]>([]);
+  // Open Conversations List in Chat Room (Starts 100% clean for each user)
+  const [openConversations, setOpenConversations] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem("insomnia_user_open_convs_v1");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch {}
+    return [];
+  });
 
-  // Current visit only: never read or persist conversation messages.
-  const [chatHistory, setChatHistory] = useState<Record<string, ChatMessage[]>>({});
+  useEffect(() => {
+    try {
+      localStorage.setItem("insomnia_user_open_convs_v1", JSON.stringify(openConversations));
+    } catch {}
+  }, [openConversations]);
+
+  // Messages per character - 100% CLEAN START, NO MOCK OR FAKE PRIOR DIALOGUES
+  const [chatHistory, setChatHistory] = useState<Record<string, ChatMessage[]>>(() => {
+    try {
+      // Clean up legacy mock data keys so browser cache is completely cleared
+      localStorage.removeItem("talkiemate_exact_history_v3");
+      const saved = localStorage.getItem("insomnia_user_chat_history_v1");
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return {};
+  });
+
+  // Sync to localstorage
+  useEffect(() => {
+    try {
+      localStorage.setItem("insomnia_user_chat_history_v1", JSON.stringify(chatHistory));
+    } catch {}
+  }, [chatHistory]);
 
   // CandyShorts -> Chat Bridge: Ingest character from Series / Shorts directly into Room mode
   useEffect(() => {
@@ -607,9 +673,9 @@ function ChatRoom() {
             imageCount: 1,
             unreadCount: 0,
             isOnline: true,
-            starterMessage: "",
-            starterMessageEs: "",
-            starterMessageEn: "",
+            starterMessage: `Hola... Estaba esperando a que vinieras después de ver mi serie "${seriesTitle || charName}". ¿De qué quieres hablar hoy?`,
+            starterMessageEs: `Hola... Estaba esperando a que vinieras después de ver mi serie "${seriesTitle || charName}". ¿De qué quieres hablar hoy?`,
+            starterMessageEn: `Hey... I was waiting for you to come by after watching my series "${seriesTitle || charName}". What should we talk about?`,
             voiceName: "es-VE-PaolaNeural",
             voiceEngine: "edge",
             style: "realistic",
@@ -621,6 +687,25 @@ function ChatRoom() {
         setSelectedCharacterId(targetId);
         setViewMode("room");
 
+        // Set starter greeting if no prior conversation exists
+        setChatHistory((prev) => {
+          if (!prev[targetId] || prev[targetId].length === 0) {
+            return {
+              ...prev,
+              [targetId]: [
+                {
+                  id: `starter-${targetId}`,
+                  role: "assistant",
+                  content: isEs
+                    ? `Hola... Me alegra verte aquí después de ver mi serie "${seriesTitle || charName}". Cuéntame, ¿qué fue lo que más te gustó?`
+                    : `Hey... So glad to see you here after watching my series "${seriesTitle || charName}". Tell me, what did you like most?`,
+                  timestamp: isEs ? "Ahora" : "Now",
+                },
+              ],
+            };
+          }
+          return prev;
+        });
       }
     } catch (e) {
       console.warn("Could not parse character parameters from URL:", e);
@@ -662,20 +747,26 @@ function ChatRoom() {
     });
   };
 
-  // Restart with no assistant script, history, summary or pending response.
+  // Reset conversation for active character to original starter message
   const handleResetCurrentHistory = (customStarter?: string) => {
     if (!activeChar) return;
     stopAudio();
-    conversationScope.invalidate();
-    sendPendingRef.current = false;
-    handleEndCall();
-    setChatHistory({});
-    setInputText("");
-    setIsTyping(false);
-    clearBrowserConversationHistory();
-    void clearSavedStorySessions(user?.id).then(error => {
-      if (error) toast({ title: isEs ? "El chat está vacío; no se pudo borrar la copia antigua de la cuenta" : "The chat is empty; the old account copy could not be erased", variant: "destructive" });
-    });
+    const greeting = (typeof customStarter === "string" && customStarter.trim()) || (isEs
+      ? (activeChar.starterMessageEs || activeChar.starterMessage)
+      : (activeChar.starterMessageEn || activeChar.starterMessage));
+
+    const initialStarter: ChatMessage = {
+      id: `starter-${activeChar.id}`,
+      role: "assistant",
+      content: greeting,
+      timestamp: isEs ? "Inicio" : "Start"
+    };
+
+    const nextHistory = { ...chatHistory, [activeChar.id]: [initialStarter] };
+    setChatHistory(nextHistory);
+    try {
+      localStorage.setItem("insomnia_user_chat_history_v1", JSON.stringify(nextHistory));
+    } catch {}
 
     setIsConfigOpen(false);
 
@@ -779,17 +870,64 @@ function ChatRoom() {
   const activeMediaUrl = activeChar.gallery[activePhotoIdx] || activeChar.avatar;
   const isVideoMedia = isMediaVideo(activeMediaUrl);
 
-  // Authored card descriptions are context, never previously spoken replies.
-  const currentMessages = chatHistory[activeChar.id] || [];
+  // Messages for active character: Only clean starter message if no conversation yet
+  const currentMessages = useMemo(() => {
+    const history = chatHistory[activeChar.id];
+    const greeting = isEs
+      ? (activeChar.starterMessageEs || activeChar.starterMessage)
+      : (activeChar.starterMessageEn || activeChar.starterMessage);
 
+    if (!history || history.length === 0) {
+      return [
+        {
+          id: `starter-${activeChar.id}`,
+          role: "assistant" as const,
+          content: greeting,
+          timestamp: isEs ? "Ahora" : "Just now"
+        }
+      ];
+    }
+
+    // Si el primer mensaje fue el saludo inicial, garantizar que siempre refleje el starterMessage configurado
+    if (history.length > 0 && history[0].role === "assistant" && history[0].content !== greeting) {
+      return [
+        {
+          ...history[0],
+          content: greeting
+        },
+        ...history.slice(1)
+      ];
+    }
+
+    return history;
+  }, [chatHistory, activeChar, isEs]);
+
+  // Sincronizar automáticamente chatHistory en localStorage cuando el starterMessage del personaje cambie
   useEffect(() => {
-    setChatHistory({});
-    setInputText("");
-    setIsTyping(false);
-    sendPendingRef.current = false;
-    stopAudio();
-    handleEndCall();
-  }, [selectedCharacterId]);
+    if (!activeChar) return;
+    const greeting = isEs
+      ? (activeChar.starterMessageEs || activeChar.starterMessage)
+      : (activeChar.starterMessageEn || activeChar.starterMessage);
+    if (!greeting) return;
+
+    setChatHistory((prev) => {
+      const history = prev[activeChar.id];
+      if (!history || history.length === 0) return prev;
+
+      if (history[0].role === "assistant" && history[0].content !== greeting) {
+        const next = {
+          ...prev,
+          [activeChar.id]: [{ ...history[0], content: greeting }, ...history.slice(1)]
+        };
+        try {
+          localStorage.setItem("insomnia_user_chat_history_v1", JSON.stringify(next));
+        } catch {}
+        return next;
+      }
+
+      return prev;
+    });
+  }, [activeChar?.id, activeChar?.starterMessage, activeChar?.starterMessageEs, isEs]);
 
   // Scroll to bottom
   useEffect(() => {
@@ -826,9 +964,7 @@ function ChatRoom() {
   // Send message in chat room
   const handleSendMessage = async () => {
     const text = inputText.trim();
-    if (!text || isTyping || sendPendingRef.current) return;
-    sendPendingRef.current = true;
-    const request = conversationScope.capture();
+    if (!text || isTyping) return;
 
     const userMsg: ChatMessage = {
       id: `u-${Date.now()}`,
@@ -837,7 +973,16 @@ function ChatRoom() {
       timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
     };
 
-    const currentHistory = chatHistory[activeChar.id] || [];
+    const initialStarter: ChatMessage = {
+      id: `starter-${activeChar.id}`,
+      role: "assistant",
+      content: isEs
+        ? (activeChar.starterMessageEs || activeChar.starterMessage)
+        : (activeChar.starterMessageEn || activeChar.starterMessage),
+      timestamp: isEs ? "Inicio" : "Start"
+    };
+
+    const currentHistory = chatHistory[activeChar.id] || [initialStarter];
     const updatedHistory = [...currentHistory, userMsg];
 
     setChatHistory((prev) => ({
@@ -914,7 +1059,6 @@ function ChatRoom() {
         settings: charAiSettings
       });
 
-      if (!conversationScope.isCurrent(request)) return;
       let reply = "";
       if (!error && data?.content) {
         reply = data.content;
@@ -941,12 +1085,9 @@ function ChatRoom() {
           settings: charAiSettings
         });
 
-        if (!conversationScope.isCurrent(request)) return;
         if (retryResult?.data?.content) {
           reply = retryResult.data.content;
         } else {
-          setChatHistory(prev => ({ ...prev, [activeChar.id]: (prev[activeChar.id] || []).filter(message => message.id !== userMsg.id) }));
-          setInputText(text);
           setIsTyping(false);
           toast({
             title: isEs ? "Error de conexión temporal" : "Temporary connection error",
@@ -976,12 +1117,9 @@ function ChatRoom() {
         void handlePlayAudio(assistantMsg.id, reply);
       }
     } catch (e) {
-      if (!conversationScope.isCurrent(request)) return;
-      setChatHistory(prev => ({ ...prev, [activeChar.id]: (prev[activeChar.id] || []).filter(message => message.id !== userMsg.id) }));
-      setInputText(text);
-      toast({ title: isEs ? "No se pudo recibir una respuesta del motor" : "Could not receive an engine reply", variant: "destructive" });
+      console.error(e);
     } finally {
-      if (conversationScope.isCurrent(request)) { sendPendingRef.current = false; setIsTyping(false); }
+      setIsTyping(false);
     }
   };
 
@@ -1352,7 +1490,9 @@ function ChatRoom() {
         const clean = normalizeAssistantReply(data.content) || data.content;
         reply = clean.trim();
       } else {
-        throw new Error(isEs ? "El motor no devolvió una respuesta" : "The engine returned no reply");
+        reply = isSobrina
+          ? (isEs ? `*suspira suavemente* Te escucho tío... Dime más.` : `*sighs softly* I'm listening uncle... Tell me more.`)
+          : (isEs ? `*sonríe* Te escucho perfectamente... Cuéntame más.` : `*smiles* I hear you loud and clear... Tell me more.`);
       }
 
       if (!callActiveRef.current || callSessionRef.current !== currentCallSession) return;
@@ -1410,7 +1550,7 @@ function ChatRoom() {
           ? `(Te acabo de llamar por teléfono para continuar nuestra conversación. Contesta la llamada en tu personaje de ${resolvedCharRole}, dirigiéndote a mí como tu ${playerRoleName}, y continúa de forma directa lo último que estábamos hablando sobre: "${lastTopic}". Habla en 1 sola oración breve, viva y natural de voz hablada, puedes incluir una reacción vocal acústica como (*se ríe*, *suspira* o *sonríe*) para transmitir emoción).`
           : `(I just called you to continue our chat. Pick up in character as ${resolvedCharRole}, addressing me as your ${playerRoleName}, and continue directly what we were talking about: "${lastTopic}". Speak in 1 brief natural spoken sentence with vocal expression).`)
       : (isEs
-          ? `(Te acabo de llamar por teléfono. Atiende la llamada en tu personaje de ${resolvedCharRole}, saludando a tu ${playerRoleName} con familiaridad y respeto a tu parentesco, usando palabras propias adaptadas al personaje y a la situación, sin sugerir conversaciones anteriores. Habla en 1 sola oración breve de voz hablada real, puedes incluir una reacción vocal acústica como (*se ríe* o *sonríe*)).`
+          ? `(Te acabo de llamar por teléfono. Atiende la llamada en tu personaje de ${resolvedCharRole}, saludando a tu ${playerRoleName} con familiaridad y respeto a tu parentesco, diciendo algo como: "¡Hola ${playerRoleName}! ¿Cómo estás? Me alegra mucho que me llames...". Habla en 1 sola oración breve de voz hablada real, puedes incluir una reacción vocal acústica como (*se ríe* o *sonríe*)).`
           : `(I just called you. Pick up in character as ${resolvedCharRole}, addressing me as your ${playerRoleName}. Speak in 1 brief natural spoken sentence with vocal expression).`);
 
     try {
@@ -1459,8 +1599,15 @@ function ChatRoom() {
     }
 
     if (!greetingText) {
-      if (callSessionRef.current === currentSession) { handleEndCall(); toast({ title: isEs ? "El motor no devolvió un saludo" : "The engine returned no greeting", variant: "destructive" }); }
-      return;
+      if (isSobrina) {
+        greetingText = hasUserChatted
+          ? (isEs ? `*sonríe* ¡Hola tío! Sí, te escucho perfectamente... Dime, ¿en qué nos quedamos de lo que me decías?` : `*smiles* Hey uncle! Yes, I hear you loud and clear... Tell me, where were we on what you were saying?`)
+          : (isEs ? `*se ríe contenta* ¡Hola tío! Qué alegría que me llames... ¿Cómo estás? Me alegra mucho escucharte.` : `*laughs softly* Hey uncle! What a nice surprise you called... How are you doing?`);
+      } else {
+        greetingText = hasUserChatted
+          ? (isEs ? `*sonríe* ¡Hola! Sí, te escucho perfectamente... Dime, ¿en qué nos quedamos de lo que me decías?` : `*smiles* Hey! Yes, I hear you loud and clear... Tell me, where were we on what you were saying?`)
+          : (isEs ? `*sonríe* ¡Hola! Qué gusto que me llames... ¿Cómo estás? Dime, ¿en qué andas?` : `*smiles* Hey! So nice you called... How are you doing?`);
+      }
     }
 
     if (!callActiveRef.current || callSessionRef.current !== currentSession) return;
@@ -1849,7 +1996,11 @@ function ChatRoom() {
                     const isSelected = convChar.id === selectedCharacterId;
                     const history = chatHistory[convChar.id] || [];
                     const lastMsg = history[history.length - 1];
-                    const snippet = lastMsg ? lastMsg.content : (isEs ? "Sin mensajes" : "No messages");
+                    const snippet = lastMsg
+                      ? lastMsg.content
+                      : isEs
+                      ? (convChar.starterMessageEs || convChar.starterMessage)
+                      : (convChar.starterMessageEn || convChar.starterMessage);
 
                     return (
                       <div

@@ -61,8 +61,9 @@ describe("role reply presentation", () => {
 
     const leaked = "*Estefanía se sonroja y mira*\nTe extrañé mucho, hermano.";
     const cleaned = sanitizeSwitchedReply(leaked, info);
-    // A speaker mismatch must not be disguised with a manufactured approach action.
-    expect(cleaned).toBe(leaked);
+    expect(cleaned).not.toContain("*Estefanía");
+    expect(cleaned).toContain("*Me acerco a ti*");
+    expect(cleaned).toContain("hermano");
   });
   it("keeps sister active when user mentions Estefanía/sobrina in third person and does not block vocabulary words", () => {
     const turn1 = "La abrazo por la cintura la pego hacia mí, le digo yo también te extrañé mucho hermana pero tú sabes que tuvimos algo más que una relación como hermanos";

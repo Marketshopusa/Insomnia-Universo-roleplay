@@ -7,7 +7,6 @@ import { BrowserRouter, Navigate, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { LanguageProvider } from "@/contexts/LanguageContext";
 import { AdultModeProvider } from "@/contexts/AdultModeContext";
-import { ConversationPrivacy } from "@/components/chat/ConversationPrivacy";
 import { ErrorBoundary } from "@/components/common/ErrorBoundary";
 
 // Lazy-loaded pages with automatic retry & reload when new versions are deployed to production
@@ -73,7 +72,6 @@ const App = () => (
       <LanguageProvider>
         <AuthProvider>
           <AdultModeProvider>
-            <ConversationPrivacy />
             <TooltipProvider>
               <Toaster />
               <Sonner />
