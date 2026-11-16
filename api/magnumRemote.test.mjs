@@ -5,7 +5,7 @@ const reply = { model: 'magnum-v4-12b', content: JSON.stringify({ narracion: 'De
 test('uses the encrypted worker request and preserves the generated reaction and dialogue', async () => {
   const messages=[{role:'system',content:'Bibliotecaria.'},{role:'user',content:'Deja el libro sobre la mesa.'}];let sent;
   const result=await generateConnectedMagnum(messages,{},async (payload)=>{sent=payload;return reply});
-  assert.deepEqual(sent.messages,messages);assert.equal(sent.kind,'generate');assert.equal(sent.maxTokens,450);
+  assert.ok(sent.messages[0].content.startsWith(messages[0].content));assert.deepEqual(sent.messages.slice(1),messages.slice(1));assert.equal(sent.kind,'generate');assert.equal(sent.maxTokens,600);
   assert.equal(result.content,'*Dejo el libro sobre la mesa.* Ya está preparado para que lo consultes.');
   assert.deepEqual(result.engine,{profile:'magnum-v4-local',model:'magnum-v4-12b',provider:'local-pc',fallback:false});
 });

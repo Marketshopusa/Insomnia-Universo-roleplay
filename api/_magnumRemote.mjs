@@ -3,7 +3,10 @@ import { MAGNUM_MODEL } from './_magnumProtocol.mjs';
 
 /** Transport to the already running PC service; no provider substitution or content classification. */
 export async function generateConnectedMagnum(messages, options = {}, request = requestMagnum) {
-  const system = messages[0]?.role === 'system' ? [{ role: 'system', content: String(messages[0].content).slice(0, 16000) }] : [];
+  const lengthRule = options.language === 'en'
+    ? (options.brief ? 'For this simple exchange, use a brief reaction and 15–40 words of dialogue. Finish the JSON completely.' : 'Use a brief reaction and 90–125 words of dialogue, 90–150 words total. Finish every sentence and the JSON completely; keep the current scene.')
+    : (options.brief ? 'Para este intercambio sencillo, usa una reacción breve y un diálogo de 15–40 palabras. Cierra el JSON por completo.' : 'Usa una reacción breve y un diálogo de 90–125 palabras, 90–150 palabras en total. Termina todas las frases y cierra el JSON por completo; conserva la escena actual.');
+  const system = [{ role: 'system', content: (messages[0]?.role === 'system' ? String(messages[0].content).slice(0, 15000) + '\n' : '') + lengthRule }];
   const turns = [];
   for (const turn of messages.filter(turn => ['user', 'assistant'].includes(turn.role)).slice(-25)) {
     const content = String(turn.content || '').slice(0, 1800);
@@ -17,7 +20,8 @@ export async function generateConnectedMagnum(messages, options = {}, request = 
     kind: 'generate', mode: 'adult', approved: true, adultAccess: true,
     messages: [...system, ...turns], language: options.language === 'en' ? 'en' : 'es',
     call: options.call === true, brief: options.brief === true,
-    maxTokens: options.brief ? 180 : Math.max(450, Number(options.maxTokens) || 450),
+    // Decoding budget includes JSON syntax and Spanish tokenization, not only visible words.
+    maxTokens: options.brief ? 300 : 600,
     temperature: options.temperature ?? 0.85,
   }, { timeoutMs: options.call ? 21000 : 42000 });
   if (result.model !== MAGNUM_MODEL) throw Object.assign(new Error('El servicio no confirmó Magnum v4 12B.'), { code: 'magnum_model_mismatch', status: 503 });
